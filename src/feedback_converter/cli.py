@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import sys
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
@@ -64,16 +63,6 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, list):
         return [_jsonable(item) for item in value]
     return value
-
-
-def _cleanup_failed_workdir(input_path: Path, output_path: Path | None, *, archive: bool) -> None:
-    if not archive:
-        return
-
-    target = output_path or input_path.with_suffix(".feedpak")
-    workdir = target.with_suffix(target.suffix + ".work")
-    if workdir.is_dir():
-        shutil.rmtree(workdir, ignore_errors=True)
 
 
 def build_parser() -> argparse.ArgumentParser:

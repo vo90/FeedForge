@@ -27,7 +27,6 @@ from .feedpak_validator import FeedpakValidationResult, require_valid_feedpak
 from .output_naming import (
     arrangement_parts_code as naming_arrangement_parts_code,
     output_path as build_output_path,
-    render_output_template as render_naming_template,
     safe_path_segment,
     unique_output_path,
     validate_name_template,
@@ -420,10 +419,13 @@ def _plan_loaded_metadata_outputs(
     overwrite: bool,
     reserved_outputs: set[Path],
 ) -> list[PlannedSongOutput]:
-    base_dir = output_dir if output_dir is not None else input_psarc.parent
+    base_dir = Path(output_dir) if output_dir is not None else input_psarc.parent
+    if base_dir.exists() and not base_dir.is_dir():
+        raise NotADirectoryError(f"FeedPak output location is not a folder: {base_dir}")
     # With "Source folder" selected, the source hierarchy is already preserved.
     # Artist layout still has an observable meaning and is honored locally.
     effective_layout = output_layout if output_dir is not None or str(output_layout).strip().lower() == "artist" else "flat"
+    working_reservations = set(reserved_outputs)
     planned: list[PlannedSongOutput] = []
     for key, metadata in entries:
         validate_template_metadata(name_template, metadata)
@@ -437,7 +439,7 @@ def _plan_loaded_metadata_outputs(
             fallback_title=key,
             suffix=".feedpak",
         )
-        target = unique_output_path(target, reserved_outputs, overwrite=overwrite)
+        target = unique_output_path(target, working_reservations, overwrite=overwrite)
         planned.append(
             PlannedSongOutput(
                 key=key,
@@ -449,6 +451,9 @@ def _plan_loaded_metadata_outputs(
                 parts=naming_arrangement_parts_code(metadata),
             )
         )
+    # Commit reservations only after every song in this archive has a valid
+    # name. A later metadata error must not consume filenames for other files.
+    reserved_outputs.update(working_reservations)
     return planned
 
 
@@ -519,6 +524,7 @@ def _validated_planned_targets(
         )
 
     targets: list[Path] = []
+    target_keys: set[str] = set()
     for (key, song_content), planned in zip(entries, planned_outputs, strict=True):
         if not isinstance(planned, dict) or str(planned.get("key") or "") != key:
             raise ValueError(f"Song contents changed after output names were planned: {input_psarc}. Restart the conversion.")
@@ -547,7 +553,12 @@ def _validated_planned_targets(
         target = str(planned.get("path") or "").strip()
         if not target:
             raise ValueError(f"Output plan contains an empty path for song {expected['artist']} - {expected['title']}.")
-        targets.append(Path(target))
+        target_path = Path(target)
+        target_key = os.path.normcase(os.path.abspath(target_path))
+        if target_key in target_keys:
+            raise ValueError(f"Output plan assigns more than one song to the same path: {target_path}")
+        target_keys.add(target_key)
+        targets.append(target_path)
     return targets
 
 
@@ -679,6 +690,13 @@ def convert_psarc(
     lyric_song: Any | None = None
     used_ids: set[str] = set()
     for path, data in sng_items:
+        if not data:
+            warnings.append(
+                ConversionWarning(
+                    f"Skipped empty SNG entry {path}; the source archive contains no chart data for this arrangement."
+                )
+            )
+            continue
         try:
             song = Song.parse(data)
         except Exception as exc:  # noqa: BLE001
@@ -949,19 +967,26 @@ def _content_for_song_group(
     bnk_paths = _bank_paths_for_song_key(content, key)
     wem_paths = _wem_paths_for_banks(content, bnk_paths)
     _add_wem_paths(selected, content, wem_paths)
-    _add_preview_audio(selected, content, key)
+    preview_wem_paths = _preview_wem_paths_for_song_key(content, key)
+    _add_marked_preview_wems(selected, content, preview_wem_paths)
     external_wem_paths: set[str] = set()
     if rs1_songs_content:
-        external_bnk_paths = _bank_paths_for_song_key(rs1_songs_content, key)
-        external_wem_paths = _wem_paths_for_banks(rs1_songs_content, external_bnk_paths)
-        for path in external_bnk_paths:
-            selected[path] = rs1_songs_content[path]
-        _add_wem_paths(selected, rs1_songs_content, external_wem_paths)
-        _add_preview_audio(selected, rs1_songs_content, key)
+        if not wem_paths:
+            external_bnk_paths = _bank_paths_for_song_key(rs1_songs_content, key)
+            external_wem_paths = _wem_paths_for_banks(rs1_songs_content, external_bnk_paths)
+            for path in external_bnk_paths:
+                selected[path] = rs1_songs_content[path]
+            _add_wem_paths(selected, rs1_songs_content, external_wem_paths)
+        if not preview_wem_paths:
+            _add_marked_preview_wems(
+                selected,
+                rs1_songs_content,
+                _preview_wem_paths_for_song_key(rs1_songs_content, key),
+            )
     if (bnk_paths or rs1_songs_content) and not wem_paths and not external_wem_paths:
         # A grouped multi-song PSARC with an unresolvable bank is safer to fail
         # later with "No audio file found" than to borrow another song's WEM.
-        selected = {path: data for path, data in selected.items() if not path.lower().endswith((".wem", ".ogg", ".wav", ".mp3", ".flac", ".opus"))}
+        selected = {path: data for path, data in selected.items() if not path.lower().endswith(AUDIO_SUFFIXES)}
     return selected
 
 
@@ -1052,8 +1077,14 @@ def _add_wem_paths(selected: dict[str, bytes], source: dict[str, bytes], paths: 
 
 
 def _add_preview_audio(selected: dict[str, bytes], source: dict[str, bytes], key: str) -> None:
-    preview_banks = _preview_bank_paths_for_song_key(source, key)
-    preview_wems = _wem_paths_for_banks(source, preview_banks)
+    _add_marked_preview_wems(selected, source, _preview_wem_paths_for_song_key(source, key))
+
+
+def _preview_wem_paths_for_song_key(content: dict[str, bytes], key: str) -> set[str]:
+    return _wem_paths_for_banks(content, _preview_bank_paths_for_song_key(content, key))
+
+
+def _add_marked_preview_wems(selected: dict[str, bytes], source: dict[str, bytes], preview_wems: set[str]) -> None:
     for path, data in source.items():
         if path not in preview_wems:
             continue
@@ -1177,25 +1208,6 @@ def _audio_output_path(
         fallback_title=key,
         suffix=".ogg",
     )
-
-
-def _render_output_template(
-    template: str,
-    metadata: dict[str, Any],
-    *,
-    input_psarc: Path,
-    fallback: str,
-) -> str:
-    return render_naming_template(
-        template,
-        metadata,
-        input_psarc=input_psarc,
-        fallback_title=fallback,
-    )
-
-
-def _arrangement_parts_code(metadata: dict[str, Any]) -> str:
-    return naming_arrangement_parts_code(metadata)
 
 
 def _is_vocal_sng(path: str, song: Any) -> bool:
@@ -2563,7 +2575,7 @@ def _copy_audio(
     audio = [
         (path, data)
         for path, data in content.items()
-        if path.lower().endswith((".wem", ".ogg", ".wav", ".mp3", ".flac", ".opus"))
+        if path.lower().endswith(AUDIO_SUFFIXES)
         and not _is_preview_audio_path(path)
     ]
     if not audio:
@@ -2655,7 +2667,7 @@ def _copy_browser_preview(
     preview_audio = [
         (path, data)
         for path, data in content.items()
-        if path.lower().endswith((".wem", ".ogg", ".wav", ".mp3", ".flac", ".opus"))
+        if path.lower().endswith(AUDIO_SUFFIXES)
         and _is_preview_audio_path(path)
     ]
     if preview_audio:
@@ -2733,7 +2745,7 @@ def _export_audio_from_content(
     audio = [
         (path, data)
         for path, data in content.items()
-        if path.lower().endswith((".wem", ".ogg", ".wav", ".mp3", ".flac", ".opus"))
+        if path.lower().endswith(AUDIO_SUFFIXES)
         and not _is_preview_audio_path(path)
     ]
     if not audio:

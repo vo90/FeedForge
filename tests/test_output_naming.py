@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from feedback_converter import batch, feedpak
 from feedback_converter.output_naming import (
     output_path,
     render_output_template,
@@ -133,3 +134,32 @@ def test_overwrite_still_prevents_two_batch_items_from_sharing_one_path(tmp_path
 
     assert first == requested
     assert second.name == "same (2).feedpak"
+
+
+def test_cli_feedpak_directory_naming_uses_feedpak_metadata_and_shared_engine(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source.feedpak"
+    source.write_bytes(b"placeholder")
+    monkeypatch.setattr(
+        feedpak,
+        "inspect_feedpak",
+        lambda *_args, **_kwargs: {
+            "artist": "Beyoncé",
+            "title": "Déjà Vu",
+            "album": "B'Day",
+            "year": 2006,
+            "arrangements": [{"id": "lead", "name": "Lead", "type": "guitar"}],
+        },
+    )
+
+    target = batch._batch_output_path(
+        source,
+        tmp_path / "out",
+        "artist",
+        None,
+        "{artist} - {title} - {parts}",
+    )
+
+    assert target == tmp_path / "out" / "Beyoncé" / "Beyoncé - Déjà Vu - L.feedpak"

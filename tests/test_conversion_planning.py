@@ -209,3 +209,98 @@ def test_song_group_metadata_preserves_archive_order_when_paths_are_a_set() -> N
     assert list(selected) == list(content)
     assert converter._extract_metadata(selected)["album"] == "Moving Waves"
     assert converter._extract_output_metadata(content)["album"] == "Moving Waves"
+
+
+def test_failed_archive_planning_does_not_consume_batch_output_names(tmp_path: Path) -> None:
+    source = tmp_path / "collection.psarc"
+    source.write_bytes(b"collection")
+    stat = source.stat()
+    reserved: set[Path] = set()
+    invalid = converter.PsarcPlanningData(
+        input_path=source,
+        source_size=stat.st_size,
+        source_mtime_ns=stat.st_mtime_ns,
+        songs=[
+            ("first", {"artist": "Artist", "title": "Same Song"}),
+            ("second", {"title": "Missing Artist"}),
+        ],
+    )
+
+    with pytest.raises(ValueError, match=r"metadata is missing: \{artist\}"):
+        converter.plan_loaded_psarc_songs(
+            invalid,
+            tmp_path / "out",
+            name_template="{artist} - {title}",
+            reserved_outputs=reserved,
+        )
+
+    assert reserved == set()
+    valid = converter.PsarcPlanningData(
+        input_path=source,
+        source_size=stat.st_size,
+        source_mtime_ns=stat.st_mtime_ns,
+        songs=[("only", {"artist": "Artist", "title": "Same Song"})],
+    )
+    plan = converter.plan_loaded_psarc_songs(
+        valid,
+        tmp_path / "out",
+        name_template="{artist} - {title}",
+        reserved_outputs=reserved,
+    )
+    assert plan.outputs[0].output_path.name == "Artist - Same Song.feedpak"
+
+
+def test_loaded_planner_rejects_an_output_path_that_is_a_file(tmp_path: Path) -> None:
+    source = tmp_path / "song.psarc"
+    source.write_bytes(b"song")
+    output_file = tmp_path / "not-a-folder"
+    output_file.write_bytes(b"file")
+    stat = source.stat()
+    planning_data = converter.PsarcPlanningData(
+        input_path=source,
+        source_size=stat.st_size,
+        source_mtime_ns=stat.st_mtime_ns,
+        songs=[("song", {"artist": "Artist", "title": "Song"})],
+    )
+
+    with pytest.raises(NotADirectoryError, match="not a folder"):
+        converter.plan_loaded_psarc_songs(planning_data, output_file, name_template="{title}")
+
+
+def test_output_plan_rejects_duplicate_targets(tmp_path: Path) -> None:
+    source = tmp_path / "collection.psarc"
+    source.write_bytes(b"collection")
+    stat = source.stat()
+    entries = [
+        ("first", _song_content("Artist", "First")),
+        ("second", _song_content("Artist", "Second")),
+    ]
+    shared_target = tmp_path / "out" / "same.feedpak"
+    output_plan = {
+        "inputPath": str(source),
+        "sourceSize": stat.st_size,
+        "sourceMtimeNs": str(stat.st_mtime_ns),
+        "outputs": [
+            {
+                "key": "first",
+                "path": str(shared_target),
+                "artist": "Artist",
+                "title": "First",
+                "album": "",
+                "year": "",
+                "parts": "",
+            },
+            {
+                "key": "second",
+                "path": str(shared_target),
+                "artist": "Artist",
+                "title": "Second",
+                "album": "",
+                "year": "",
+                "parts": "",
+            },
+        ],
+    }
+
+    with pytest.raises(ValueError, match="more than one song to the same path"):
+        converter._validated_planned_targets(source, entries, output_plan, source_stat=stat)

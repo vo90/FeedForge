@@ -56,6 +56,54 @@ def test_batch_converts_songs_psarc_while_using_it_as_rs1_audio_source(
     assert conversion_calls == [(compatibility, songs), (songs, None)]
 
 
+def test_batch_preserves_conversion_options_for_every_input(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "song.psarc"
+    source.write_bytes(b"song")
+    converted_options: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        batch,
+        "plan_psarc_songs",
+        lambda *_args, **_kwargs: SimpleNamespace(to_dict=lambda: {"outputs": []}),
+    )
+
+    def fake_convert(*_args: object, **kwargs: object) -> list[SimpleNamespace]:
+        converted_options.append(kwargs)
+        return [SimpleNamespace(output_path=tmp_path / "song.feedpak")]
+
+    monkeypatch.setattr(batch, "convert_psarc_songs", fake_convert)
+
+    result = batch.convert_many(
+        [source],
+        tmp_path / "out",
+        output_layout="artist",
+        name_template="{artist} - {title}",
+        include_tones=False,
+        b_standard_to_7_string=True,
+        separate_stems=True,
+        demucs_url="http://127.0.0.1:7865",
+        demucs_api_key="secret",
+        demucs_model="model",
+        demucs_stems=["guitar", "vocals"],
+    )
+
+    assert result.ok
+    assert len(converted_options) == 1
+    options = converted_options[0]
+    assert options["include_tones"] is False
+    assert options["b_standard_to_7_string"] is True
+    assert options["separate_stems"] is True
+    assert options["demucs_url"] == "http://127.0.0.1:7865"
+    assert options["demucs_api_key"] == "secret"
+    assert options["demucs_model"] == "model"
+    assert options["demucs_stems"] == ["guitar", "vocals"]
+    assert options["output_layout"] == "artist"
+    assert options["name_template"] == "{artist} - {title}"
+
+
 def test_self_contained_compatibility_archive_does_not_reload_songs_psarc(tmp_path: Path) -> None:
     compatibility = tmp_path / "rs1compatibilitydisc_p.psarc"
     support = tmp_path / "songs.psarc"
@@ -116,3 +164,38 @@ def test_mismatched_rs1_audio_source_has_actionable_error(tmp_path: Path) -> Non
             compatibility,
             rs1_songs_psarc=support,
         )
+
+
+def test_local_rs1_audio_wins_while_external_source_can_supply_missing_preview() -> None:
+    local_main_id = 111
+    external_main_id = 222
+    external_preview_id = 333
+    manifest = "manifests/songs/song_lead.json"
+    chart = "songs/bin/generic/song_lead.sng"
+    local_main = f"audio/windows/{local_main_id}.wem"
+    external_main = f"audio/windows/{external_main_id}.wem"
+    external_preview = f"audio/windows/{external_preview_id}.wem"
+    local = {
+        manifest: json.dumps({"SongKey": "song", "SongName": "Song"}).encode(),
+        chart: b"chart",
+        "audio/windows/song_song.bnk": _bank_with_wem_id(local_main_id),
+        local_main: b"local full mix",
+    }
+    external = {
+        "audio/windows/song_song.bnk": _bank_with_wem_id(external_main_id),
+        "audio/windows/song_song_preview.bnk": _bank_with_wem_id(external_preview_id),
+        external_main: b"external full mix that must not replace local audio",
+        external_preview: b"external preview",
+    }
+
+    selected = converter._content_for_song_group(
+        local,
+        "song",
+        {manifest, chart},
+        rs1_songs_content=external,
+    )
+
+    assert selected[local_main] == b"local full mix"
+    assert external_main not in selected
+    marked_preview = f"{converter.INTERNAL_PREVIEW_AUDIO_PREFIX}{external_preview}"
+    assert selected[marked_preview] == b"external preview"

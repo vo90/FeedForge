@@ -364,6 +364,7 @@ function App() {
         outputPath: null,
         outputPaths: [],
         message: null,
+        warnings: [],
         error: null
     }));
     if (!incoming.length) return;
@@ -419,7 +420,7 @@ function App() {
     if (!result.ok) {
       updateItem(item.id, (current) => {
         if (current.status === "converted" || current.status === "converting") return current;
-        return { ...current, status: "failed", error: result.error };
+        return { ...current, status: "failed", warnings: [], error: result.error };
       });
       return;
     }
@@ -430,6 +431,7 @@ function App() {
         ...current,
         status: preview.arrangements?.length ? "ready" : "needs-review",
         preview,
+        warnings: Array.isArray(preview.warnings) ? preview.warnings.filter(Boolean) : [],
         error: null
       };
     });
@@ -613,7 +615,7 @@ function App() {
       function failPlanning(item, message) {
         if (planningFailures.has(item.id)) return;
         planningFailures.add(item.id);
-        updateItem(item.id, { status: "failed", error: message || "Could not determine a safe output filename." });
+        updateItem(item.id, { status: "failed", warnings: [], error: message || "Could not determine a safe output filename." });
       }
 
       if (psarcItems.length) {
@@ -667,7 +669,12 @@ function App() {
               continue;
             }
             current = { ...current, preview: inspected.preview };
-            updateItem(item.id, { preview: inspected.preview, status: inspected.preview.arrangements?.length ? "ready" : "needs-review", error: null });
+            updateItem(item.id, {
+              preview: inspected.preview,
+              status: inspected.preview.arrangements?.length ? "ready" : "needs-review",
+              warnings: Array.isArray(inspected.preview.warnings) ? inspected.preview.warnings.filter(Boolean) : [],
+              error: null
+            });
           } catch (error) {
             failPlanning(item, error?.message || "FeedPak metadata inspection failed.");
             continue;
@@ -705,7 +712,7 @@ function App() {
         const outputPlan = planById.get(item.id) || null;
         const plannedFirst = outputPlan?.outputs?.[0] || null;
         const outputPath = item.sourceType === "feedpak" ? (reservedOutputPaths.get(item.id) || null) : null;
-        updateItem(item.id, { status: "converting", error: null, message: null });
+        updateItem(item.id, { status: "converting", warnings: [], error: null, message: null });
         setConversionProgress((current) => ({
           ...current,
           active: [...current.active.filter((entry) => entry.id !== item.id), {
@@ -735,7 +742,7 @@ function App() {
             : await api.convert({ ...payload, bStandardTo7String });
           if (!result.ok) {
             failed = true;
-            updateItem(item.id, { status: "failed", error: result.error });
+            updateItem(item.id, { status: "failed", warnings: [], error: result.error });
           } else {
             const warnings = Array.isArray(result.warnings) ? result.warnings.filter(Boolean) : [];
             const outputPaths = Array.isArray(result.outputPaths) ? result.outputPaths.filter(Boolean) : [];
@@ -749,12 +756,13 @@ function App() {
               message: outputCount > 1
                 ? `Created ${outputCount} FeedPaks${outputFolder ? ` in ${outputFolder}` : ""}.`
                 : null,
-              error: warnings.length ? warnings.join("\n") : null
+              warnings,
+              error: null
             });
           }
         } catch (error) {
           failed = true;
-          updateItem(item.id, { status: "failed", error: error?.message || "Conversion failed." });
+          updateItem(item.id, { status: "failed", warnings: [], error: error?.message || "Conversion failed." });
         } finally {
           setConversionProgress((current) => ({
             ...current,
@@ -832,7 +840,7 @@ function App() {
       const item = pending[index];
       index += 1;
       if (!item) return;
-      updateItem(item.id, { status: "converting", error: null, message: null });
+      updateItem(item.id, { status: "converting", warnings: [], error: null, message: null });
       setConversionProgress((current) => ({
         ...current,
         active: [...current.active.filter((entry) => entry.id !== item.id), { id: item.id, name: itemDisplayTitle(item), artist: itemProgressSubtitle(item) }]
@@ -849,7 +857,7 @@ function App() {
         });
         if (!result.ok) {
           failed = true;
-          updateItem(item.id, { status: "failed", error: result.error });
+          updateItem(item.id, { status: "failed", warnings: [], error: result.error });
         } else {
           const warnings = Array.isArray(result.warnings) ? result.warnings.filter(Boolean) : [];
           const outputPaths = Array.isArray(result.outputPaths) ? result.outputPaths.filter(Boolean) : [];
@@ -861,12 +869,13 @@ function App() {
             message: outputPaths.length > 1
               ? `Exported ${outputPaths.length} audio files${outputFolder ? ` in ${outputFolder}` : ""}.`
               : "Exported audio.",
-            error: warnings.length ? warnings.join("\n") : null
+            warnings,
+            error: null
           });
         }
       } catch (error) {
         failed = true;
-        updateItem(item.id, { status: "failed", error: error?.message || "Audio export failed." });
+        updateItem(item.id, { status: "failed", warnings: [], error: error?.message || "Audio export failed." });
       } finally {
         setConversionProgress((current) => ({
           ...current,
@@ -906,7 +915,7 @@ function App() {
       active: [{ id: item.id, name: itemDisplayTitle(item), artist: itemProgressSubtitle(item) }],
       stopped: false
     });
-    updateItem(item.id, { status: "converting", error: null, message: null });
+    updateItem(item.id, { status: "converting", warnings: [], error: null, message: null });
     let failed = false;
     try {
       const nameTemplate = outputNameTemplateForFormat(outputNameFormat, outputNameTemplate);
@@ -920,7 +929,7 @@ function App() {
       });
       if (!result.ok) {
         failed = true;
-        updateItem(item.id, { status: "failed", error: result.error });
+        updateItem(item.id, { status: "failed", warnings: [], error: result.error });
       } else {
         const warnings = Array.isArray(result.warnings) ? result.warnings.filter(Boolean) : [];
         const outputPaths = Array.isArray(result.outputPaths) ? result.outputPaths.filter(Boolean) : [];
@@ -929,12 +938,13 @@ function App() {
           outputPath: result.outputPath || outputPaths[0] || null,
           outputPaths,
           message: outputPaths.length > 1 ? `Exported ${outputPaths.length} audio files.` : "Exported audio.",
-          error: warnings.length ? warnings.join("\n") : null
+          warnings,
+          error: null
         });
       }
     } catch (error) {
       failed = true;
-      updateItem(item.id, { status: "failed", error: error?.message || "Audio export failed." });
+      updateItem(item.id, { status: "failed", warnings: [], error: error?.message || "Audio export failed." });
     } finally {
       isConvertingRef.current = false;
       stopRequestedRef.current = false;
@@ -956,7 +966,7 @@ function App() {
 
   async function saveFeedpakMetadata(item, metadata, authors, options = {}) {
     if (!item || item.sourceType !== "feedpak") return { ok: false, error: "Select a FeedPak first." };
-    updateItem(item.id, { status: "converting", error: null });
+    updateItem(item.id, { status: "converting", warnings: [], error: null });
     const overwriteOriginal = options.overwriteOriginal === true;
     const outputPath = overwriteOriginal ? null : editedFeedpakPath(item, outputDir);
     const result = await api.updateFeedpak({
@@ -967,7 +977,7 @@ function App() {
       authors
     });
     if (!result.ok) {
-      updateItem(item.id, { status: "failed", error: result.error });
+      updateItem(item.id, { status: "failed", warnings: [], error: result.error });
       return result;
     }
     if (overwriteOriginal) {
@@ -978,6 +988,7 @@ function App() {
         status: "converted",
         outputPath: result.outputPath || outputPath,
         validation: result.validation || null,
+        warnings: Array.isArray(result.warnings) ? result.warnings.filter(Boolean) : [],
         error: null
       });
     }
@@ -988,7 +999,7 @@ function App() {
     if (!item || item.sourceType !== "feedpak") return;
     const coverPath = await api.pickCoverImage({ defaultPath: parentDir(item.path) || undefined });
     if (!coverPath) return;
-    updateItem(item.id, { status: "converting", error: null });
+    updateItem(item.id, { status: "converting", warnings: [], error: null });
     const overwriteOriginal = options.overwriteOriginal === true;
     const outputPath = overwriteOriginal ? null : editedFeedpakPath(item, outputDir);
     const result = await api.updateFeedpak({
@@ -998,20 +1009,20 @@ function App() {
       coverPath
     });
     if (!result.ok) {
-      updateItem(item.id, { status: "failed", error: result.error });
+      updateItem(item.id, { status: "failed", warnings: [], error: result.error });
       return;
     }
     if (overwriteOriginal) {
       updateItem(item.id, { status: "queued", error: null });
       await inspectItem({ ...item, status: "queued" });
     } else {
-      updateItem(item.id, { status: "converted", outputPath: result.outputPath || outputPath, validation: result.validation || null, error: null });
+      updateItem(item.id, { status: "converted", outputPath: result.outputPath || outputPath, validation: result.validation || null, warnings: Array.isArray(result.warnings) ? result.warnings.filter(Boolean) : [], error: null });
     }
   }
 
   async function removeFeedpakCover(item, options = {}) {
     if (!item || item.sourceType !== "feedpak") return;
-    updateItem(item.id, { status: "converting", error: null });
+    updateItem(item.id, { status: "converting", warnings: [], error: null });
     const overwriteOriginal = options.overwriteOriginal === true;
     const outputPath = overwriteOriginal ? null : editedFeedpakPath(item, outputDir);
     const result = await api.updateFeedpak({
@@ -1021,14 +1032,14 @@ function App() {
       removeCover: true
     });
     if (!result.ok) {
-      updateItem(item.id, { status: "failed", error: result.error });
+      updateItem(item.id, { status: "failed", warnings: [], error: result.error });
       return;
     }
     if (overwriteOriginal) {
       updateItem(item.id, { status: "queued", error: null });
       await inspectItem({ ...item, status: "queued" });
     } else {
-      updateItem(item.id, { status: "converted", outputPath: result.outputPath || outputPath, validation: result.validation || null, error: null });
+      updateItem(item.id, { status: "converted", outputPath: result.outputPath || outputPath, validation: result.validation || null, warnings: Array.isArray(result.warnings) ? result.warnings.filter(Boolean) : [], error: null });
     }
   }
 
@@ -1045,7 +1056,7 @@ function App() {
   }
 
   async function updateFeedpakStems(item, stemUpdates, removeStems, options = {}) {
-    updateItem(item.id, { status: "converting", error: null });
+    updateItem(item.id, { status: "converting", warnings: [], error: null });
     const overwriteOriginal = options.overwriteOriginal === true;
     const outputPath = overwriteOriginal ? null : editedFeedpakPath(item, outputDir);
     const result = await api.updateFeedpak({
@@ -1056,14 +1067,14 @@ function App() {
       removeStems
     });
     if (!result.ok) {
-      updateItem(item.id, { status: "failed", error: result.error });
+      updateItem(item.id, { status: "failed", warnings: [], error: result.error });
       return result;
     }
     if (overwriteOriginal) {
       updateItem(item.id, { status: "queued", error: null });
       await inspectItem({ ...item, status: "queued" });
     } else {
-      updateItem(item.id, { status: "converted", outputPath: result.outputPath || outputPath, validation: result.validation || null, error: null });
+      updateItem(item.id, { status: "converted", outputPath: result.outputPath || outputPath, validation: result.validation || null, warnings: Array.isArray(result.warnings) ? result.warnings.filter(Boolean) : [], error: null });
     }
     return result;
   }
@@ -1071,7 +1082,7 @@ function App() {
   async function reprocessFeedpakStems(item, options = {}) {
     if (!item || item.sourceType !== "feedpak") return { ok: false, error: "Select a FeedPak first." };
     if (!separateStems) return { ok: false, error: "Enable Separate stems in Settings first." };
-    updateItem(item.id, { status: "converting", error: null });
+    updateItem(item.id, { status: "converting", warnings: [], error: null });
     const overwriteOriginal = options.overwriteOriginal === true;
     const outputPath = overwriteOriginal ? null : editedFeedpakPath(item, outputDir);
     const result = await api.updateFeedpak({
@@ -1085,14 +1096,14 @@ function App() {
       demucsStems
     });
     if (!result.ok) {
-      updateItem(item.id, { status: "failed", error: result.error });
+      updateItem(item.id, { status: "failed", warnings: [], error: result.error });
       return result;
     }
     if (overwriteOriginal) {
       updateItem(item.id, { status: "queued", error: null });
       await inspectItem({ ...item, status: "queued" });
     } else {
-      updateItem(item.id, { status: "converted", outputPath: result.outputPath || outputPath, validation: result.validation || null, error: null });
+      updateItem(item.id, { status: "converted", outputPath: result.outputPath || outputPath, validation: result.validation || null, warnings: Array.isArray(result.warnings) ? result.warnings.filter(Boolean) : [], error: null });
     }
     return result;
   }
@@ -2535,6 +2546,9 @@ function Inspector({
   const authors = preview?.authors || [];
   const stems = preview?.stems || [];
   const validation = item?.validation || preview?.validation;
+  const itemWarnings = Array.isArray(item?.warnings)
+    ? item.warnings.filter(Boolean)
+    : Array.isArray(preview?.warnings) ? preview.warnings.filter(Boolean) : [];
   const isFeedpak = item?.sourceType === "feedpak" || preview?.source_type === "feedpak";
   const isMultiSong = !isFeedpak && isMultiSongPackage(item);
   const outputCount = Array.isArray(item?.outputPaths) ? item.outputPaths.length : 0;
@@ -2651,15 +2665,18 @@ function Inspector({
               <span>{item ? statusText(item.status) : "Waiting"}</span>
             </div>
             {item?.error && <div className="error-box"><AlertTriangle size={17} /> {item.error}</div>}
+            {itemWarnings.length > 0 && (
+              <div className="warning-box"><AlertTriangle size={17} /> <span>{itemWarnings.join("\n")}</span></div>
+            )}
             <div className="overview-metrics">
               <FeedPakMetric label={preview?.is_multi_song ? "Songs" : "Arrangements"} value={preview?.is_multi_song ? preview.song_count : arrangements.length} />
-              <FeedPakMetric label={preview?.is_multi_song ? "Arrangements" : "Stems"} value={preview?.is_multi_song ? arrangements.length : stems.length} />
-              <FeedPakMetric label="Tone rigs" value={countToneDefinitions(tones)} />
+              <FeedPakMetric label={preview?.is_multi_song ? "Preview arrangements" : "Stems"} value={preview?.is_multi_song ? arrangements.length : stems.length} />
+              <FeedPakMetric label={preview?.is_multi_song ? "Preview tone rigs" : "Tone rigs"} value={countToneDefinitions(tones)} />
               <FeedPakMetric label="Credits" value={authors.length} />
             </div>
             <ul className="readiness readiness-grid">
               <ReadyLine ok={!!cover} text={cover ? "Cover image detected" : "No cover image"} muted={!cover} />
-              <ReadyLine ok={arrangements.length > 0} text={`${arrangements.length || 0} arrangement${arrangements.length === 1 ? "" : "s"}`} />
+              <ReadyLine ok={arrangements.length > 0} text={`${arrangements.length || 0} ${isMultiSong ? "first-song preview " : ""}arrangement${arrangements.length === 1 ? "" : "s"}`} />
               {isFeedpak && <ReadyLine ok={stems.some((stem) => String(stem.id || "").toLowerCase() === "full")} text="Full mix present" />}
               <ReadyLine ok={!!preview?.lyrics} text={preview?.lyrics ? `${preview.lyrics} lyric timing events` : "No lyric timing"} muted={!preview?.lyrics} />
               <ReadyLine ok={authors.length > 0} text={authors.length ? `${authors.length} credit${authors.length === 1 ? "" : "s"}` : "No embedded credit"} muted={!authors.length} />
@@ -2701,7 +2718,7 @@ function Inspector({
 
           <section className="panel">
             <div className="panel-title">
-              <h2>Arrangements</h2>
+              <h2>{isMultiSong ? "First-song arrangements" : "Arrangements"}</h2>
               <Guitar size={18} />
             </div>
             <div className="arrangements">

@@ -147,3 +147,30 @@ def test_missing_preview_is_a_warning_not_a_conversion_failure(tmp_path: Path) -
     assert preview_path is None
     assert len(warnings) == 1
     assert "song remains playable" in warnings[0].message
+
+
+def test_preview_fallback_keeps_working_after_stem_separation(tmp_path: Path) -> None:
+    stems_dir = tmp_path / "stems"
+    stems_dir.mkdir()
+    full_mix = stems_dir / "full.wav"
+    sample_rate = 8000
+    with wave.open(str(full_mix), "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(sample_rate)
+        audio.writeframes(b"\x00\x00" * sample_rate * 2)
+    warnings: list[converter.ConversionWarning] = []
+
+    preview_path = converter._copy_browser_preview(
+        {},
+        tmp_path,
+        [
+            {"id": "full", "file": "stems/full.wav", "codec": "wav", "default": False},
+            {"id": "guitar", "file": "stems/guitar.ogg", "codec": "vorbis", "default": False},
+        ],
+        warnings,
+    )
+
+    assert preview_path == "preview.ogg"
+    assert (tmp_path / preview_path).is_file()
+    assert warnings == []
