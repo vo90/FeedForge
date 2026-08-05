@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from feedback_converter import batch, cli
-from feedback_converter.converter import PsarcPlanningData
+from feedback_converter.converter import PsarcPlanningData, psarc_planning_data_from_cache
 from feedback_converter.psarc_format.psarc import PSARC
 
 
@@ -153,6 +153,16 @@ def test_planning_cache_reuses_unchanged_metadata_and_reports_progress(
     assert progress[0]["stage"] == "metadata"
     assert progress[-1]["stage"] == "complete"
     assert progress[-1]["completed"] == 1
+
+
+def test_planning_cache_rejects_metadata_from_an_older_ordering_version(tmp_path: Path) -> None:
+    input_path = tmp_path / "song.psarc"
+    input_path.write_bytes(b"song")
+    stat = input_path.stat()
+    converter_payload = {"songs": [{"key": "song", "metadata": {"artist": "Focus"}}]}
+
+    with pytest.raises(ValueError, match="older planner version"):
+        psarc_planning_data_from_cache(input_path, stat.st_size, stat.st_mtime_ns, converter_payload)
 
 
 def test_planning_cli_streams_machine_readable_progress(

@@ -173,10 +173,39 @@ def test_conversion_rejects_a_stale_or_mismatched_plan(
         ],
     }
 
-    with pytest.raises(ValueError, match="metadata changed"):
+    with pytest.raises(ValueError, match="artist: planned 'Wrong Artist', found 'ABBA'"):
         converter._validated_planned_targets(input_path, entries, plan, source_stat=stat)
 
     plan["outputs"][0]["artist"] = "ABBA"
     plan["sourceSize"] = stat.st_size + 1
     with pytest.raises(ValueError, match="Source PSARC changed"):
         converter._validated_planned_targets(input_path, entries, plan, source_stat=stat)
+
+
+def test_song_group_metadata_preserves_archive_order_when_paths_are_a_set() -> None:
+    primary_manifest = "manifests/songs/focuhocu_lead.json"
+    alternate_manifest = "manifests/songs/focuhocu_rhythm.json"
+    chart = "songs/bin/generic/focuhocu_lead.sng"
+    content = {
+        primary_manifest: json.dumps(
+            {"ArtistName": "Focus", "SongName": "Hocus Pocus", "AlbumName": "Moving Waves"}
+        ).encode("utf-8"),
+        alternate_manifest: json.dumps(
+            {"ArtistName": "Focus", "SongName": "Hocus Pocus", "AlbumName": "Focus II"}
+        ).encode("utf-8"),
+        chart: b"chart",
+    }
+
+    class ReverseIterationSet(set[str]):
+        def __iter__(self):  # type: ignore[override]
+            return iter((alternate_manifest, primary_manifest, chart))
+
+    selected = converter._content_for_song_group(
+        content,
+        "focuhocu",
+        ReverseIterationSet(content),
+    )
+
+    assert list(selected) == list(content)
+    assert converter._extract_metadata(selected)["album"] == "Moving Waves"
+    assert converter._extract_output_metadata(content)["album"] == "Moving Waves"
