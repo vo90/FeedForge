@@ -161,7 +161,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--rs1-songs-psarc",
         help=(
             "Optional songs.psarc path used to resolve audio for RS1 compatibility packs. "
-            "By default FeedForge checks the parent of the DLC folder for songs.psarc."
+            "By default FeedForge checks beside the compatibility archive, then the parent of its folder."
         ),
     )
     parser.add_argument(

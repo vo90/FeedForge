@@ -38,6 +38,7 @@ from .psarc_format.sng import Song
 
 FEEDPAK_VERSION = "1.14.0"
 INTERNAL_PREVIEW_AUDIO_PREFIX = "__feedforge_preview_audio__/"
+AUDIO_SUFFIXES = (".wem", ".ogg", ".wav", ".mp3", ".flac", ".opus")
 PREVIEW_DURATION_SECONDS = 30.0
 PREVIEW_FADE_SECONDS = 1.0
 UINT32_NONE = 0xFFFFFFFF
@@ -300,6 +301,7 @@ def convert_psarc_songs(
     final_stat = input_psarc.stat()
     if stat.st_size != final_stat.st_size or stat.st_mtime_ns != final_stat.st_mtime_ns:
         raise ValueError(f"Source PSARC changed while it was being read: {input_psarc}. Restart the conversion.")
+    _validate_song_audio_entries(entries, input_psarc, rs1_songs_psarc=rs1_songs_psarc)
     targets = _targets_for_conversion(
         input_psarc,
         entries,
@@ -348,8 +350,8 @@ def _read_psarc_song_entries(
         content = parser.parse_metadata_stream(fh) if metadata_only else parser.parse_stream(fh)
     # Output names only depend on the source package metadata. The potentially
     # very large RS1 songs.psarc is loaded only for the actual conversion.
-    rs1_songs_content = _load_rs1_songs_content(input_psarc, content, rs1_songs_psarc) if include_rs1_audio else None
     playable_groups = _playable_song_groups(_song_groups(content))
+    rs1_songs_content = _load_rs1_songs_content(input_psarc, content, rs1_songs_psarc) if include_rs1_audio else None
     if metadata_only:
         if not playable_groups:
             return [
@@ -577,6 +579,7 @@ def export_psarc_audio(
             (key, _content_for_song_group(content, key, paths, rs1_songs_content=rs1_songs_content))
             for key, paths in sorted(groups.items())
         ]
+    _validate_song_audio_entries(song_entries, input_psarc, rs1_songs_psarc=rs1_songs_psarc)
 
     output = Path(output) if output else None
     output_is_file = bool(output and output.suffix and len(song_entries) == 1)
@@ -967,7 +970,12 @@ def _load_rs1_songs_content(
     content: dict[str, bytes],
     rs1_songs_psarc: Path | None,
 ) -> dict[str, bytes] | None:
-    source = Path(rs1_songs_psarc) if rs1_songs_psarc else _default_rs1_songs_psarc(input_psarc, content)
+    # An explicitly selected songs.psarc is normally passed to every RS1
+    # compatibility archive in the queue. Do not parse that large file when
+    # the current archive already contains mapped audio for all of its songs.
+    if _has_complete_local_audio_coverage(content):
+        return None
+    source = Path(rs1_songs_psarc) if rs1_songs_psarc else _default_rs1_songs_psarc(input_psarc)
     if source is None:
         return None
     if not source.is_file():
@@ -976,13 +984,27 @@ def _load_rs1_songs_content(
         return PSARC(crypto=True).parse_stream(fh)
 
 
-def _default_rs1_songs_psarc(input_psarc: Path, content: dict[str, bytes]) -> Path | None:
+def _default_rs1_songs_psarc(input_psarc: Path) -> Path | None:
     if "rs1compatibility" not in input_psarc.name.lower():
         return None
-    if any(path.lower().endswith(".wem") for path in content):
-        return None
-    candidate = input_psarc.parent.parent / "songs.psarc"
-    return candidate if candidate.is_file() else None
+    candidates = (
+        input_psarc.parent / "songs.psarc",
+        input_psarc.parent.parent / "songs.psarc",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _has_complete_local_audio_coverage(content: dict[str, bytes]) -> bool:
+    groups = _playable_song_groups(_song_groups(content))
+    if not groups:
+        return _content_has_full_mix_audio(content)
+    return all(
+        bool(_wem_paths_for_banks(content, _bank_paths_for_song_key(content, key)))
+        for key in groups
+    )
 
 
 def _content_with_rs1_audio(
@@ -1043,6 +1065,47 @@ def _add_preview_audio(selected: dict[str, bytes], source: dict[str, bytes], key
 def _is_preview_audio_path(path: str) -> bool:
     normalized = path.replace("\\", "/").lower()
     return normalized.startswith(INTERNAL_PREVIEW_AUDIO_PREFIX) or "preview" in Path(normalized).stem
+
+
+def _content_has_full_mix_audio(content: dict[str, bytes]) -> bool:
+    return any(
+        path.lower().endswith(AUDIO_SUFFIXES) and not _is_preview_audio_path(path)
+        for path in content
+    )
+
+
+def _validate_song_audio_entries(
+    entries: list[tuple[str, dict[str, bytes]]],
+    input_psarc: Path,
+    *,
+    rs1_songs_psarc: Path | None,
+) -> None:
+    missing = [key for key, song_content in entries if not _content_has_full_mix_audio(song_content)]
+    if not missing:
+        return
+
+    sample = ", ".join(missing[:5])
+    if len(missing) > 5:
+        sample = f"{sample}, and {len(missing) - 5} more"
+    if "rs1compatibility" in input_psarc.name.lower():
+        if rs1_songs_psarc:
+            guidance = (
+                f"The selected RS1 audio source ({Path(rs1_songs_psarc)}) does not contain matching audio. "
+                "Verify that the compatibility archive and songs.psarc come from the same Rocksmith installation."
+            )
+        else:
+            guidance = (
+                "Add the matching songs.psarc to the same conversion queue. FeedForge will use it as the "
+                "shared audio source and will also convert the playable songs inside songs.psarc."
+            )
+        raise ValueError(
+            f"RS1 compatibility conversion is missing full-mix audio for {len(missing)} song(s) "
+            f"({sample}). {guidance} No partial FeedPaks were created."
+        )
+    raise ValueError(
+        f"No full-mix audio was found for {len(missing)} song(s) in {input_psarc.name} "
+        f"({sample}). No partial FeedPaks were created."
+    )
 
 
 def _is_vocal_sidecar_for_key(stem_key: str, key: str) -> bool:

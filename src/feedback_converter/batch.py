@@ -77,12 +77,9 @@ def convert_many(
     items: list[BatchItem] = []
     normalized_inputs = [Path(path) for path in input_paths]
     support_songs_psarc = Path(rs1_songs_psarc) if rs1_songs_psarc is not None else _selected_rs1_songs_psarc(normalized_inputs)
-    has_rs1_compatibility = any(_is_rs1_compatibility_archive(path) for path in normalized_inputs)
     resolved_source_root = Path(source_root) if source_root is not None else _common_parent(normalized_inputs)
     reserved_outputs: set[Path] = set()
     for input_path in normalized_inputs:
-        if has_rs1_compatibility and support_songs_psarc is not None and _same_path(input_path, support_songs_psarc):
-            continue
         try:
             plan = plan_psarc_songs(
                 input_path,
@@ -404,13 +401,6 @@ def _selected_rs1_songs_psarc(paths: list[Path]) -> Path | None:
         if _is_rs1_songs_archive(path):
             return path
     return None
-
-
-def _same_path(left: Path, right: Path) -> bool:
-    try:
-        return left.resolve() == right.resolve()
-    except Exception:  # noqa: BLE001
-        return os.path.normcase(os.path.abspath(left)) == os.path.normcase(os.path.abspath(right))
 
 
 def _batch_output_path(

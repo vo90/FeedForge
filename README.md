@@ -52,6 +52,26 @@ Preview plugin. If a source package has no dedicated preview, FeedForge creates
 a 30-second clip from the full mix with short fades. Preview generation is
 optional and cannot make an otherwise playable song conversion fail.
 
+### Rocksmith 1 compatibility archives
+
+FeedForge treats `songs.psarc` as both a shared RS1 audio source and a normal
+multi-song conversion input. It is never silently skipped. For the standard
+RS1 archive set:
+
+- `rs1compatibilitydisc_p.psarc` is self-contained and can convert by itself.
+- `rs1compatibilitydlc_p.psarc` contains charts and requires the matching
+  `songs.psarc` for audio.
+- `songs.psarc` can convert its own playable songs by itself.
+
+Add all three files to one desktop conversion queue to convert the complete
+set. FeedForge links the DLC charts to `songs.psarc`, converts the songs inside
+that archive as separate FeedPaks too, and serializes the linked archives to
+avoid loading the large audio source in multiple converter processes at once.
+If audio is absent or belongs to a different installation, conversion stops
+before writing partial output and reports which song groups could not be
+matched. Command-line conversion can also use `--rs1-songs-psarc`; automatic
+discovery checks beside the compatibility archive and then its parent folder.
+
 ## Windows, macOS, and Linux
 
 Download the latest Windows x64 portable app, macOS Apple Silicon DMG/ZIP, or

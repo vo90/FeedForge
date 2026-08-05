@@ -589,15 +589,12 @@ function App() {
       pending.push(item);
     }
     if (!pending.length) return;
-    const rs1SongsItem = pending.find((item) => isRs1SongsArchive(item.path)) || null;
+    // songs.psarc is both the shared audio source for RS1 compatibility DLC
+    // and a playable multi-song archive in its own right. Keep using it as a
+    // support source after it has converted, but never remove it from pending.
+    const rs1SongsItem = itemsRef.current.find((item) => isRs1SongsArchive(item.path)) || null;
     const rs1SongsPsarc = rs1SongsItem?.path || null;
-    const hasRs1Compatibility = itemsRef.current.some((item) => isRs1CompatibilityArchive(item.path));
-    const conversionPending = hasRs1Compatibility && rs1SongsPsarc
-      ? pending.filter((item) => !isRs1SongsArchive(item.path))
-      : pending;
-    if (hasRs1Compatibility && rs1SongsItem) {
-      updateItem(rs1SongsItem.id, { status: "converted", message: "Used as RS1 audio source.", error: null });
-    }
+    const conversionPending = pending;
     if (!conversionPending.length) return;
     isConvertingRef.current = true;
     stopRequestedRef.current = false;
@@ -700,12 +697,10 @@ function App() {
         failed: planningFailures.size,
         phase: "converting"
       }));
-      let index = 0;
-
-      async function convertNext() {
+      async function convertNext(queue, cursor) {
         if (stopRequestedRef.current) return;
-        const item = conversionReady[index];
-        index += 1;
+        const item = queue[cursor.value];
+        cursor.value += 1;
         if (!item) return;
         const outputPlan = planById.get(item.id) || null;
         const plannedFirst = outputPlan?.outputs?.[0] || null;
@@ -769,11 +764,34 @@ function App() {
           }));
         }
         if (stopRequestedRef.current) return;
-        await convertNext();
+        await convertNext(queue, cursor);
       }
 
-      const workerCount = Math.min(Math.max(1, effectiveConversionWorkers), conversionReady.length);
-      await Promise.all(Array.from({ length: workerCount }, () => convertNext()));
+      async function runConversionPool(queue, workerLimit) {
+        if (!queue.length) return;
+        const cursor = { value: 0 };
+        const workerCount = Math.min(Math.max(1, workerLimit), queue.length);
+        await Promise.all(Array.from({ length: workerCount }, () => convertNext(queue, cursor)));
+      }
+
+      // The compatibility archive and songs.psarc can both read the same very
+      // large audio archive. Serialize that linked set to avoid loading it in
+      // multiple converter processes at once. Other queue items retain normal
+      // bounded parallelism.
+      const workerLimit = Math.max(1, effectiveConversionWorkers);
+      const linkedRs1Ready = rs1SongsPsarc
+        ? conversionReady.filter((item) => isRs1CompatibilityArchive(item.path) || isRs1SongsArchive(item.path))
+        : [];
+      const linkedIds = new Set(linkedRs1Ready.map((item) => item.id));
+      const regularReady = conversionReady.filter((item) => !linkedIds.has(item.id));
+      if (linkedRs1Ready.length && regularReady.length && workerLimit > 1) {
+        await Promise.all([
+          runConversionPool(linkedRs1Ready, 1),
+          runConversionPool(regularReady, workerLimit - 1)
+        ]);
+      } else {
+        await runConversionPool([...linkedRs1Ready, ...regularReady], linkedRs1Ready.length ? 1 : workerLimit);
+      }
     } finally {
       const stopped = stopRequestedRef.current;
       isConvertingRef.current = false;
