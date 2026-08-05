@@ -44,6 +44,14 @@ in queue order. Results are cached by canonical path, file size, and modificatio
 time, so unchanged libraries plan even faster on later runs. Planning progress
 is shown in the desktop app and can be cancelled immediately.
 
+### Song browser previews
+
+PSARC conversion preserves Rocksmith's authored preview audio as
+`preview.ogg` and records it in the FeedPak manifest for FeedBack's Song
+Preview plugin. If a source package has no dedicated preview, FeedForge creates
+a 30-second clip from the full mix with short fades. Preview generation is
+optional and cannot make an otherwise playable song conversion fail.
+
 ## Windows, macOS, and Linux
 
 Download the latest Windows x64 portable app, macOS Apple Silicon DMG/ZIP, or

@@ -37,6 +37,9 @@ from .psarc_format.psarc import PSARC
 from .psarc_format.sng import Song
 
 FEEDPAK_VERSION = "1.14.0"
+INTERNAL_PREVIEW_AUDIO_PREFIX = "__feedforge_preview_audio__/"
+PREVIEW_DURATION_SECONDS = 30.0
+PREVIEW_FADE_SECONDS = 1.0
 UINT32_NONE = 0xFFFFFFFF
 NOTE_MASK_FRETHANDMUTE = 0x08
 NOTE_MASK_TREMOLO = 0x10
@@ -769,6 +772,7 @@ def convert_psarc(
         demucs_model=demucs_model,
         demucs_stems=demucs_stems,
     )
+    preview_path = _copy_browser_preview(content, package_dir, stem_entries, warnings)
     cover_path = _copy_cover(content, package_dir)
 
     title = metadata.get("title") or input_psarc.stem
@@ -825,6 +829,8 @@ def convert_psarc(
         manifest["song_timeline"] = timeline_path
     if cover_path:
         manifest["cover"] = cover_path
+    if preview_path:
+        manifest["preview"] = preview_path
     if rig_entries:
         rigs_path = "rigs.json"
         manifest["rigs"] = rigs_path
@@ -937,22 +943,18 @@ def _content_for_song_group(
         elif f"album_{key}_" in low or f"album_{key}." in low:
             selected[path] = data
 
-    bnk_paths = [
-        path for path in content
-        if path.replace("\\", "/").lower().endswith(".bnk")
-        and Path(path.replace("\\", "/")).stem.lower() in {f"song_{key}", f"{key}"}
-    ]
+    bnk_paths = _bank_paths_for_song_key(content, key)
     wem_paths = _wem_paths_for_banks(content, bnk_paths)
-    for path in wem_paths:
-        selected[path] = content[path]
+    _add_wem_paths(selected, content, wem_paths)
+    _add_preview_audio(selected, content, key)
     external_wem_paths: set[str] = set()
     if rs1_songs_content:
         external_bnk_paths = _bank_paths_for_song_key(rs1_songs_content, key)
         external_wem_paths = _wem_paths_for_banks(rs1_songs_content, external_bnk_paths)
         for path in external_bnk_paths:
             selected[path] = rs1_songs_content[path]
-        for path in external_wem_paths:
-            selected[path] = rs1_songs_content[path]
+        _add_wem_paths(selected, rs1_songs_content, external_wem_paths)
+        _add_preview_audio(selected, rs1_songs_content, key)
     if (bnk_paths or rs1_songs_content) and not wem_paths and not external_wem_paths:
         # A grouped multi-song PSARC with an unresolvable bank is safer to fail
         # later with "No audio file found" than to borrow another song's WEM.
@@ -994,8 +996,8 @@ def _content_with_rs1_audio(
     bnk_paths = _bank_paths_for_song_key(rs1_songs_content, _slug(key))
     for bnk_path in bnk_paths:
         selected[bnk_path] = rs1_songs_content[bnk_path]
-    for wem_path in _wem_paths_for_banks(rs1_songs_content, bnk_paths):
-        selected[wem_path] = rs1_songs_content[wem_path]
+    _add_wem_paths(selected, rs1_songs_content, _wem_paths_for_banks(rs1_songs_content, bnk_paths))
+    _add_preview_audio(selected, rs1_songs_content, _slug(key))
     return selected
 
 
@@ -1008,6 +1010,39 @@ def _bank_paths_for_song_key(content: dict[str, bytes], key: str) -> list[str]:
         and Path(path.replace("\\", "/")).stem.lower() in wanted
         and not Path(path.replace("\\", "/")).stem.lower().endswith("_preview")
     ]
+
+
+def _preview_bank_paths_for_song_key(content: dict[str, bytes], key: str) -> list[str]:
+    wanted = {f"song_{key}_preview", f"{key}_preview"}
+    return [
+        path
+        for path in content
+        if path.replace("\\", "/").lower().endswith(".bnk")
+        and Path(path.replace("\\", "/")).stem.lower() in wanted
+    ]
+
+
+def _add_wem_paths(selected: dict[str, bytes], source: dict[str, bytes], paths: set[str]) -> None:
+    """Copy WEMs in archive order so audio selection remains deterministic."""
+    for path, data in source.items():
+        if path in paths:
+            selected[path] = data
+
+
+def _add_preview_audio(selected: dict[str, bytes], source: dict[str, bytes], key: str) -> None:
+    preview_banks = _preview_bank_paths_for_song_key(source, key)
+    preview_wems = _wem_paths_for_banks(source, preview_banks)
+    for path, data in source.items():
+        if path not in preview_wems:
+            continue
+        normalized_path = path.replace("\\", "/").lstrip("/")
+        marker = f"{INTERNAL_PREVIEW_AUDIO_PREFIX}{normalized_path}"
+        selected.setdefault(marker, data)
+
+
+def _is_preview_audio_path(path: str) -> bool:
+    normalized = path.replace("\\", "/").lower()
+    return normalized.startswith(INTERNAL_PREVIEW_AUDIO_PREFIX) or "preview" in Path(normalized).stem
 
 
 def _is_vocal_sidecar_for_key(stem_key: str, key: str) -> bool:
@@ -2466,6 +2501,7 @@ def _copy_audio(
         (path, data)
         for path, data in content.items()
         if path.lower().endswith((".wem", ".ogg", ".wav", ".mp3", ".flac", ".opus"))
+        and not _is_preview_audio_path(path)
     ]
     if not audio:
         raise ValueError(
@@ -2545,6 +2581,84 @@ def _copy_audio(
     )
 
 
+def _copy_browser_preview(
+    content: dict[str, bytes],
+    package_dir: Path,
+    stem_entries: list[dict[str, Any]],
+    warnings: list[ConversionWarning],
+) -> str | None:
+    """Write FeedBack's optional short browser preview, preferring the PSARC preview WEM."""
+    target = package_dir / "preview.ogg"
+    preview_audio = [
+        (path, data)
+        for path, data in content.items()
+        if path.lower().endswith((".wem", ".ogg", ".wav", ".mp3", ".flac", ".opus"))
+        and _is_preview_audio_path(path)
+    ]
+    if preview_audio:
+        path, data = max(preview_audio, key=lambda item: len(item[1]))
+        extension = Path(path).suffix.lower()
+        try:
+            if extension == ".wem" and _convert_wem_bytes_to_ogg(data, target):
+                return "preview.ogg"
+            if extension == ".ogg" and data.startswith(b"OggS"):
+                target.write_bytes(data)
+                return "preview.ogg"
+        except Exception:  # noqa: BLE001
+            # Preview audio is optional. Fall back to the already converted
+            # full mix rather than failing an otherwise playable package.
+            target.unlink(missing_ok=True)
+
+    full_entry = next((entry for entry in stem_entries if str(entry.get("id") or "") == "full"), None)
+    full_path = str(full_entry.get("file") or "") if full_entry else ""
+    if full_path and _write_preview_from_full_mix(package_dir / full_path, target):
+        return "preview.ogg"
+
+    target.unlink(missing_ok=True)
+    warnings.append(
+        ConversionWarning(
+            "Could not create browser preview audio; the song remains playable, "
+            "but FeedBack's song preview will be unavailable."
+        )
+    )
+    return None
+
+
+def _write_preview_from_full_mix(source: Path, target: Path) -> bool:
+    """Create a deterministic 30-second OGG clip at 25% of the full mix with short fades."""
+    target.unlink(missing_ok=True)
+    try:
+        with sf.SoundFile(source) as audio:
+            if audio.samplerate <= 0 or audio.frames <= 0:
+                return False
+            preview_frames = min(audio.frames, max(1, round(audio.samplerate * PREVIEW_DURATION_SECONDS)))
+            latest_start = max(0, audio.frames - preview_frames)
+            start_frame = min(latest_start, max(0, round(audio.frames * 0.25)))
+            audio.seek(start_frame)
+            samples = audio.read(preview_frames, dtype="float32", always_2d=True)
+            if len(samples) == 0:
+                return False
+            fade_frames = min(round(audio.samplerate * PREVIEW_FADE_SECONDS), len(samples) // 2)
+            for index in range(fade_frames):
+                gain = index / max(1, fade_frames)
+                samples[index] *= gain
+                samples[-1 - index] *= gain
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with sf.SoundFile(
+                target,
+                mode="w",
+                samplerate=audio.samplerate,
+                channels=audio.channels,
+                format="OGG",
+                subtype="VORBIS",
+            ) as preview:
+                preview.write(samples)
+        return target.stat().st_size >= 1024 and target.read_bytes().startswith(b"OggS")
+    except Exception:  # noqa: BLE001
+        target.unlink(missing_ok=True)
+        return False
+
+
 def _export_audio_from_content(
     content: dict[str, bytes],
     output_path: Path,
@@ -2557,6 +2671,7 @@ def _export_audio_from_content(
         (path, data)
         for path, data in content.items()
         if path.lower().endswith((".wem", ".ogg", ".wav", ".mp3", ".flac", ".opus"))
+        and not _is_preview_audio_path(path)
     ]
     if not audio:
         raise ValueError("No audio file found in PSARC.")
@@ -3047,7 +3162,7 @@ def _safe_stem_id(stem_id: str) -> str:
 def _select_primary_audio(audio: list[tuple[str, bytes]]) -> tuple[str, bytes]:
     full_song = [
         item for item in audio
-        if "preview" not in Path(item[0]).stem.lower()
+        if not _is_preview_audio_path(item[0])
     ]
     return max(full_song or audio, key=lambda item: len(item[1]))
 
