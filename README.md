@@ -59,6 +59,19 @@ Linux x64 AppImage from the [latest release](https://github.com/balki97/FeedForg
 
 Optional local stem separation requires Python 3.11 or newer.
 
+## Development
+
+Install the Python and JavaScript dependencies, then run `npm run dev`. The
+development startup checks for the native `vgmstream-cli` WEM decoder and, when
+needed, downloads the same pinned, SHA-256-verified release used by packaged
+FeedForge builds into the ignored `.feedforge-tools` directory. To prepare or
+repair it explicitly, run `npm run setup:decoder`.
+
+Extracted cover and tone images are served to the renderer through a private
+Electron protocol. Only image files registered by the main process from the
+inspection cache or bundled tone assets are accessible; browser security stays
+enabled in both development and packaged builds.
+
 ## Support
 
 For bug reports, include the debug log:

@@ -8,7 +8,10 @@
   "main": "electron/main.cjs",
   "desktopName": "FeedForge.desktop",
   "scripts": {
+    "predev": "python tools/install-vgmstream.py",
     "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && electron .\"",
+    "setup:decoder": "python tools/install-vgmstream.py",
+    "test:electron": "node --test electron/*.test.cjs",
     "build": "vite build",
     "converter:pack": "python -m PyInstaller --noconfirm --clean psarc2feedpak.spec",
     "electron:pack": "npm run build && electron-builder --win --publish never",

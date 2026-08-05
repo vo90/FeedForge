@@ -3135,10 +3135,16 @@ def _convert_wav_file_to_ogg(input_path: Path, output_path: Path) -> bool:
 
 
 def _find_tool(tools_dir: Path, name: str) -> Path | None:
-    for filename in (f"{name}.exe", name):
-        bundled = (tools_dir / filename).resolve()
-        if bundled.is_file():
-            return bundled
+    search_dirs: list[Path] = []
+    override = os.environ.get("FEEDFORGE_NATIVE_TOOLS_DIR", "").strip()
+    if override:
+        search_dirs.append(Path(override))
+    search_dirs.append(tools_dir)
+    for search_dir in search_dirs:
+        for filename in (f"{name}.exe", name):
+            candidate = (search_dir / filename).resolve()
+            if candidate.is_file():
+                return candidate
     found = shutil.which(name)
     return Path(found).resolve() if found else None
 
@@ -3155,7 +3161,7 @@ def _decode_wem_with_vgmstream(data: bytes, output_path: Path, tools_dir: Path) 
         output_path.unlink(missing_ok=True)
         proc = subprocess.run(
             [str(vgmstream), "-o", str(output_path), str(temp_wem)],
-            cwd=str(tools_dir),
+            cwd=str(vgmstream.parent),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

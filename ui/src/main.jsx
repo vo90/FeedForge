@@ -2479,7 +2479,7 @@ function Inspector({
   const [stemEditId, setStemEditId] = useState("guitar");
   const [overwriteOriginal, setOverwriteOriginal] = useState(false);
   const preview = item?.preview;
-  const cover = preview?.cover_path ? `file:///${preview.cover_path.replaceAll("\\", "/")}` : null;
+  const cover = preview?.cover_url || null;
   const arrangements = preview?.arrangements || [];
   const tones = preview?.tones || [];
   const authors = preview?.authors || [];
@@ -2867,8 +2867,8 @@ function ToneInspector({ arrangements, tones, expanded = false }) {
                       <div className={`gear-chip ${gearClassName(gear)}`} key={`${definition.key}-${gear.slot}-${gear.key}`}>
                         <div className="gear-visual">
                           <span className="gear-role">{gearRoleLabel(gear)}</span>
-                          {gear.asset_path ? (
-                            <img src={`file:///${gear.asset_path.replaceAll("\\", "/")}`} alt="" />
+                          {gear.asset_url ? (
+                            <img src={gear.asset_url} alt="" />
                           ) : (
                             <div className="gear-face">
                               <b>{gearInitials(gear)}</b>

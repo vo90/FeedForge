@@ -1,13 +1,15 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, Menu, dialog, ipcMain, protocol, shell } = require("electron");
 const { spawn, execFileSync } = require("child_process");
 const fs = require("fs");
 const http = require("http");
 const https = require("https");
 const path = require("path");
+const { DEFAULT_SCHEME: LOCAL_ASSET_SCHEME, LocalAssetRegistry, contentTypeForImage } = require("./local-assets.cjs");
 
 let mainWindow;
 let inspectCacheRoot;
 let inspectCacheTouched = false;
+let localAssetRegistry;
 let debugLogPath;
 let stemServerProcess = null;
 let stemServerStarting = false;
@@ -21,6 +23,18 @@ const GITHUB_REPO = "balki97/FeedForge";
 const GITHUB_RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases/latest`;
 const GITHUB_LATEST_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
 const STEM_SERVER_LOG_LINES = 80;
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: LOCAL_ASSET_SCHEME,
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true
+    }
+  }
+]);
+
 const DEMUCS_MODELS = [
   {
     id: "htdemucs_6s",
@@ -122,6 +136,7 @@ app.whenReady().then(() => {
     arch: process.arch
   });
   inspectCacheRoot = path.join(app.getPath("temp"), "feedforge-inspect-cache");
+  initializeLocalAssets();
   createWindow();
   setTimeout(() => {
     cleanupStalePortableArtifacts();
@@ -133,6 +148,7 @@ app.on("before-quit", () => {
   logDebug("app.beforeQuit");
   cancelActivePlanning();
   stopStemServer();
+  if (localAssetRegistry) localAssetRegistry.clear();
   if (inspectCacheRoot) removeDirectory(inspectCacheRoot);
 });
 app.on("render-process-gone", (_event, webContents, details) => {
@@ -284,6 +300,7 @@ ipcMain.handle("converter:inspect", async (_event, inputPath, options = {}) => {
   }
   if (parsed.preview) {
     parsed.preview = enrichToneAssets(parsed.preview);
+    parsed.preview.cover_url = registerLocalAsset(parsed.preview.cover_path);
   }
   logDebug("converter.inspect.ok", {
     inputPath,
@@ -1671,10 +1688,18 @@ function removeTemporaryDirectory(directory) {
 
 function runConverter(args, options = {}) {
   const { command, prefix, cwd } = converterCommand();
+  const nativeToolsDir = !app.isPackaged
+    ? path.join(app.getAppPath(), ".feedforge-tools", "vgmstream")
+    : "";
+  const childEnv = { ...process.env };
+  if (nativeToolsDir && fs.existsSync(nativeToolsDir)) {
+    childEnv.FEEDFORGE_NATIVE_TOOLS_DIR = nativeToolsDir;
+  }
   const diagnostics = {
     command,
     cwd,
     exists: fs.existsSync(command),
+    nativeToolsDir: childEnv.FEEDFORGE_NATIVE_TOOLS_DIR || "",
     packaged: app.isPackaged,
     resourcesPath: process.resourcesPath,
     appPath: app.getAppPath()
@@ -1689,6 +1714,7 @@ function runConverter(args, options = {}) {
     const startedAt = Date.now();
     const child = spawn(command, [...prefix, ...args], {
       cwd,
+      env: childEnv,
       windowsHide: true
     });
     if (typeof options.onSpawn === "function") options.onSpawn(child);
@@ -2101,7 +2127,10 @@ function enrichToneAssets(preview) {
     for (const definition of arrangement.definitions || []) {
       for (const gear of definition.gear || []) {
         const asset = resolveToneAsset(gear, catalog);
-        if (asset) gear.asset_path = asset;
+        if (asset) {
+          gear.asset_path = asset;
+          gear.asset_url = registerLocalAsset(asset);
+        }
       }
     }
   }
@@ -2125,10 +2154,7 @@ function resolveToneAsset(gear, catalog) {
 function loadToneAssetCatalog() {
   if (toneAssetCatalog) return toneAssetCatalog;
   toneAssetCatalog = new Map();
-  const roots = [
-    path.join(app.getAppPath(), "assets", "tone-equipment"),
-    path.join(process.resourcesPath || "", "tone-equipment")
-  ];
+  const roots = toneAssetRoots();
   const dataFiles = [
     path.join(app.getAppPath(), "src", "feedback_converter", "data", "equipment.json"),
     path.join(app.getAppPath(), "src", "feedback_converter", "data", "feedback_equipment.json"),
@@ -2155,6 +2181,48 @@ function loadToneAssetCatalog() {
     }
   }
   return toneAssetCatalog;
+}
+
+function toneAssetRoots() {
+  return [
+    path.join(app.getAppPath(), "assets", "tone-equipment"),
+    path.join(process.resourcesPath || "", "tone-equipment")
+  ];
+}
+
+function initializeLocalAssets() {
+  fs.mkdirSync(inspectCacheRoot, { recursive: true });
+  localAssetRegistry = new LocalAssetRegistry({
+    scheme: LOCAL_ASSET_SCHEME,
+    allowedRoots: [inspectCacheRoot, ...toneAssetRoots()]
+  });
+  protocol.handle(LOCAL_ASSET_SCHEME, async (request) => {
+    const filePath = localAssetRegistry?.resolve(request.url);
+    const contentType = filePath ? contentTypeForImage(filePath) : null;
+    if (!filePath || !contentType) return new Response("Not found", { status: 404 });
+    try {
+      const content = await fs.promises.readFile(filePath);
+      logDebug("localAsset.served", { filePath, contentType, bytes: content.length });
+      return new Response(content, {
+        status: 200,
+        headers: {
+          "Content-Type": contentType,
+          "Cache-Control": "private, max-age=3600",
+          "X-Content-Type-Options": "nosniff"
+        }
+      });
+    } catch (error) {
+      logDebug("localAsset.readFailed", { filePath, error: errorToLog(error) });
+      return new Response("Not found", { status: 404 });
+    }
+  });
+}
+
+function registerLocalAsset(filePath) {
+  if (!filePath || !localAssetRegistry) return null;
+  const url = localAssetRegistry.register(filePath);
+  if (!url) logDebug("localAsset.registrationRefused", { filePath });
+  return url;
 }
 
 function resolveCatalogAssetPath(asset, roots) {

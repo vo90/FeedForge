@@ -3,6 +3,7 @@
 venv/
 .demucs-venv/
 .feedforge-stems-source
+.feedforge-tools/
 app-src/
 model-cache/
 pip-cache/
