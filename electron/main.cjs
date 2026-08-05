@@ -1688,10 +1688,16 @@ function removeTemporaryDirectory(directory) {
 
 function runConverter(args, options = {}) {
   const { command, prefix, cwd } = converterCommand();
+  const pythonSourceDir = !app.isPackaged
+    ? path.join(app.getAppPath(), "src")
+    : "";
   const nativeToolsDir = !app.isPackaged
     ? path.join(app.getAppPath(), ".feedforge-tools", "vgmstream")
     : "";
   const childEnv = { ...process.env };
+  if (pythonSourceDir && fs.existsSync(pythonSourceDir)) {
+    childEnv.PYTHONPATH = [pythonSourceDir, childEnv.PYTHONPATH].filter(Boolean).join(path.delimiter);
+  }
   if (nativeToolsDir && fs.existsSync(nativeToolsDir)) {
     childEnv.FEEDFORGE_NATIVE_TOOLS_DIR = nativeToolsDir;
   }
@@ -1699,6 +1705,7 @@ function runConverter(args, options = {}) {
     command,
     cwd,
     exists: fs.existsSync(command),
+    pythonSourceDir: pythonSourceDir && fs.existsSync(pythonSourceDir) ? pythonSourceDir : "",
     nativeToolsDir: childEnv.FEEDFORGE_NATIVE_TOOLS_DIR || "",
     packaged: app.isPackaged,
     resourcesPath: process.resourcesPath,
