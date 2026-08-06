@@ -4,6 +4,18 @@ function normalizedWorkerLimit(value) {
   return Math.max(1, Math.floor(parsed));
 }
 
+function archiveName(filePath) {
+  return String(filePath || "").replace(/\\/g, "/").split("/").pop().toLowerCase();
+}
+
+/** Return true only for RS1 archives that share the large songs.psarc payload. */
+export function usesSharedRs1SongsAudio(filePath) {
+  const name = archiveName(filePath);
+  if (name === "songs.psarc") return true;
+  if (!name.endsWith(".psarc") || !name.includes("rs1compatibility")) return false;
+  return !/^rs1compatibilitydisc(?:[_\-.]|$)/.test(name);
+}
+
 async function consumeQueue(queue, cursor, runItem, shouldStop) {
   while (!shouldStop()) {
     const index = cursor.value;

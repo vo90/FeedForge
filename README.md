@@ -70,12 +70,13 @@ RS1 archive set:
 - `songs.psarc` can convert its own playable songs by itself.
 
 Add all three files to one desktop conversion queue to convert the complete
-set. FeedForge links the DLC charts to `songs.psarc`, converts the songs inside
-that archive as separate FeedPaks too, and serializes the linked archives to
-avoid loading the large audio source in multiple converter processes at once.
-The other selected workers continue converting ordinary files, and the RS1
-worker automatically joins that ordinary queue as soon as the linked archives
-finish, so the configured worker capacity does not remain idle.
+set. FeedForge links the DLC charts to `songs.psarc` and converts the songs
+inside that archive as separate FeedPaks too. The compatibility DLC and
+`songs.psarc` are serialized to avoid loading the large shared audio source in
+multiple converter processes, while the self-contained disc archive can run in
+parallel. The other selected workers continue converting ordinary files, and
+the shared-audio worker automatically joins that ordinary queue as soon as the
+linked archives finish, so configured worker capacity does not remain idle.
 If audio is absent or belongs to a different installation, conversion stops
 before writing partial output and reports which song groups could not be
 matched. Command-line conversion can also use `--rs1-songs-psarc`; automatic

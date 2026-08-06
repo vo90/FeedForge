@@ -85,3 +85,53 @@ test("keeps linked RS1 conversions serialized when no regular work exists", asyn
 
   assert.equal(maximumActive, 1);
 });
+
+test("runs the self-contained RS1 disc beside the serialized DLC and songs archives", async () => {
+  const { runConversionQueues, usesSharedRs1SongsAudio } = await scheduler();
+  const items = [
+    "C:\\Rocksmith\\rs1compatibilitydisc_p.psarc",
+    "C:\\Rocksmith\\rs1compatibilitydlc_p.psarc",
+    "C:\\Rocksmith\\songs.psarc"
+  ];
+  const linkedItems = items.filter(usesSharedRs1SongsAudio);
+  const regularItems = items.filter((item) => !usesSharedRs1SongsAudio(item));
+  const active = new Set();
+  let maximumActive = 0;
+  let maximumSharedActive = 0;
+  let discOverlappedSharedWork = false;
+
+  assert.deepEqual(linkedItems, [items[1], items[2]]);
+  assert.deepEqual(regularItems, [items[0]]);
+
+  await runConversionQueues({
+    linkedItems,
+    regularItems,
+    workerLimit: 6,
+    runItem: async (item) => {
+      active.add(item);
+      maximumActive = Math.max(maximumActive, active.size);
+      maximumSharedActive = Math.max(
+        maximumSharedActive,
+        [...active].filter(usesSharedRs1SongsAudio).length
+      );
+      discOverlappedSharedWork ||= active.has(items[0]) && [...active].some(usesSharedRs1SongsAudio);
+      await new Promise((resolve) => setImmediate(resolve));
+      active.delete(item);
+    }
+  });
+
+  assert.equal(maximumActive, 2);
+  assert.equal(maximumSharedActive, 1);
+  assert.equal(discOverlappedSharedWork, true);
+});
+
+test("keeps unknown compatibility archives conservative", async () => {
+  const { usesSharedRs1SongsAudio } = await scheduler();
+
+  assert.equal(usesSharedRs1SongsAudio("rs1compatibilitydisc_p.psarc"), false);
+  assert.equal(usesSharedRs1SongsAudio("RS1CompatibilityDLC_P.PSARC"), true);
+  assert.equal(usesSharedRs1SongsAudio("rs1compatibilitycustom_p.psarc"), true);
+  assert.equal(usesSharedRs1SongsAudio("rs1compatibilitydiscography_p.psarc"), true);
+  assert.equal(usesSharedRs1SongsAudio("songs.psarc"), true);
+  assert.equal(usesSharedRs1SongsAudio("ordinary-song.psarc"), false);
+});

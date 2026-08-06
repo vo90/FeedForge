@@ -23,7 +23,7 @@ import {
   UploadCloud,
   XCircle
 } from "lucide-react";
-import { runConversionQueues } from "./conversion-scheduler.mjs";
+import { runConversionQueues, usesSharedRs1SongsAudio } from "./conversion-scheduler.mjs";
 import "./styles.css";
 
 const api = window.feedbackConverter;
@@ -770,13 +770,13 @@ function App() {
         }
       }
 
-      // The compatibility archive and songs.psarc can both read the same very
-      // large audio archive. Serialize that linked set to avoid loading it in
-      // multiple converter processes at once. The linked worker joins the
-      // ordinary queue afterward so all selected capacity remains available.
+      // The compatibility DLC archive and songs.psarc both read the same large
+      // audio archive, so keep those two serialized. The self-contained disc
+      // archive remains independent, and the linked worker joins the ordinary
+      // queue afterward so all selected capacity remains available.
       const workerLimit = Math.max(1, effectiveConversionWorkers);
       const linkedRs1Ready = rs1SongsPsarc
-        ? conversionReady.filter((item) => isRs1CompatibilityArchive(item.path) || isRs1SongsArchive(item.path))
+        ? conversionReady.filter((item) => usesSharedRs1SongsAudio(item.path))
         : [];
       const linkedIds = new Set(linkedRs1Ready.map((item) => item.id));
       const regularReady = conversionReady.filter((item) => !linkedIds.has(item.id));
