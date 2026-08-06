@@ -76,6 +76,54 @@ def test_browser_preview_prefers_and_decodes_dedicated_wem(
     assert warnings == []
 
 
+def test_browser_preview_preserves_authored_wav_when_ogg_conversion_is_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    preview_bytes = b"dedicated preview wem"
+    content = {
+        f"{converter.INTERNAL_PREVIEW_AUDIO_PREFIX}audio/windows/123.wem": preview_bytes,
+    }
+    warnings: list[converter.ConversionWarning] = []
+
+    monkeypatch.setattr(converter, "_convert_wem_bytes_to_ogg", lambda *_args, **_kwargs: False)
+
+    def fake_convert_to_wav(data: bytes, output_path: Path, **_kwargs: object) -> bool:
+        assert data == preview_bytes
+        output_path.write_bytes(b"RIFF" + b"preview" * 200)
+        return True
+
+    monkeypatch.setattr(converter, "_convert_wem_bytes_to_wav", fake_convert_to_wav)
+    preview_path = converter._copy_browser_preview(
+        content,
+        tmp_path,
+        [{"id": "full", "file": "stems/full.ogg", "default": True}],
+        warnings,
+    )
+
+    assert preview_path == "preview.wav"
+    assert (tmp_path / preview_path).read_bytes().startswith(b"RIFF")
+    assert [warning.message for warning in warnings] == [
+        "Converted preview WEM audio to WAV because no OGG encoder was available."
+    ]
+
+
+def test_browser_preview_preserves_native_authored_preview(tmp_path: Path) -> None:
+    preview_bytes = b"RIFF" + b"preview" * 200
+    warnings: list[converter.ConversionWarning] = []
+
+    preview_path = converter._copy_browser_preview(
+        {"audio/song_preview.wav": preview_bytes},
+        tmp_path,
+        [{"id": "full", "file": "stems/full.ogg", "default": True}],
+        warnings,
+    )
+
+    assert preview_path == "preview.wav"
+    assert (tmp_path / preview_path).read_bytes() == preview_bytes
+    assert warnings == []
+
+
 def test_browser_preview_falls_back_to_thirty_seconds_of_full_mix(tmp_path: Path) -> None:
     stems_dir = tmp_path / "stems"
     stems_dir.mkdir()

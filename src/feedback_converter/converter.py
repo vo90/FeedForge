@@ -2676,13 +2676,29 @@ def _copy_browser_preview(
         try:
             if extension == ".wem" and _convert_wem_bytes_to_ogg(data, target):
                 return "preview.ogg"
+            if extension == ".wem":
+                target.unlink(missing_ok=True)
+                wav_target = package_dir / "preview.wav"
+                if _convert_wem_bytes_to_wav(data, wav_target):
+                    warnings.append(
+                        ConversionWarning(
+                            "Converted preview WEM audio to WAV because no OGG encoder was available."
+                        )
+                    )
+                    return "preview.wav"
+                wav_target.unlink(missing_ok=True)
             if extension == ".ogg" and data.startswith(b"OggS"):
                 target.write_bytes(data)
                 return "preview.ogg"
+            if extension in AUDIO_SUFFIXES and extension not in {".wem", ".ogg"} and data:
+                native_target = package_dir / f"preview{extension}"
+                native_target.write_bytes(data)
+                return native_target.name
         except Exception:  # noqa: BLE001
             # Preview audio is optional. Fall back to the already converted
             # full mix rather than failing an otherwise playable package.
             target.unlink(missing_ok=True)
+            (package_dir / "preview.wav").unlink(missing_ok=True)
 
     full_entry = next((entry for entry in stem_entries if str(entry.get("id") or "") == "full"), None)
     full_path = str(full_entry.get("file") or "") if full_entry else ""
