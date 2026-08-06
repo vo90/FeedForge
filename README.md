@@ -73,10 +73,17 @@ Add all three files to one desktop conversion queue to convert the complete
 set. FeedForge links the DLC charts to `songs.psarc`, converts the songs inside
 that archive as separate FeedPaks too, and serializes the linked archives to
 avoid loading the large audio source in multiple converter processes at once.
+The other selected workers continue converting ordinary files, and the RS1
+worker automatically joins that ordinary queue as soon as the linked archives
+finish, so the configured worker capacity does not remain idle.
 If audio is absent or belongs to a different installation, conversion stops
 before writing partial output and reports which song groups could not be
 matched. Command-line conversion can also use `--rs1-songs-psarc`; automatic
 discovery checks beside the compatibility archive and then its parent folder.
+
+After local stem splitting, the managed stem server remains available for the
+next queue instead of reloading the model. It can still be stopped explicitly
+from Settings and is shut down when FeedForge exits.
 
 ## Windows, macOS, and Linux
 

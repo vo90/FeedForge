@@ -23,6 +23,7 @@ import {
   UploadCloud,
   XCircle
 } from "lucide-react";
+import { runConversionQueues } from "./conversion-scheduler.mjs";
 import "./styles.css";
 
 const api = window.feedbackConverter;
@@ -603,7 +604,6 @@ function App() {
     setIsStopping(false);
     setIsConverting(true);
     setConversionProgress({ total: conversionPending.length, completed: 0, failed: 0, active: [], stopped: false, phase: "planning" });
-    const stopManagedStemServerAfterQueue = separateStems && stemServerStatus.processRunning;
     const batchSourceRoot = commonAncestorDir(conversionPending.map((item) => item.path));
     try {
       const planById = new Map();
@@ -704,11 +704,8 @@ function App() {
         failed: planningFailures.size,
         phase: "converting"
       }));
-      async function convertNext(queue, cursor) {
+      async function convertItem(item) {
         if (stopRequestedRef.current) return;
-        const item = queue[cursor.value];
-        cursor.value += 1;
-        if (!item) return;
         const outputPlan = planById.get(item.id) || null;
         const plannedFirst = outputPlan?.outputs?.[0] || null;
         const outputPath = item.sourceType === "feedpak" ? (reservedOutputPaths.get(item.id) || null) : null;
@@ -771,35 +768,25 @@ function App() {
             active: current.active.filter((entry) => entry.id !== item.id)
           }));
         }
-        if (stopRequestedRef.current) return;
-        await convertNext(queue, cursor);
-      }
-
-      async function runConversionPool(queue, workerLimit) {
-        if (!queue.length) return;
-        const cursor = { value: 0 };
-        const workerCount = Math.min(Math.max(1, workerLimit), queue.length);
-        await Promise.all(Array.from({ length: workerCount }, () => convertNext(queue, cursor)));
       }
 
       // The compatibility archive and songs.psarc can both read the same very
       // large audio archive. Serialize that linked set to avoid loading it in
-      // multiple converter processes at once. Other queue items retain normal
-      // bounded parallelism.
+      // multiple converter processes at once. The linked worker joins the
+      // ordinary queue afterward so all selected capacity remains available.
       const workerLimit = Math.max(1, effectiveConversionWorkers);
       const linkedRs1Ready = rs1SongsPsarc
         ? conversionReady.filter((item) => isRs1CompatibilityArchive(item.path) || isRs1SongsArchive(item.path))
         : [];
       const linkedIds = new Set(linkedRs1Ready.map((item) => item.id));
       const regularReady = conversionReady.filter((item) => !linkedIds.has(item.id));
-      if (linkedRs1Ready.length && regularReady.length && workerLimit > 1) {
-        await Promise.all([
-          runConversionPool(linkedRs1Ready, 1),
-          runConversionPool(regularReady, workerLimit - 1)
-        ]);
-      } else {
-        await runConversionPool([...linkedRs1Ready, ...regularReady], linkedRs1Ready.length ? 1 : workerLimit);
-      }
+      await runConversionQueues({
+        linkedItems: linkedRs1Ready,
+        regularItems: regularReady,
+        workerLimit,
+        runItem: convertItem,
+        shouldStop: () => stopRequestedRef.current
+      });
     } finally {
       const stopped = stopRequestedRef.current;
       isConvertingRef.current = false;
@@ -807,9 +794,6 @@ function App() {
       setIsStopping(false);
       setIsConverting(false);
       setConversionProgress((current) => ({ ...current, active: [], stopped }));
-      if (stopManagedStemServerAfterQueue) {
-        stopLocalStemServer();
-      }
       pumpInspectionQueue();
     }
   }
