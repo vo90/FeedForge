@@ -2494,7 +2494,11 @@ def _song_to_timeline(song: Any) -> dict[str, Any]:
 
 def _beat_to_feedpak(beat: Any) -> dict[str, Any]:
     measure = int(beat.measure)
-    return {"time": _num(beat.time), "measure": measure if measure > 0 else -1}
+    beat_index = getattr(beat, "beat", 0)
+    return {
+        "time": _num(beat.time),
+        "measure": measure if measure > 0 and beat_index == 0 else -1,
+    }
 
 
 def _section_to_feedpak(section: Any) -> dict[str, Any]:
