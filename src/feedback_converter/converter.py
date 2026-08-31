@@ -40,6 +40,7 @@ PREVIEW_DURATION_SECONDS = 30.0
 PREVIEW_FADE_SECONDS = 1.0
 AUDIO_SUFFIXES = (".wem", ".ogg", ".wav", ".mp3", ".flac", ".opus")
 UINT32_NONE = 0xFFFFFFFF
+CHORD_MASK_ARPEGGIO = 0x1
 NOTE_MASK_FRETHANDMUTE = 0x08
 NOTE_MASK_TREMOLO = 0x10
 NOTE_MASK_HARMONIC = 0x20
@@ -2340,6 +2341,8 @@ def _template_to_feedpak(template: Any) -> dict[str, Any]:
         "frets": [int(x) for x in template.frets],
         "fingers": [int(x) for x in template.fingers],
     }
+    if int(getattr(template, "mask", 0)) & CHORD_MASK_ARPEGGIO:
+        out["arp"] = True
     return out
 
 
@@ -2477,17 +2480,18 @@ def _anchor_to_feedpak(anchor: Any) -> dict[str, Any]:
 
 def _handshapes_to_feedpak(level: Any) -> list[dict[str, Any]]:
     shapes: list[dict[str, Any]] = []
-    for group in level.fingerprints:
+    for group_index, group in enumerate(level.fingerprints):
         for fp in group:
             if int(fp.chordId) == UINT32_NONE:
                 continue
-            shapes.append(
-                {
-                    "chord_id": int(fp.chordId),
-                    "start_time": _num(fp.startTime),
-                    "end_time": _num(fp.endTime),
-                }
-            )
+            shape = {
+                "chord_id": int(fp.chordId),
+                "start_time": _num(fp.startTime),
+                "end_time": _num(fp.endTime),
+            }
+            if group_index == 1:
+                shape["arp"] = True
+            shapes.append(shape)
     return shapes
 
 
