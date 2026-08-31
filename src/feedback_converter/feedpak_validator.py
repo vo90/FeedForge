@@ -11,6 +11,12 @@ from typing import Any
 import yaml
 from jsonschema import Draft202012Validator
 
+from .feedpak_semantics import (
+    validate_arrangement_semantics,
+    validate_manifest_semantics,
+    validate_timeline_semantics,
+)
+
 
 SCHEMA_DIR = Path(__file__).resolve().parent / "data" / "feedpak_schemas"
 SUPPORTED_MAJOR = 1
@@ -130,7 +136,10 @@ def _validate_dir(root: Path, report: _Report) -> None:
         report.err("manifest.yaml: top level must be a mapping")
         return
 
+    error_count = len(report.errors)
     _validate_object(manifest, _schema_validator("manifest.schema.json"), "manifest.yaml", report)
+    if len(report.errors) == error_count:
+        validate_manifest_semantics(manifest, "manifest.yaml", report.err)
     feedpak_version = manifest.get("feedpak_version", "1.0.0")
     if not isinstance(feedpak_version, str) or not SEMVER_RE.match(feedpak_version):
         report.err(f"feedpak_version is not a valid semver string: {feedpak_version!r}")
@@ -149,7 +158,12 @@ def _validate_dir(root: Path, report: _Report) -> None:
             continue
         file_name = arrangement.get("file")
         if file_name is not None and _check_pointer(root, file_name, f"arrangements[{index}].file", report):
-            _validate_json_file(root, file_name, arrangement_validator, report)
+            error_count = len(report.errors)
+            data = _validate_json_file(root, file_name, arrangement_validator, report)
+            if isinstance(data, dict) and len(report.errors) == error_count:
+                _validate_phrase_level_shapes(data, arrangement_validator, file_name, report)
+            if isinstance(data, dict) and len(report.errors) == error_count:
+                validate_arrangement_semantics(data, arrangement, file_name, report.err)
         notation = arrangement.get("notation")
         if notation is not None and _check_pointer(root, notation, f"arrangements[{index}].notation", report):
             _validate_json_file(root, notation, notation_validator, report)
@@ -161,7 +175,10 @@ def _validate_dir(root: Path, report: _Report) -> None:
     for key, schema_name in SIDE_FILE_SCHEMAS.items():
         relpath = manifest.get(key)
         if relpath is not None and _check_pointer(root, relpath, key, report):
-            _validate_json_file(root, relpath, _schema_validator(schema_name), report)
+            error_count = len(report.errors)
+            data = _validate_json_file(root, relpath, _schema_validator(schema_name), report)
+            if key == "song_timeline" and isinstance(data, dict) and len(report.errors) == error_count:
+                validate_timeline_semantics(data, relpath, report.err)
 
     for key in NON_JSON_POINTERS:
         relpath = manifest.get(key)
@@ -175,19 +192,44 @@ def _validate_object(data: Any, validator: Draft202012Validator, label: str, rep
         report.err(f"{label}: {location}: {error.message}")
 
 
-def _validate_json_file(root: Path, relpath: str, validator: Draft202012Validator, report: _Report) -> None:
+def _validate_phrase_level_shapes(
+    data: dict[str, Any],
+    validator: Draft202012Validator,
+    label: str,
+    report: _Report,
+) -> None:
+    """Apply the arrangement's event schemas to the otherwise-open phrase levels."""
+    event_keys = ("notes", "chords", "anchors", "handshapes")
+    for phrase_index, phrase in enumerate(data.get("phrases", [])):
+        if not isinstance(phrase, dict):
+            continue
+        for level_index, level in enumerate(phrase.get("levels", [])):
+            level_label = f"{label}: phrases/{phrase_index}/levels/{level_index}"
+            if not isinstance(level, dict):
+                _validate_object(level, validator, level_label, report)
+                continue
+            # Validate only the known event collections. Other level keys are
+            # extensions and must not inherit unrelated top-level constraints.
+            known_shape = {key: level[key] for key in event_keys if key in level}
+            _validate_object(known_shape, validator, level_label, report)
+
+
+def _validate_json_file(
+    root: Path, relpath: str, validator: Draft202012Validator, report: _Report
+) -> Any | None:
     target = root / relpath
     if not target.is_file():
         report.err(f"missing file referenced by manifest: {relpath}")
-        return
+        return None
     try:
         raw = target.read_text(encoding="utf-8")
         data = _parse_jsonc(raw) if relpath.endswith(".jsonc") else json.loads(raw)
     except Exception as exc:  # noqa: BLE001
         kind = "not valid JSON after JSONC comment-stripping" if relpath.endswith(".jsonc") else "not valid JSON"
         report.err(f"{relpath}: {kind} ({exc})")
-        return
+        return None
     _validate_object(data, validator, relpath, report)
+    return data
 
 
 def _parse_jsonc(text: str) -> object:
