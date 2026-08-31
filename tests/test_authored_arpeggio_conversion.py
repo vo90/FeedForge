@@ -95,22 +95,25 @@ def test_high_density_does_not_infer_arpeggio():
 
 def test_song_chart_data_preserves_arpeggio_in_flat_and_phrase_handshapes():
     source_template = _template(mask=converter.CHORD_MASK_ARPEGGIO)
-    level = _ns(
-        difficulty=0,
-        notes=[],
-        anchors=[],
-        fingerprints=[[], [_fingerprint(0, 1.0, 2.0)]],
-    )
+    levels = [
+        _ns(
+            difficulty=difficulty,
+            notes=[],
+            anchors=[],
+            fingerprints=[[], [_fingerprint(0, 1.0, 2.0)]],
+        )
+        for difficulty in (0, 1)
+    ]
     song = _ns(
         chordTemplates=[source_template],
         chordNotes=[],
-        levels=[level],
+        levels=levels,
         phraseIterations=[_ns(phraseId=0, time=0.0, endTime=3.0)],
-        phrases=[_ns(maxDifficulty=0)],
+        phrases=[_ns(maxDifficulty=1)],
     )
 
     chart = converter._song_chart_data(song, [converter._template_to_feedpak(source_template)])
 
     expected = {"chord_id": 0, "start_time": 1.0, "end_time": 2.0, "arp": True}
     assert chart["handshapes"] == [expected]
-    assert chart["phrases"][0]["levels"][0]["handshapes"] == [expected]
+    assert chart["phrases"][0]["levels"][1]["handshapes"] == [expected]

@@ -2218,7 +2218,7 @@ def _phrase_ladder_to_feedpak(
     song: Any, level_payloads: dict[int, dict[str, Any]]
 ) -> list[dict[str, Any]]:
     phrases: list[dict[str, Any]] = []
-    if not level_payloads:
+    if len(level_payloads) <= 1:
         return phrases
 
     for iteration in song.phraseIterations:
