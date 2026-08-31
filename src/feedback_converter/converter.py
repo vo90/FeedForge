@@ -691,6 +691,7 @@ def convert_psarc(
         raise ValueError("No decrypted SNG arrangements found in PSARC.")
 
     arrangements: list[dict[str, Any]] = []
+    arrangement_timelines: list[tuple[str, dict[str, Any]]] = []
     rig_entries: dict[str, dict[str, Any]] = {}
     first_song: Any | None = None
     lyric_song: Any | None = None
@@ -741,6 +742,7 @@ def convert_psarc(
             )
         for rig in arrangement.pop("_rigs", []):
             rig_entries.setdefault(str(rig["id"]), rig)
+        arrangement_timelines.append((path, _song_to_timeline(song)))
         arr_file = f"arrangements/{arr_id}.json"
         _write_json(package_dir / arr_file, arrangement)
         arrangements.append(
@@ -762,8 +764,21 @@ def convert_psarc(
 
     timeline_path = None
     if first_song is not None:
-        timeline = _song_to_timeline(first_song)
-        if timeline["beats"] or timeline["sections"]:
+        timeline = arrangement_timelines[0][1]
+        mismatched_timelines = [
+            path
+            for path, candidate in arrangement_timelines[1:]
+            if candidate != timeline
+        ]
+        if mismatched_timelines:
+            source_paths = [arrangement_timelines[0][0], *mismatched_timelines]
+            warnings.append(
+                ConversionWarning(
+                    "Omitted shared song timeline because playable arrangements "
+                    "disagree on beats or sections: " + ", ".join(source_paths)
+                )
+            )
+        elif timeline["beats"] or timeline["sections"]:
             timeline_path = "song_timeline.json"
             _write_json(package_dir / timeline_path, timeline)
 
