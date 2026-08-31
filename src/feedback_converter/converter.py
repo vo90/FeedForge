@@ -717,8 +717,17 @@ def convert_psarc(
             first_song = song
 
         arr_id = _unique_id(_arrangement_id(path, metadata), used_ids)
+        cent_offset, cent_offset_warning = _cent_offset_for_arrangement(path, metadata)
+        if cent_offset_warning:
+            warnings.append(ConversionWarning(cent_offset_warning))
         try:
-            arrangement = _song_to_arrangement(song, path, metadata, include_tones=include_tones)
+            arrangement = _song_to_arrangement(
+                song,
+                path,
+                metadata,
+                include_tones=include_tones,
+                cent_offset=cent_offset,
+            )
         except ValueError as exc:
             warnings.append(ConversionWarning(f"Skipped SNG {path}: {exc}"))
             continue
@@ -740,6 +749,7 @@ def convert_psarc(
                 "file": arr_file,
                 "tuning": arrangement["tuning"],
                 "capo": max(0, int(arrangement.get("capo", 0))),
+                "centOffset": arrangement["centOffset"],
                 "type": _arrangement_type(arr_id),
                 "event_count": _arrangement_event_count(arrangement),
                 "note_count": _arrangement_note_count(arrangement),
@@ -1250,6 +1260,7 @@ def _extract_metadata(content: dict[str, bytes]) -> dict[str, Any]:
         "authors": authors,
         "arrangement_names": _arrangement_names(flat),
         "arrangement_tones": _arrangement_tones(flat),
+        "arrangement_cent_offsets": _arrangement_cent_offsets(flat),
     }
 
 
@@ -1619,20 +1630,96 @@ def _arrangement_tones(dicts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return arrangement_tones
 
 
+def _arrangement_cent_offsets(
+    dicts: list[dict[str, Any]],
+) -> dict[str, list[tuple[bool, Any]]]:
+    identity_offsets: dict[tuple[str, str], list[Any]] = {}
+    for item in dicts:
+        if "CentOffset" not in item:
+            continue
+        for field in ("PersistentID", "MasterID_RDV"):
+            identity = str(item.get(field) or "").strip().lower()
+            if identity:
+                identity_offsets.setdefault((field, identity), []).append(item.get("CentOffset"))
+
+    offsets: dict[str, list[tuple[bool, Any]]] = {}
+    for item in dicts:
+        song_xml = item.get("SongXml")
+        if song_xml in (None, ""):
+            continue
+        persistent_id = str(item.get("PersistentID") or "").strip().lower()
+        master_id = str(item.get("MasterID_RDV") or "").strip().lower()
+
+        values = [item.get("CentOffset")] if "CentOffset" in item else []
+        if not values:
+            for field, identity in (
+                ("PersistentID", persistent_id),
+                ("MasterID_RDV", master_id),
+            ):
+                key = (field, identity)
+                if identity:
+                    values.extend(identity_offsets.get(key, []))
+
+        song_xml_tail = str(song_xml).strip().lower().rsplit(":", 1)[-1]
+        source_stem = Path(song_xml_tail.replace("\\", "/")).stem
+        if source_stem:
+            offsets.setdefault(source_stem, []).extend(
+                [(True, value) for value in values] or [(False, None)]
+            )
+    return offsets
+
+
+def _cent_offset_for_arrangement(
+    source_path: str, metadata: dict[str, Any]
+) -> tuple[float, str | None]:
+    source_stem = Path(source_path.replace("\\", "/")).stem.lower()
+    matches = (metadata.get("arrangement_cent_offsets") or {}).get(source_stem, [])
+    if not matches:
+        return 0.0, None
+
+    resolved = []
+    for has_value, value in matches:
+        if not has_value:
+            resolved.append(("missing", 0.0))
+            continue
+        if isinstance(value, bool) or not _finite_number(value):
+            resolved.append(("invalid", 0.0))
+        else:
+            resolved.append(("valid", _num(value)))
+
+    unique = set(resolved)
+    if len(unique) > 1:
+        return 0.0, f"Ambiguous CentOffset for {source_path}; used 0.0."
+    state, cent_offset = resolved[0]
+    if state == "missing":
+        return 0.0, None
+    if state == "invalid":
+        value = matches[0][1]
+        return 0.0, f"Invalid CentOffset for {source_path}: {value!r}; used 0.0."
+    return cent_offset, None
+
+
 def _song_to_arrangement(
     song: Any,
     source_path: str,
     metadata: dict[str, Any],
     *,
     include_tones: bool = True,
+    cent_offset: float = 0.0,
 ) -> dict[str, Any]:
     tuning = [int(x) for x in list(song.metadata.tuning or [])]
     templates = [_template_to_feedpak(t) for t in song.chordTemplates]
     chart = _song_chart_data(song, templates)
+    normalized_cent_offset = (
+        _num(cent_offset)
+        if not isinstance(cent_offset, bool) and _finite_number(cent_offset)
+        else 0.0
+    )
     arrangement = {
         "name": _display_name(_arrangement_id(source_path, metadata)),
         "tuning": tuning,
         "capo": max(0, int(song.metadata.capo or 0)),
+        "centOffset": normalized_cent_offset,
         "notes": chart["notes"],
         "chords": chart["chords"],
         "anchors": chart["anchors"],
