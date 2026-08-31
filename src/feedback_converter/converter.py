@@ -54,6 +54,7 @@ NOTE_MASK_PINCHHARMONIC = 0x8000
 NOTE_MASK_VIBRATO = 0x010000
 NOTE_MASK_MUTE = 0x020000
 NOTE_MASK_IGNORE = 0x040000
+NOTE_MASK_HIGHDENSITY = 0x200000
 NOTE_MASK_ACCENT = 0x04000000
 NOTE_MASK_PARENT = 0x08000000
 B_STANDARD_6_TUNING = [-5, -5, -5, -5, -5, -5]
@@ -2194,6 +2195,8 @@ def _notes_and_chords(
                 continue
             seen_chords.add(key)
             chord = {"t": _num(note.time), "id": chord_id}
+            if int(note.mask) & NOTE_MASK_HIGHDENSITY:
+                chord["hd"] = True
             chord_notes = _chord_notes(song, note, chord_id)
             if chord_notes:
                 chord["notes"] = chord_notes
