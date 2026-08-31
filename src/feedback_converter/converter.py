@@ -727,6 +727,7 @@ def convert_psarc(
                 metadata,
                 include_tones=include_tones,
                 cent_offset=cent_offset,
+                arrangement_id=arr_id,
             )
         except ValueError as exc:
             warnings.append(ConversionWarning(f"Skipped SNG {path}: {exc}"))
@@ -745,7 +746,7 @@ def convert_psarc(
         arrangements.append(
             {
                 "id": arr_id,
-                "name": _display_name(arr_id),
+                "name": arrangement["name"],
                 "file": arr_file,
                 "tuning": arrangement["tuning"],
                 "capo": max(0, int(arrangement.get("capo", 0))),
@@ -1261,6 +1262,7 @@ def _extract_metadata(content: dict[str, bytes]) -> dict[str, Any]:
         "arrangement_names": _arrangement_names(flat),
         "arrangement_tones": _arrangement_tones(flat),
         "arrangement_cent_offsets": _arrangement_cent_offsets(flat),
+        "arrangement_sources": _arrangement_sources(flat),
     }
 
 
@@ -1545,15 +1547,52 @@ def _arrangement_names(dicts: list[dict[str, Any]]) -> dict[str, str]:
 
 def _arrangement_label_from_manifest(item: dict[str, Any]) -> str:
     props = item.get("ArrangementProperties")
-    if isinstance(props, dict):
-        if _truthy_manifest_flag(props.get("pathBass")):
-            return "Bass"
-        if _truthy_manifest_flag(props.get("pathLead")):
-            return "Lead"
-        if _truthy_manifest_flag(props.get("pathRhythm")):
-            return "Rhythm"
     name = item.get("ArrangementName") or item.get("ArrangementType")
-    return str(name) if name not in (None, "") else ""
+    fallback = str(name).strip() if name not in (None, "") else ""
+    if not isinstance(props, dict):
+        return fallback
+
+    base = ""
+    if _truthy_manifest_flag(props.get("pathBass")):
+        base = "Bass"
+    elif _truthy_manifest_flag(props.get("pathLead")):
+        base = "Lead"
+    elif _truthy_manifest_flag(props.get("pathRhythm")):
+        base = "Rhythm"
+    if not base:
+        base = fallback
+    if not base:
+        return ""
+
+    if _truthy_manifest_flag(props.get("bonusArr")):
+        return f"Bonus {_undecorated_arrangement_label(base)}"
+
+    representative = props.get("represent", item.get("Representative"))
+    representative_value = _manifest_integer(representative)
+    if representative_value is None:
+        return base
+    undecorated = _undecorated_arrangement_label(base)
+    return undecorated if representative_value == 1 else f"Alt. {undecorated}"
+
+
+def _undecorated_arrangement_label(value: str) -> str:
+    label = str(value).strip()
+    while True:
+        undecorated = re.sub(r"^(?:alt\.\s+|bonus\s+)", "", label, flags=re.IGNORECASE)
+        if undecorated == label:
+            return label
+        label = undecorated.strip()
+
+
+def _manifest_integer(value: Any) -> int | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if not _finite_number(value):
+        return None
+    number = float(value)
+    return int(number) if number.is_integer() else None
 
 
 def _truthy_manifest_flag(value: Any) -> bool:
@@ -1660,13 +1699,68 @@ def _arrangement_cent_offsets(
                 if identity:
                     values.extend(identity_offsets.get(key, []))
 
-        song_xml_tail = str(song_xml).strip().lower().rsplit(":", 1)[-1]
-        source_stem = Path(song_xml_tail.replace("\\", "/")).stem
+        source_stem = _song_xml_source_stem(song_xml)
         if source_stem:
             offsets.setdefault(source_stem, []).extend(
                 [(True, value) for value in values] or [(False, None)]
             )
     return offsets
+
+
+ARRANGEMENT_SOURCE_PROPERTIES = (
+    "pathLead",
+    "pathRhythm",
+    "pathBass",
+    "bonusArr",
+    "represent",
+)
+
+
+def _song_xml_source_stem(song_xml: Any) -> str:
+    tail = str(song_xml or "").strip().lower().rsplit(":", 1)[-1]
+    return Path(tail.replace("\\", "/")).stem.lower()
+
+
+def _arrangement_sources(dicts: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    sources: dict[str, list[dict[str, Any]]] = {}
+    for item in dicts:
+        source_stem = _song_xml_source_stem(item.get("SongXml"))
+        props = item.get("ArrangementProperties")
+        if not source_stem or not isinstance(props, dict):
+            continue
+        normalized: dict[str, int] = {}
+        for key in ARRANGEMENT_SOURCE_PROPERTIES:
+            raw_value = (
+                props[key]
+                if key in props
+                else item.get("Representative") if key == "represent" else None
+            )
+            value = _manifest_integer(raw_value)
+            if value is None:
+                normalized = {}
+                break
+            normalized[key] = value
+        if not normalized:
+            continue
+        sources.setdefault(source_stem, []).append(
+            {
+                "format": "psarc-manifest2014",
+                "arrangement_properties": normalized,
+            }
+        )
+    return sources
+
+
+def _source_identity_for_arrangement(
+    source_path: str, metadata: dict[str, Any]
+) -> dict[str, Any] | None:
+    source_stem = Path(source_path.replace("\\", "/")).stem.lower()
+    matches = (metadata.get("arrangement_sources") or {}).get(source_stem, [])
+    unique: list[dict[str, Any]] = []
+    for match in matches:
+        if match not in unique:
+            unique.append(match)
+    return unique[0] if len(unique) == 1 else None
 
 
 def _cent_offset_for_arrangement(
@@ -1706,6 +1800,7 @@ def _song_to_arrangement(
     *,
     include_tones: bool = True,
     cent_offset: float = 0.0,
+    arrangement_id: str | None = None,
 ) -> dict[str, Any]:
     tuning = [int(x) for x in list(song.metadata.tuning or [])]
     templates = [_template_to_feedpak(t) for t in song.chordTemplates]
@@ -1716,7 +1811,7 @@ def _song_to_arrangement(
         else 0.0
     )
     arrangement = {
-        "name": _display_name(_arrangement_id(source_path, metadata)),
+        "name": _display_name(arrangement_id or _arrangement_id(source_path, metadata)),
         "tuning": tuning,
         "capo": max(0, int(song.metadata.capo or 0)),
         "centOffset": normalized_cent_offset,
@@ -1729,6 +1824,9 @@ def _song_to_arrangement(
         "beats": [_beat_to_feedpak(b) for b in song.beats],
         "sections": _sections_to_feedpak(song),
     }
+    source_identity = _source_identity_for_arrangement(source_path, metadata)
+    if source_identity:
+        arrangement["ext"] = {"source": source_identity}
     arrangement["stats"] = {
         "events": _arrangement_event_count(arrangement),
         "notes": _arrangement_note_count(arrangement),
@@ -3669,15 +3767,16 @@ def _convert_dds_bytes_to_png(data: bytes, output_path: Path) -> bool:
 
 
 def _arrangement_id(source_path: str, metadata: dict[str, Any]) -> str:
-    low_path = source_path.lower()
+    normalized_path = source_path.replace("\\", "/").lower()
+    source_stem = Path(normalized_path).stem.lower()
     for key, name in metadata.get("arrangement_names", {}).items():
-        if key and key in low_path:
+        normalized_key = str(key).replace("\\", "/").lower()
+        if normalized_key in {normalized_path, source_stem}:
             return _slug(name)
-    stem = Path(source_path.replace("\\", "/")).stem
     for token in ("lead", "rhythm", "bass", "vocals"):
-        if token in stem.lower() or token in low_path:
+        if token in source_stem or token in normalized_path:
             return token
-    return _slug(stem)
+    return _slug(source_stem)
 
 
 def _arrangement_type(arr_id: str) -> str:
@@ -3696,7 +3795,8 @@ def _unique_id(value: str, used: set[str]) -> str:
 
 
 def _display_name(value: str) -> str:
-    return " ".join(part.capitalize() for part in re.split(r"[-_]+", value) if part) or value
+    display = " ".join(part.capitalize() for part in re.split(r"[-_]+", value) if part) or value
+    return f"Alt. {display[4:]}" if display.startswith("Alt ") else display
 
 
 def _slug(value: str) -> str:
