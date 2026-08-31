@@ -159,6 +159,94 @@ def test_semantic_validator_rejects_invalid_note_chord_and_anchor_data(
     assert any(expected in message for message in result.errors)
 
 
+@pytest.mark.parametrize(
+    ("path", "value", "expected"),
+    [
+        (("notes", 0, "f"), -1, "notes/0/f: must be between 0 and 24"),
+        (("chords", 0, "notes", 0, "f"), 25, "notes/0/f: must be between 0 and 24"),
+        (("notes", 0, "sl"), -2, "notes/0/sl: must be between -1 and 24"),
+        (("chords", 0, "notes", 0, "slu"), 25, "notes/0/slu: must be between -1 and 24"),
+        (("notes", 0, "bn"), -0.5, "notes/0/bn: must be finite and >= 0"),
+        (("notes", 0, "bn"), float("inf"), "notes/0/bn: must be finite and >= 0"),
+        (("chords", 0, "notes", 0, "bn"), "1", "notes/0/bn: must be a number"),
+        (("notes", 0, "ho"), 1, "notes/0/ho: must be a boolean"),
+        (("chords", 0, "notes", 0, "pm"), "true", "notes/0/pm: must be a boolean"),
+        (("notes", 0, "rh"), -2, "notes/0/rh: must be >= -1"),
+        (("chords", 0, "notes", 0, "rh"), "0", "notes/0/rh: must be an integer"),
+        (("notes", 0, "pkd"), 2, "notes/0/pkd: must be one of -1, 0, 1"),
+    ],
+)
+def test_semantic_validator_checks_normative_note_fields(
+    tmp_path: Path,
+    path: tuple[str | int, ...],
+    value: Any,
+    expected: str,
+):
+    arrangement = _arrangement()
+    _set(arrangement, path, value)
+
+    result = validate_feedpak(_write_pack(tmp_path, arrangement))
+
+    assert not result.ok
+    assert any(expected in message for message in result.errors)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "ho",
+        "po",
+        "hm",
+        "hp",
+        "pm",
+        "mt",
+        "vb",
+        "tr",
+        "ac",
+        "tp",
+        "ln",
+        "fhm",
+        "plk",
+        "slp",
+        "ig",
+    ],
+)
+def test_semantic_validator_requires_boolean_technique_fields(tmp_path: Path, field: str):
+    arrangement = _arrangement()
+    arrangement["notes"][0][field] = 1
+
+    result = validate_feedpak(_write_pack(tmp_path, arrangement))
+
+    assert not result.ok
+    assert any(f"notes/0/{field}: must be a boolean" in message for message in result.errors)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected"),
+    [
+        ("frets", [-1, 0, 2], "frets: length must match effective string count 4"),
+        ("fingers", [-1, 0, 2], "fingers: length must match effective string count 4"),
+        ("frets", [-2, 0, 2, 3], "frets/0: must be between -1 and 24"),
+        ("frets", [-1, 0, 2, 25], "frets/3: must be between -1 and 24"),
+        ("fingers", [-2, 0, 2, 3], "fingers/0: must be between -1 and 4"),
+        ("fingers", [-1, 0, 2, 5], "fingers/3: must be between -1 and 4"),
+    ],
+)
+def test_semantic_validator_checks_template_string_shape(
+    tmp_path: Path,
+    field: str,
+    value: list[int],
+    expected: str,
+):
+    arrangement = _arrangement()
+    arrangement["templates"][0][field] = value
+
+    result = validate_feedpak(_write_pack(tmp_path, arrangement))
+
+    assert not result.ok
+    assert any(expected in message for message in result.errors)
+
+
 def test_semantic_validator_rejects_out_of_order_arrangement_events(tmp_path: Path):
     arrangement = _arrangement()
     arrangement["notes"][0]["t"] = 1.5
