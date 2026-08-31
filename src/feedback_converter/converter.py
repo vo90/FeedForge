@@ -48,6 +48,7 @@ NOTE_MASK_SLAP = 0x80
 NOTE_MASK_PLUCK = 0x0100
 NOTE_MASK_HAMMERON = 0x0200
 NOTE_MASK_PULLOFF = 0x0400
+NOTE_MASK_SUSTAIN = 0x2000
 NOTE_MASK_TAP = 0x4000
 NOTE_MASK_PINCHHARMONIC = 0x8000
 NOTE_MASK_VIBRATO = 0x010000
@@ -2224,6 +2225,7 @@ def _note_to_feedpak(note: Any) -> dict[str, Any]:
 
 
 def _chord_notes(song: Any, note: Any, chord_id: int) -> list[dict[str, Any]]:
+    sustain = float(note.sustain or 0.0)
     if 0 <= int(note.chordNoteId) < len(song.chordNotes):
         chord_note = song.chordNotes[int(note.chordNoteId)]
         notes = []
@@ -2231,8 +2233,8 @@ def _chord_notes(song: Any, note: Any, chord_id: int) -> list[dict[str, Any]]:
             if int(fret) < 0:
                 continue
             entry: dict[str, Any] = {"s": string, "f": int(fret)}
-            sustain = float(note.sustain or 0.0)
-            if sustain > 0:
+            string_mask = int(chord_note.mask[string])
+            if sustain > 0 and string_mask & NOTE_MASK_SUSTAIN:
                 entry["sus"] = _num(sustain)
             if int(chord_note.slideTo[string]) >= 0:
                 entry["sl"] = int(chord_note.slideTo[string])
@@ -2246,7 +2248,7 @@ def _chord_notes(song: Any, note: Any, chord_id: int) -> list[dict[str, Any]]:
             bend_curve = _bend_curve(float(note.time), bend_values)
             if bend_curve:
                 entry["bnv"] = bend_curve
-            _apply_note_mask(entry, int(chord_note.mask[string]) | int(note.mask))
+            _apply_note_mask(entry, string_mask | int(note.mask))
             notes.append(entry)
         return notes
 
@@ -2256,6 +2258,8 @@ def _chord_notes(song: Any, note: Any, chord_id: int) -> list[dict[str, Any]]:
         if int(fret) < 0:
             continue
         entry: dict[str, Any] = {"s": string, "f": int(fret)}
+        if sustain > 0:
+            entry["sus"] = _num(sustain)
         _apply_note_mask(entry, int(note.mask), include_note_only=False)
         notes.append(entry)
     return notes
