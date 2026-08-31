@@ -7,7 +7,25 @@ from typing import Any
 
 ErrorSink = Callable[[str], None]
 DEFAULT_STRING_COUNT = 6
+MAX_FRET = 24
 LEVEL_EVENT_KEYS = ("notes", "chords", "anchors", "handshapes")
+BOOLEAN_NOTE_FIELDS = (
+    "ho",
+    "po",
+    "hm",
+    "hp",
+    "pm",
+    "mt",
+    "vb",
+    "tr",
+    "ac",
+    "tp",
+    "ln",
+    "fhm",
+    "plk",
+    "slp",
+    "ig",
+)
 
 
 def validate_manifest_semantics(
@@ -25,6 +43,7 @@ def validate_arrangement_semantics(
     string_count = _effective_string_count(data, manifest_entry)
     template_count = len(data.get("templates", []))
 
+    _validate_templates(data.get("templates", []), label, string_count, error)
     _validate_payload(data, label, string_count, template_count, error)
     _validate_phrases(data.get("phrases", []), label, string_count, template_count, error)
     _validate_timed_collection(data.get("tempos", []), "time", f"{label}: tempos", error)
@@ -120,18 +139,47 @@ def _validate_note(
         and not 0 <= string < string_count
     ):
         error(f"{path}/s: string {string} is outside the effective 0..{string_count - 1} range")
+    _bounded_integer(note.get("f"), f"{path}/f", 0, MAX_FRET, error)
     if "sus" in note:
         _nonnegative_number(note["sus"], f"{path}/sus", error)
+    for field in ("sl", "slu"):
+        if field in note:
+            _bounded_integer(note[field], f"{path}/{field}", -1, MAX_FRET, error)
+    if "bn" in note:
+        _known_nonnegative_number(note["bn"], f"{path}/bn", error)
+    if "bt" in note:
+        _bounded_integer(note["bt"], f"{path}/bt", 0, 4, error)
     if "bnv" in note:
         _validate_bend_curve(note["bnv"], f"{path}/bnv", error)
+    if "rh" in note:
+        _bounded_integer(note["rh"], f"{path}/rh", -1, None, error)
+    if "pkd" in note:
+        _integer_choice(note["pkd"], f"{path}/pkd", {-1, 0, 1}, error)
+    if "fg" in note:
+        _bounded_integer(note["fg"], f"{path}/fg", -1, 4, error)
+    if "ch" in note:
+        _bounded_integer(note["ch"], f"{path}/ch", -1, None, error)
+    if "sd" in note:
+        _bounded_integer(note["sd"], f"{path}/sd", -1, 11, error)
+    for field in BOOLEAN_NOTE_FIELDS:
+        if field in note and not isinstance(note[field], bool):
+            error(f"{path}/{field}: must be a boolean")
 
 
-def _validate_bend_curve(points: list[dict[str, Any]], label: str, error: ErrorSink) -> None:
+def _validate_bend_curve(points: Any, label: str, error: ErrorSink) -> None:
+    if not isinstance(points, list):
+        error(f"{label}: must be an array")
+        return
     previous: float | None = None
     for index, point in enumerate(points):
-        value = _nonnegative_number(point.get("t"), f"{label}/{index}/t", error)
+        if not isinstance(point, dict):
+            error(f"{label}/{index}: must be an object")
+            continue
+        value = _known_nonnegative_number(point.get("t"), f"{label}/{index}/t", error)
         bend = point.get("v")
-        if _is_number(bend) and not math.isfinite(float(bend)):
+        if not _is_number(bend):
+            error(f"{label}/{index}/v: must be a number")
+        elif not math.isfinite(float(bend)):
             error(f"{label}/{index}/v: must be finite")
         if value is not None and previous is not None and value < previous:
             error(f"{label}: point times must be in non-descending order")
@@ -188,6 +236,33 @@ def _validate_phrases(
 
             window = (start, end) if start is not None and end is not None and end > start else None
             _validate_payload(level, level_path, string_count, template_count, error, window=window)
+
+
+def _validate_templates(
+    templates: list[dict[str, Any]],
+    label: str,
+    string_count: int,
+    error: ErrorSink,
+) -> None:
+    for template_index, template in enumerate(templates):
+        path = f"{label}: templates/{template_index}"
+        for field, minimum, maximum in (
+            ("frets", -1, MAX_FRET),
+            ("fingers", -1, 4),
+        ):
+            if field not in template:
+                continue
+            values = template[field]
+            if len(values) != string_count:
+                error(f"{path}/{field}: length must match effective string count {string_count}")
+            for value_index, value in enumerate(values):
+                _bounded_integer(
+                    value,
+                    f"{path}/{field}/{value_index}",
+                    minimum,
+                    maximum,
+                    error,
+                )
 
 
 def _validate_tempos(tempos: list[dict[str, Any]], label: str, error: ErrorSink) -> None:
@@ -266,6 +341,41 @@ def _validate_span_in_window(
 def _template_reference(value: Any, label: str, count: int, error: ErrorSink) -> None:
     if isinstance(value, int) and not isinstance(value, bool) and not 0 <= value < count:
         error(f"{label}: template index {value} is outside 0..{count - 1}")
+
+
+def _known_nonnegative_number(value: Any, label: str, error: ErrorSink) -> float | None:
+    if not _is_number(value):
+        error(f"{label}: must be a number")
+        return None
+    return _nonnegative_number(value, label, error)
+
+
+def _bounded_integer(
+    value: Any,
+    label: str,
+    minimum: int,
+    maximum: int | None,
+    error: ErrorSink,
+) -> int | None:
+    if not isinstance(value, int) or isinstance(value, bool):
+        error(f"{label}: must be an integer")
+        return None
+    if value < minimum or maximum is not None and value > maximum:
+        expected = f">= {minimum}" if maximum is None else f"between {minimum} and {maximum}"
+        error(f"{label}: must be {expected}")
+        return None
+    return value
+
+
+def _integer_choice(value: Any, label: str, choices: set[int], error: ErrorSink) -> int | None:
+    if not isinstance(value, int) or isinstance(value, bool):
+        error(f"{label}: must be an integer")
+        return None
+    if value not in choices:
+        expected = ", ".join(str(choice) for choice in sorted(choices))
+        error(f"{label}: must be one of {expected}")
+        return None
+    return value
 
 
 def _nonnegative_number(value: Any, label: str, error: ErrorSink) -> float | None:
