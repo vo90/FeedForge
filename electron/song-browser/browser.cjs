@@ -132,7 +132,7 @@ class CustomsForgeBrowser {
         if (result.status === 'login_required' || result.status === 'challenge') {
           this.lastSearch = null;
           this.updateConnection(result.status === 'challenge' ? 'challenge' : 'signed_out',
-            result.status === 'challenge' ? 'Complete the check in the browser, then search again.' : 'Sign in in the browser, then search again.');
+            result.status === 'challenge' ? 'Select Open browser to complete the check, then search again.' : 'Select Sign in to reconnect, then search again.');
           return;
         }
         if (result.status !== 'layout_changed') return;
@@ -206,8 +206,7 @@ class CustomsForgeBrowser {
       else if (result.status === 'login_required' || result.status === 'challenge') {
         this.lastSearch = null;
         this.updateConnection(result.status === 'challenge' ? 'challenge' : 'signed_out',
-          result.status === 'challenge' ? 'Complete the check in the browser, then search again.' : 'Sign in in the browser, then search again.');
-        win.show(); win.focus();
+          result.status === 'challenge' ? 'Select Open browser to complete the check, then search again.' : 'Select Sign in to reconnect, then search again.');
       } else {
         this.lastSearch = null;
         this.updateConnection('error', 'The search page could not be read. Open the browser to check it.');
@@ -226,8 +225,9 @@ class CustomsForgeBrowser {
     if (job.finished || this.disposed || job.item || job.attention === message) return;
     job.attention = message;
     this.diagnostic({ code: 'browser_attention', stage: 'needs_attention', host: job.host, outcome: 'needs_attention' });
+    // Surface host steps in FeedForge. Only an explicit Sign in/Open browser
+    // action should show or focus a browser, including after transient notices.
     job.onAttention(message);
-    if (!job.finished && !this.disposed && !job.item) this.showBrowser();
   }
 
   cancelTransfer(job) {
@@ -359,11 +359,11 @@ class CustomsForgeBrowser {
         if (!canAct()) return;
         if (win.isDestroyed() || win.webContents.getURL() !== url) continue;
         if (result?.status === 'login_required' || result?.status === 'challenge' || result?.status === 'needs_attention') {
-          this.attention(job, result.error || 'Continue in the browser to finish this download.');
+          this.attention(job, result.error || 'Select Open browser to finish this download.');
         }
       }
       if (!canAct()) return;
-      if (++idleTicks === 12 && !job.item) this.attention(job, 'The host needs attention. Continue in the browser; conversion starts after the download.');
+      if (++idleTicks === 12 && !job.item) this.attention(job, 'The host may need a step from you. Select Open browser if the download does not start.');
       await pause(600);
     }
   }

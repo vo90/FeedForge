@@ -30,8 +30,28 @@ const results = [];
 const visits = new Map();
 const transfers = [];
 const unexpected = [];
+const presentations = [];
 const diagnostics = createDiagnostics({ appVersion: '0.1.40' });
 let browser, integration, mainWindow, untrustedWindow;
+// Observe actual popup creation/events, but intercept presentation requests so
+// even a failing regression cannot display or focus a fixture on the desktop.
+app.on('browser-window-created', (_event, win) => {
+  const entry = { win, initiallyHidden: !win.isVisible(), initiallyFocused: win.isFocused(), showRequests: 0, focusRequests: 0, showEvents: 0, focusEvents: 0 };
+  presentations.push(entry);
+  win.show = win.showInactive = () => { entry.showRequests++; };
+  win.focus = () => { entry.focusRequests++; };
+  win.on('show', () => { entry.showEvents++; win.hide(); });
+  win.on('focus', () => { entry.focusEvents++; win.blur(); });
+});
+function assertBackground(entries) {
+  assert.ok(entries.length > 0);
+  for (const entry of entries) {
+    assert.equal(entry.initiallyHidden, true); assert.equal(entry.initiallyFocused, false);
+    assert.equal(entry.showRequests, 0); assert.equal(entry.focusRequests, 0);
+    assert.equal(entry.showEvents, 0); assert.equal(entry.focusEvents, 0);
+    if (!entry.win.isDestroyed()) { assert.equal(entry.win.isVisible(), false); assert.equal(entry.win.isFocused(), false); }
+  }
+}
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const deadline = async (promise, ms = 20000) => {
   let timer;
@@ -50,17 +70,19 @@ function fixtureResponse(request) {
   visits.set(key, (visits.get(key) || 0) + 1);
   if (url.hostname === 'ignition4.customsforge.com') {
     if (url.pathname === '/') return searchPage(Number(url.searchParams.get('page') || 1));
-    const detail = url.pathname.match(/^\/cdlc\/(100[1-5])$/);
+    const detail = url.pathname.match(/^\/cdlc\/(100[1-6])$/);
     if (detail) {
       const id = detail[1];
       const expired = id === '1003' && visits.get(key) === 1;
       const expires = expired ? 1 : Math.floor(Date.now() / 1000) + 600;
-      return html(`<a href="/user/collectedcdlcs/toggle/${id}?platform=pc&amp;expires=${expires}&amp;signature=fixture-only" ${id === '1002' ? 'target="_blank"' : ''} title="Hosted on ${id === '1002' ? 'MediaFire' : 'Dropbox'}">Windows</a>`);
+      const popup = ['1002', '1006'].includes(id);
+      return html(`<a href="/user/collectedcdlcs/toggle/${id}?platform=pc&amp;expires=${expires}&amp;signature=fixture-only" ${popup ? 'target="_blank"' : ''} title="Hosted on ${popup ? 'MediaFire' : 'Dropbox'}">Windows</a>`);
     }
-    const toggle = url.pathname.match(/^\/user\/collectedcdlcs\/toggle\/(100[1-5])$/);
-    if (toggle) return Response.redirect(toggle[1] === '1002' ? 'https://www.mediafire.com/file/popup' : `https://www.dropbox.com/scl/fi/fixture/${toggle[1]}.psarc?rlkey=fixture-only&dl=0`, 302);
+    const toggle = url.pathname.match(/^\/user\/collectedcdlcs\/toggle\/(100[1-6])$/);
+    if (toggle) return Response.redirect(toggle[1] === '1006' ? 'https://www.mediafire.com/file/attention' : toggle[1] === '1002' ? 'https://www.mediafire.com/file/popup' : `https://www.dropbox.com/scl/fi/fixture/${toggle[1]}.psarc?rlkey=fixture-only&dl=0`, 302);
   }
   if (url.hostname === 'www.mediafire.com' && url.pathname === '/file/popup') return html('<a id="downloadButton" target="_blank" href="https://download1.mediafire.com/offline/popup.psarc">Download</a>');
+  if (url.hostname === 'www.mediafire.com' && url.pathname === '/file/attention') return html('<p>Request access to this controlled fixture file.</p>');
   if (url.hostname === 'www.dropbox.com' && /^\/scl\/fi\/fixture\/100[1-5]\.psarc$/.test(url.pathname) && url.searchParams.get('dl') !== '1') return html('<p>Controlled Dropbox shared file</p>');
   if ((url.hostname === 'www.dropbox.com' && url.searchParams.get('dl') === '1') || url.hostname === 'download1.mediafire.com') {
     const slow = url.pathname.endsWith('/1004.psarc');
@@ -95,7 +117,7 @@ async function test(name, run) {
 }
 async function download(id, options = {}) {
   const destination = path.join(runtime, 'downloads', id + '.psarc');
-  return browser.download({ id, supported: true, host: id === '1002' ? 'mediafire' : 'dropbox' }, { destination, ...options });
+  return browser.download({ id, supported: true, host: ['1002', '1006'].includes(id) ? 'mediafire' : 'dropbox' }, { destination, ...options });
 }
 
 async function run() {
@@ -130,10 +152,39 @@ async function run() {
   });
   await test('real nested popup download belongs to its job and is cleaned up', async () => {
     const before = BrowserWindow.getAllWindows().length;
+    const observedBefore = presentations.length;
     const file = await download('1002');
     assert.deepEqual(fs.readFileSync(file), psarc);
     assert.equal(transfers.at(-1).item.getURL(), 'https://download1.mediafire.com/offline/popup.psarc');
     assert.equal(BrowserWindow.getAllWindows().length, before);
+    assert.ok(presentations.length - observedBefore >= 2, 'A real host popup must have been created.');
+    assertBackground(presentations.slice(observedBefore));
+  });
+  await test('real popup attention stays background until explicit open and cancellation cleans up', async () => {
+    const before = BrowserWindow.getAllWindows().length;
+    const observedBefore = presentations.length;
+    const controller = new AbortController();
+    let attention = false;
+    const pending = download('1006', { signal: controller.signal, onAttention: () => { attention = true; } })
+      .then(() => ({ error: null }), (error) => ({ error }));
+    try {
+      await until(() => attention);
+      await sleep(100); // Include presentation requests following the callback.
+      const observed = presentations.slice(observedBefore);
+      assert.ok(observed.length >= 2, 'Attention must belong to an actual host popup.');
+      assertBackground(observed);
+      assert.equal(browser.active.item, null);
+      const popup = observed.find(entry => !entry.win.isDestroyed() && entry.win.webContents.getURL() === 'https://www.mediafire.com/file/attention');
+      assert.ok(popup);
+      browser.showBrowser();
+      assert.equal(popup.showRequests, 1); assert.equal(popup.focusRequests, 1);
+      for (const entry of observed.filter(entry => entry !== popup)) assertBackground([entry]);
+    } finally { controller.abort(); await pending; }
+    assert.match((await pending).error.message, /cancel/i);
+    assert.equal(browser.active, null);
+    assert.equal(BrowserWindow.getAllWindows().length, before);
+    const recovered = await download('1001');
+    assert.deepEqual(fs.readFileSync(recovered), psarc);
   });
   await test('expired download button refreshes before exactly one collection click', async () => {
     await download('1003');
@@ -173,12 +224,14 @@ const watchdog = setTimeout(() => { process.stderr.write('Offline Electron fixtu
 run().then(async () => {
   browser?.dispose(); await integration?.close();
   const result = { status: 'passed', evidence: 'Actual Electron BrowserWindow, Chromium DOM and DownloadItem with fully synthetic intercepted responses. No live websites, credentials or conversion.', electron: process.versions.electron,
-    tests: results, downloadItems: transfers.map(({ state, completed }) => ({ state, terminalEventObserved: completed })), unexpectedRequestCount: unexpected.length, diagnostics: diagnostics.report() };
+    tests: results, downloadItems: transfers.map(({ state, completed }) => ({ state, terminalEventObserved: completed })), unexpectedRequestCount: unexpected.length,
+    presentationEvidence: { nativePresentationSuppressed: true, windows: presentations.map(({ win, ...entry }) => entry) }, diagnostics: diagnostics.report() };
   fs.writeFileSync(path.join(runtime, 'result.json'), JSON.stringify(result, null, 2));
   process.stdout.write(JSON.stringify({ status: 'passed', tests: results.length, report: path.join(runtime, 'result.json') }) + '\n');
   clearTimeout(watchdog); app.exit(0);
 }).catch(async (error) => {
   browser?.dispose(); await integration?.close();
-  fs.writeFileSync(path.join(runtime, 'result.json'), JSON.stringify({ status: 'failed', tests: results, error: error.stack, visits: [...visits], transfers: transfers.map(({ state, completed }) => ({ state, completed })), unexpected }, null, 2));
+  fs.writeFileSync(path.join(runtime, 'result.json'), JSON.stringify({ status: 'failed', tests: results, error: error.stack, visits: [...visits], transfers: transfers.map(({ state, completed }) => ({ state, completed })), unexpected,
+    presentationEvidence: { nativePresentationSuppressed: true, windows: presentations.map(({ win, ...entry }) => entry) } }, null, 2));
   process.stderr.write(error.stack + '\n'); clearTimeout(watchdog); app.exit(1);
 });

@@ -19,8 +19,14 @@ exceptions to the production browser adapter. Production origins are used only
 as synthetic document identities inside the intercepted test session.
 
 Coverage: real DOM search/pagination, signed-button redirects, nested popup
-download ownership/cleanup, expired-button refresh without duplicate clicks,
+download ownership/cleanup, background attention with explicit browser opening,
+expired-button refresh without duplicate clicks,
 in-progress cancellation, interrupted response, and actual trusted/foreign
 renderer IPC. Synthetic PSARC-shaped bytes are downloaded; conversion and live
 host compatibility are separate checks. Chromium stderr for the intentionally
 rejected IPC sender is expected.
+
+Window presentation requests are counted before being suppressed, so a failing
+show/focus regression cannot display a fixture on the desktop. Tests also check
+actual hidden popup creation and show/focus events. Explicit Open browser is
+verified as a request to the correct popup; native presentation is not exercised.

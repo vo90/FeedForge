@@ -147,6 +147,21 @@ test('search failure clears stale connection and pagination state', async (t) =>
   assert.equal(browser.connection.status, 'error'); assert.equal(browser.lastSearch, null);
 });
 
+test('search reports login and challenge steps without opening a window; explicit sign-in still opens it', async (t) => {
+  for (const status of ['login_required', 'challenge']) {
+    await t.test(status, async (subtest) => {
+      const { browser } = fixture(subtest); const win = browser.ensureSearchWindow();
+      win.webContents.responses.push({ status });
+      assert.equal((await browser.search({ query: 'fixture' })).status, status);
+      assert.equal(browser.connection.status, status === 'challenge' ? 'challenge' : 'signed_out');
+      assert.equal(win.visible, false, 'search feedback belongs in FeedForge until the user opens the browser');
+      assert.equal(win.focused, false);
+      await browser.signIn();
+      assert.equal(win.visible, true); assert.equal(win.focused, true);
+    });
+  }
+});
+
 test('ordinary login completion and later sign-out update connection from the loaded page', async (t) => {
   const { browser } = fixture(t); const win = browser.ensureSearchWindow();
   win.webContents.url = 'https://ignition4.customsforge.com/';
@@ -272,6 +287,47 @@ test('download popups inherit sandbox and are attributed to their active job', a
   assert.equal((await transfer.outcome).value, transfer.destination);
   assert.equal(child.isDestroyed(), true);
   assert.equal(win.isDestroyed(), true);
+});
+
+test('a blocked host redirect reports attention in FeedForge and a later download completes without showing a window', async (t) => {
+  const { browser, session } = fixture(t); const transfer = begin(browser);
+  const win = [...transfer.job.windows][0];
+  const redirect = event();
+  win.webContents.emit('will-redirect', redirect, 'https://unsupported.example/');
+  assert.equal(redirect.prevented, true, 'background operation retains navigation guards');
+  assert.deepEqual(transfer.attention, ['This destination is not supported in the first version.']);
+  assert.equal(win.visible, false, 'a transient attention state must not interrupt the main app');
+  assert.equal(win.focused, false);
+  const item = new FakeDownload();
+  session.emit('will-download', event(), item, win.webContents);
+  item.received = item.total; item.finish();
+  assert.deepEqual(await transfer.outcome, { value: transfer.destination });
+  assert.equal(win.visible, false); assert.equal(win.focused, false);
+  assert.equal(win.isDestroyed(), true);
+});
+
+test('Open browser reveals the active host popup and attention never refocuses or reopens it', async (t) => {
+  const { browser } = fixture(t); const transfer = begin(browser);
+  const win = [...transfer.job.windows][0];
+  const popup = win.webContents.openHandler({ url: 'https://www.dropbox.com/s/test/chart.psarc' });
+  const child = new FakeWindow(popup.overrideBrowserWindowOptions);
+  win.webContents.emit('did-create-window', child);
+  browser.attention(transfer.job, 'Select the file in the browser.');
+  assert.equal(win.visible, false); assert.equal(child.visible, false);
+  browser.showBrowser();
+  assert.equal(child.visible, true); assert.equal(child.focused, true);
+  assert.equal(win.visible, false);
+  child.focused = false; // The user has returned to FeedForge.
+  browser.attention(transfer.job, 'The host is still waiting.');
+  assert.equal(child.visible, true, 'keep a browser the user explicitly opened');
+  assert.equal(child.focused, false, 'new notices must not take focus back');
+  const close = event(); child.emit('close', close);
+  assert.equal(close.prevented, true); assert.equal(child.visible, false);
+  browser.attention(transfer.job, 'Another host notice.');
+  assert.equal(child.visible, false, 'a user-hidden host must stay hidden');
+  transfer.controller.abort();
+  assert.match((await transfer.outcome).error.message, /cancel/i);
+  assert.equal(win.isDestroyed(), true); assert.equal(child.isDestroyed(), true);
 });
 
 test('unexpected content from an owned window fails cleanly without accepting the file', async (t) => {
