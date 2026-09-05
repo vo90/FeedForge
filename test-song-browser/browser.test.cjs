@@ -561,6 +561,23 @@ test('Google Drive ignores aria-disabled or hidden controls and uses the next vi
   assert.equal(disabled.clicked, 0); assert.equal(hidden.clicked, 0); assert.equal(nested.clicked, 0);
 });
 
+test('Google Drive clicks the observed Swedish download label only once and skips unusable controls', () => {
+  const disabled = button('Ladda ned'); disabled.setAttribute('aria-disabled', 'true');
+  const hidden = button('Ladda ned'); hidden.hidden = true;
+  const visible = button(''); visible.setAttribute('aria-label', 'Ladda ned');
+  const page = { url: 'https://drive.google.com/file/d/fixture/view', buttons: [disabled, hidden, visible] };
+  assert.equal(hostAction(page).result.status, 'clicked');
+  assert.equal(hostAction(page).result.status, 'already_clicked');
+  assert.equal(visible.clicked, 1);
+  assert.equal(disabled.clicked, 0); assert.equal(hidden.clicked, 0);
+});
+
+test('Google Drive rejects misleading Swedish download labels', () => {
+  const misleading = button('Ladda ned Chrome');
+  assert.equal(hostAction({ url: 'https://drive.google.com/file/d/fixture/view', buttons: [misleading] }).result.status, 'waiting');
+  assert.equal(misleading.clicked, 0);
+});
+
 test('IPC rejects foreign senders and subframes before touching local state', async () => {
   const handlers = new Map();
   const window = new FakeWindow({});

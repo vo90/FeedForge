@@ -53,7 +53,7 @@ function hostDownloadAction() {
     const buttons = [...document.querySelectorAll('button, [role="button"], a, input[type="submit"]')];
     const download = buttons.find((el) => {
       const label = (el.getAttribute('aria-label') || el.getAttribute('data-tooltip') || el.innerText || el.value || '').trim();
-      return /^(?:download|download anyway)$/i.test(label) && usable(el);
+      return /^(?:download|download anyway|ladda ned)$/i.test(label) && usable(el);
     });
     if (download) return click(download);
     return { status: 'waiting' };
