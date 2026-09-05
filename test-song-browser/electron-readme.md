@@ -3,6 +3,9 @@ BrowserWindows, IPC and DownloadItems. It uses a fresh dedicated app/session
 profile outside the checkout and intercepts all fixture-session HTTP/HTTPS
 responses. It never accesses live websites, credentials or a song library.
 
+For the actual production renderer's navigation, queue and recovery controls, use
+the separate [UI integration suite](ui-integration.md).
+
 Run with an installed Electron executable and a **fresh absolute output path**:
 
 ```powershell
