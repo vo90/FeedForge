@@ -11,7 +11,7 @@ const { EventEmitter } = require("node:events");
 const { setTimeout: delay } = require("node:timers/promises");
 const { SongJobs } = require("../electron/song-browser/jobs.cjs");
 
-const CHART = { id: "42", title: "One", artist: "Metallica", creator: "A creator" };
+const CHART = { id: "42", title: "One", artist: "Metallica", creator: "A creator", host: "mediafire", supported: true };
 const PSARC = Buffer.concat([Buffer.from("PSAR"), Buffer.alloc(100, 7)]);
 const FEEDPAK = Buffer.from("PK mock FeedPak output checked by the injected validator");
 const TERMINAL = new Set(["completed", "failed", "cancelled"]);
@@ -101,7 +101,9 @@ test("converts, validates, saves without stems and persists only bounded public 
   const ledger = await fsp.readFile(path.join(f.root, "jobs.json"), "utf8");
   assert.doesNotMatch(ledger, /https:|private-token|secret-cookie|secret=yes/);
   assert.equal(JSON.parse(ledger).jobs[0].creator, "Someone [link]");
-  assert.deepEqual(await fsp.readdir(f.root), ["jobs.json"]);
+  assert.deepEqual(await fsp.readdir(f.root), ["cache", "jobs.json"]);
+  assert.deepEqual(await fsp.readdir(path.join(f.root, "cache")), []);
+  assert.equal(done.hasCachedInput, false);
   assert.deepEqual(await fsp.readdir(f.outputDir), [path.basename(done.outputPath)]);
 });
 
@@ -128,7 +130,8 @@ test("rejects an HTML download before invoking the converter", async (t) => {
   assert.equal(done.state, "failed");
   assert.match(done.error, /page or another file/);
   assert.equal(f.calls.length, 0);
-  assert.equal(fs.existsSync(f.outputDir), false);
+  assert.deepEqual(await fsp.readdir(f.outputDir), []);
+  assert.equal(done.hasCachedInput, false);
 });
 
 test("rejects a downloader returning a path outside its job directory", async (t) => {
@@ -169,7 +172,8 @@ test("does not publish output when independent validation fails", async (t) => {
   const done = await f.result(f.manager.enqueue(CHART).id);
   assert.equal(done.state, "failed");
   assert.match(done.error, /independent validation/);
-  assert.equal(fs.existsSync(f.outputDir), false);
+  assert.deepEqual(await fsp.readdir(f.outputDir), []);
+  assert.equal(done.hasCachedInput, true);
 });
 
 test("sanitizes and bounds converter errors without persisting host links", async (t) => {
@@ -358,4 +362,238 @@ test("dispose drains an aborted download and cancels queued jobs", async (t) => 
   assert.ok(f.manager.snapshot().every((job) => job.state === "cancelled"));
   assert.equal(f.calls.length, 0);
   assert.throws(() => f.manager.enqueue(CHART), /closed/);
+});
+
+test("changing output folders copies a validated duplicate into the selected folder and reuses it on return", async (t) => {
+  const f = await fixture(t);
+  const first = await f.result(f.manager.enqueue(CHART).id);
+  const firstStat = await fsp.stat(first.outputPath);
+  assert.equal(first.inOutputDir, true);
+  const secondFolder = path.join(f.directory, "FeedBack library");
+  f.manager.setOutputDir(secondFolder);
+  assert.equal(f.manager.snapshot()[0].inOutputDir, false);
+  const duplicate = await f.result(f.manager.enqueue(CHART).id);
+  assert.equal(duplicate.state, "completed");
+  assert.equal(duplicate.duplicateOf, first.id);
+  assert.equal(duplicate.inOutputDir, true);
+  assert.equal(path.dirname(duplicate.outputPath), secondFolder);
+  assert.deepEqual(await fsp.readFile(duplicate.outputPath), FEEDPAK);
+  assert.deepEqual(await fsp.readFile(first.outputPath), FEEDPAK);
+  assert.equal((await fsp.stat(first.outputPath)).mtimeMs, firstStat.mtimeMs);
+  f.manager.setOutputDir(f.outputDir);
+  const returned = await f.result(f.manager.enqueue(CHART).id);
+  assert.equal(returned.outputPath, first.outputPath);
+  assert.equal(f.calls.filter((args) => args[1] === "-o").length, 1);
+  assert.deepEqual(await fsp.readdir(f.outputDir), [path.basename(first.outputPath)]);
+});
+
+test("output preflight rejects an unusable folder before any download and selection leaves the old destination", async (t) => {
+  const f = await fixture(t);
+  const blocked = path.join(f.directory, "blocked");
+  await fsp.writeFile(blocked, "preserve me");
+  assert.throws(() => f.manager.setOutputDir(blocked), /output folder cannot safely save/);
+  assert.equal(f.manager.outputDir, f.outputDir);
+  assert.equal(await fsp.readFile(blocked, "utf8"), "preserve me");
+  f.manager.outputDir = blocked;
+  const failed = await f.result(f.manager.enqueue(CHART).id);
+  assert.equal(failed.state, "failed");
+  assert.equal(f.downloads.length, 0);
+  assert.equal(f.calls.length, 0);
+  assert.throws(() => f.manager.validateOutputDir(path.join(f.root, "unsafe-output")), /temporary storage/);
+});
+
+test("output preflight checks actual hard-link support and cleans its exact probes", async (t) => {
+  const f = await fixture(t);
+  const link = fs.linkSync;
+  fs.linkSync = () => { throw Object.assign(new Error("filesystem does not support links"), { code: "ENOTSUP" }); };
+  try { assert.throws(() => f.manager.validateOutputDir(), /hard-link support/); }
+  finally { fs.linkSync = link; }
+  assert.deepEqual(await fsp.readdir(f.outputDir), []);
+});
+
+test("ledger failures in asynchronous progress callbacks never interrupt a successful publication", async (t) => {
+  const f = await fixture(t, { download: async (chart, args, normal) => {
+    const rename = fs.renameSync;
+    fs.renameSync = (from, to) => {
+      if (to === path.join(f.root, "jobs.json")) throw Object.assign(new Error("temporary ledger denial"), { code: "EACCES" });
+      return rename(from, to);
+    };
+    try {
+      assert.doesNotThrow(() => args.onProgress(25));
+      assert.doesNotThrow(() => args.onAttention("Host needs attention"));
+      assert.match(f.manager.snapshot()[0].warning, /history could not be saved/);
+      return await normal(chart, args);
+    } finally { fs.renameSync = rename; }
+  } });
+  const done = await f.result(f.manager.enqueue(CHART).id);
+  assert.equal(done.state, "completed");
+  assert.deepEqual(await fsp.readFile(done.outputPath), FEEDPAK);
+  assert.equal(done.warning, undefined);
+});
+
+test("a committed FeedPak survives final ledger failure and a receipt reconciles it on restart", async (t) => {
+  const f = await fixture(t);
+  const rename = fs.renameSync;
+  fs.renameSync = (from, to) => {
+    if (to === f.manager.ledger && f.manager.jobs.some((job) => job.committed)) throw Object.assign(new Error("ledger disk full"), { code: "ENOSPC" });
+    return rename(from, to);
+  };
+  let done;
+  try { done = await f.result(f.manager.enqueue(CHART).id); }
+  finally { fs.renameSync = rename; }
+  assert.equal(done.state, "completed");
+  assert.match(done.warning, /history could not be saved/);
+  assert.deepEqual(await fsp.readFile(done.outputPath), FEEDPAK);
+  assert.ok((await fsp.readdir(f.root)).includes(`${done.id}.receipt.json`));
+  await f.manager.dispose();
+  let downloads = 0;
+  const recovered = new SongJobs({ root: f.root, outputDir: f.outputDir,
+    download: async () => { downloads++; }, runConverter: async () => {},
+  });
+  t.after(() => recovered.dispose());
+  assert.equal(recovered.snapshot()[0].state, "completed");
+  assert.match(recovered.snapshot()[0].message, /recovered after restart/);
+  assert.equal(recovered.snapshot()[0].outputPath, done.outputPath);
+  assert.equal(downloads, 0);
+  assert.equal(fs.existsSync(path.join(f.root, `${done.id}.receipt.json`)), false);
+});
+
+test("restart receipt refuses a changed output and never removes it", async (t) => {
+  const f = await fixture(t);
+  const done = await f.result(f.manager.enqueue(CHART).id);
+  await f.manager.dispose();
+  const row = { ...done, state: "validating" };
+  await fsp.writeFile(f.manager.ledger, JSON.stringify({ version: 1, jobs: [row] }));
+  await fsp.writeFile(path.join(f.root, `${done.id}.receipt.json`), JSON.stringify({ version: 1, job: done }));
+  await fsp.writeFile(done.outputPath, "a user changed this file");
+  const recovered = new SongJobs({ root: f.root, outputDir: f.outputDir, download: async () => {}, runConverter: async () => {} });
+  t.after(() => recovered.dispose());
+  assert.equal(recovered.snapshot()[0].state, "failed");
+  assert.equal(await fsp.readFile(done.outputPath, "utf8"), "a user changed this file");
+});
+
+test("conversion failure retains an inspected PSARC and retry uses that copy without downloading", async (t) => {
+  let fail = true;
+  const f = await fixture(t, { runConverter: async (args, _context, normal) => {
+    if (args[1] === "-o" && fail) return { code: 1, stdout: "", stderr: "encoder temporarily unavailable" };
+    return normal(args);
+  } });
+  const failed = await f.result(f.manager.enqueue(CHART).id);
+  assert.equal(failed.state, "failed");
+  assert.equal(failed.canRetry, true);
+  assert.equal(failed.hasCachedInput, true);
+  const cached = await f.manager.getCachedInput(failed.id);
+  assert.deepEqual(await fsp.readFile(cached), PSARC);
+  assert.equal(fs.existsSync(path.join(f.root, failed.id)), false);
+  fail = false;
+  const retried = await f.result(f.manager.retry(failed.id).id);
+  assert.equal(retried.state, "completed");
+  assert.equal(retried.hasCachedInput, false);
+  assert.equal(f.downloads.length, 1);
+  assert.deepEqual(await fsp.readFile(retried.outputPath), FEEDPAK);
+  await f.manager.clearCache(failed.id);
+  assert.equal(fs.existsSync(cached), false);
+  assert.equal(f.manager.snapshot().find((job) => job.id === failed.id).hasCachedInput, false);
+});
+
+test("bad host response retry fetches afresh with metadata only, while cancelled input is removed", async (t) => {
+  let attempts = 0;
+  const f = await fixture(t, { download: async (chart, args, normal) => {
+    attempts++;
+    if (attempts === 1) {
+      await fsp.writeFile(args.destination, "<html>A login page that is not a valid PSARC download</html>");
+      return args.destination;
+    }
+    assert.deepEqual(Object.keys(chart).sort(), ["artist", "creator", "host", "id", "supported", "title"]);
+    return normal(chart, args);
+  } });
+  const failed = await f.result(f.manager.enqueue({ ...CHART, url: "https://host.test/private?secret=yes" }).id);
+  assert.equal(failed.hasCachedInput, false);
+  await assert.rejects(() => f.manager.getCachedInput(failed.id), /no retained PSARC/);
+  assert.equal((await f.result(f.manager.retry(failed.id).id)).state, "completed");
+  assert.equal(attempts, 2);
+});
+
+test("retained cache is available after restart, but changed files are rejected before retry conversion", async (t) => {
+  const f = await fixture(t, { preview: { song_count: 2, is_multi_song: true } });
+  const failed = await f.result(f.manager.enqueue(CHART).id);
+  const cached = await f.manager.getCachedInput(failed.id);
+  await f.manager.dispose();
+  let downloads = 0, conversions = 0;
+  const recovered = new SongJobs({ root: f.root, outputDir: f.outputDir,
+    download: async () => { downloads++; }, runConverter: async () => { conversions++; },
+  });
+  t.after(() => recovered.dispose());
+  assert.equal(recovered.snapshot()[0].hasCachedInput, true);
+  assert.equal(await recovered.getCachedInput(failed.id), cached);
+  await fsp.writeFile(cached, Buffer.alloc(PSARC.length, 8));
+  await assert.rejects(() => recovered.getCachedInput(failed.id), /changed or is incomplete/);
+  const retry = recovered.retry(failed.id);
+  await recovered.jobs.find((job) => job.id === retry.id).done;
+  assert.equal(recovered.snapshot()[0].state, "failed");
+  assert.equal(downloads, 0);
+  assert.equal(conversions, 0);
+});
+
+test("cache retention evicts oldest owned files while preserving unrelated files and respecting its age limit", async (t) => {
+  const f = await fixture(t, { preview: { song_count: 2, is_multi_song: true } });
+  const failed = [];
+  for (let index = 0; index < 4; index++) failed.push(await f.result(f.manager.enqueue({ ...CHART, id: String(42 + index) }).id));
+  assert.equal(f.manager.snapshot().filter((job) => job.hasCachedInput).length, 3);
+  assert.equal(f.manager.snapshot().find((job) => job.id === failed[0].id).hasCachedInput, false);
+  const unrelated = path.join(f.root, "cache", "user-source.psarc");
+  await fsp.writeFile(unrelated, "keep this");
+  for (const job of f.manager.jobs) if (job.cacheHash) job.cacheAt = Date.now() - 8 * 24 * 60 * 60 * 1000;
+  f.manager._pruneCache();
+  assert.equal(f.manager.snapshot().filter((job) => job.hasCachedInput).length, 0);
+  assert.equal(await fsp.readFile(unrelated, "utf8"), "keep this");
+});
+
+test("cancellation after inspection removes its retained input and waits for the converter", async (t) => {
+  const entered = deferred(), release = deferred();
+  const f = await fixture(t, { runConverter: async (args, _context, normal) => {
+    if (args[1] === "-o") { entered.resolve(); await release.promise; }
+    return normal(args);
+  } });
+  const job = f.manager.enqueue(CHART);
+  await entered.promise;
+  assert.equal(f.manager.snapshot()[0].hasCachedInput, true);
+  const cancellation = f.manager.cancel(job.id);
+  release.resolve();
+  const done = await cancellation;
+  assert.equal(done.state, "cancelled");
+  assert.equal(done.hasCachedInput, false);
+  assert.deepEqual(await fsp.readdir(path.join(f.root, "cache")), []);
+  assert.deepEqual(await fsp.readdir(f.outputDir), []);
+});
+
+test("retry pins its cached source before a full history can evict it", async (t) => {
+  let fail = true;
+  const f = await fixture(t, { runConverter: async (args, _context, normal) => {
+    if (args[1] === "-o" && fail) return { code: 1, stdout: "", stderr: "temporary failure" };
+    return normal(args);
+  } });
+  const failed = await f.result(f.manager.enqueue(CHART).id);
+  for (let index = 0; index < 99; index++) f.manager.jobs.push({
+    id: crypto.randomUUID(), chartId: String(100 + index), title: "Older failed chart", artist: "An artist",
+    state: "failed", createdAt: Date.now(), updatedAt: Date.now(),
+  });
+  f.manager._persist();
+  assert.equal(f.manager.jobs.length, 100);
+  fail = false;
+  const retry = f.manager.retry(failed.id);
+  assert.equal(f.manager.jobs.length, 100);
+  assert.ok(f.manager.jobs.some((job) => job.id === failed.id));
+  assert.equal((await f.result(retry.id)).state, "completed");
+  assert.equal(f.downloads.length, 1);
+});
+
+test("a deleted completed output is no longer ready in the selected folder", async (t) => {
+  const f = await fixture(t);
+  const done = await f.result(f.manager.enqueue(CHART).id);
+  assert.equal(done.inOutputDir, true);
+  await fsp.unlink(done.outputPath);
+  assert.equal(f.manager.snapshot()[0].inOutputDir, false);
+  assert.equal((await f.result(f.manager.enqueue(CHART).id)).state, "completed");
+  assert.equal(f.calls.filter((args) => args[1] === "-o").length, 2);
 });

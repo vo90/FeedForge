@@ -12,6 +12,10 @@ const MAX_HISTORY = 100;
 const MAX_QUEUE = 30;
 const MAX_INPUT_BYTES = 512 * 1024 * 1024;
 const MAX_JSON_BYTES = 4 * 1024 * 1024;
+const MAX_CACHE_FILES = 3;
+const MAX_CACHE_BYTES = 1024 * 1024 * 1024;
+const CACHE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
+const SUPPORTED_HOSTS = new Set(["dropbox", "google-drive", "mediafire"]);
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const HASH = /^[a-f0-9]{64}$/;
 
@@ -61,6 +65,17 @@ async function hashFile(filename, signal) {
   return hash.digest("hex");
 }
 
+function hashFileSync(filename) {
+  const hash = crypto.createHash("sha256");
+  const buffer = Buffer.alloc(1024 * 1024);
+  const descriptor = fs.openSync(filename, "r");
+  try {
+    let count;
+    while ((count = fs.readSync(descriptor, buffer, 0, buffer.length, null))) hash.update(buffer.subarray(0, count));
+    return hash.digest("hex");
+  } finally { fs.closeSync(descriptor); }
+}
+
 function jsonResult(result, label) {
   if (!result || result.code !== 0) {
     throw new Error(`${label} failed: ${text(result?.stderr || result?.stdout || "converter did not finish successfully", 400)}`);
@@ -85,22 +100,192 @@ class SongJobs {
     this.runConverter = runConverter;
     this.emit = emit;
     this.ledger = path.join(this.root, "jobs.json");
+    this.cacheDir = path.join(this.root, "cache");
+    this.persistenceWarning = "";
     this.jobs = [];
     this.current = null;
     this.disposed = false;
     this.draining = null;
     this._load();
+    this._reconcile();
+    this._pruneCache();
   }
 
   _public(job) {
     const result = {};
-    for (const key of ["id", "chartId", "title", "artist", "creator", "state", "progress", "message", "error", "outputPath", "createdAt", "updatedAt", "sourceHash", "outputHash", "duplicateOf"]) {
+    for (const key of ["id", "chartId", "title", "artist", "creator", "host", "state", "progress", "message", "error", "outputPath", "createdAt", "updatedAt", "sourceHash", "outputHash", "duplicateOf"]) {
       if (job[key] !== undefined) result[key] = job[key];
     }
+    result.hasCachedInput = Boolean(job.cacheHash && job.cacheAt > Date.now() - CACHE_LIFETIME_MS);
+    result.canRetry = ["failed", "cancelled"].includes(job.state) && (result.hasCachedInput || job.supported === true);
+    result.inOutputDir = false;
+    if (job.state === "completed" && job.outputPath) {
+      try {
+        const stat = fs.lstatSync(job.outputPath);
+        result.inOutputDir = stat.isFile() && !stat.isSymbolicLink() && fs.realpathSync(path.dirname(job.outputPath)) === fs.realpathSync(this.outputDir);
+      } catch { /* A missing file is not ready in the selected output. */ }
+    }
+    if (job.warning || this.persistenceWarning) result.warning = text([job.warning, this.persistenceWarning].filter(Boolean).join(" "), 500);
     return result;
   }
 
   snapshot() { return [...this.jobs].reverse().map((job) => this._public(job)); }
+
+  _receiptPath(job) { return path.join(this.root, `${job.id}.receipt.json`); }
+
+  _writeReceipt(job, outputPath) {
+    const target = this._receiptPath(job);
+    const temporary = path.join(this.root, `.receipt-${crypto.randomUUID()}.tmp`);
+    try {
+      fs.writeFileSync(temporary, JSON.stringify({ version: 1, job: {
+        ...this._public(job), outputPath, state: "completed", progress: 100,
+        supported: job.supported === true,
+      } }), { flag: "wx", mode: 0o600 });
+      fs.renameSync(temporary, target);
+    } catch (error) {
+      throw new Error(`Could not save a recovery receipt before publishing the FeedPak: ${text(error.message, 200)}`);
+    } finally { try { fs.unlinkSync(temporary); } catch { /* Only our exact temporary file is eligible. */ } }
+  }
+
+  _reconcile() {
+    // A receipt is written before the exclusive publication. Its hash proves whether
+    // publication finished even if the app stopped before jobs.json was updated.
+    const names = fs.readdirSync(this.root).filter((name) => /^[a-f0-9-]+\.receipt\.json$/.test(name)).slice(0, MAX_HISTORY);
+    for (const name of names) {
+      const filename = path.join(this.root, name);
+      try {
+        const stat = fs.lstatSync(filename);
+        if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 16384) continue;
+        const receipt = JSON.parse(fs.readFileSync(filename, "utf8"));
+        const row = receipt.job;
+        if (receipt.version !== 1 || !row || !UUID.test(row.id) || name !== `${row.id}.receipt.json` || !HASH.test(row.outputHash || "") || !HASH.test(row.sourceHash || "")) continue;
+        const id = chartId(row);
+        if (typeof row.outputPath !== "string" || row.outputPath.length > 4096 || !path.isAbsolute(row.outputPath)) continue;
+        let job = this.jobs.find((item) => item.id === row.id);
+        if (job?.state === "completed" && job.outputPath === row.outputPath && job.outputHash === row.outputHash) continue;
+        const output = fs.lstatSync(row.outputPath);
+        if (!output.isFile() || output.isSymbolicLink() || !output.size || output.size > 2 * 1024 * 1024 * 1024 || hashFileSync(row.outputPath) !== row.outputHash) continue;
+        if (!job) {
+          job = { id: row.id, chartId: id, title: text(row.title), artist: text(row.artist), creator: text(row.creator),
+            host: SUPPORTED_HOSTS.has(row.host) ? row.host : "unknown", supported: row.supported === true && SUPPORTED_HOSTS.has(row.host),
+            createdAt: Number(row.createdAt) || Date.now() };
+          this.jobs.push(job);
+        }
+        Object.assign(job, { state: "completed", progress: 100, outputPath: row.outputPath,
+          outputHash: row.outputHash, sourceHash: row.sourceHash, message: "Saved FeedPak recovered after restart.", error: "", updatedAt: Date.now() });
+        this._deleteCache(job);
+      } catch { /* Missing, unrelated or modified outputs must never be marked completed. */ }
+    }
+    this._persist();
+  }
+
+  _cachePath(job) { return path.join(this.cacheDir, `${job.id}.psarc`); }
+
+  _safeCacheDirectory(create = false) {
+    if (create) fs.mkdirSync(this.cacheDir, { recursive: true });
+    const stat = fs.lstatSync(this.cacheDir);
+    if (!stat.isDirectory() || stat.isSymbolicLink() || fs.realpathSync(this.cacheDir) !== this.cacheDir) throw new Error("The song cache folder is not a supported local directory.");
+  }
+
+  _deleteCache(job) {
+    if (!job || !UUID.test(job.id) || !job.cacheHash) return;
+    try {
+      this._safeCacheDirectory();
+      const filename = this._cachePath(job);
+      const stat = fs.lstatSync(filename);
+      if (!stat.isFile() || stat.isSymbolicLink()) return;
+      fs.unlinkSync(filename);
+    } catch (error) {
+      if (error.code !== "ENOENT") { job.warning = "A cached PSARC could not be removed. Use Clear cache to try again."; return; }
+    }
+    delete job.cacheHash; delete job.cacheBytes; delete job.cacheAt;
+  }
+
+  _pruneCache(incomingBytes = 0) {
+    for (const job of this.jobs) if (job.cacheHash && job.cacheAt < Date.now() - CACHE_LIFETIME_MS && !ACTIVE.has(job.state) && !this.jobs.some((item) => ACTIVE.has(item.state) && item.retryOf === job.id)) this._deleteCache(job);
+    const cached = this.jobs.filter((job) => job.cacheHash).sort((a, b) => a.cacheAt - b.cacheAt);
+    let bytes = cached.reduce((sum, job) => sum + job.cacheBytes, 0);
+    let count = cached.length;
+    for (const job of cached) {
+      if (count + (incomingBytes ? 1 : 0) <= MAX_CACHE_FILES && bytes + incomingBytes <= MAX_CACHE_BYTES) break;
+      if (ACTIVE.has(job.state) || this.jobs.some((item) => ACTIVE.has(item.state) && item.retryOf === job.id)) continue;
+      const size = job.cacheBytes;
+      this._deleteCache(job);
+      if (!job.cacheHash) { count--; bytes -= size; this._event(job); }
+    }
+    if (incomingBytes && (count >= MAX_CACHE_FILES || bytes + incomingBytes > MAX_CACHE_BYTES)) throw new Error("The temporary PSARC cache is full. Clear a cached song before retrying.");
+  }
+
+  async _retain(job, input) {
+    if (job.cacheHash) return;
+    const stat = await fsp.stat(input);
+    this._pruneCache(stat.size);
+    this._safeCacheDirectory(true);
+    const filename = this._cachePath(job);
+    try {
+      await fsp.copyFile(input, filename, fs.constants.COPYFILE_EXCL);
+      job.cacheHash = job.sourceHash; job.cacheBytes = stat.size; job.cacheAt = Date.now();
+      this._persist();
+    } catch (error) {
+      // If the exclusive copy created a partial file, record ownership only long
+      // enough to remove it. Never overwrite or remove a pre-existing cache entry.
+      if (error.code !== "EEXIST") {
+        job.cacheHash = job.sourceHash;
+        this._deleteCache(job);
+      }
+      throw error;
+    }
+  }
+
+  async getCachedInput(id) {
+    const job = this.jobs.find((item) => item.id === id);
+    if (!job?.cacheHash || job.cacheAt < Date.now() - CACHE_LIFETIME_MS) throw new Error("This job has no retained PSARC. Retry the download instead.");
+    this._safeCacheDirectory();
+    const filename = this._cachePath(job);
+    const stat = await fsp.lstat(filename);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size !== job.cacheBytes || stat.size > MAX_INPUT_BYTES || await hashFile(filename) !== job.cacheHash) {
+      throw new Error("The retained PSARC changed or is incomplete. Clear its cache and retry the download.");
+    }
+    return filename;
+  }
+
+  async clearCache(id) {
+    const job = this.jobs.find((item) => item.id === id);
+    if (!job) throw new Error("This song job is no longer available.");
+    if (ACTIVE.has(job.state) || this.jobs.some((item) => ACTIVE.has(item.state) && item.retryOf === id)) throw new Error("Finish or cancel the job before clearing its cache.");
+    this._deleteCache(job); this._persist(); this._event(job);
+    return this._public(job);
+  }
+
+  retry(id) {
+    const job = this.jobs.find((item) => item.id === id);
+    if (!job || !this._public(job).canRetry) throw new Error("This job cannot be retried. Search for the chart again.");
+    const existing = this.jobs.find((item) => item.chartId === job.chartId && ACTIVE.has(item.state));
+    if (existing) return this._public(existing);
+    const retryOf = job.cacheHash && job.cacheAt > Date.now() - CACHE_LIFETIME_MS ? id : undefined;
+    return this._enqueue({ id: job.chartId, title: job.title, artist: job.artist, creator: job.creator, host: job.host, supported: job.supported }, retryOf);
+  }
+
+  validateOutputDir(directory = this.outputDir) {
+    if (typeof directory !== "string" || !directory.trim()) throw new Error("Choose an output folder.");
+    const resolved = path.resolve(directory);
+    let probe, link, ownsProbe = false, ownsLink = false;
+    try {
+      fs.mkdirSync(resolved, { recursive: true });
+      const real = fs.realpathSync(resolved);
+      if (real === this.root || inside(this.root, real)) throw new Error("Choose a folder outside the song browser's temporary storage.");
+      probe = path.join(real, `.feedforge-preflight-${crypto.randomUUID()}.tmp`);
+      link = `${probe}.link`;
+      fs.writeFileSync(probe, "FeedForge output check", { flag: "wx", mode: 0o600 }); ownsProbe = true;
+      fs.linkSync(probe, link); ownsLink = true;
+      return resolved;
+    } catch (error) {
+      throw new Error(`The output folder cannot safely save FeedPaks. Choose a writable folder on a filesystem with hard-link support (such as NTFS). ${text(error.message, 200)}`);
+    } finally {
+      if (ownsLink) { try { fs.unlinkSync(link); } catch { /* Only exact owned probe paths are eligible. */ } }
+      if (ownsProbe) { try { fs.unlinkSync(probe); } catch { /* A leftover probe is harmless and never a song. */ } }
+    }
+  }
 
   _load() {
     if (!fs.existsSync(this.ledger)) return;
@@ -122,34 +307,49 @@ class SongJobs {
       const interrupted = ACTIVE.has(row.state);
       const job = {
         id: row.id, chartId: id, title: text(row.title), artist: text(row.artist), creator: text(row.creator),
+        host: SUPPORTED_HOSTS.has(row.host) ? row.host : "unknown", supported: row.supported === true && SUPPORTED_HOSTS.has(row.host),
         state: interrupted ? "failed" : row.state,
         progress: interrupted ? 0 : Math.max(0, Math.min(100, Number(row.progress) || 0)),
         message: interrupted ? "Interrupted when the app closed." : text(row.message, 300),
-        error: interrupted ? "The previous job was interrupted. Choose the chart again to retry." : text(row.error, 500),
+        error: interrupted ? "The previous job was interrupted. Retry this job or choose the chart again." : text(row.error, 500),
         createdAt: Number(row.createdAt) || Date.now(), updatedAt: interrupted ? Date.now() : Number(row.updatedAt) || Date.now(),
       };
       if (HASH.test(row.sourceHash || "")) job.sourceHash = row.sourceHash;
       if (HASH.test(row.outputHash || "")) job.outputHash = row.outputHash;
       if (typeof row.outputPath === "string" && row.outputPath.length < 4096 && path.isAbsolute(row.outputPath) && !/^[a-z]+:\/\//i.test(row.outputPath)) job.outputPath = row.outputPath;
       if (UUID.test(row.duplicateOf || "")) job.duplicateOf = row.duplicateOf;
+      if (HASH.test(row.cacheHash || "") && Number(row.cacheBytes) >= 32 && Number(row.cacheBytes) <= MAX_INPUT_BYTES) {
+        job.cacheHash = row.cacheHash; job.cacheBytes = Number(row.cacheBytes); job.cacheAt = Number(row.cacheAt) || 0;
+      }
       this.jobs.push(job);
     }
     // Interrupted jobs are recorded as failed, never resumed or deleted automatically.
-    this._persist();
   }
 
   _persist() {
     while (this.jobs.length > MAX_HISTORY) {
-      const index = this.jobs.findIndex((job) => TERMINAL.has(job.state));
+      const index = this.jobs.findIndex((job) => TERMINAL.has(job.state) && !this.jobs.some((item) => ACTIVE.has(item.state) && item.retryOf === job.id));
       if (index < 0) break;
+      this._deleteCache(this.jobs[index]);
+      try { fs.unlinkSync(this._receiptPath(this.jobs[index])); } catch { /* Pruned history no longer needs its receipt. */ }
       this.jobs.splice(index, 1);
     }
     const temporary = path.join(this.root, `.jobs-${crypto.randomUUID()}.tmp`);
     try {
-      fs.writeFileSync(temporary, JSON.stringify({ version: 1, jobs: this.jobs.map((job) => this._public(job)) }), { flag: "wx", mode: 0o600 });
+      fs.writeFileSync(temporary, JSON.stringify({ version: 1, jobs: this.jobs.map((job) => ({ ...this._public(job),
+        supported: job.supported === true, cacheHash: job.cacheHash, cacheBytes: job.cacheBytes, cacheAt: job.cacheAt,
+      })) }), { flag: "wx", mode: 0o600 });
       fs.renameSync(temporary, this.ledger);
+      this.persistenceWarning = "";
+      for (const job of this.jobs) {
+        if (job.state === "completed") {
+          try { fs.unlinkSync(this._receiptPath(job)); } catch { /* A durable receipt can safely be reconciled again. */ }
+        }
+      }
+      return true;
     } catch (error) {
-      throw new Error(`Song job history could not be saved: ${text(error.message, 250)}`);
+      this.persistenceWarning = `Song job history could not be saved. Completed files are preserved; restart recovery will use their receipts. ${text(error.message, 200)}`;
+      return false;
     } finally {
       try { fs.unlinkSync(temporary); } catch (error) { if (error.code !== "ENOENT") { /* Preserve unrelated state. */ } }
     }
@@ -165,7 +365,9 @@ class SongJobs {
     this._event(job);
   }
 
-  enqueue(chart) {
+  enqueue(chart) { return this._enqueue(chart); }
+
+  _enqueue(chart, retryOf) {
     if (this.disposed) throw new Error("Song browser is closed.");
     const id = chartId(chart);
     const existing = this.jobs.find((job) => job.chartId === id && ACTIVE.has(job.state));
@@ -174,12 +376,14 @@ class SongJobs {
     const now = Date.now();
     const job = {
       id: crypto.randomUUID(), chartId: id, title: text(chart.title), artist: text(chart.artist), creator: text(chart.creator),
+      host: SUPPORTED_HOSTS.has(chart.host) ? chart.host : "unknown", supported: chart.supported === true && SUPPORTED_HOSTS.has(chart.host),
       state: "queued", progress: 0, message: "Waiting in queue.", error: "", createdAt: now, updatedAt: now,
-      chart: { ...chart }, controller: new AbortController(), process: null,
+      chart: { id, title: text(chart.title), artist: text(chart.artist), creator: text(chart.creator), host: chart.host, supported: chart.supported === true }, controller: new AbortController(), process: null,
+      retryOf,
     };
     job.done = new Promise((resolve) => { job.resolveDone = resolve; });
     this.jobs.push(job);
-    try { this._persist(); } catch (error) { this.jobs.splice(this.jobs.indexOf(job), 1); throw error; }
+    this._persist();
     this._event(job);
     queueMicrotask(() => this._start());
     return this._public(job);
@@ -188,8 +392,7 @@ class SongJobs {
   setOutputDir(directory) {
     if (this.disposed) throw new Error("Song browser is closed.");
     if (this.jobs.some((job) => ACTIVE.has(job.state))) throw new Error("Finish or cancel queued songs before changing the output folder.");
-    if (typeof directory !== "string" || !directory.trim()) throw new Error("Choose an output folder.");
-    this.outputDir = path.resolve(directory);
+    this.outputDir = this.validateOutputDir(directory);
     return this.outputDir;
   }
 
@@ -284,12 +487,17 @@ class SongJobs {
         await this._work(job, directory);
       } catch (error) {
         const cancelled = job.controller.signal.aborted;
-        Object.assign(job, {
+        Object.assign(job, job.committed ? {
+          state: "completed", progress: 100, updatedAt: Date.now(),
+          message: "FeedPak saved successfully.", error: "", warning: `The FeedPak was saved, but final bookkeeping needs attention. ${text(error.message || error, 200)}`,
+        } : {
           state: cancelled ? "cancelled" : "failed", progress: 0, updatedAt: Date.now(),
           message: cancelled ? "Cancelled." : "Could not add this song.",
           error: cancelled ? "" : text(error.message || error, 500),
         });
-        try { this._persist(); } catch { /* Keep the failure visible; recovery preserves old history. */ }
+        if (cancelled || job.committed) this._deleteCache(job);
+        if (!job.committed) { try { fs.unlinkSync(this._receiptPath(job)); } catch { /* No output was committed by this attempt. */ } }
+        this._persist();
         this._event(job);
       } finally {
         if (owned) await this._cleanup(directory);
@@ -314,9 +522,20 @@ class SongJobs {
   }
 
   async _work(job, directory) {
+    this.validateOutputDir();
+    check(job);
+    let input;
+    if (job.retryOf) {
+      this._set(job, "inspecting", { message: "Checking the retained PSARC.", progress: 0 });
+      const cached = await this.getCachedInput(job.retryOf);
+      check(job);
+      input = path.join(directory, "source.psarc");
+      // A synchronous exclusive copy closes the gap between lookup and eviction.
+      fs.copyFileSync(cached, input, fs.constants.COPYFILE_EXCL);
+    } else {
     this._set(job, "downloading", { message: "Downloading selected chart.", progress: 0 });
     const canUpdate = () => !job.controller.signal.aborted && ["downloading", "needs_attention"].includes(job.state);
-    const input = await this.download(job.chart, {
+    input = await this.download(job.chart, {
       jobId: job.id, directory, destination: path.join(directory, "source.psarc"), signal: job.controller.signal,
       onProgress: (value) => {
         if (!canUpdate() || !Number.isFinite(Number(value))) return;
@@ -328,6 +547,7 @@ class SongJobs {
         this._set(job, message ? "needs_attention" : "downloading", { message: message ? text(typeof message === "string" ? message : message.message, 300) || "Complete the step in the song browser to continue." : "Downloading selected chart." });
       },
     });
+    }
     check(job);
     if (typeof input !== "string" || !inside(directory, path.resolve(input))) throw new Error("The downloaded file was outside its job folder.");
     const stat = await fsp.lstat(input);
@@ -344,6 +564,9 @@ class SongJobs {
     const inspection = jsonResult(await this._converter(job, ["--inspect-json", input]), "Song inspection");
     const preview = inspection.preview;
     if (!inspection.ok || !preview || !Array.isArray(preview.arrangements) || !preview.arrangements.length) throw new Error("The downloaded PSARC has no readable playable arrangements.");
+    try { await this._retain(job, input); }
+    catch (error) { job.warning = `A recovery copy of this PSARC could not be retained. ${text(error.message, 200)}`; }
+    check(job);
     if (preview.is_multi_song || Number(preview.song_count) > 1) throw new Error("This download contains multiple songs. Open it in FeedForge to review and convert the songs separately.");
     for (const key of ["title", "artist"]) {
       if (!identity(preview[key]) || (identity(job[key]) && identity(job[key]) !== identity(preview[key]))) {
@@ -355,7 +578,17 @@ class SongJobs {
     const duplicate = await this._duplicate(job);
     if (duplicate) {
       check(job);
-      this._set(job, "completed", { progress: 100, outputPath: duplicate.outputPath, outputHash: duplicate.outputHash, duplicateOf: duplicate.id, message: "This file was already converted.", error: "" });
+      job.outputHash = duplicate.outputHash;
+      const currentRoot = await fsp.realpath(this.outputDir);
+      const previousRoot = await fsp.realpath(path.dirname(duplicate.outputPath));
+      let output = duplicate.outputPath;
+      if (currentRoot !== previousRoot) output = await this._publish(job, duplicate.outputPath);
+      else {
+        this._writeReceipt(job, output);
+        job.outputPath = output; job.committed = true;
+      }
+      this._deleteCache(job);
+      this._set(job, "completed", { progress: 100, outputPath: output, outputHash: duplicate.outputHash, duplicateOf: duplicate.id, message: currentRoot === previousRoot ? "This file was already converted in the selected folder." : "Existing FeedPak copied into the selected folder.", error: "" });
       return;
     }
     const staging = path.join(directory, "converted.feedpak");
@@ -374,11 +607,18 @@ class SongJobs {
     job.outputHash = await hashFile(staging, job.controller.signal);
     const output = await this._publish(job, staging);
     // Publication is the commit point. Cancellation after this point leaves the completed file.
-    this._set(job, "completed", { outputPath: output, progress: 100, message: "Ready for FeedBack.", error: "" });
+    this._deleteCache(job);
+    this._set(job, "completed", { outputPath: output, progress: 100, message: "FeedPak ready.", error: "" });
   }
 
   async _duplicate(job) {
-    for (const previous of [...this.jobs].reverse()) {
+    const currentRoot = await fsp.realpath(this.outputDir);
+    const candidates = [...this.jobs].reverse();
+    candidates.sort((a, b) => {
+      const selected = (item) => { try { return fs.realpathSync(path.dirname(item.outputPath)) === currentRoot ? 1 : 0; } catch { return 0; } };
+      return selected(b) - selected(a);
+    });
+    for (const previous of candidates) {
       if (previous === job || previous.state !== "completed" || previous.sourceHash !== job.sourceHash || !previous.outputPath || !HASH.test(previous.outputHash || "")) continue;
       try {
         const stat = await fsp.lstat(previous.outputPath);
@@ -402,6 +642,7 @@ class SongJobs {
       await handle.close();
       await fsp.copyFile(staging, temporary);
       check(job);
+      if (await hashFile(temporary, job.controller.signal) !== job.outputHash) throw new Error("The FeedPak changed while it was being saved. Retry the job.");
       const name = outputName(job.artist, job.title, job.chartId);
       const stem = name.slice(0, -".feedpak".length);
       for (let index = 0; index < 1000; index++) {
@@ -410,8 +651,9 @@ class SongJobs {
         try {
           // link is atomic and fails on an existing destination, unlike rename or copyFile.
           // Keep creation and the commit marker in one turn so cancellation is unambiguous.
+          this._writeReceipt(job, target);
           fs.linkSync(temporary, target);
-          job.committed = true;
+          job.outputPath = target; job.committed = true;
           return target;
         } catch (error) {
           if (error.code === "EEXIST") continue;
