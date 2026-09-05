@@ -92,6 +92,7 @@ class PsarcPreview:
     is_multi_song: bool = False
     preview_scope: str = "package"
     warnings: list[str] = field(default_factory=list)
+    source_platforms: list[str] = field(default_factory=list)
 
 
 def inspect_psarc(input_psarc: Path, *, cover_dir: Path | None = None) -> PsarcPreview:
@@ -109,6 +110,7 @@ def inspect_psarc(input_psarc: Path, *, cover_dir: Path | None = None) -> PsarcP
     lyric_count = 0
     first_song: Any | None = None
     used_ids: set[str] = set()
+    source_platforms: set[str] = set()
 
     for source_path, data in _find_sng_entries(content):
         if not data:
@@ -127,6 +129,12 @@ def inspect_psarc(input_psarc: Path, *, cover_dir: Path | None = None) -> PsarcP
 
         if not getattr(song, "levels", None):
             continue
+
+        normalized_source = source_path.replace("\\", "/").lower()
+        if normalized_source.startswith("songs/bin/generic/"):
+            source_platforms.add("pc")
+        elif normalized_source.startswith("songs/bin/macos/"):
+            source_platforms.add("mac")
 
         if first_song is None:
             first_song = song
@@ -180,6 +188,7 @@ def inspect_psarc(input_psarc: Path, *, cover_dir: Path | None = None) -> PsarcP
         is_multi_song=song_count > 1,
         preview_scope="first_song" if song_count > 1 else "package",
         warnings=warnings,
+        source_platforms=sorted(source_platforms),
     )
 
 

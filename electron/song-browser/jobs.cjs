@@ -7,7 +7,7 @@ const crypto = require("node:crypto");
 const { execFile } = require("node:child_process");
 
 const ACTIVE = new Set(["queued", "downloading", "needs_attention", "inspecting", "converting", "validating"]);
-const TERMINAL = new Set(["completed", "failed", "cancelled"]);
+const TERMINAL = new Set(["completed", "failed", "cancelled", "parked"]);
 const MAX_HISTORY = 100;
 const MAX_QUEUE = 30;
 const MAX_INPUT_BYTES = 512 * 1024 * 1024;
@@ -15,7 +15,7 @@ const MAX_JSON_BYTES = 4 * 1024 * 1024;
 const MAX_CACHE_FILES = 3;
 const MAX_CACHE_BYTES = 1024 * 1024 * 1024;
 const CACHE_LIFETIME_MS = 7 * 24 * 60 * 60 * 1000;
-const SUPPORTED_HOSTS = new Set(["dropbox", "google-drive", "mediafire"]);
+const SUPPORTED_HOSTS = new Set(Object.values(require('./hosts.cjs').HOSTS).filter((host) => host.supported).map((host) => host.id));
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 const HASH = /^[a-f0-9]{64}$/;
 
@@ -87,9 +87,17 @@ function jsonResult(result, label) {
   catch { throw new Error(`${label} did not return valid JSON.`); }
 }
 
+function selectionForChart(chart, selection = {}) {
+  const { parseParts } = require('./catalogue.cjs');
+  const requested = selection.requiredParts || selection.parts || [];
+  const available = parseParts(chart.parts).length ? parseParts(chart.parts) : (chart.arrangements || []).map((arr) => require('./file-selection.cjs').arrangementPart(arr));
+  const parts = available.length ? requested.filter((part) => available.includes(part)) : requested;
+  return { ...selection, requiredParts: parts, parts, strictPlatform: true };
+}
+
 /** A serial, local queue. The downloader owns the browser session, never this class. */
 class SongJobs {
-  constructor({ root, outputDir, download, runConverter, emit = () => {} }) {
+  constructor({ root, outputDir, download, runConverter, emit = () => {}, onCompleted = () => {} }) {
     if (!root || !outputDir || typeof download !== "function" || typeof runConverter !== "function") {
       throw new TypeError("SongJobs needs root, outputDir, download, and runConverter.");
     }
@@ -101,6 +109,7 @@ class SongJobs {
     this.download = download;
     this.runConverter = runConverter;
     this.emit = emit;
+    this.onCompleted = onCompleted;
     this.ledger = path.join(this.root, "jobs.json");
     this.cacheDir = path.join(this.root, "cache");
     this.persistenceWarning = "";
@@ -115,11 +124,11 @@ class SongJobs {
 
   _public(job) {
     const result = {};
-    for (const key of ["id", "chartId", "title", "artist", "creator", "host", "state", "progress", "message", "error", "outputPath", "createdAt", "updatedAt", "sourceHash", "outputHash", "duplicateOf"]) {
+    for (const key of ["id", "chartId", "title", "artist", "creator", "host", "state", "progress", "message", "error", "outputPath", "createdAt", "updatedAt", "sourceHash", "outputHash", "duplicateOf", "version", "chartUpdated", "parts", "tuning", "selection", "coverage", "batchId", "itemId", "fileCandidates", "sessionWide"]) {
       if (job[key] !== undefined) result[key] = job[key];
     }
     result.hasCachedInput = Boolean(job.cacheHash && job.cacheAt > Date.now() - CACHE_LIFETIME_MS);
-    result.canRetry = ["failed", "cancelled"].includes(job.state) && (result.hasCachedInput || job.supported === true);
+    result.canRetry = ["failed", "cancelled", "parked"].includes(job.state) && !job.batchId && (result.hasCachedInput || job.supported === true);
     result.outputAvailable = false;
     result.inOutputDir = false;
     if (job.state === "completed" && job.outputPath) {
@@ -176,6 +185,7 @@ class SongJobs {
           this.jobs.push(job);
         }
         Object.assign(job, { state: "completed", progress: 100, outputPath: row.outputPath,
+          ...this._metadata(row),
           outputHash: row.outputHash, sourceHash: row.sourceHash, message: "Saved FeedPak recovered after restart.", error: "", updatedAt: Date.now() });
         this._deleteCache(job);
       } catch { /* Missing, unrelated or modified outputs must never be marked completed. */ }
@@ -267,7 +277,7 @@ class SongJobs {
     const existing = this.jobs.find((item) => item.chartId === job.chartId && ACTIVE.has(item.state));
     if (existing) return this._public(existing);
     const retryOf = job.cacheHash && job.cacheAt > Date.now() - CACHE_LIFETIME_MS ? id : undefined;
-    return this._enqueue({ id: job.chartId, title: job.title, artist: job.artist, creator: job.creator, host: job.host, supported: job.supported }, retryOf);
+    return this._enqueue({ ...this._public(job), id: job.chartId, supported: job.supported }, retryOf);
   }
 
   validateOutputDir(directory = this.outputDir) {
@@ -317,6 +327,7 @@ class SongJobs {
         message: interrupted ? "Interrupted when the app closed." : text(row.message, 300),
         error: interrupted ? "The previous job was interrupted. Retry this job or choose the chart again." : text(row.error, 500),
         createdAt: Number(row.createdAt) || Date.now(), updatedAt: interrupted ? Date.now() : Number(row.updatedAt) || Date.now(),
+        ...this._metadata(row),
       };
       if (HASH.test(row.sourceHash || "")) job.sourceHash = row.sourceHash;
       if (HASH.test(row.outputHash || "")) job.outputHash = row.outputHash;
@@ -347,7 +358,8 @@ class SongJobs {
       this.persistenceWarning = "";
       for (const job of this.jobs) {
         if (job.state === "completed") {
-          try { fs.unlinkSync(this._receiptPath(job)); } catch { /* A durable receipt can safely be reconciled again. */ }
+          try { this.onCompleted(this._public(job)); try { fs.unlinkSync(this._receiptPath(job)); } catch (error) { if (error.code !== 'ENOENT') throw error; } }
+          catch { job.warning = "The file is saved; its library record will be recovered on restart."; }
         }
       }
       return true;
@@ -371,7 +383,48 @@ class SongJobs {
 
   enqueue(chart) { return this._enqueue(chart); }
 
-  _enqueue(chart, retryOf) {
+  _metadata(chart) {
+    const { normalizeRequirements } = require('./file-selection.cjs');
+    const selection = chart.selection ? normalizeRequirements(chart.selection) : undefined;
+    if (selection && chart.selection.choice && typeof chart.selection.choice.label === 'string') {
+      selection.choice = { label: text(chart.selection.choice.label, 240), platform: ['pc', 'mac', 'unknown'].includes(chart.selection.choice.platform) ? chart.selection.choice.platform : 'unknown' };
+    }
+    const metadata = { version: text(chart.version), chartUpdated: text(chart.chartUpdated ?? chart.updated),
+      tuning: text(chart.tuning), parts: Array.isArray(chart.parts) ? chart.parts.slice(0, 8).map((part) => text(part, 32)) : text(chart.parts),
+      selection, batchId: UUID.test(chart.batchId || '') ? chart.batchId : undefined,
+      itemId: typeof chart.itemId === 'string' && /^[a-f0-9-]{36}:[1-9][0-9]{0,11}$/.test(chart.itemId) ? chart.itemId : undefined,
+      coverage: chart.coverage && Array.isArray(chart.coverage.arrangements) ? require('./imports.cjs').coverageOf(chart.coverage) : undefined };
+    return Object.fromEntries(Object.entries(metadata).filter(([, value]) => value !== undefined && value !== '' && (!Array.isArray(value) || value.length)));
+  }
+
+  async run(chart, { signal, batchId, itemId, outputDir, selection, interactive = false } = {}) {
+    selection = selectionForChart(chart, selection);
+    if (signal?.aborted) return { status: 'cancelled' };
+    const duplicate = this.jobs.find((job) => job.chartId === String(chart.id) && ACTIVE.has(job.state));
+    if (duplicate) {
+      let release;
+      const stopped = new Promise((resolve) => { release = resolve; });
+      signal?.addEventListener('abort', release, { once: true });
+      try { await Promise.race([duplicate.done, stopped]); }
+      finally { signal?.removeEventListener('abort', release); }
+    }
+    if (signal?.aborted) return { status: 'cancelled' };
+    const previous = itemId && [...this.jobs].reverse().find((job) => job.itemId === itemId && job.cacheHash && job.cacheAt > Date.now() - CACHE_LIFETIME_MS
+      && (!selection.choice || (job.selection?.choice?.label === selection.choice.label && job.selection?.choice?.platform === selection.choice.platform)));
+    const created = this._enqueue({ ...chart, selection, batchId, itemId }, previous?.id, { outputDir, parkOnAttention: !interactive, interactive });
+    const job = this.jobs.find((row) => row.id === created.id);
+    const cancel = () => { void this.cancel(job.id); };
+    signal?.addEventListener('abort', cancel, { once: true });
+    try {
+      if (signal?.aborted) cancel();
+      await job.done;
+      const result = this._public(job);
+      return { ...result, jobId: job.id, status: job.state === 'parked' ? 'needs_attention' : job.state,
+        candidates: job.fileCandidates, message: job.error || job.message };
+    } finally { signal?.removeEventListener('abort', cancel); }
+  }
+
+  _enqueue(chart, retryOf, options = {}) {
     if (this.disposed) throw new Error("Song browser is closed.");
     const id = chartId(chart);
     const existing = this.jobs.find((job) => job.chartId === id && ACTIVE.has(job.state));
@@ -382,12 +435,16 @@ class SongJobs {
       id: crypto.randomUUID(), chartId: id, title: text(chart.title), artist: text(chart.artist), creator: text(chart.creator),
       host: SUPPORTED_HOSTS.has(chart.host) ? chart.host : "unknown", supported: chart.supported === true && SUPPORTED_HOSTS.has(chart.host),
       state: "queued", progress: 0, message: "Waiting in queue.", error: "", createdAt: now, updatedAt: now,
-      chart: { id, title: text(chart.title), artist: text(chart.artist), creator: text(chart.creator), host: chart.host, supported: chart.supported === true }, controller: new AbortController(), process: null,
+      ...this._metadata(chart), outputDir: options.outputDir ? this.validateOutputDir(options.outputDir) : this.outputDir,
+      parkOnAttention: options.parkOnAttention === true,
+      interactive: options.interactive === true,
+      controller: new AbortController(), process: null,
       retryOf,
     };
+    job.chart = { id, title: job.title, artist: job.artist, creator: job.creator, host: job.host, supported: job.supported, ...this._metadata(chart) };
     job.done = new Promise((resolve) => { job.resolveDone = resolve; });
     this.jobs.push(job);
-    this._persist();
+    if (!this._persist()) { this.jobs.pop(); throw new Error('The song queue could not be saved. No download was started.'); }
     this._event(job);
     queueMicrotask(() => this._start());
     return this._public(job);
@@ -495,9 +552,10 @@ class SongJobs {
           state: "completed", progress: 100, updatedAt: Date.now(),
           message: "FeedPak saved successfully.", error: "", warning: `The FeedPak was saved, but final bookkeeping needs attention. ${text(error.message || error, 200)}`,
         } : {
-          state: cancelled ? "cancelled" : "failed", progress: 0, updatedAt: Date.now(),
+          state: cancelled ? "cancelled" : error.code === 'SONG_ATTENTION' ? 'parked' : "failed", progress: 0, updatedAt: Date.now(),
           message: cancelled ? "Cancelled." : "Could not add this song.",
           error: cancelled ? "" : text(error.message || error, 500),
+          sessionWide: error.sessionWide === true,
         });
         if (cancelled || job.committed) this._deleteCache(job);
         if (!job.committed) { try { fs.unlinkSync(this._receiptPath(job)); } catch { /* No output was committed by this attempt. */ } }
@@ -526,7 +584,7 @@ class SongJobs {
   }
 
   async _work(job, directory) {
-    this.validateOutputDir();
+    this.validateOutputDir(job.outputDir);
     check(job);
     let input;
     if (job.retryOf) {
@@ -541,6 +599,8 @@ class SongJobs {
     const canUpdate = () => !job.controller.signal.aborted && ["downloading", "needs_attention"].includes(job.state);
     input = await this.download(job.chart, {
       jobId: job.id, directory, destination: path.join(directory, "source.psarc"), signal: job.controller.signal,
+      parkOnAttention: job.parkOnAttention,
+      interactive: job.interactive,
       onProgress: (value) => {
         if (!canUpdate() || !Number.isFinite(Number(value))) return;
         const progress = Math.floor(Math.max(0, Math.min(100, Number(value))));
@@ -548,6 +608,8 @@ class SongJobs {
       },
       onAttention: (message) => {
         if (!canUpdate()) return;
+        if (!message) delete job.fileCandidates;
+        if (Array.isArray(message?.candidates)) job.fileCandidates = message.candidates.slice(0, 100).map((item) => ({ id: text(item.id, 100), label: text(item.label, 240), platform: text(item.platform, 16) }));
         this._set(job, message ? "needs_attention" : "downloading", { message: message ? text(typeof message === "string" ? message : message.message, 300) || "Complete the step in the song browser to continue." : "Downloading selected chart." });
       },
     });
@@ -568,6 +630,9 @@ class SongJobs {
     const inspection = jsonResult(await this._converter(job, ["--inspect-json", input]), "Song inspection");
     const preview = inspection.preview;
     if (!inspection.ok || !preview || !Array.isArray(preview.arrangements) || !preview.arrangements.length) throw new Error("The downloaded PSARC has no readable playable arrangements.");
+    if (preview.source_platforms?.includes('mac') && !preview.source_platforms.includes('pc') && !job.selection?.allowMacFallback) {
+      const error = new Error('The file contains Mac arrangements. Choose the PC PSARC variant.'); error.code = 'SONG_ATTENTION'; throw error;
+    }
     try { await this._retain(job, input); }
     catch (error) { job.warning = `A recovery copy of this PSARC could not be retained. ${text(error.message, 200)}`; }
     check(job);
@@ -579,11 +644,13 @@ class SongJobs {
     }
     job.title = text(preview.title);
     job.artist = text(preview.artist);
+    if (job.selection) this._checkRequirements(preview, job.selection);
+    job.coverage = this._metadata({ coverage: preview }).coverage;
     const duplicate = await this._duplicate(job);
     if (duplicate) {
       check(job);
       job.outputHash = duplicate.outputHash;
-      const currentRoot = await fsp.realpath(this.outputDir);
+      const currentRoot = await fsp.realpath(job.outputDir);
       const previousRoot = await fsp.realpath(path.dirname(duplicate.outputPath));
       let output = duplicate.outputPath;
       if (currentRoot !== previousRoot) output = await this._publish(job, duplicate.outputPath);
@@ -608,6 +675,11 @@ class SongJobs {
     if (validation.ok !== true || validation.results?.length !== 1 || entry?.validation?.ok !== true || (entry.validation.errors || []).length || typeof entry.input_path !== "string" || path.resolve(entry.input_path) !== staging) {
       throw new Error("The converted FeedPak did not pass independent validation.");
     }
+    if (job.selection) {
+      const converted = jsonResult(await this._converter(job, ['--inspect-json', staging]), 'Converted arrangement inspection');
+      this._checkRequirements(converted.preview, { ...job.selection, platform: 'any', strictPlatform: false });
+      job.coverage = this._metadata({ coverage: converted.preview }).coverage;
+    }
     job.outputHash = await hashFile(staging, job.controller.signal);
     const output = await this._publish(job, staging);
     // Publication is the commit point. Cancellation after this point leaves the completed file.
@@ -616,7 +688,7 @@ class SongJobs {
   }
 
   async _duplicate(job) {
-    const currentRoot = await fsp.realpath(this.outputDir);
+    const currentRoot = await fsp.realpath(job.outputDir);
     const candidates = [...this.jobs].reverse();
     candidates.sort((a, b) => {
       const selected = (item) => { try { return fs.realpathSync.native(path.dirname(item.outputPath)) === currentRoot ? 1 : 0; } catch { return 0; } };
@@ -624,6 +696,7 @@ class SongJobs {
     });
     for (const previous of candidates) {
       if (previous === job || previous.state !== "completed" || previous.sourceHash !== job.sourceHash || !previous.outputPath || !HASH.test(previous.outputHash || "")) continue;
+      if (job.selection && (!previous.coverage || !require('./file-selection.cjs').validateRequirements(previous.coverage, { ...job.selection, platform: 'any' }).ok)) continue;
       try {
         const stat = await fsp.lstat(previous.outputPath);
         if (!stat.isFile() || stat.isSymbolicLink()) continue;
@@ -635,8 +708,8 @@ class SongJobs {
 
   async _publish(job, staging) {
     check(job);
-    await fsp.mkdir(this.outputDir, { recursive: true });
-    const root = await fsp.realpath(this.outputDir);
+    await fsp.mkdir(job.outputDir, { recursive: true });
+    const root = await fsp.realpath(job.outputDir);
     const temporary = path.join(root, `.feedforge-${job.id}-${crypto.randomUUID()}.part`);
     let ownsTemporary = false;
     try {
@@ -677,6 +750,11 @@ class SongJobs {
     await Promise.all(this.jobs.filter((job) => ACTIVE.has(job.state)).map((job) => this.cancel(job.id)));
     if (this.draining) await this.draining;
   }
+
+  _checkRequirements(preview, selection) {
+    const result = require('./file-selection.cjs').validateRequirements(preview, selection);
+    if (!result.ok) { const error = new Error(result.errors.join(' ')); error.code = 'SONG_ATTENTION'; throw error; }
+  }
 }
 
-module.exports = { SongJobs };
+module.exports = { SongJobs, selectionForChart };

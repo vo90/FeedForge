@@ -18,7 +18,7 @@ if ($buildPath.Equals($sourceRoot, [StringComparison]::OrdinalIgnoreCase) -or
     throw 'Choose a dedicated build folder outside the source checkout and filesystem root.'
 }
 $branchName = (& git -C $sourceRoot branch --show-current).Trim()
-if ($LASTEXITCODE -ne 0 -or $branchName -ne 'feat/customsforge-song-browser') { throw 'Build from the feat/customsforge-song-browser branch.' }
+if ($LASTEXITCODE -ne 0 -or $branchName -notin @('feat/customsforge-song-browser', 'feat/customsforge-browser-expansion')) { throw 'Build from an approved song-browser development branch.' }
 & git -C $sourceRoot merge-base --is-ancestor 804aa8c91c0cc26809ab8ef97093c0b5d7fa042c HEAD
 if ($LASTEXITCODE -ne 0) { throw 'The expected FeedForge baseline is not an ancestor of this build.' }
 $revision = (& git -C $sourceRoot rev-parse HEAD).Trim()

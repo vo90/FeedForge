@@ -33,6 +33,13 @@ function rendererSnapshot() {
     results, jobs,
     alerts: [...document.querySelectorAll('.song-browser [role="alert"]')].map((element) => clean(element.textContent)),
     pendingCount: clean(document.querySelector('.sb-count')?.textContent),
+    sort: document.querySelector('select[aria-label="Sort results"]')?.value,
+    direction: document.querySelector('select[aria-label="Sort direction"]')?.value,
+    exactArtist: document.querySelector('input[aria-label="Exact artist"]')?.value,
+    pagination: clean(document.querySelector('.sb-pagination span')?.textContent),
+    resultCount: clean(document.querySelector('.sb-results .sb-section-heading [role="status"]')?.textContent),
+    selectionCount: clean(document.querySelector('.sb-batch-prepare p')?.textContent),
+    batches: [...document.querySelectorAll('.sb-batch')].map((batch) => ({ summary: clean(batch.querySelector('summary')?.textContent), status: [...batch.querySelectorAll('[role="status"]')].map((element) => clean(element.textContent)), buttons: [...batch.querySelectorAll('button')].map(button) })),
   };
 }
 
@@ -57,6 +64,22 @@ function rendererAction(action) {
     return;
   }
   if (action.kind === 'navigate') return clickButton(document.querySelector('.side-nav'), action.label);
+  if (action.kind === 'control') {
+    const input = [...document.querySelectorAll('.sb-search-form input, .sb-search-form select')].find((element) => element.getAttribute('aria-label') === action.label);
+    if (!input) throw new Error('The requested search control is absent: ' + action.label);
+    const prototype = input.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(prototype, 'value').set.call(input, action.value);
+    input.dispatchEvent(new Event(input.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
+    return;
+  }
+  if (action.kind === 'page') return clickButton(document.querySelector('.sb-pagination'), action.label);
+  if (action.kind === 'select') {
+    const input = [...document.querySelectorAll('.sb-result input[type="checkbox"]')].find((element) => element.getAttribute('aria-label') === action.label);
+    if (!input) throw new Error('The requested result selection is absent: ' + action.label);
+    input.click(); return;
+  }
+  if (action.kind === 'prepare') return clickButton(document.querySelector('.sb-batch-prepare'), action.label);
+  if (action.kind === 'batch') return clickButton(document.querySelector('.sb-batch'), action.label);
   if (action.kind === 'search') return clickButton(document.querySelector('.sb-search-form'), 'Search');
   if (action.kind === 'account') return clickButton(document.querySelector('.sb-account'), action.label);
   if (action.kind === 'result') {
@@ -264,6 +287,55 @@ async function runUiScenarios({ win, fixture, test }) {
     assert.ok(recovered.results.length > 0, 'A successful retry must restore the song results.');
     assert.deepEqual(recovered.alerts, []);
     evidence.connectionRecovery = { failedLoad: 'Search unavailable', confirmedLogin: 'Signed out', challenge: 'Browser check needed', recovered: 'Connected', signInInvokedForError: false };
+  });
+  await test('production sorting spans pages and exact artist filters the complete search', async () => {
+    await action({ kind: 'query', value: 'catalogue' });
+    await action({ kind: 'search' });
+    const initial = await until((state) => !state.pending && state.query === 'catalogue' && state.resultCount === '7 charts', 'Seven-chart paginated catalogue');
+    assert.deepEqual(initial.results.map((row) => row.title), ['Fixture Beneath', 'Fixture Beneath']);
+    await action({ kind: 'control', label: 'Sort results', value: 'downloads' });
+    await action({ kind: 'control', label: 'Sort direction', value: 'desc' });
+    await action({ kind: 'search' });
+    const sorted = await until((state) => !state.pending && state.results[0]?.title === fast.title, 'Downloads descending across the catalogue');
+    assert.deepEqual(sorted.results.map((row) => row.title), [fast.title, retry.title]);
+    await action({ kind: 'select', label: `Select ${fast.title} chart ${fast.id}` });
+    await action({ kind: 'page', label: 'Next' });
+    const next = await until((state) => !state.pending && state.pagination === 'Page 2', 'Second page with the selected sort');
+    assert.deepEqual(next.results.map((row) => row.title), [slow.title, 'Fixture Unsupported']);
+    assert.match(next.selectionCount, /^1 charts selected/);
+    await action({ kind: 'control', label: 'Exact artist', value: 'Different Artist' });
+    await action({ kind: 'search' });
+    const filtered = await until((state) => !state.pending && state.resultCount === '1 chart', 'Exact artist across all four remote pages');
+    assert.equal(filtered.results[0].title, 'Fixture Other Artist');
+    assert.equal(filtered.pagination, 'Page 1');
+    assert.match(filtered.selectionCount, /^0 charts selected/);
+    await navigate('Convert'); await navigate('Find songs');
+    const retained = await read();
+    assert.equal(retained.sort, 'downloads'); assert.equal(retained.direction, 'desc'); assert.equal(retained.exactArtist, 'Different Artist');
+    evidence.catalogue = { sourceCharts: 7, remotePageSize: 2, sortedFirstPage: sorted.results.map((row) => row.title), sortedSecondPage: next.results.map((row) => row.title), exactArtistMatch: filtered.results[0].title, selectionScopeReset: true };
+  });
+
+  await test('production batch review runs selected songs and skips a verified existing import', async () => {
+    await action({ kind: 'control', label: 'Exact artist', value: '' });
+    await action({ kind: 'query', value: 'fixture' });
+    await action({ kind: 'search' });
+    await until((state) => !state.pending && state.resultCount === '4 charts', 'Unfiltered fixture before batch selection');
+    await action({ kind: 'select', label: `Select ${fast.title} chart ${fast.id}` });
+    await action({ kind: 'select', label: `Select ${retry.title} chart ${retry.id}` });
+    const before = await fixture.counts();
+    await action({ kind: 'prepare', label: 'Prepare selected' });
+    const draft = await until((state) => state.batches[0]?.summary.startsWith('Review selections'), 'Reviewable two-chart batch');
+    assert.match(draft.batches[0].summary, /2 charts/);
+    const prepared = await fixture.counts();
+    assert.deepEqual(prepared.downloads, before.downloads, 'Preparing alternatives cannot activate a source download.');
+    await action({ kind: 'batch', label: 'Start batch (2 charts)' });
+    const finished = await until((state) => state.batches[0]?.summary.startsWith('Finished'), 'Serial batch completion');
+    assert.ok(finished.batches[0].status.some((status) => status.includes('1 converted') && status.includes('1 already available')));
+    const after = await fixture.counts();
+    assert.equal(countFor(after, 'downloads', fast), countFor(before, 'downloads', fast), 'Existing valid output is skipped before transfer.');
+    assert.equal(countFor(after, 'downloads', retry), countFor(before, 'downloads', retry) + 1, 'Missing output is downloaded again.');
+    assert.equal(countFor(after, 'conversions', retry), countFor(before, 'conversions', retry) + 1);
+    evidence.batch = { selectedCharts: 2, converted: 1, alreadyAvailable: 1, sourceDownloadsDuringPreparation: 0 };
   });
   return { ...evidence, durationMs: Date.now() - started };
 }

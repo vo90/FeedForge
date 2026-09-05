@@ -50,7 +50,7 @@ function fixture(t) {
     if (name === './feedback.cjs') return { normalizeEndpoint,
       inspectFeedback: async (url) => { calls.inspections.push(url); return remote.inspect(url); },
       refreshFeedback: async (url, target) => { calls.refreshes.push({ url, target }); return remote.refresh(url, target); } };
-    return require(name);
+    return require(name.startsWith('./') ? path.join(__dirname, '../electron/song-browser', name) : name);
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../electron/song-browser/index.cjs'), 'utf8'),
     { module, exports: module.exports, require: localRequire, process, console, setTimeout, clearTimeout });
@@ -69,7 +69,7 @@ function fixture(t) {
 
 test('every recovery, diagnostics and FeedBack IPC rejects foreign senders and subframes before initialization', async (t) => {
   const f = fixture(t);
-  for (const name of ['retry', 'clearCache', 'openCached', 'exportDiagnostics', 'connectFeedback', 'setAutoRefresh', 'useFeedbackFolder', 'refreshFeedback']) {
+  for (const name of ['retry', 'clearCache', 'openCached', 'exportDiagnostics', 'connectFeedback', 'setAutoRefresh', 'useFeedbackFolder', 'refreshFeedback', 'prepareBatch', 'cancelPreparation', 'chooseBatch', 'startBatch', 'pauseBatch', 'resumeBatch', 'resolveBatchItem', 'cancelBatch', 'chooseBatchFile', 'removeBatch', 'chooseFile']) {
     await assert.rejects(f.call(name, { id: 'fixture', url: 'http://127.0.0.1:8000', enabled: true }, { sender: {}, senderFrame: {} }), /requests must come from FeedForge/);
     await assert.rejects(f.call(name, {}, { sender: f.trusted.sender, senderFrame: {} }), /requests must come from FeedForge/);
   }

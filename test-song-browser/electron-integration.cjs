@@ -62,15 +62,23 @@ const deadline = async (promise, ms = 20000) => {
 const until = async (condition) => { for (let i = 0; i < 100; i++) { if (condition()) return; await sleep(50); } throw new Error('Fixture condition timed out.'); };
 const psarc = Buffer.concat([Buffer.from('PSAR'), Buffer.alloc(65532, 7)]);
 const html = (body) => new Response('<!doctype html><html><head><meta charset="UTF-8"><title>Offline fixture</title></head><body>' + body + '</body></html>', { headers: { 'Content-Type': 'text/html' } });
-function searchPage(page = 1, pendingImage = false) {
-  return html(`<p>Showing ${page} to ${page} of 2 results</p><table id="cdlc-table"><thead><tr><th>Download</th><th>Artist</th><th>Title</th><th>Album</th><th>Tuning</th><th>Creator</th><th>Parts</th><th>Version</th></tr></thead><tbody><tr><td><span title="Hosted on Dropbox">File</span></td><td>Fixture Artist</td><td><a href="/cdlc/${1000 + page}">Fixture Song ${page}</a></td><td>Fixture Album</td><td>E Standard</td><td>Fixture Creator</td><td>Lead</td><td>1</td></tr></tbody></table><span aria-current="page">${page}</span><button aria-label="Previous page" ${page === 1 ? 'disabled' : ''} onclick="location.href='/?search=fixture&amp;page=1'">Previous</button><button aria-label="Next page" ${page === 2 ? 'disabled' : ''} onclick="location.href='/?search=fixture&amp;page=2'">Next</button>${pendingImage ? '<img id="pending-image" src="/fixture-pending-image.svg" alt="Controlled unfinished image">' : ''}`);
+function searchPage(page = 1, pendingImage = false, query = 'fixture', sortField = '', direction = 'asc') {
+  const rows = [{ id: '1001', title: 'Fixture Song 1', downloads: 10 }, { id: '1002', title: 'Fixture Song 2', downloads: 20 }];
+  if (sortField) rows.sort((a, b) => (sortField === 'downloads' ? a.downloads - b.downloads : a.title.localeCompare(b.title)) * (direction === 'desc' ? -1 : 1));
+  const current = rows[page - 1];
+  const action = (nextPage, field = sortField, nextDirection = direction) => {
+    const params = new URLSearchParams({ search: query, page: String(nextPage), sort: field, direction: nextDirection });
+    return ('location.href=' + JSON.stringify('/?' + params.toString())).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  };
+  const heading = (field, label) => `<th aria-sort="${sortField === field ? direction === 'asc' ? 'ascending' : 'descending' : 'none'}"><button onclick="${action(1, field, sortField === field && direction === 'asc' ? 'desc' : 'asc')}">${label}</button></th>`;
+  return html(`<p>Showing ${page} to ${page} of 2 results</p> <table id="cdlc-table"><thead><tr><th>Download</th><th>Artist</th>${heading('title', 'Title')}<th>Album</th><th>Tuning</th><th>Creator</th><th>Parts</th><th>Version</th>${heading('downloads', 'DLs')}</tr></thead><tbody><tr><td><span title="Hosted on Dropbox">File</span></td><td>Fixture Artist</td><td><a href="/cdlc/${current.id}">${current.title}</a></td><td>Fixture Album</td><td>E Standard</td><td>Fixture Creator</td><td>Lead</td><td>1</td><td>${current.downloads}</td></tr></tbody></table><span aria-current="page">${page}</span><button aria-label="Previous page" ${page === 1 ? 'disabled' : ''} onclick="${action(1)}">Previous</button><button aria-label="Next page" ${page === 2 ? 'disabled' : ''} onclick="${action(2)}">Next</button>${pendingImage ? '<img id="pending-image" src="/fixture-pending-image.svg" alt="Controlled unfinished image">' : ''}`);
 }
 function fixtureResponse(request) {
   const url = new URL(request.url);
   const key = url.hostname + url.pathname + (url.searchParams.get('dl') === '1' ? '?dl=1' : '');
   visits.set(key, (visits.get(key) || 0) + 1);
   if (url.hostname === 'ignition4.customsforge.com') {
-    if (url.pathname === '/') return searchPage(Number(url.searchParams.get('page') || 1), url.searchParams.get('search') === 'slow-resource');
+    if (url.pathname === '/') return searchPage(Number(url.searchParams.get('page') || 1), url.searchParams.get('search') === 'slow-resource', url.searchParams.get('search') || 'fixture', url.searchParams.get('sort') || '', url.searchParams.get('direction') || 'asc');
     if (url.pathname === '/fixture-pending-image.svg') {
       const body = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>');
       const stream = new ReadableStream({ start(controller) {
@@ -177,6 +185,24 @@ async function run() {
       await until(() => loadFinished);
       wc.removeListener('did-finish-load', finished);
     }
+  });
+  await test('real catalogue controls sort across pages and complete collection preserves the whole search', async () => {
+    const descending = { query: 'fixture', sort: { field: 'title', direction: 'desc' } };
+    const first = await browser.search(descending);
+    assert.equal(first.results[0].id, '1002');
+    assert.deepEqual(first.sort, descending.sort);
+    const second = await browser.search({ ...descending, page: 2 });
+    assert.equal(second.results[0].id, '1001');
+    assert.deepEqual(second.sort, descending.sort);
+    const ascending = await browser.search({ query: 'fixture', sort: { field: 'downloads', direction: 'asc' } });
+    assert.equal(ascending.results[0].downloads, 10);
+    const progress = [];
+    const collected = await browser.collect({ query: 'fixture', sort: { field: 'downloads', direction: 'desc' } }, { onProgress: (value) => progress.push(value.collected) });
+    assert.equal(collected.complete, true);
+    assert.equal(collected.sourceTotal, 2);
+    assert.deepEqual(collected.results.map((row) => row.id), ['1002', '1001']);
+    assert.deepEqual(progress, [1, 2]);
+    assert.equal(visits.get('ignition4.customsforge.com/user/collectedcdlcs/toggle/1001') || 0, 0, 'Catalogue preparation must not download or alter a collection.');
   });
   await test('real DownloadItem follows signed-button redirect and shared-file download', async () => {
     const file = await download('1001');

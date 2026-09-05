@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
-const { readSearchPage, requestChartDownload, requestSearchPage } = require('../electron/song-browser/dom.cjs');
+const { readSearchPage, requestChartDownload, requestSearchPage, requestSearchSort } = require('../electron/song-browser/dom.cjs');
 
 // A small DOM fixture, not a live site client. Element selection is limited to
 // the browser primitives the page functions need; there is no network access.
@@ -68,7 +68,7 @@ test('reads observed table metadata, icon parts and pagination without exporting
   const doc = page([row()], { extras: [el('button', { 'aria-label': 'Next page' }), el('span', { 'aria-current': 'page' }, [], '2')] });
   const result = run(readSearchPage, doc);
   assert.equal(result.status, 'ready'); assert.equal(result.page, 2); assert.equal(result.total, 288); assert.equal(result.hasNext, true);
-  assert.deepEqual(result.results[0], { id: '6420', title: 'One', artist: 'Metallica', album: '...And Justice for All', tuning: 'E STANDARD', creator: 'Nacholede', version: '1', parts: 'Lead, Bass', host: 'google-drive', supported: true, recordUrl: origin + '/cdlc/6420' });
+  assert.deepEqual(result.results[0], { id: '6420', title: 'One', artist: 'Metallica', album: '...And Justice for All', tuning: 'E STANDARD', creator: 'Nacholede', version: '1', parts: 'Lead, Bass', arrangements: ['lead', 'bass'], downloads: 100001, added: '2020-01-01', updated: '2026-08-01', year: 1988, durationSeconds: 447, reported: null, abandoned: null, host: 'google-drive', supported: true, recordUrl: origin + '/cdlc/6420' });
   assert.doesNotMatch(JSON.stringify(result), /expires|signature|toggle/);
 });
 
@@ -234,4 +234,74 @@ test('pagination rejects disabled and external controls, invalid directions and 
   assert.equal(disabled.clicked, 0); assert.equal(external.clicked, 0);
   doc.URL = 'https://evil.test';
   assert.equal(run(requestSearchPage, doc, { direction: 'next' }).status, 'layout_changed');
+});
+
+test('metadata represents missing counts, dates and status as unknown rather than zero', () => {
+  const fixture = row();
+  fixture.children[6].ownText = 'Yesterday';
+  fixture.children[7].ownText = '2026-02-31';
+  fixture.children[10].ownText = '?';
+  fixture.children[11].ownText = '3:77';
+  fixture.children[12].ownText = '1.2K';
+  const result = run(readSearchPage, page([fixture])).results[0];
+  for (const key of ['added', 'updated', 'year', 'durationSeconds', 'downloads', 'reported', 'abandoned']) assert.equal(result[key], null, key);
+  fixture.children[6].children.push(el('time', { datetime: '2026-09-01T12:00:00Z' }, [], 'Yesterday'));
+  fixture.children[12].ownText = '0';
+  fixture.attrs.title = 'This CDLC has been reported.';
+  const observed = run(readSearchPage, page([fixture])).results[0];
+  assert.equal(observed.added, '2026-09-01');
+  assert.equal(observed.downloads, 0);
+  assert.equal(observed.reported, true);
+  assert.equal(observed.abandoned, null);
+});
+
+test('sort metadata and commands use the same observed whole-table control', () => {
+  const doc = page();
+  const heading = doc.querySelectorAll('thead th')[2];
+  heading.ownText = '';
+  const button = el('button', {}, [], 'Title');
+  heading.children = [button]; button.parentElement = heading;
+  heading.attrs['aria-sort'] = 'ascending';
+  assert.deepEqual(run(readSearchPage, doc).sort, { field: 'title', direction: 'asc' });
+  assert.deepEqual(run(requestSearchSort, doc, { field: 'title', direction: 'asc' }), { status: 'applied', sort: { field: 'title', direction: 'asc' } });
+  assert.equal(button.clicked, 0);
+  assert.deepEqual(run(requestSearchSort, doc, { field: 'title', direction: 'desc' }), { status: 'clicked', sort: { field: 'title', direction: 'asc' } });
+  assert.equal(button.clicked, 1);
+  heading.attrs['aria-sort'] = 'descending';
+  assert.deepEqual(run(readSearchPage, doc).sort, { field: 'title', direction: 'desc' });
+  assert.equal(run(requestSearchSort, doc, { field: 'title', direction: 'desc' }).status, 'applied');
+  assert.equal(button.clicked, 1, 'verified order must not toggle again');
+});
+
+test('sorting refuses missing, duplicate, disabled and off-site controls', () => {
+  const doc = page();
+  assert.equal(run(requestSearchSort, doc, { field: 'title', direction: 'asc' }).status, 'layout_changed');
+  const heading = doc.querySelectorAll('thead th')[2];
+  heading.ownText = '';
+  const disabled = el('button', { disabled: '' }, [], 'Title');
+  heading.children = [disabled];
+  assert.equal(run(requestSearchSort, doc, { field: 'title', direction: 'asc' }).status, 'layout_changed');
+  assert.equal(disabled.clicked, 0);
+  delete disabled.attrs.disabled;
+  doc.URL = 'https://evil.test/';
+  assert.equal(run(requestSearchSort, doc, { field: 'title', direction: 'asc' }).status, 'layout_changed');
+  doc.URL = origin + '/';
+  for (const request of [{ field: 'parts', direction: 'asc' }, { field: 'title', direction: 'sideways' }]) assert.equal(run(requestSearchSort, doc, request).status, 'layout_changed');
+  const headings = doc.querySelectorAll('thead tr')[0];
+  const duplicate = el('th', {}, [el('button', {}, [], 'Title')]);
+  duplicate.parentElement = headings;
+  headings.children.push(duplicate);
+  assert.equal(run(requestSearchSort, doc, { field: 'title', direction: 'asc' }).status, 'layout_changed');
+  assert.equal(disabled.clicked, 0);
+});
+
+test('download support is supplied by main-process registry, with a conservative legacy default', () => {
+  const { doc, anchor } = downloadPage({ host: 'OneDrive' });
+  assert.equal(run(requestChartDownload, doc, { id: '6420' }).status, 'unsupported');
+  assert.equal(anchor.clicked, 0);
+  assert.equal(run(requestChartDownload, doc, { id: '6420', supportedHosts: ['onedrive'] }).status, 'clicked');
+  assert.equal(anchor.clicked, 1);
+  const unknown = downloadPage({ host: 'evil.test' });
+  assert.equal(run(requestChartDownload, unknown.doc, { id: '6420', supportedHosts: ['unknown'] }).status, 'unsupported');
+  assert.equal(unknown.anchor.clicked, 0);
 });

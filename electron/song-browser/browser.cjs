@@ -1,30 +1,16 @@
 // All website interaction stays in this adapter. No cookies or signed URLs leave it.
 const { readSearchPage, requestChartDownload, requestSearchPage } = require('./dom.cjs');
-const { hostDownloadAction } = require('./host-actions.cjs');
 
 const CF = 'https://ignition4.customsforge.com';
 const MAX_BYTES = 512 * 1024 * 1024;
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function allowedNavigation(value) {
-  try {
-    const u = new URL(value);
-    if (u.protocol !== 'https:' || u.username || u.password || (u.port && u.port !== '443')) return false;
-    return ['customsforge.com', 'ignition4.customsforge.com', 'drive.google.com',
-      'drive.usercontent.google.com', 'accounts.google.com', 'www.dropbox.com', 'dropbox.com',
-      'www.mediafire.com', 'mediafire.com'].includes(u.hostname)
-      || u.hostname.endsWith('.dropboxusercontent.com')
-      || /^download\d+\.mediafire\.com$/.test(u.hostname)
-      || u.hostname.endsWith('.googleusercontent.com');
-  } catch { return false; }
+  return require('./hosts.cjs').allowedNavigation(value);
 }
 
-function allowedDownload(value, filename, size) {
-  if (!allowedNavigation(value) || !/\.psarc$/i.test(filename) || size > MAX_BYTES) return false;
-  const host = new URL(value).hostname;
-  return host === 'drive.usercontent.google.com' || host.endsWith('.googleusercontent.com')
-    || host === 'dropbox.com' || host === 'www.dropbox.com' || host.endsWith('.dropboxusercontent.com')
-    || /^download\d+\.mediafire\.com$/.test(host);
+function allowedDownload(value, filename, size, context = {}) {
+  return require('./hosts.cjs').allowedDownload(value, filename, size, context);
 }
 
 function searchUrl(query, page = 1) {
@@ -204,7 +190,78 @@ class CustomsForgeBrowser {
     }
   }
 
-  async search({ query, page = 1 }) {
+  async catalogueOperation(action) {
+    const previous = this.catalogueGate || Promise.resolve();
+    let release;
+    this.catalogueGate = new Promise((resolve) => { release = resolve; });
+    await previous;
+    try { if (this.disposed) throw new Error('Song browser is closed.'); return await action(); }
+    finally { release(); }
+  }
+
+  async search(request) {
+    const { normalizeSearchRequest, searchIdentity, filterCharts, sortCharts } = require('./catalogue.cjs');
+    const normalized = normalizeSearchRequest(request);
+    const explicit = { ...normalized, sort: request.sort ? normalized.sort : undefined };
+    return this.catalogueOperation(async () => {
+      const filtered = Object.values(normalized.filters).some((value) => Array.isArray(value) ? value.length : Boolean(value));
+      if (!filtered) return this._searchPage(explicit);
+      const key = searchIdentity({ ...normalized, page: 1 });
+      if (normalized.filters.hideConverted || this.filteredSnapshot?.key !== key) {
+        const collected = await this._collect({ ...explicit, page: 1 });
+        this.filteredSnapshot = { key, ...collected, results: sortCharts(filterCharts(collected.results, normalized.filters), normalized.sort) };
+      }
+      const snapshot = this.filteredSnapshot;
+      const offset = (normalized.page - 1) * 50;
+      return { status: 'ready', results: snapshot.results.slice(offset, offset + 50), total: snapshot.results.length,
+        sourceTotal: snapshot.sourceTotal, page: normalized.page, hasNext: offset + 50 < snapshot.results.length,
+        complete: true, scope: 'complete', request: normalized };
+    });
+  }
+
+  async collect(request, options = {}) {
+    const { normalizeSearchRequest, filterCharts, sortCharts } = require('./catalogue.cjs');
+    const normalized = normalizeSearchRequest({ ...request, page: 1 });
+    return this.catalogueOperation(async () => {
+      const result = await this._collect({ ...normalized, sort: request.sort ? normalized.sort : undefined }, options);
+      return { ...result, results: sortCharts(filterCharts(result.results, normalized.filters), normalized.sort), request: normalized };
+    });
+  }
+
+  async _collect(request, { signal, onProgress = () => {} } = {}) {
+    const records = new Map(), signatures = new Set();
+    const started = Date.now();
+    let total = null;
+    for (let page = 1; page <= 100; page++) {
+      if (signal?.aborted) throw new Error('Batch preparation cancelled.');
+      if (Date.now() - started > 10 * 60 * 1000) throw new Error('Collecting results timed out. Narrow the search and try again.');
+      const result = await this._searchPage({ ...request, page });
+      if (signal?.aborted) throw new Error('Batch preparation cancelled.');
+      if (result.status !== 'ready') throw new Error(result.error || 'Reconnect to CustomsForge before preparing this search.');
+      if (total !== null && result.total != null && result.total !== total) throw new Error('The catalogue changed during preparation. Run the search again.');
+      if (result.total != null) total = result.total;
+      if (total > 5000) throw new Error('This search has more than 5,000 charts. Narrow the artist or title before preparing it.');
+      const signature = result.results.map((row) => row.id).join(',');
+      if (signatures.has(signature)) throw new Error('A catalogue page repeated. Preparation stopped without downloading songs.');
+      signatures.add(signature);
+      for (const row of result.results) {
+        if (records.has(row.id)) throw new Error('The catalogue moved between pages. Run the search again.');
+        records.set(row.id, row);
+      }
+      onProgress({ collected: records.size, total, page });
+      if (!result.hasNext) {
+        if (total !== null && records.size !== total) throw new Error('The complete search could not be collected. No batch downloads have started.');
+        return { results: [...records.values()], sourceTotal: total ?? records.size, complete: true };
+      }
+      if (records.size >= 5000) break;
+      await pause(300);
+    }
+    throw new Error('The search exceeds the preparation limit. Narrow it and try again.');
+  }
+
+  async _searchPage(request) {
+    const { query, page = 1 } = request;
+    const signature = JSON.stringify({ query: query.trim(), sort: request.sort || null });
     const url = searchUrl(query, page);
     if (this.searching) throw new Error('A search is already running.');
     this.searching = true;
@@ -214,8 +271,8 @@ class CustomsForgeBrowser {
     try {
       const win = this.ensureSearchWindow();
       let paging = false;
-      if (page > 1 || (this.lastSearch?.query === query.trim() && this.lastSearch.page > 1 && page === this.lastSearch.page - 1)) {
-        if (this.lastSearch?.query !== query.trim() || Math.abs(this.lastSearch.page - page) !== 1) {
+      if (page > 1 || (this.lastSearch?.signature === signature && this.lastSearch.page > 1 && page === this.lastSearch.page - 1)) {
+        if (this.lastSearch?.signature !== signature || Math.abs(this.lastSearch.page - page) !== 1) {
           throw new Error('Start with the first search page, then use Next or Previous.');
         }
         const changed = await win.webContents.mainFrame.executeJavaScript(`(${requestSearchPage.toString()})(${JSON.stringify({direction: page > this.lastSearch.page ? 'next' : 'previous'})})`, true);
@@ -234,8 +291,27 @@ class CustomsForgeBrowser {
       }
       if (!result) throw new Error('Could not read search results. Try again.');
       if (paging && result.status === 'ready' && result.page !== page) throw new Error('The page did not change. Try again.');
+      if (result.status === 'ready' && request.sort && !paging) {
+        const { requestSearchSort } = require('./dom.cjs');
+        let applied = false;
+        for (let attempt = 0; attempt < 24; attempt++) {
+          const action = await win.webContents.mainFrame.executeJavaScript(`(${requestSearchSort.toString()})(${JSON.stringify(request.sort)})`, true);
+          if (action.status === 'applied') { applied = true; break; }
+          if (!['clicked', 'waiting'].includes(action.status)) throw new Error(action.error || 'The selected catalogue sort is unavailable.');
+          await pause(350);
+        }
+        if (!applied) throw new Error('The catalogue sort did not finish. Try again.');
+        for (let attempt = 0; attempt < 24; attempt++) {
+          result = await win.webContents.mainFrame.executeJavaScript(`(${readSearchPage.toString()})()`);
+          if (result.status === 'ready' && (!result.page || result.page === 1)) break;
+          await pause(300);
+        }
+        if (result.status !== 'ready') throw new Error('The sorted catalogue could not be read.');
+      }
       if (result.status === 'ready') {
-        this.lastSearch = { query: query.trim(), page: result.page || page };
+        result.results = result.results.map((row) => ({ ...row, ...require('./hosts.cjs').getHostCapabilities(row.host), id: row.id }));
+        if (this.decorateCharts) result.results = await this.decorateCharts(result.results, request);
+        this.lastSearch = { query: query.trim(), signature, page: result.page || page };
         this.updateConnection('connected', 'Connected to CustomsForge');
       }
       else if (result.status === 'login_required' || result.status === 'challenge') {
@@ -256,13 +332,29 @@ class CustomsForgeBrowser {
     } finally { this.searching = false; }
   }
 
-  attention(job, message) {
+  attention(job, message, details = {}) {
     if (job.finished || this.disposed || job.item || job.attention === message) return;
     job.attention = message;
     this.diagnostic({ code: 'browser_attention', stage: 'needs_attention', host: job.host, outcome: 'needs_attention' });
     // Surface host steps in FeedForge. Only an explicit Sign in/Open browser
     // action should show or focus a browser, including after transient notices.
-    job.onAttention(message);
+    job.onAttention(details.candidates ? { message, candidates: details.candidates } : message);
+    if (job.interactive && !job.shown && !details.candidates) { job.shown = true; this.showBrowser(); }
+    if (job.parkOnAttention) {
+      const error = new Error(message);
+      error.code = 'SONG_ATTENTION'; error.sessionWide = details.sessionWide === true;
+      job.reject(error, 'needs_attention');
+    }
+  }
+
+  chooseFile({ id }) {
+    const job = this.active;
+    const candidate = job?.candidates?.find((item) => item.id === id);
+    if (!candidate || job.finished) throw new Error('This file choice has expired. Retry the song to read its files again.');
+    job.choice = { id: candidate.id };
+    job.attention = null;
+    job.onAttention('');
+    return { ok: true };
   }
 
   cancelTransfer(job) {
@@ -280,10 +372,15 @@ class CustomsForgeBrowser {
     const job = this.active;
     const ownsWindow = job && [...job.windows].some((win) => !win.isDestroyed() && win.webContents === contents);
     if (!job || job.finished || !ownsWindow || job.item ||
-        !allowedDownload(item.getURL(), item.getFilename(), item.getTotalBytes())) {
+        !allowedDownload(item.getURL(), item.getFilename(), item.getTotalBytes(), { host: job?.host })) {
       event.preventDefault();
       if (job && ownsWindow && !job.item) job.reject(new Error('The host did not return a supported PSARC file.'), 'unsupported');
       return;
+    }
+    if (/_m\.psarc$/i.test(item.getFilename()) && !job.allowMacFallback) {
+      event.preventDefault();
+      const error = new Error('This is the Mac file. Select the PC PSARC variant.'); error.code = 'SONG_ATTENTION';
+      job.reject(error, 'needs_attention'); return;
     }
     job.item = item;
     job.transferSettled = new Promise((resolve) => { job.onTransferSettled = resolve; });
@@ -311,14 +408,15 @@ class CustomsForgeBrowser {
     });
   }
 
-  async download(chart, { signal, destination, onProgress = () => {}, onAttention = () => {} }) {
+  async download(chart, { signal, destination, onProgress = () => {}, onAttention = () => {}, parkOnAttention = false, interactive = false }) {
     if (this.active) throw new Error('Another download is already active.');
     if (!/^\d+$/.test(String(chart.id))) throw new Error('Invalid chart.');
     if (!chart.supported) throw new Error('This host is not supported yet.');
     const started = Date.now();
     this.diagnostic({ code: 'download_started', stage: 'download', host: chart.host, outcome: 'started' });
     const job = { windows: new Set(), destination, onProgress, onAttention, clicked: false, host: chart.host,
-      finished: false, item: null, attention: null };
+      finished: false, item: null, attention: null, parkOnAttention, interactive, choice: chart.selection?.choice,
+      allowMacFallback: chart.selection?.allowMacFallback === true };
     this.active = job;
     const completion = new Promise((resolve, reject) => {
       job.resolve = (value) => { if (!job.finished) { job.finished = true; resolve(value); } };
@@ -363,19 +461,23 @@ class CustomsForgeBrowser {
   async driveDownload(job, chart) {
     let refreshed = false;
     let idleTicks = 0;
+    const lastLocations = new WeakMap();
     const canAct = () => !job.finished && !this.disposed && !job.item;
     while (canAct()) {
       for (const win of [...job.windows]) {
         if (!canAct()) return;
         if (win.isDestroyed()) continue;
         const url = win.webContents.getURL();
+        if (url !== lastLocations.get(win)) { lastLocations.set(win, url); idleTicks = 0; }
         if (!allowedNavigation(url)) continue;
         const host = new URL(url).hostname;
         let result;
         try {
           if (['customsforge.com', 'ignition4.customsforge.com'].includes(host)) {
             if (job.clicked) continue; // Never replay a collection/download click after an ambiguous response.
-            result = await win.webContents.executeJavaScript(`(${requestChartDownload.toString()})(${JSON.stringify({ id: String(chart.id) })})`, true);
+            const registry = require('./hosts.cjs');
+            const supportedHosts = Object.keys(registry.HOSTS).filter((host) => registry.getHostCapabilities(host).supported);
+            result = await win.webContents.mainFrame.executeJavaScript(`(${requestChartDownload.toString()})(${JSON.stringify({ id: String(chart.id), supportedHosts })})`, true);
             if (!canAct()) return;
             // A click can legitimately replace its document before the reply.
             // Retain the once-only collection marker, but never act on an
@@ -388,17 +490,23 @@ class CustomsForgeBrowser {
               job.reject(new Error(result.error || 'This chart cannot be downloaded by this version.'), result.status === 'unsupported' ? 'unsupported' : 'failed');
             }
           } else {
-            result = await win.webContents.executeJavaScript(`(${hostDownloadAction.toString()})()`, true);
+            result = await win.webContents.mainFrame.executeJavaScript(require('./host-actions.cjs').hostActionScript({ choice: job.choice, allowMacFallback: job.allowMacFallback }), true);
           }
         } catch { continue; } // A document may be replaced while its ordinary navigation completes.
         if (!canAct()) return;
+        if (result?.selectedFile && result.status === 'clicked') { job.selectedFile = result.selectedFile; job.choice = undefined; job.candidates = []; job.onAttention(''); }
+        if (result?.status === 'clicked') idleTicks = 0;
         if (win.isDestroyed() || win.webContents.getURL() !== url) continue;
+        if (result?.status === 'choose_file') {
+          job.candidates = (result.candidates || []).slice(0, 100);
+          this.attention(job, result.error || 'Choose the PSARC file in FeedForge.', { candidates: job.candidates });
+        }
         if (result?.status === 'login_required' || result?.status === 'challenge' || result?.status === 'needs_attention') {
-          this.attention(job, result.error || 'Select Open browser to finish this download.');
+          this.attention(job, result.error || 'Select Open browser to finish this download.', { sessionWide: ['customsforge.com', 'ignition4.customsforge.com'].includes(host) });
         }
       }
       if (!canAct()) return;
-      if (++idleTicks === 12 && !job.item) this.attention(job, 'The host may need a step from you. Select Open browser if the download does not start.');
+      if (++idleTicks === (job.parkOnAttention ? 100 : 12) && !job.item) this.attention(job, 'The host may need a step from you. Select Open browser if the download does not start.');
       await pause(600);
     }
   }

@@ -79,6 +79,7 @@ function readSearchPage() {
     artist: ['artist', 'band'], title: ['title', 'song', 'songtitle', 'songname'], album: ['album'],
     tuning: ['tuning', 'tunings'], creator: ['creator', 'author', 'charter'],
     parts: ['parts', 'paths', 'arrangements', 'instruments'], version: ['version', 'ver'],
+    added: ['added', 'dateadded'], updated: ['updated', 'dateupdated'], year: ['year'], duration: ['duration', 'length'], downloads: ['downloads', 'dls'],
   };
   const headerRows = all(table, 'thead tr').map((row) => Array.from(row.children).filter((cell) => cell.tagName === 'TH' || cell.tagName === 'TD'));
   const headers = headerRows.sort((a, b) => b.length - a.length)[0] || [];
@@ -89,7 +90,7 @@ function readSearchPage() {
     if (matches.length === 1) { mapping[key] = matches[0]; semanticHeaders++; }
     else if (matches.length > 1 && (key === 'title' || key === 'artist')) return empty('layout_changed', 'The search table has ambiguous song columns.');
   }
-  const positional = { artist: 1, title: 2, album: 3, tuning: 4, creator: 5, parts: 8, version: 9 };
+  const positional = { artist: 1, title: 2, album: 3, tuning: 4, creator: 5, added: 6, updated: 7, parts: 8, version: 9, year: 10, duration: 11, downloads: 12 };
   const rows = all(table, 'tbody > tr').filter(visible);
   const results = [];
   const seen = new Set();
@@ -118,7 +119,27 @@ function readSearchPage() {
     const partCell = cells[indexes.parts];
     const parts = field('parts') || (partCell ? [...new Set(hints(partCell).filter(Boolean))].join(', ') : '');
     const host = hostFrom(row);
-    results.push({ id: record.id, title: songTitle, artist, album: field('album'), tuning: field('tuning'), creator: field('creator'), version: field('version'), parts, host, supported: ['dropbox', 'google-drive', 'mediafire'].includes(host), recordUrl: record.url });
+    const number = (value) => /^(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(value) && Number.isSafeInteger(Number(value.replace(/,/g, ''))) ? Number(value.replace(/,/g, '')) : null;
+    const date = (key) => {
+      const cell = cells[indexes[key]];
+      if (!cell) return null;
+      const candidates = [field(key), ...all(cell, 'time[datetime]').map((node) => node.getAttribute('datetime')), ...hints(cell)];
+      for (const candidate of candidates) {
+        const match = String(candidate || '').match(/^(\d{4}-\d{2}-\d{2})(?:T[\d:.]+(?:Z|[+-]\d{2}:\d{2})|(?:\s.*)?)$/);
+        if (match && Number.isFinite(Date.parse(match[1])) && new Date(match[1]).toISOString().slice(0, 10) === match[1]) return match[1];
+      }
+      return null;
+    };
+    const duration = field('duration').match(/^(?:(\d{1,3}):)?(\d{1,3}):([0-5]\d)$/);
+    const durationSeconds = duration && (!duration[1] || Number(duration[2]) < 60) ? Number(duration[1] || 0) * 3600 + Number(duration[2]) * 60 + Number(duration[3]) : null;
+    const year = /^\d{4}$/.test(field('year')) ? Number(field('year')) : null;
+    const rowHints = hints(row);
+    const flag = (name) => rowHints.some((hint) => new RegExp('^(?:this (?:cdlc|chart) (?:is|has been) )?' + name + '(?:[. :]|$)', 'i').test(hint.trim())) ? true : null;
+    results.push({ id: record.id, title: songTitle, artist, album: field('album'), tuning: field('tuning'), creator: field('creator'), version: field('version'), parts,
+      arrangements: ['lead', 'rhythm', 'bass'].filter((part) => new RegExp('\\b' + part + '\\b', 'i').test(parts)),
+      downloads: number(field('downloads')), added: date('added'), updated: date('updated'), year, durationSeconds,
+      reported: flag('reported'), abandoned: flag('abandoned'),
+      host, supported: ['dropbox', 'google-drive', 'mediafire'].includes(host), recordUrl: record.url });
   }
   if (unreadable || (!results.length && !explicitEmpty)) return empty('layout_changed', 'The search results could not be read reliably. Refresh the page or use its browser view.');
 
@@ -135,7 +156,14 @@ function readSearchPage() {
   const pageMatch = bodyText.match(/\bpage\s+(\d+)\s+of\s+\d+/i);
   const pageValue = /^[1-9]\d*$/.test(inputValue) ? inputValue : (selectedPage ? text(selectedPage) : pageMatch?.[1]);
   const countMatch = bodyText.match(/\bshowing\s+[\d,]+\s+(?:to|[-–])\s+[\d,]+\s+of\s+([\d,]+)\s+(?:results|charts|songs|records)\b/i) || bodyText.match(/\b([\d,]+)\s+(?:results|charts|songs)\b/i);
-  return { status: 'ready', results, hasNext, page: pageValue ? Number(pageValue) : null, total: countMatch ? Number(countMatch[1].replace(/,/g, '')) : (explicitEmpty && !results.length ? 0 : null) };
+  const sortKeys = ['artist', 'title', 'album', 'tuning', 'creator', 'added', 'updated', 'year', 'duration', 'downloads'];
+  const sorts = sortKeys.flatMap((key) => {
+    const cell = headers[mapping[key]];
+    if (!cell) return [];
+    const values = [...new Set([cell, ...all(cell, '[aria-sort]')].map((node) => node.getAttribute('aria-sort')).filter((value) => ['ascending', 'descending'].includes(value)))];
+    return values.length === 1 ? [{ field: key, direction: values[0] === 'ascending' ? 'asc' : 'desc' }] : [];
+  });
+  return { status: 'ready', results, hasNext, page: pageValue ? Number(pageValue) : null, total: countMatch ? Number(countMatch[1].replace(/,/g, '')) : (explicitEmpty && !results.length ? 0 : null), ...(sorts.length === 1 ? { sort: sorts[0] } : {}) };
 }
 
 function requestChartDownload(request) {
@@ -210,7 +238,9 @@ function requestChartDownload(request) {
   let ancestor = candidate.anchor.parentElement;
   for (let depth = 0; host === 'unknown' && ancestor && depth < 2; depth++, ancestor = ancestor.parentElement) host = hostFrom(ancestor);
   if (candidate.expires <= Math.floor(Date.now() / 1000) + 10) return reply('expired', host, 'The download link expired. Reload the chart page to obtain a fresh button.');
-  if (!['dropbox', 'google-drive', 'mediafire'].includes(host)) return reply('unsupported', host, 'This host is not supported by the prototype.');
+  const knownHosts = ['dropbox', 'google-drive', 'mediafire', 'onedrive', 'mega', 'pcloud'];
+  const supportedHosts = Array.isArray(request?.supportedHosts) ? request.supportedHosts.filter((value) => knownHosts.includes(value)) : ['dropbox', 'google-drive', 'mediafire'];
+  if (!supportedHosts.includes(host)) return reply('unsupported', host, 'This host is not supported for automatic downloads.');
 
   // Mark before clicking: the collection route has a side effect, so an
   // ambiguous event must not trigger a second click in this document.
@@ -243,4 +273,32 @@ function requestSearchPage(request) {
   return { status: 'layout_changed', error: 'The requested page button is unavailable.' };
 }
 
-module.exports = { readSearchPage, requestChartDownload, requestSearchPage };
+// Toggle only the observed table control. The adapter waits for the table to
+// settle after each click and calls again to verify; this function never guesses
+// the website's state or cycles controls in a single injected execution.
+function requestSearchSort(request) {
+  const labels = { artist: ['Artist'], title: ['Title'], album: ['Album'], tuning: ['Tuning'], creator: ['Creator'], added: ['Added'], updated: ['Updated'], year: ['Year'], duration: ['Duration'], downloads: ['DLs', 'Downloads'] };
+  const field = request?.field, direction = request?.direction;
+  const failed = (error) => ({ status: 'layout_changed', error });
+  if (!Object.hasOwn(labels, field) || !['asc', 'desc'].includes(direction)) return failed('Choose a valid search order.');
+  let url;
+  try { url = new URL(String(globalThis.location?.href || document.URL || '')); } catch { return failed('The song page URL could not be read.'); }
+  const table = document.querySelector('#cdlc-table');
+  if (url.origin !== 'https://ignition4.customsforge.com' || !table) return failed('The song search page is not available.');
+  if (table.getAttribute('aria-busy') === 'true') return { status: 'waiting', error: 'The search results are still loading.' };
+  const text = (node) => String(node?.textContent || '').replace(/\s+/g, ' ').trim();
+  const visible = (node) => !!node && !node.hidden && node.getAttribute?.('aria-hidden') !== 'true' && node.style?.display !== 'none' && node.style?.visibility !== 'hidden' && (!node.getClientRects || node.getClientRects().length > 0);
+  const headings = Array.from(table.querySelectorAll('thead th')).filter((cell) => visible(cell) && labels[field].some((label) => text(cell).toLowerCase() === label.toLowerCase()));
+  if (headings.length !== 1) return failed('The requested sort column could not be identified reliably.');
+  const heading = headings[0];
+  const controls = Array.from(heading.querySelectorAll('button, [role="button"]')).filter((node) => visible(node) && !node.disabled && !node.hasAttribute('disabled') && node.getAttribute('aria-disabled') !== 'true');
+  if (controls.length !== 1) return failed('The requested sort button is unavailable.');
+  const values = [heading, ...Array.from(heading.querySelectorAll('[aria-sort]'))].map((node) => node.getAttribute('aria-sort')).filter((value) => ['ascending', 'descending'].includes(value));
+  if (new Set(values).size > 1) return failed('The current search order is ambiguous.');
+  const observed = values.length ? { field, direction: values[0] === 'ascending' ? 'asc' : 'desc' } : null;
+  if (observed?.direction === direction) return { status: 'applied', sort: observed };
+  try { controls[0].click(); } catch { return failed('The browser could not activate the sort button.'); }
+  return { status: 'clicked', sort: observed };
+}
+
+module.exports = { readSearchPage, requestChartDownload, requestSearchPage, requestSearchSort };

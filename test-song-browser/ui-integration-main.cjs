@@ -86,11 +86,12 @@ function fixturePsarc(chart) {
 function previewFrom(filename) {
   assert.ok(inside(runtime, canonical(filename)), 'Converter input escaped the fixture runtime.');
   const bytes = fs.readFileSync(filename);
-  assert.equal(bytes.subarray(0, 4).toString(), 'PSAR');
-  const data = JSON.parse(bytes.subarray(4).toString());
+  const feedpak = bytes.subarray(0, 19).toString() === 'PK fixture FeedPak ';
+  if (!feedpak) assert.equal(bytes.subarray(0, 4).toString(), 'PSAR');
+  const data = JSON.parse(bytes.subarray(feedpak ? 19 : 4).toString());
   const chart = byId.get(data.id); assert.ok(chart); assert.equal(data.title, chart.title); assert.equal(data.artist, chart.artist);
   return { chart, preview: { title: chart.title, artist: chart.artist, album: 'Offline Fixture Album', song_count: 1, is_multi_song: false,
-    arrangements: [{ id: 'lead', type: 'lead', name: 'Lead', tuning: 'E Standard' }], warnings: [], duration: 120 } };
+    source_platforms: feedpak ? [] : ['pc'], arrangements: [{ id: 'lead', type: 'guitar', name: 'Lead', tuning: [0, 0, 0, 0, 0, 0] }], warnings: [], duration: 120 } };
 }
 async function runConverter(args) {
   if (args[0] === '--inspect-json') return { code: 0, stderr: '', stdout: JSON.stringify({ ok: true, preview: previewFrom(args[1]).preview }) };
@@ -116,8 +117,31 @@ function searchPage(query) {
   if (query.toLowerCase() === 'login') return html('<h1>Custom songs for Rocksmith 2014</h1><a href="/">Login to CustomsForge</a><button>Sign in</button>');
   if (query.toLowerCase() === 'challenge') return html('<p>Verify you are human</p>', 'Just a moment...');
   const rows = query.toLowerCase() === 'empty' ? [] : [...Object.values(charts), { id: '1110', title: 'Fixture Unsupported', artist: 'Fixture Artist', host: 'mega' }];
-  const tableRows = rows.map((chart) => `<tr><td><span title="Hosted on ${hostName(chart.host)}">File</span></td><td>${chart.artist}</td><td><a href="/cdlc/${chart.id}">${chart.title}</a></td><td>Offline Fixture Album</td><td>E Standard</td><td>Fixture Creator</td><td>Lead</td><td>1</td></tr>`).join('') || '<tr><td colspan="8">No matching records found</td></tr>';
-  return html(`<p>Showing ${rows.length ? 1 : 0} to ${rows.length} of ${rows.length} results</p><table id="cdlc-table"><thead><tr><th>Download</th><th>Artist</th><th>Title</th><th>Album</th><th>Tuning</th><th>Creator</th><th>Parts</th><th>Version</th></tr></thead><tbody>${tableRows}</tbody></table><span aria-current="page">1</span><button aria-label="Next page" disabled>Next</button>`);
+  if (query.toLowerCase() === 'catalogue') rows.push(
+    { id: '1111', title: 'Fixture Beneath', artist: 'Fixture Artist', host: 'dropbox', parts: 'Bass', tuning: 'Bb Standard' },
+    { id: '1112', title: 'Fixture Beneath', artist: 'Fixture Artist', host: 'dropbox', parts: 'Lead', tuning: 'Bb Standard' },
+    { id: '1113', title: 'Fixture Other Artist', artist: 'Different Artist', host: 'dropbox', parts: 'Lead', tuning: 'E Standard' },
+  );
+  const catalogue = rows.map((chart, index) => ({ album: 'Offline Fixture Album', tuning: 'E Standard', creator: 'Fixture Creator', parts: 'Lead', version: '1', added: '2026-01-01', updated: '2026-08-01', year: 2020, duration: '2:00', downloads: 100 - index * 10, ...chart, hostName: hostName(chart.host) }));
+  // Ordinary buttons sort the full in-page catalogue before slicing a page.
+  // Their handlers do not issue hidden requests, preserving the request counter
+  // used by the existing navigation/lifecycle regression scenarios.
+  function renderCatalogue(data, perPage) {
+    let field = 'title', direction = 'asc', page = 1;
+    const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
+    const heading = (key, label) => `<th aria-sort="${field === key ? direction === 'asc' ? 'ascending' : 'descending' : 'none'}"><button onclick="window.fixtureSort('${key}')">${label}</button></th>`;
+    function render() {
+      const ordered = [...data].sort((a, b) => (field === 'downloads' || field === 'year' ? a[field] - b[field] : String(a[field]).localeCompare(String(b[field]), 'en', { numeric: true })) * (direction === 'desc' ? -1 : 1));
+      const offset = (page - 1) * perPage;
+      const shown = ordered.slice(offset, offset + perPage);
+      const tableRows = shown.map((chart) => `<tr><td><span title="Hosted on ${escape(chart.hostName)}">File</span></td><td>${escape(chart.artist)}</td><td><a href="/cdlc/${chart.id}">${escape(chart.title)}</a></td><td>${escape(chart.album)}</td><td>${escape(chart.tuning)}</td><td>${escape(chart.creator)}</td><td>${chart.added}</td><td>${chart.updated}</td><td>${chart.parts}</td><td>${chart.version}</td><td>${chart.year}</td><td>${chart.duration}</td><td>${chart.downloads}</td></tr>`).join('') || '<tr><td colspan="13">No matching records found</td></tr>';
+      document.body.innerHTML = `<p>Showing ${data.length ? offset + 1 : 0} to ${offset + shown.length} of ${data.length} results</p> <table id="cdlc-table"><thead><tr><th>Download</th>${heading('artist', 'Artist')}${heading('title', 'Title')}${heading('album', 'Album')}${heading('tuning', 'Tuning')}${heading('creator', 'Creator')}${heading('added', 'Added')}${heading('updated', 'Updated')}<th>Parts</th><th>Version</th>${heading('year', 'Year')}${heading('duration', 'Duration')}${heading('downloads', 'DLs')}</tr></thead><tbody>${tableRows}</tbody></table><span aria-current="page">${page}</span><button aria-label="Previous page" ${page === 1 ? 'disabled' : ''} onclick="window.fixturePage(-1)">Previous</button><button aria-label="Next page" ${offset + shown.length >= data.length ? 'disabled' : ''} onclick="window.fixturePage(1)">Next</button>`;
+    }
+    window.fixtureSort = (next) => { direction = field === next && direction === 'asc' ? 'desc' : 'asc'; field = next; page = 1; render(); };
+    window.fixturePage = (delta) => { page += delta; render(); };
+    render();
+  }
+  return html(`<script>(${renderCatalogue.toString()})(${JSON.stringify(catalogue).replace(/</g, '\\u003c')}, ${query.toLowerCase() === 'catalogue' ? 2 : 50})</script>`);
 }
 function downloadResponse(chart) {
   const bytes = fixturePsarc(chart);
@@ -269,7 +293,7 @@ async function main() {
   assert.ok(BrowserWindow.getAllWindows().every((win) => !win.isVisible()), 'A fixture window became visible.');
   assert.deepEqual(transfers.filter((item) => item.id === charts.slow.id).map((item) => item.state), ['cancelled']);
   assert.deepEqual(transfers.filter((item) => item.id === charts.fast.id).map((item) => item.state), ['completed']);
-  assert.deepEqual(transfers.filter((item) => item.id === charts.retry.id).map((item) => item.state), ['completed']);
+  assert.deepEqual(transfers.filter((item) => item.id === charts.retry.id).map((item) => item.state), ['completed', 'completed']);
 }
 async function finish(error) {
   closing = true; searchGate?.release.resolve();

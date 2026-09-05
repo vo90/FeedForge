@@ -16,7 +16,7 @@ const { SongJobs } = require('../electron/song-browser/jobs.cjs');
 
 function argumentsFrom(argv) {
   const args = {};
-  const supported = new Set(['input', 'python', 'audio-tools', 'converter', 'root', 'chart-id']);
+  const supported = new Set(['input', 'python', 'audio-tools', 'converter', 'root', 'chart-id', 'required-parts', 'required-tuning']);
   for (let index = 0; index < argv.length; index += 2) {
     const key = argv[index]?.replace(/^--/, '');
     if (!argv[index]?.startsWith('--') || !supported.has(key) || args[key] !== undefined || !argv[index + 1] || argv[index + 1].startsWith('--')) {
@@ -122,7 +122,7 @@ async function main() {
 
   function waitForTerminal(id) {
     const current = jobs.snapshot().find((job) => job.id === id);
-    if (current && ['completed', 'failed', 'cancelled'].includes(current.state)) return Promise.resolve(current);
+    if (current && ['completed', 'failed', 'cancelled', 'parked'].includes(current.state)) return Promise.resolve(current);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(async () => {
         waiters.delete(id);
@@ -142,6 +142,12 @@ async function main() {
     assert.equal(source.ok, true); assert.ok(source.preview?.title); assert.ok(source.preview?.artist);
     assert.ok(Array.isArray(source.preview.arrangements) && source.preview.arrangements.length);
     result.chart = { id: args['chart-id'], title: source.preview.title, artist: source.preview.artist };
+    if (args['required-parts'] || args['required-tuning']) {
+      result.chart.selection = require('../electron/song-browser/file-selection.cjs').normalizeRequirements({
+        parts: args['required-parts'] ? args['required-parts'].split(',') : [], tuning: args['required-tuning'] || null,
+        platform: 'pc', strictPlatform: true,
+      });
+    }
     jobs = new SongJobs({
       root: jobRoot, outputDir, runConverter,
       download: async (_chart, options) => {
@@ -157,7 +163,7 @@ async function main() {
           states.push({ id: job.id, state: job.state, at: new Date().toISOString() });
           process.stdout.write(`${job.state}: ${job.title}\n`);
         }
-        if (['completed', 'failed', 'cancelled'].includes(job.state)) waiters.get(job.id)?.(job);
+        if (['completed', 'failed', 'cancelled', 'parked'].includes(job.state)) waiters.get(job.id)?.(job);
       },
     });
     const firstQueued = jobs.enqueue(result.chart);

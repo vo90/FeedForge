@@ -114,3 +114,17 @@
 @media (max-width: 760px) { .song-browser .sb-header { flex-direction: column; gap: 12px; margin-bottom: 22px; } .song-browser .sb-account { padding-top: 0; } .song-browser .sb-result { flex-wrap: wrap; } .song-browser .sb-result-actions { width: 100%; flex-direction: row; justify-content: flex-end; align-items: center; flex-wrap: wrap; padding-top: 3px; } .song-browser .sb-result-actions .sb-host { margin-right: auto; } .song-browser .sb-result-actions small { max-width: none; width: 100%; } .song-browser .sb-notice { flex-wrap: wrap; } .song-browser .sb-notice > p { flex-basis: 80%; } }
 @media (max-width: 480px) { .song-browser .sb-output { align-items: stretch; flex-direction: column; gap: 12px; } .song-browser .sb-output > button { align-self: flex-start; } .song-browser .sb-search-row { flex-direction: column; } .song-browser .sb-search-row > button { min-height: 42px; } .song-browser .sb-job-list { grid-template-columns: minmax(0, 1fr); } .song-browser .sb-result-icon { display: none; } .song-browser .sb-result-actions > .sb-button { font-size: 11px; } .song-browser .sb-section-heading { flex-wrap: wrap; } }
 @media (prefers-reduced-motion: reduce) { .song-browser .sb-spin { animation: none; } .song-browser .sb-result-list { transition: none; } }
+.song-browser .sb-filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 14px 0; }
+.song-browser .sb-filter-grid label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.song-browser .sb-filter-grid input, .song-browser .sb-filter-grid select { min-width: 0; width: 100%; padding: 9px; border: 1px solid var(--border, #3b4352); border-radius: 7px; color: inherit; background: var(--panel, #1b2029); }
+.song-browser .sb-filter-checks { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 12px 0; font-size: 13px; }
+.song-browser .sb-filter-checks label, .song-browser .sb-batch-option { display: flex; align-items: baseline; gap: 8px; }
+.song-browser .sb-batch-prepare, .song-browser .sb-batch { margin: 16px 0; padding: 18px; border: 1px solid var(--border, #3b4352); border-radius: 12px; }
+.song-browser .sb-batch summary { cursor: pointer; font-weight: 600; padding: 6px 0; }
+.song-browser .sb-batch-groups { max-height: 420px; overflow-y: auto; margin: 12px 0; }
+.song-browser .sb-batch-groups details, .song-browser .sb-batch-item { border-bottom: 1px solid var(--border, #3b4352); padding: 10px 0; }
+.song-browser .sb-batch-option { padding: 8px; font-size: 13px; }
+.song-browser .sb-batch-option small { display: block; opacity: .75; margin-top: 4px; }
+.song-browser .sb-batch progress { width: 100%; margin: 8px 0; }
+.song-browser .sb-file-choices { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
+.song-browser .sb-chart-select { flex: none; }

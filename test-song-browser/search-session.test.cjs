@@ -55,7 +55,6 @@ test('returning during a search joins its promise instead of issuing another req
   const session = getSearchSession(api);
   const pending = session.search('  Metallica  ', 2);
   assert.equal(getSearchSession(api).search('Metallica', 2), pending);
-  assert.equal(session.search('Another query'), pending);
   await Promise.resolve();
   assert.deepEqual(calls, [{ query: 'Metallica', page: 2 }]);
   session.setQuery('Unsubmitted next song');
@@ -64,6 +63,85 @@ test('returning during a search joins its promise instead of issuing another req
   assert.equal(session.getSnapshot().query, 'Unsubmitted next song');
   assert.equal(session.getSnapshot().searchedQuery, 'Metallica');
   assert.equal(session.getSnapshot().result.page, 2);
+});
+
+test('a newer query wins even when an older request finishes or fails later', async () => {
+  const { getSearchSession } = await moduleReady;
+  for (const failOld of [false, true]) {
+    const old = deferred(), latest = deferred();
+    const session = getSearchSession({ search: ({ query }) => query === 'Old song' ? old.promise : latest.promise });
+    const first = session.search('Old song');
+    const second = session.search('New song');
+    assert.notEqual(first, second);
+    latest.resolve({ status: 'ready', results: [{ id: '2' }] });
+    await second;
+    if (failOld) old.reject(new Error('Obsolete failure')); else old.resolve({ status: 'ready', results: [{ id: '1' }] });
+    await first;
+    assert.equal(session.getSnapshot().result.results[0].id, '2');
+    assert.equal(session.getSnapshot().searchedQuery, 'New song');
+    assert.equal(session.getSnapshot().error, '');
+    assert.equal(session.getSnapshot().pending, false);
+  }
+});
+
+test('an old request finishing cannot end the newer pending state', async () => {
+  const { getSearchSession } = await moduleReady;
+  const old = deferred(), latest = deferred();
+  const session = getSearchSession({ search: ({ query }) => query === 'Old song' ? old.promise : latest.promise });
+  const first = session.search('Old song');
+  const second = session.search('New song');
+  old.resolve({ status: 'ready', results: [{ id: '1' }] });
+  await first;
+  assert.equal(session.getSnapshot().pending, true);
+  assert.equal(session.getSnapshot().result, null);
+  latest.resolve({ status: 'ready', results: [{ id: '2' }] });
+  await second;
+  assert.equal(session.getSnapshot().pending, false);
+});
+
+test('sort and filter controls persist, reset pages and define selection independently of sorting', async () => {
+  const { getSearchSession } = await moduleReady;
+  const calls = [];
+  const api = { search: async (request) => { calls.push(request); return { status: 'ready', results: [], page: request.page }; } };
+  const session = getSearchSession(api);
+  session.setSort({ field: 'downloads', direction: 'desc' });
+  session.setFilters({ exactArtist: '  Meshuggah ', parts: ['bass', 'lead'] });
+  assert.equal(session.getSnapshot().filters.exactArtist, '  Meshuggah ', 'draft spaces remain editable until submission');
+  assert.equal(calls.length, 0, 'editing controls must not navigate');
+  await session.search('Meshuggah');
+  assert.equal(calls[0].filters.exactArtist, 'Meshuggah');
+  assert.deepEqual(calls[0].filters.parts, ['lead', 'bass']);
+  const scope = session.getSnapshot().selectionScope;
+  await session.search('Meshuggah', 2);
+  assert.equal(calls[1].page, 2);
+  assert.equal(session.getSnapshot().selectionScope, scope);
+  session.setSort({ field: 'title', direction: 'asc' });
+  await session.search('Meshuggah', 2);
+  assert.equal(calls[2].page, 1, 'new sort resets page');
+  assert.equal(session.getSnapshot().selectionScope, scope, 'sort does not discard selections');
+  session.setFilters({ tuning: 'Bb Standard' });
+  await session.search('Meshuggah', 2);
+  assert.equal(calls[3].page, 1, 'new filter resets page');
+  assert.notEqual(session.getSnapshot().selectionScope, scope);
+  assert.equal(getSearchSession(api).getSnapshot().filters.tuning, 'Bb Standard');
+});
+
+test('object requests carry validated search settings and identical pending requests join', async () => {
+  const { getSearchSession } = await moduleReady;
+  const response = deferred(), calls = [];
+  const session = getSearchSession({ search: (request) => { calls.push(request); return response.promise; } });
+  const request = { query: 'Iron Maiden', sort: { field: 'updated', direction: 'desc' }, filters: { creator: 'Creator', hideConverted: true } };
+  const pending = session.search(request);
+  assert.equal(session.search(request), pending);
+  await Promise.resolve();
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].sort, request.sort);
+  assert.equal(calls[0].filters.hideConverted, true);
+  response.resolve({ status: 'ready', results: [] });
+  await pending;
+  await session.search({ ...request, sort: { field: 'rating', direction: 'desc' } });
+  assert.equal(calls.length, 1);
+  assert.match(session.getSnapshot().error, /search order/);
 });
 
 test('failed requests settle across navigation and can be retried', async () => {
