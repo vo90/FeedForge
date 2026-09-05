@@ -33,6 +33,7 @@ const unexpected = [];
 const presentations = [];
 const diagnostics = createDiagnostics({ appVersion: '0.1.40' });
 let browser, integration, mainWindow, untrustedWindow;
+let pendingSearchImage;
 // Observe actual popup creation/events, but intercept presentation requests so
 // even a failing regression cannot display or focus a fixture on the desktop.
 app.on('browser-window-created', (_event, win) => {
@@ -61,15 +62,25 @@ const deadline = async (promise, ms = 20000) => {
 const until = async (condition) => { for (let i = 0; i < 100; i++) { if (condition()) return; await sleep(50); } throw new Error('Fixture condition timed out.'); };
 const psarc = Buffer.concat([Buffer.from('PSAR'), Buffer.alloc(65532, 7)]);
 const html = (body) => new Response('<!doctype html><html><head><meta charset="UTF-8"><title>Offline fixture</title></head><body>' + body + '</body></html>', { headers: { 'Content-Type': 'text/html' } });
-function searchPage(page = 1) {
-  return html(`<p>Showing ${page} to ${page} of 2 results</p><table id="cdlc-table"><thead><tr><th>Download</th><th>Artist</th><th>Title</th><th>Album</th><th>Tuning</th><th>Creator</th><th>Parts</th><th>Version</th></tr></thead><tbody><tr><td><span title="Hosted on Dropbox">File</span></td><td>Fixture Artist</td><td><a href="/cdlc/${1000 + page}">Fixture Song ${page}</a></td><td>Fixture Album</td><td>E Standard</td><td>Fixture Creator</td><td>Lead</td><td>1</td></tr></tbody></table><span aria-current="page">${page}</span><button aria-label="Previous page" ${page === 1 ? 'disabled' : ''} onclick="location.href='/?search=fixture&amp;page=1'">Previous</button><button aria-label="Next page" ${page === 2 ? 'disabled' : ''} onclick="location.href='/?search=fixture&amp;page=2'">Next</button>`);
+function searchPage(page = 1, pendingImage = false) {
+  return html(`<p>Showing ${page} to ${page} of 2 results</p><table id="cdlc-table"><thead><tr><th>Download</th><th>Artist</th><th>Title</th><th>Album</th><th>Tuning</th><th>Creator</th><th>Parts</th><th>Version</th></tr></thead><tbody><tr><td><span title="Hosted on Dropbox">File</span></td><td>Fixture Artist</td><td><a href="/cdlc/${1000 + page}">Fixture Song ${page}</a></td><td>Fixture Album</td><td>E Standard</td><td>Fixture Creator</td><td>Lead</td><td>1</td></tr></tbody></table><span aria-current="page">${page}</span><button aria-label="Previous page" ${page === 1 ? 'disabled' : ''} onclick="location.href='/?search=fixture&amp;page=1'">Previous</button><button aria-label="Next page" ${page === 2 ? 'disabled' : ''} onclick="location.href='/?search=fixture&amp;page=2'">Next</button>${pendingImage ? '<img id="pending-image" src="/fixture-pending-image.svg" alt="Controlled unfinished image">' : ''}`);
 }
 function fixtureResponse(request) {
   const url = new URL(request.url);
   const key = url.hostname + url.pathname + (url.searchParams.get('dl') === '1' ? '?dl=1' : '');
   visits.set(key, (visits.get(key) || 0) + 1);
   if (url.hostname === 'ignition4.customsforge.com') {
-    if (url.pathname === '/') return searchPage(Number(url.searchParams.get('page') || 1));
+    if (url.pathname === '/') return searchPage(Number(url.searchParams.get('page') || 1), url.searchParams.get('search') === 'slow-resource');
+    if (url.pathname === '/fixture-pending-image.svg') {
+      const body = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>');
+      const stream = new ReadableStream({ start(controller) {
+        pendingSearchImage = { released: false, release() {
+          if (this.released) return;
+          this.released = true; controller.enqueue(body); controller.close();
+        } };
+      } });
+      return new Response(stream, { headers: { 'Content-Type': 'image/svg+xml', 'Content-Length': String(body.length) } });
+    }
     const detail = url.pathname.match(/^\/cdlc\/(100[1-6])$/);
     if (detail) {
       const id = detail[1];
@@ -143,6 +154,30 @@ async function run() {
     assert.equal(previous.results[0].id, '1001');
     assert.equal(allowedNavigation('http://127.0.0.1:8000'), false);
   });
+  await test('real search returns its ready table before an unfinished image allows full page load', async () => {
+    const win = browser.ensureSearchWindow(); const wc = win.webContents;
+    await until(() => !wc.isLoading());
+    let loadFinished = false;
+    const finished = () => { loadFinished = true; };
+    wc.once('did-finish-load', finished);
+    const pending = browser.search({ query: 'slow-resource' });
+    try {
+      const result = await deadline(pending, 5000);
+      assert.equal(result.status, 'ready'); assert.equal(result.results[0].id, '1001');
+      assert.ok(pendingSearchImage, 'The controlled image request must have started.');
+      assert.equal(pendingSearchImage.released, false);
+      assert.equal(loadFinished, false, 'Search must finish before did-finish-load.');
+      assert.deepEqual(await wc.mainFrame.executeJavaScript('({ readyState: document.readyState, imageComplete: document.querySelector("#pending-image").complete })'),
+        { readyState: 'interactive', imageComplete: false });
+      assert.equal(browser.connection.status, 'connected');
+      assertBackground(presentations.filter(entry => entry.win === win));
+    } finally {
+      pendingSearchImage?.release();
+      await deadline(pending, 5000).catch(() => {});
+      await until(() => loadFinished);
+      wc.removeListener('did-finish-load', finished);
+    }
+  });
   await test('real DownloadItem follows signed-button redirect and shared-file download', async () => {
     const file = await download('1001');
     assert.deepEqual(fs.readFileSync(file), psarc);
@@ -214,7 +249,7 @@ async function run() {
       dialog: {}, shell: {}, getMainWindow: () => mainWindow, runConverter: () => { throw new Error('Converter should not run in browser fixture.'); } });
     await Promise.all([mainWindow.loadFile(path.join(__dirname, 'electron-fixture.html')), untrustedWindow.loadFile(path.join(__dirname, 'electron-fixture.html'))]);
     const state = await mainWindow.webContents.executeJavaScript("window.fixture.invoke('song-browser:getState')");
-    assert.equal(state.connection.status, 'signed_out'); assert.deepEqual(state.jobs, []);
+    assert.equal(state.connection.status, 'unknown'); assert.deepEqual(state.jobs, []);
     await assert.rejects(untrustedWindow.webContents.executeJavaScript("window.fixture.invoke('song-browser:getState')"), /requests must come from FeedForge/);
   });
   assert.deepEqual(unexpected, [], 'Every fixture request must be accounted for.');

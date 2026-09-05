@@ -15,7 +15,7 @@ const charts = Object.freeze({
   slow: Object.freeze({ id: '1103', title: 'Fixture Cancel', artist: 'Fixture Artist', host: 'mediafire' }),
 });
 const byId = new Map(Object.values(charts).map((chart) => [chart.id, chart]));
-const counters = { search: 0, searchCompleted: 0, downloads: {}, conversions: {}, reveals: 0 };
+const counters = { search: 0, searchCompleted: 0, downloads: {}, conversions: {}, reveals: 0, browserActions: { signIn: 0, showBrowser: 0 } };
 const tests = [], rendererErrors = [], unexpected = [], transfers = [], savedReports = [];
 const conversionFailures = new Map();
 let runtime, receipt, mainWindow, registration, searchGate, scenarioEvidence, currentOutput = 'first';
@@ -112,6 +112,7 @@ async function runConverter(args) {
 const html = (body, title = 'Offline Song Browser fixture') => new Response(`<!doctype html><html><head><meta charset="UTF-8"><title>${title}</title></head><body>${body}</body></html>`, { headers: { 'Content-Type': 'text/html' } });
 const hostName = (host) => ({ dropbox: 'Dropbox', 'google-drive': 'Google Drive', mediafire: 'MediaFire', mega: 'MEGA' }[host]);
 function searchPage(query) {
+  if (query.toLowerCase() === 'network failure') return Response.error();
   if (query.toLowerCase() === 'login') return html('<h1>Custom songs for Rocksmith 2014</h1><a href="/">Login to CustomsForge</a><button>Sign in</button>');
   if (query.toLowerCase() === 'challenge') return html('<p>Verify you are human</p>', 'Just a moment...');
   const rows = query.toLowerCase() === 'empty' ? [] : [...Object.values(charts), { id: '1110', title: 'Fixture Unsupported', artist: 'Fixture Artist', host: 'mega' }];
@@ -243,6 +244,8 @@ async function main() {
   ipcMain.handle('converter:inspect', (event, filename) => { trusted(event); return { ok: true, preview: previewFrom(filename).preview }; });
   const observedIpc = { handle(name, action) {
     ipcMain.handle(name, async (...args) => {
+      if (name === 'song-browser:signIn') counters.browserActions.signIn++;
+      if (name === 'song-browser:showBrowser') counters.browserActions.showBrowser++;
       try { return await action(...args); }
       finally { if (name === 'song-browser:search') { counters.searchCompleted++; signalWaiters(); } }
     });

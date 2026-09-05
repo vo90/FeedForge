@@ -113,7 +113,7 @@ export default function SongBrowser({ api: providedApi, onReview }) {
   const searchSession = useMemo(() => getSearchSession(api), [api]);
   const searchState = useSyncExternalStore(searchSession.subscribe, searchSession.getSnapshot, searchSession.getSnapshot);
   const { query, searchedQuery, result: searchResult, pending: searching } = searchState;
-  const [snapshot, setSnapshot] = useState({ outputDir: "", jobs: [], connection: { status: "signed_out" } });
+  const [snapshot, setSnapshot] = useState({ outputDir: "", jobs: [], connection: { status: "unknown" } });
   const [loading, setLoading] = useState(available);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -126,6 +126,7 @@ export default function SongBrowser({ api: providedApi, onReview }) {
   useEffect(() => { if (feedback.url) setFeedbackAddress(feedback.url); }, [feedback.url]);
   const connection = typeof snapshot.connection === "string" ? { status: snapshot.connection } : snapshot.connection || {};
   const connected = connection.status === "connected";
+  const signedOut = ["signed_out", "sign_in_required", "login_required", "auth_required"].includes(connection.status);
   const challenge = connection.status === "challenge" || searchResult?.status === "challenge";
   const needsSignIn = ["signed_out", "sign_in_required", "login_required", "auth_required"].includes(searchResult?.status);
   const results = Array.isArray(searchResult?.results) ? searchResult.results : [];
@@ -209,7 +210,7 @@ export default function SongBrowser({ api: providedApi, onReview }) {
     <section className="song-browser" aria-labelledby="sb-title">
       <header className="sb-header">
         <div><p className="sb-eyebrow">CUSTOMSFORGE SONG LIBRARY</p><h1 id="sb-title">Find songs</h1><p className="sb-description">Find a chart. Download it. Get a feedpak ready for Feedback.</p></div>
-        {available ? <div className="sb-account"><span className={`sb-connection ${connected ? "sb-connected" : ""}`}><i aria-hidden="true" />{loading ? "Checking connection…" : connected ? "Connected" : challenge ? "Browser check needed" : "Not connected"}</span><button type="button" className="sb-button" disabled={busy.has("sign-in") || busy.has("browser")} onClick={connected || challenge ? showBrowser : () => action("sign-in", "signIn")}><ExternalLink size={15} aria-hidden="true" />{connected || challenge ? "Open browser" : busy.has("sign-in") ? "Opening…" : "Sign in"}</button></div> : null}
+        {available ? <div className="sb-account"><span className={`sb-connection ${connected ? "sb-connected" : ""}`}><i aria-hidden="true" />{loading ? "Checking connection…" : connected ? "Connected" : connection.status === "error" ? "Search unavailable" : challenge ? "Browser check needed" : signedOut ? "Signed out" : "Connection not checked"}</span><button type="button" className="sb-button" disabled={busy.has("sign-in") || busy.has("browser")} onClick={signedOut ? () => action("sign-in", "signIn") : showBrowser}><ExternalLink size={15} aria-hidden="true" />{busy.has("sign-in") || busy.has("browser") ? "Opening…" : signedOut ? "Sign in" : "Open browser"}</button></div> : null}
       </header>
 
       {!available ? (

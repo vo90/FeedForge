@@ -11,6 +11,7 @@ function rendererSnapshot() {
   const button = (element) => ({ label: clean(element.textContent), disabled: element.disabled });
   const query = document.querySelector('#sb-query');
   const submit = document.querySelector('.sb-search-form button[type="submit"]');
+  const account = document.querySelector('.sb-account button');
   const results = [...document.querySelectorAll('.sb-result')].map((card) => ({
     title: clean(card.querySelector('h3')?.textContent),
     buttons: [...card.querySelectorAll('button')].map(button),
@@ -28,6 +29,7 @@ function rendererSnapshot() {
     pending: document.querySelector('.sb-results')?.getAttribute('aria-busy') === 'true',
     searchButton: submit ? button(submit) : null,
     connection: clean(document.querySelector('.sb-connection')?.textContent),
+    accountButton: account ? button(account) : null,
     results, jobs,
     alerts: [...document.querySelectorAll('.song-browser [role="alert"]')].map((element) => clean(element.textContent)),
     pendingCount: clean(document.querySelector('.sb-count')?.textContent),
@@ -56,6 +58,7 @@ function rendererAction(action) {
   }
   if (action.kind === 'navigate') return clickButton(document.querySelector('.side-nav'), action.label);
   if (action.kind === 'search') return clickButton(document.querySelector('.sb-search-form'), 'Search');
+  if (action.kind === 'account') return clickButton(document.querySelector('.sb-account'), action.label);
   if (action.kind === 'result') {
     const card = [...document.querySelectorAll('.sb-result')].find((element) => clean(element.querySelector('h3')?.textContent) === action.title);
     return clickButton(card, action.label);
@@ -114,6 +117,16 @@ async function runUiScenarios({ win, fixture, test }) {
     await action({ kind: 'navigate', label });
     return until((state) => state.activeView === label && state.mounted === (label === 'Find songs'), `Navigate to ${label}`);
   }
+
+  await test('production renderer does not infer sign-out before checking CustomsForge', async () => {
+    await until((state) => state.hasNavigation, 'Production app navigation');
+    await navigate('Find songs');
+    const initial = await until((state) => state.connection === 'Connection not checked', 'Unchecked CustomsForge connection');
+    assert.equal(initial.accountButton?.label, 'Open browser');
+    assert.equal(initial.accountButton?.disabled, false);
+    assert.equal((await fixture.counts()).search, 0, 'Checking the UI must not request a website page.');
+    evidence.initialConnection = { label: initial.connection, action: initial.accountButton.label };
+  });
 
   await test('production renderer retains an in-flight search across section navigation', async () => {
     await until((state) => state.hasNavigation, 'Production app navigation');
@@ -213,6 +226,44 @@ async function runUiScenarios({ win, fixture, test }) {
     assert.equal(countFor(after, 'downloads', retry), countFor(before, 'downloads', retry), 'A missing-output event must not automatically download the chart.');
     assert.equal(countFor(after, 'conversions', retry), countFor(before, 'conversions', retry));
     evidence.missingOutput = { chart: retry.id, status: 'File unavailable', explicitDownloadRestored: true, nativeRevealCalls: after.reveals };
+  });
+
+  await test('production account controls distinguish search failures from an observed sign-out and recover', async () => {
+    async function submit(query, expectedConnection, expectedAction) {
+      await action({ kind: 'query', value: query });
+      await until((state) => state.query === query && !state.searchButton?.disabled, 'Search input for ' + query);
+      await action({ kind: 'search' });
+      const settled = await until((state) => !state.pending && state.connection === expectedConnection, 'Connection result for ' + query);
+      assert.equal(settled.accountButton?.label, expectedAction);
+      assert.equal(settled.accountButton?.disabled, false);
+      return settled;
+    }
+    const connected = await read();
+    assert.equal(connected.connection, 'Connected');
+    assert.equal(connected.accountButton?.label, 'Open browser');
+    const failed = await submit('network failure', 'Search unavailable', 'Open browser');
+    assert.ok(failed.alerts.length, 'The failed load must report its search error.');
+    assert.equal(failed.results.length, 0);
+    const beforeOpen = await fixture.counts();
+    await action({ kind: 'account', label: 'Open browser' });
+    await until((state) => state.accountButton?.label === 'Open browser' && !state.accountButton.disabled, 'Browser action after a search failure');
+    const afterOpen = await fixture.counts();
+    assert.equal(afterOpen.browserActions.showBrowser, beforeOpen.browserActions.showBrowser + 1);
+    assert.equal(afterOpen.browserActions.signIn, beforeOpen.browserActions.signIn, 'A search error must not invoke Sign in.');
+
+    await submit('login', 'Signed out', 'Sign in');
+    const beforeSignIn = await fixture.counts();
+    await action({ kind: 'account', label: 'Sign in' });
+    await until((state) => state.accountButton?.label === 'Sign in' && !state.accountButton.disabled, 'Explicit sign-in action');
+    const afterSignIn = await fixture.counts();
+    assert.equal(afterSignIn.browserActions.signIn, beforeSignIn.browserActions.signIn + 1);
+    assert.equal(afterSignIn.browserActions.showBrowser, beforeSignIn.browserActions.showBrowser);
+
+    await submit('challenge', 'Browser check needed', 'Open browser');
+    const recovered = await submit('fixture', 'Connected', 'Open browser');
+    assert.ok(recovered.results.length > 0, 'A successful retry must restore the song results.');
+    assert.deepEqual(recovered.alerts, []);
+    evidence.connectionRecovery = { failedLoad: 'Search unavailable', confirmedLogin: 'Signed out', challenge: 'Browser check needed', recovered: 'Connected', signInInvokedForError: false };
   });
   return { ...evidence, durationMs: Date.now() - started };
 }

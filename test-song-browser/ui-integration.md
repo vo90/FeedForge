@@ -21,7 +21,10 @@ before launching. It records those checks and the built renderer hashes in
 The suite checks search results and drafts across Convert/Find songs navigation,
 including navigation while a search is pending; cancellation that releases the
 queue; retry from cached PSARC after a conversion failure; and missing output
-files reflected in both history and search results.
+files reflected in both history and search results. It also verifies that an
+unchecked session and a failed page load do not imply sign-out, that the rendered
+account actions invoke the correct production IPC, and that login, challenge and
+successful retry states retain their respective controls.
 
 The browser adapter, IPC boundary, queue, cache, file publication and UI are real.
 All HTTP/HTTPS responses are intercepted synthetic CustomsForge and host pages;

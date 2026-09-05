@@ -18,7 +18,9 @@ The fixture never adds localhost, insecure content, a test switch or other
 exceptions to the production browser adapter. Production origins are used only
 as synthetic document identities inside the intercepted test session.
 
-Coverage: real DOM search/pagination, signed-button redirects, nested popup
+Coverage: real DOM search/pagination, search completion while a controlled image
+keeps full page loading unfinished, initial unknown connection status over IPC,
+signed-button redirects, nested popup
 download ownership/cleanup, background attention with explicit browser opening,
 expired-button refresh without duplicate clicks,
 in-progress cancellation, interrupted response, and actual trusted/foreign

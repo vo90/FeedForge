@@ -44,7 +44,7 @@ class CustomsForgeBrowser {
     this.session = session.fromPath(profilePath);
     this.onConnection = onConnection;
     this.onDiagnostic = onDiagnostic;
-    this.connection = { status: 'signed_out', message: 'Sign in to CustomsForge to start searching.' };
+    this.connection = { status: 'unknown', message: '' };
     this.searchWindow = null;
     this.windows = new Set();
     this.active = null;
@@ -95,9 +95,11 @@ class CustomsForgeBrowser {
     wc.on('will-navigate', guard);
     wc.on('will-redirect', guard);
     wc.on('will-attach-webview', (event) => event.preventDefault());
-    wc.on('did-finish-load', () => {
+    const inspectConnection = () => {
       if (!job && win === this.searchWindow) void this.readConnection(win);
-    });
+    };
+    wc.on('dom-ready', inspectConnection);
+    wc.on('did-finish-load', inspectConnection);
     wc.setWindowOpenHandler(({ url }) => {
       if (!job || !allowedNavigation(url)) return { action: 'deny' };
       return { action: 'allow', overrideBrowserWindowOptions: { show: false, autoHideMenuBar: true,
@@ -124,7 +126,7 @@ class CustomsForgeBrowser {
     try {
       for (let i = 0; i < 12; i++) {
         if (revision !== this.connectionRead || this.searching || this.disposed || win.isDestroyed() || win.webContents.getURL() !== url) return;
-        const result = await win.webContents.executeJavaScript(`(${readSearchPage.toString()})()`);
+        const result = await win.webContents.mainFrame.executeJavaScript(`(${readSearchPage.toString()})()`);
         if (revision !== this.connectionRead || this.searching || this.disposed || win.isDestroyed() || win.webContents.getURL() !== url) return;
         // Inspect only the already-loaded page after a normal login/navigation.
         // An incomplete OAuth/table render is inconclusive, never proof of login.
@@ -144,7 +146,7 @@ class CustomsForgeBrowser {
   async signIn() {
     const win = this.ensureSearchWindow();
     win.show(); win.focus();
-    if (!win.webContents.getURL()) await this.navigate(win, CF);
+    if (!win.webContents.getURL()) await this.navigate(win, CF, { waitForDocument: true });
     return { ok: true };
   }
 
@@ -152,14 +154,36 @@ class CustomsForgeBrowser {
     const candidates = this.active ? [...this.active.windows].filter((w) => !w.isDestroyed()) : [];
     const win = candidates.at(-1) || this.ensureSearchWindow();
     win.show(); win.focus();
+    if (win === this.searchWindow && !win.webContents.getURL()) {
+      return this.navigate(win, CF, { waitForDocument: true }).then(() => ({ ok: true }));
+    }
     return { ok: true };
   }
 
-  async navigate(win, url) {
+  async navigate(win, url, { waitForDocument = false } = {}) {
     if (!allowedNavigation(url)) throw new Error('Unsupported destination.');
-    // ERR_ABORTED is expected when a navigation turns into a file download.
+    // Search needs the new document, not every image/ad/frame's load event.
+    // Require a fresh main-frame commit so a late event from the previous
+    // query cannot make its stale rows look like the requested search.
     let timer;
-    try { await Promise.race([win.loadURL(url), new Promise((_resolve, reject) => {
+    const wc = win.webContents;
+    let started = false, committed = null, resolveDocument;
+    const start = (details, target, inPlace, mainFrame) => {
+      if (!(details.isMainFrame ?? mainFrame) || (details.isSameDocument ?? inPlace)) return;
+      if ((details.url ?? target) === url) started = true;
+      committed = null;
+    };
+    const commit = (_event, target) => { if (started) committed = target; };
+    const ready = () => {
+      if (committed && !win.isDestroyed() && wc.getURL() === committed && allowedNavigation(committed)) resolveDocument();
+    };
+    const documentReady = waitForDocument ? new Promise((resolve) => {
+      resolveDocument = resolve;
+      wc.on('did-start-navigation', start);
+      wc.on('did-navigate', commit);
+      wc.on('dom-ready', ready);
+    }) : null;
+    try { await Promise.race([...(documentReady ? [documentReady] : []), win.loadURL(url), new Promise((_resolve, reject) => {
       timer = setTimeout(() => {
         // Reject first: stop() can synchronously reject loadURL with ERR_ABORTED,
         // which is otherwise a successful navigation-to-download transition.
@@ -167,8 +191,17 @@ class CustomsForgeBrowser {
         try { if (!win.isDestroyed()) win.webContents.stop(); } catch { /* The timed-out window may already be closing. */ }
       }, 30000);
     })]); } catch (error) {
-      if (error.code !== 'ERR_ABORTED' && error.errno !== -3) throw new Error('The page could not be loaded. Open the browser and try again.');
-    } finally { clearTimeout(timer); }
+      // A download may abort navigation when Chromium hands off the file.
+      // A search abort before document readiness must never accept old rows.
+      if (waitForDocument || (error.code !== 'ERR_ABORTED' && error.errno !== -3)) throw new Error('The page could not be loaded. Open the browser and try again.');
+    } finally {
+      clearTimeout(timer);
+      if (waitForDocument) {
+        wc.removeListener('did-start-navigation', start);
+        wc.removeListener('did-navigate', commit);
+        wc.removeListener('dom-ready', ready);
+      }
+    }
   }
 
   async search({ query, page = 1 }) {
@@ -185,14 +218,16 @@ class CustomsForgeBrowser {
         if (this.lastSearch?.query !== query.trim() || Math.abs(this.lastSearch.page - page) !== 1) {
           throw new Error('Start with the first search page, then use Next or Previous.');
         }
-        const changed = await win.webContents.executeJavaScript(`(${requestSearchPage.toString()})(${JSON.stringify({direction: page > this.lastSearch.page ? 'next' : 'previous'})})`, true);
+        const changed = await win.webContents.mainFrame.executeJavaScript(`(${requestSearchPage.toString()})(${JSON.stringify({direction: page > this.lastSearch.page ? 'next' : 'previous'})})`, true);
         if (changed.status !== 'clicked') throw new Error(changed.error || 'The next page is unavailable.');
         paging = true;
-      } else await this.navigate(win, url);
+      } else await this.navigate(win, url, { waitForDocument: true });
       let result;
       for (let i = 0; i < 24; i++) {
         if (win.isDestroyed()) throw new Error('The search window closed. Try again.');
-        try { result = await win.webContents.executeJavaScript(`(${readSearchPage.toString()})()`); }
+        // webContents.executeJavaScript waits for the full window load even
+        // after dom-ready. The main frame can read the ready document now.
+        try { result = await win.webContents.mainFrame.executeJavaScript(`(${readSearchPage.toString()})()`); }
         catch { await pause(300); continue; }
         if (result.status !== 'layout_changed' && (!paging || result.status !== 'ready' || result.page === page)) break;
         await pause(300);

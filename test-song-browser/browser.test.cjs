@@ -12,7 +12,7 @@ const { hostDownloadAction } = require('../electron/song-browser/host-actions.cj
 const { registerSongBrowser } = require('../electron/song-browser/index.cjs');
 
 class FakeContents extends EventEmitter {
-  constructor() { super(); this.url = ''; this.mainFrame = {}; this.responses = []; }
+  constructor() { super(); this.url = ''; this.mainFrame = { executeJavaScript: (...args) => this.executeJavaScript(...args) }; this.responses = []; }
   setAudioMuted(value) { this.muted = value; }
   setWindowOpenHandler(handler) { this.openHandler = handler; }
   getURL() { return this.url; }
@@ -145,6 +145,62 @@ test('search failure clears stale connection and pagination state', async (t) =>
   win.loadURL = () => Promise.reject(new Error('offline fixture'));
   await assert.rejects(browser.search({ query: 'different' }), /could not be loaded/);
   assert.equal(browser.connection.status, 'error'); assert.equal(browser.lastSearch, null);
+});
+
+test('search reads a new document while its nonessential resources are still loading', async (t) => {
+  const { browser } = fixture(t); const win = browser.ensureSearchWindow();
+  let rejectLoad, stopped = false;
+  win.webContents.stop = () => { stopped = true; };
+  win.loadURL = (url) => {
+    win.webContents.url = url;
+    win.webContents.emit('did-start-navigation', { url, isMainFrame: true, isSameDocument: false });
+    win.webContents.emit('did-navigate', {}, url);
+    win.webContents.emit('dom-ready');
+    return new Promise((_resolve, reject) => { rejectLoad = reject; });
+  };
+  win.webContents.mainFrame.executeJavaScript = async () => ({ status: 'ready', results: [{ id: '123' }], page: 1 });
+  win.webContents.executeJavaScript = () => { throw new Error('Window-level execution waits for every resource'); };
+  const pending = browser.search({ query: 'fixture' }).then(value => ({ value }), error => ({ error }));
+  try {
+    const result = await settlesSoon(pending);
+    assert.equal(result.value?.status, 'ready', 'a ready search must not wait for the window load event');
+    assert.equal(browser.connection.status, 'connected');
+    assert.equal(stopped, false); assert.equal(win.visible, false);
+  } finally { rejectLoad(new Error('Late resource failure')); await pending; }
+  assert.equal(win.webContents.listenerCount('did-navigate'), 0);
+  assert.equal(win.webContents.listenerCount('did-start-navigation'), 0);
+});
+
+test('search ignores an old document DOM-ready and rejects an aborted navigation', async (t) => {
+  const { browser } = fixture(t); const win = browser.ensureSearchWindow();
+  win.webContents.url = searchUrl('previous');
+  let rejectLoad;
+  win.loadURL = (url) => {
+    win.webContents.emit('dom-ready');
+    win.webContents.emit('did-start-navigation', { url, isMainFrame: true, isSameDocument: false });
+    win.webContents.emit('dom-ready');
+    return new Promise((_resolve, reject) => { rejectLoad = reject; });
+  };
+  win.webContents.responses.push({ status: 'ready', results: [{ id: 'stale' }], page: 1 });
+  const pending = browser.search({ query: 'different' }).then(value => ({ value }), error => ({ error }));
+  assert.equal((await settlesSoon(pending)).stalled, true);
+  rejectLoad(Object.assign(new Error('aborted'), { code: 'ERR_ABORTED', errno: -3 }));
+  const result = await pending;
+  assert.ok(result.error, 'a search abort must not expose the previous query results');
+  assert.equal(browser.connection.status, 'error');
+});
+
+test('an unchecked connection opens its first page explicitly and retains an existing login page', async (t) => {
+  const { browser } = fixture(t);
+  assert.equal(browser.connection.status, 'unknown');
+  await browser.showBrowser();
+  const win = browser.searchWindow;
+  assert.equal(win.webContents.getURL(), 'https://ignition4.customsforge.com');
+  assert.equal(win.visible, true);
+  win.webContents.url = 'https://customsforge.com/oauth/authorize';
+  win.loadURL = () => { throw new Error('Do not replace a login page'); };
+  await browser.showBrowser();
+  assert.equal(win.webContents.getURL(), 'https://customsforge.com/oauth/authorize');
 });
 
 test('search reports login and challenge steps without opening a window; explicit sign-in still opens it', async (t) => {
