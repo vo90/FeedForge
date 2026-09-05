@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { runConversionQueues, usesSharedRs1SongsAudio } from "./conversion-scheduler.mjs";
 import "./styles.css";
+import SongBrowser from "./song-browser/SongBrowser.jsx";
 
 const api = window.feedbackConverter;
 const INSPECTION_WORKERS = 2;
@@ -131,7 +132,7 @@ function App() {
   const [artistFilter, setArtistFilter] = useState("all");
   const [albumFilter, setAlbumFilter] = useState("all");
   const [tuningFilter, setTuningFilter] = useState("all");
-  const [activeView, setActiveView] = useState("workspace");
+  const [activeView, setActiveView] = useState(() => window.location.hash === "#songs" ? "songs" : "workspace");
   const [settingsSection, setSettingsSection] = useState("conversion");
   const [isConverting, setIsConverting] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
@@ -1121,7 +1122,9 @@ function App() {
     event.preventDefault();
   }
 
-  const viewMeta = activeView === "stems"
+  const viewMeta = activeView === "songs"
+    ? { title: "Find songs", description: "Search CustomsForge and turn charts into FeedPaks." }
+    : activeView === "stems"
     ? { title: "Stem splitting", description: "Local Demucs or remote stem server setup." }
     : activeView === "settings"
     ? { title: "Settings", description: "Conversion defaults and diagnostics." }
@@ -1140,6 +1143,10 @@ function App() {
           </div>
         </div>
         <nav className="side-nav" aria-label="FeedForge sections">
+          <button className={activeView === "songs" ? "active" : ""} onClick={() => setActiveView("songs")}>
+            <Search size={18} />
+            <span>Find songs</span>
+          </button>
           <button className={activeView === "workspace" ? "active" : ""} onClick={() => setActiveView("workspace")}>
             <Guitar size={18} />
             <span>Convert</span>
@@ -1173,7 +1180,7 @@ function App() {
         </div>
       </aside>
       <main className="workspace">
-        <header className="topbar">
+        {activeView !== "songs" && <header className="topbar">
           <div className="title-group">
             <span className="page-kicker">FeedForge</span>
             <h1>{viewMeta.title}</h1>
@@ -1204,16 +1211,16 @@ function App() {
               </button>
             )}
           </div>
-        </header>
+        </header>}
 
-        <section className="toolbar">
+        {activeView !== "songs" && <section className="toolbar">
           <div className="search">
             <Search size={17} />
             <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search title, artist, or album" />
           </div>
           <button onClick={chooseFiles}><Plus size={17} /> Add files</button>
           <button onClick={chooseFolder}><FolderOpen size={17} /> Add folder</button>
-        </section>
+        </section>}
 
         {updateInfo?.updateAvailable && (
           <section className="update-banner">
@@ -1232,7 +1239,7 @@ function App() {
           <ConversionProgress progress={conversionProgress} isConverting={isConverting} />
         )}
 
-        {activeView === "settings" || activeView === "stems" ? (
+        {activeView === "songs" ? <SongBrowser api={window.songBrowser} /> : activeView === "settings" || activeView === "stems" ? (
           <section className={`settings-page ${activeView === "stems" ? "settings-page-full" : ""}`}>
             {activeView === "settings" && (
               <div className="settings-nav" aria-label="Settings sections">

@@ -1,5 +1,22 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
+// This bridge is installed only in FeedForge's local UI, never on remote song pages.
+contextBridge.exposeInMainWorld("songBrowser", {
+  getState: () => ipcRenderer.invoke("song-browser:getState"),
+  signIn: () => ipcRenderer.invoke("song-browser:signIn"),
+  search: (request) => ipcRenderer.invoke("song-browser:search", request),
+  chooseOutput: () => ipcRenderer.invoke("song-browser:chooseOutput"),
+  enqueue: (request) => ipcRenderer.invoke("song-browser:enqueue", request),
+  cancel: (request) => ipcRenderer.invoke("song-browser:cancel", request),
+  showBrowser: () => ipcRenderer.invoke("song-browser:showBrowser"),
+  showOutput: (request) => ipcRenderer.invoke("song-browser:showOutput", request),
+  onState: (callback) => {
+    const listener = (_event, value) => callback(value);
+    ipcRenderer.on("song-browser:state", listener);
+    return () => ipcRenderer.removeListener("song-browser:state", listener);
+  }
+});
+
 function droppedPaths(files) {
   return Array.from(files).map((file) => webUtils.getPathForFile(file)).filter(Boolean);
 }

@@ -8,6 +8,7 @@
   "main": "electron/main.cjs",
   "desktopName": "FeedForge.desktop",
   "scripts": {
+    "test:song-browser": "node --test test-song-browser/*.test.cjs",
     "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && electron .\"",
     "build": "vite build",
     "converter:pack": "python -m PyInstaller --noconfirm --clean psarc2feedpak.spec",

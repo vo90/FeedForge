@@ -1,9 +1,24 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, session } = require("electron");
+const { registerSongBrowser } = require("./song-browser/index.cjs");
 const { spawn, execFileSync } = require("child_process");
 const fs = require("fs");
 const http = require("http");
 const https = require("https");
 const path = require("path");
+
+// Development launchers can isolate this feature's profile without changing the installed app.
+if (!app.isPackaged && process.env.FEEDFORGE_USER_DATA) {
+  const profile = path.resolve(process.env.FEEDFORGE_USER_DATA);
+  const temporary = path.join(profile, "temp");
+  fs.mkdirSync(temporary, { recursive: true });
+  app.setPath("userData", profile);
+  app.setPath("sessionData", profile);
+  app.setPath("temp", temporary);
+  if (!app.requestSingleInstanceLock()) { app.quit(); return; }
+  app.on("second-instance", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); }
+  });
+}
 
 let mainWindow;
 let inspectCacheRoot;
@@ -92,15 +107,17 @@ function createWindow() {
 
   mainWindow.once("ready-to-show", () => mainWindow.show());
 
+  const initialView = !app.isPackaged && process.env.FEEDFORGE_START_VIEW === "songs" ? "songs" : undefined;
+
   if (!app.isPackaged && process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL + (initialView ? "#songs" : ""));
     return;
   }
 
   if (!app.isPackaged) {
     const builtIndex = path.join(app.getAppPath(), "desktop-dist", "index.html");
     if (fs.existsSync(builtIndex)) {
-      mainWindow.loadFile(builtIndex);
+      mainWindow.loadFile(builtIndex, initialView ? { hash: initialView } : {});
       return;
     }
     mainWindow.loadURL("http://127.0.0.1:5173");
@@ -123,6 +140,9 @@ app.whenReady().then(() => {
   });
   inspectCacheRoot = path.join(app.getPath("temp"), "feedforge-inspect-cache");
   createWindow();
+  registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, shell,
+    getMainWindow: () => mainWindow, runConverter });
+  mainWindow.once("closed", () => app.quit());
   setTimeout(() => {
     cleanupStalePortableArtifacts();
     if (!inspectCacheTouched) removeDirectory(inspectCacheRoot);
@@ -1630,9 +1650,9 @@ function converterCommand() {
     return { command: localExe, prefix: [], cwd: app.getAppPath() };
   }
   return {
-    command: process.platform === "win32"
+    command: (!app.isPackaged && process.env.FEEDFORGE_PYTHON) || (process.platform === "win32"
       ? path.join(app.getAppPath(), ".venv", "Scripts", "python.exe")
-      : path.join(app.getAppPath(), ".venv", "bin", "python"),
+      : path.join(app.getAppPath(), ".venv", "bin", "python")),
     prefix: ["-m", "feedback_converter.cli"],
     cwd: app.getAppPath()
   };
@@ -1689,7 +1709,9 @@ function runConverter(args, options = {}) {
     const startedAt = Date.now();
     const child = spawn(command, [...prefix, ...args], {
       cwd,
-      windowsHide: true
+      windowsHide: true,
+      env: { ...process.env, PYTHONPATH: path.join(app.getAppPath(), "src") + (process.env.PYTHONPATH ? path.delimiter + process.env.PYTHONPATH : ""),
+        ...(options.directory ? { TEMP: options.directory, TMP: options.directory, TMPDIR: options.directory, PYTHONDONTWRITEBYTECODE: "1" } : {}) }
     });
     if (typeof options.onSpawn === "function") options.onSpawn(child);
     let stdout = "";
