@@ -1239,7 +1239,7 @@ function App() {
           <ConversionProgress progress={conversionProgress} isConverting={isConverting} />
         )}
 
-        {activeView === "songs" ? <SongBrowser api={window.songBrowser} /> : activeView === "settings" || activeView === "stems" ? (
+        {activeView === "songs" ? <SongBrowser api={window.songBrowser} onReview={async (inputPath) => { await addFiles([inputPath]); setActiveView("workspace"); }} /> : activeView === "settings" || activeView === "stems" ? (
           <section className={`settings-page ${activeView === "stems" ? "settings-page-full" : ""}`}>
             {activeView === "settings" && (
               <div className="settings-nav" aria-label="Settings sections">

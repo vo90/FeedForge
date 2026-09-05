@@ -6,9 +6,12 @@ const http = require("http");
 const https = require("https");
 const path = require("path");
 
-// Development launchers can isolate this feature's profile without changing the installed app.
-if (!app.isPackaged && process.env.FEEDFORGE_USER_DATA) {
-  const profile = path.resolve(process.env.FEEDFORGE_USER_DATA);
+const songBrowserTest = app.isPackaged && require(path.join(app.getAppPath(), "package.json")).songBrowserTest === true;
+// Test builds have their own profile, including Chromium storage and temporary files.
+if (songBrowserTest || (!app.isPackaged && process.env.FEEDFORGE_USER_DATA)) {
+  const profile = songBrowserTest
+    ? path.join(process.env.PORTABLE_EXECUTABLE_DIR || app.getPath("appData"), "FeedForge Song Browser Data")
+    : path.resolve(process.env.FEEDFORGE_USER_DATA);
   const temporary = path.join(profile, "temp");
   fs.mkdirSync(temporary, { recursive: true });
   app.setPath("userData", profile);
@@ -96,7 +99,7 @@ function createWindow() {
     minWidth: 1180,
     minHeight: 760,
     backgroundColor: "#090f18",
-    title: `FeedForge ${app.getVersion()}`,
+    title: `${songBrowserTest ? "FeedForge Song Browser Test" : "FeedForge"} ${app.getVersion()}`,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -106,8 +109,9 @@ function createWindow() {
   });
 
   mainWindow.once("ready-to-show", () => mainWindow.show());
+  if (songBrowserTest) mainWindow.on("page-title-updated", (event) => event.preventDefault());
 
-  const initialView = !app.isPackaged && process.env.FEEDFORGE_START_VIEW === "songs" ? "songs" : undefined;
+  const initialView = songBrowserTest || (!app.isPackaged && process.env.FEEDFORGE_START_VIEW === "songs") ? "songs" : undefined;
 
   if (!app.isPackaged && process.env.VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL + (initialView ? "#songs" : ""));
@@ -124,7 +128,7 @@ function createWindow() {
     return;
   }
 
-  mainWindow.loadFile(path.join(process.resourcesPath, "app.asar", "desktop-dist", "index.html"));
+  mainWindow.loadFile(path.join(process.resourcesPath, "app.asar", "desktop-dist", "index.html"), initialView ? { hash: initialView } : {});
 }
 
 app.whenReady().then(() => {
@@ -144,7 +148,7 @@ app.whenReady().then(() => {
     getMainWindow: () => mainWindow, runConverter });
   mainWindow.once("closed", () => app.quit());
   setTimeout(() => {
-    cleanupStalePortableArtifacts();
+    if (!songBrowserTest) cleanupStalePortableArtifacts();
     if (!inspectCacheTouched) removeDirectory(inspectCacheRoot);
   }, 2500);
 });
@@ -820,6 +824,7 @@ ipcMain.handle("updates:check", async () => {
 });
 
 ipcMain.handle("updates:openLatest", async (_event, url) => {
+  if (songBrowserTest) return { ok: false, error: "Use the next Song Browser test build to update this version." };
   const target = safeGithubReleaseUrl(url) || GITHUB_RELEASES_URL;
   await shell.openExternal(target);
   return { ok: true, url: target };
@@ -831,6 +836,8 @@ ipcMain.on("app:rendererError", (_event, payload = {}) => {
 
 async function checkForUpdates() {
   const currentVersion = app.getVersion();
+  if (songBrowserTest) return { ok: true, currentVersion, latestVersion: currentVersion,
+    updateAvailable: false, releaseUrl: "", releaseName: "Song Browser test build", publishedAt: "" };
   try {
     const release = await requestJsonHttps(GITHUB_LATEST_API_URL, 5000);
     const latestVersion = normalizeVersion(release.tag_name || release.name || "");

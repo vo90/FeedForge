@@ -41,7 +41,7 @@ function ResultCard({ song, job, busy, canDownload, onDownload, onShowOutput }) 
   const host = hostInfo(song.host);
   const supported = song.supported === true && host.available;
   const jobState = job ? stateOf(job) : "";
-  const completed = COMPLETE.has(jobState);
+  const completed = COMPLETE.has(jobState) && job?.inOutputDir !== false;
   const pending = job && !FINISHED.has(jobState);
   const parts = partsText(song.parts);
   const label = completed ? "FeedPak ready" : pending ? STATE_LABELS[jobState] || "In queue" : busy ? "Adding…" : "Download & convert";
@@ -77,7 +77,7 @@ function ResultCard({ song, job, busy, canDownload, onDownload, onShowOutput }) 
   );
 }
 
-function JobCard({ job, busy, onCancel, onShowOutput, onShowBrowser }) {
+function JobCard({ job, busy, onCancel, onShowOutput, onShowBrowser, onRetry, onReview, onClearCache }) {
   const status = stateOf(job);
   const completed = COMPLETE.has(status);
   const failed = status === "failed" || status === "error";
@@ -94,13 +94,18 @@ function JobCard({ job, busy, onCancel, onShowOutput, onShowBrowser }) {
       {active && !attention ? <progress className="sb-progress" max="100" value={progress ?? undefined} aria-label={`${text(job.title, "Song")}: ${STATE_LABELS[status] || "In progress"}`} /> : null}
       <div className="sb-job-bottom">
         <p>{job.error ? errorText(job.error) : text(job.message, completed ? "Your feedpak is ready in the output folder." : status === "queued" ? "Waiting for the previous song to finish." : "")}</p>
+        {job.warning ? <p role="status">{text(job.warning)}</p> : null}
         {completed ? <button type="button" className="sb-text-button" disabled={busy} onClick={() => onShowOutput(job.id)}><FolderOpen size={14} aria-hidden="true" /> Show file</button> : !FINISHED.has(status) ? <div className="sb-job-controls">{attention ? <button type="button" className="sb-text-button" onClick={onShowBrowser}>Open browser</button> : null}<button type="button" className="sb-text-button" disabled={busy || status === "cancelling"} onClick={() => onCancel(job.id)}><X size={14} aria-hidden="true" />{busy || status === "cancelling" ? "Cancelling…" : "Cancel"}</button></div> : null}
       </div>
+      {FINISHED.has(status) && (job.canRetry || job.hasCachedInput) ? <div className="sb-job-controls sb-recovery">
+        {job.canRetry ? <button type="button" className="sb-text-button" disabled={busy} onClick={() => onRetry(job.id)}>{job.hasCachedInput ? "Retry conversion" : "Retry download"}</button> : null}
+        {job.hasCachedInput ? <><button type="button" className="sb-text-button" disabled={busy} onClick={() => onReview(job.id)}>Open in FeedForge</button><button type="button" className="sb-text-button" disabled={busy} onClick={() => onClearCache(job.id)}>Clear cached file</button></> : null}
+      </div> : null}
     </li>
   );
 }
 
-export default function SongBrowser({ api: providedApi }) {
+export default function SongBrowser({ api: providedApi, onReview }) {
   const api = providedApi ?? (typeof window !== "undefined" ? window.songBrowser : undefined);
   const available = typeof api?.getState === "function" && typeof api?.search === "function";
   const [snapshot, setSnapshot] = useState({ outputDir: "", jobs: [], connection: { status: "signed_out" } });
@@ -110,11 +115,15 @@ export default function SongBrowser({ api: providedApi }) {
   const [searchResult, setSearchResult] = useState(null);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [feedbackAddress, setFeedbackAddress] = useState("");
   const [busy, setBusy] = useState(new Set());
   const busyRef = useRef(new Set());
   const mounted = useRef(false);
   const searchSequence = useRef(0);
   const jobs = Array.isArray(snapshot.jobs) ? snapshot.jobs : [];
+  const feedback = snapshot.feedback || {};
+  useEffect(() => { if (feedback.url) setFeedbackAddress(feedback.url); }, [feedback.url]);
   const connection = typeof snapshot.connection === "string" ? { status: snapshot.connection } : snapshot.connection || {};
   const connected = connection.status === "connected";
   const challenge = connection.status === "challenge" || searchResult?.status === "challenge";
@@ -161,7 +170,7 @@ export default function SongBrowser({ api: providedApi }) {
       const result = await api[method](args);
       if (result?.ok === false) throw new Error(errorText(result.error));
       if (mounted.current && result && Object.prototype.hasOwnProperty.call(result, "outputDir")) setSnapshot((current) => ({ ...current, outputDir: result.outputDir }));
-      if (method === "enqueue" && result && mounted.current) {
+      if (["enqueue", "retry"].includes(method) && result && mounted.current) {
         const job = result.job || result;
         if (job.id) setSnapshot((current) => (current.jobs || []).some((item) => item.id === job.id) ? current : ({ ...current, jobs: [...(current.jobs || []), job] }));
       }
@@ -196,6 +205,17 @@ export default function SongBrowser({ api: providedApi }) {
 
   const showBrowser = () => action("browser", "showBrowser");
   const showOutput = (id) => action(`show:${id}`, "showOutput", { id });
+  const reviewCached = async (id) => {
+    const result = await action(`review:${id}`, "openCached", { id });
+    if (result?.inputPath && onReview) {
+      try { await onReview(result.inputPath); } catch (err) { if (mounted.current) setError(errorText(err)); }
+    }
+  };
+  const exportReport = async () => {
+    setNotice("");
+    const result = await action("report", "exportDiagnostics");
+    if (result?.exported && mounted.current) setNotice("Troubleshooting report saved.");
+  };
   const searchError = searchResult?.error ? errorText(searchResult.error) : searchResult?.status === "layout_changed" ? "CustomsForge’s search page could not be read. Open the browser to check it, then try again." : searchResult?.status === "error" ? "Search is temporarily unavailable. Please try again." : "";
 
   return (
@@ -209,7 +229,24 @@ export default function SongBrowser({ api: providedApi }) {
         <div className="sb-empty sb-desktop-message"><div className="sb-empty-icon"><Download size={28} aria-hidden="true" /></div><h2>Find songs in FeedForge desktop</h2><p>Searching CustomsForge and downloading songs needs the FeedForge desktop app. Open its Find songs tab to connect your account, choose an output folder, and convert songs here.</p></div>
       ) : <>
         <div className="sb-output"><div className="sb-output-label"><FolderOpen size={19} aria-hidden="true" /><div><strong>Feedpak output folder</strong><p title={text(snapshot.outputDir)}>{text(snapshot.outputDir, "Choose where to save your converted songs.") || "Choose where to save your converted songs."}</p></div></div><button type="button" className="sb-button" disabled={busy.has("folder")} onClick={() => action("folder", "chooseOutput")}>{busy.has("folder") ? "Choosing…" : "Choose folder"}</button></div>
-        <p className="sb-library-help">Choose your FeedBack song library to save songs there. Use Songs → Refresh in FeedBack to see new songs immediately.</p>
+        <p className="sb-library-help">Choose your FeedBack song library to save songs there. Folder compatibility is checked before downloading.</p>
+
+        <details className="sb-feedback">
+          <summary>FeedBack connection <span>{feedback.autoRefresh ? "Automatic refresh enabled" : "Optional library refresh"}</span></summary>
+          <form onSubmit={(event) => { event.preventDefault(); action("feedback-connect", "connectFeedback", { url: feedbackAddress }); }}>
+            <label htmlFor="sb-feedback-address">Address of FeedBack running on this computer</label>
+            <div className="sb-search-row"><input id="sb-feedback-address" type="url" value={feedbackAddress} onChange={(event) => setFeedbackAddress(event.target.value)} placeholder="http://127.0.0.1:8000" required /><button className="sb-button" disabled={busy.has("feedback-connect")}>{busy.has("feedback-connect") ? "Connecting…" : "Connect"}</button></div>
+          </form>
+          {feedback.message ? <p role="status">{text(feedback.message)}</p> : <p>Use the address shown by your FeedBack app. You can also use Songs → Refresh directly in the game.</p>}
+          {feedback.libraryDir ? <p className="sb-folder-path">FeedBack library: {text(feedback.libraryDir)}</p> : null}
+          <div className="sb-feedback-actions">
+            <button type="button" className="sb-text-button" disabled={feedback.status !== "connected" || activeCount > 0 || busy.has("feedback-folder")} onClick={() => action("feedback-folder", "useFeedbackFolder")}>Use FeedBack folder</button>
+            <button type="button" className="sb-text-button" disabled={!feedback.url || feedback.status === "refreshing" || busy.has("feedback-refresh")} onClick={() => action("feedback-refresh", "refreshFeedback")}>Refresh library now</button>
+          </div>
+          <label className="sb-auto-refresh"><input type="checkbox" checked={feedback.autoRefresh === true} disabled={busy.has("feedback-auto") || (!feedback.autoRefresh && feedback.status !== "connected")} onChange={(event) => action("feedback-auto", "setAutoRefresh", { enabled: event.target.checked })} /> Refresh FeedBack after each successful conversion</label>
+        </details>
+
+        {notice ? <p className="sb-library-help" role="status">{notice}</p> : null}
 
         {(error || searchError) ? <div className="sb-notice sb-error" role="alert"><AlertTriangle size={18} aria-hidden="true" /><p>{error || searchError}</p></div> : null}
         {(challenge || needsSignIn || connection.status === "error") && !searchError ? <div className="sb-notice" role="status"><AlertTriangle size={18} aria-hidden="true" /><p>{text(connection.message, challenge ? "Complete the browser check in the CustomsForge window, then search again." : needsSignIn ? "Sign in to CustomsForge in the browser window, then search again." : "The CustomsForge connection needs attention. Open the browser to reconnect.")}</p><button type="button" className="sb-text-button" disabled={busy.has("browser")} onClick={showBrowser}>Open browser <ExternalLink size={14} aria-hidden="true" /></button></div> : null}
@@ -227,7 +264,7 @@ export default function SongBrowser({ api: providedApi }) {
             {results.length ? <><div className={`sb-result-list ${searching ? "sb-searching" : ""}`}>{results.map((song) => <ResultCard key={String(song.id)} song={song} job={latestJobs.get(String(song.id))} busy={busy.has(`enqueue:${song.id}`)} canDownload={Boolean(snapshot.outputDir) && !searching} onDownload={(id) => action(`enqueue:${id}`, "enqueue", { id })} onShowOutput={showOutput} />)}</div><nav className="sb-pagination" aria-label="Search results pages"><button type="button" className="sb-button" disabled={page <= 1 || searching} onClick={() => search(searchedQuery, page - 1)}><ChevronLeft size={16} aria-hidden="true" /> Previous</button><span>Page {page}</span><button type="button" className="sb-button" disabled={!searchResult.hasNext || searching} onClick={() => search(searchedQuery, page + 1)}>Next <ChevronRight size={16} aria-hidden="true" /></button></nav></> : <div className="sb-empty"><div className="sb-empty-icon">{searching ? <LoaderCircle size={28} className="sb-spin" aria-hidden="true" /> : <Search size={28} aria-hidden="true" />}</div><h3>{searching ? "Looking for your song…" : challenge || needsSignIn ? "Complete your connection" : searchError || error ? "Search needs attention" : searchResult ? "No charts found" : "Start with an artist or a song"}</h3><p>{searching ? "Results will appear here." : challenge || needsSignIn ? "Finish the step in the browser window, then run your search again." : searchError || error ? "Check the message above and try again." : searchResult ? `No results for “${searchedQuery}”. Try another title or a shorter artist name.` : "Compare chart versions, instruments and tunings before adding a song."}</p></div>}
           </section>
 
-          <aside className="sb-activity" aria-labelledby="sb-activity-title"><div className="sb-section-heading"><h2 id="sb-activity-title">Song activity</h2>{activeCount ? <span className="sb-count">{activeCount} pending</span> : null}</div><p className="sb-activity-description">Songs are processed one at a time.</p>{jobs.length ? <ol className="sb-job-list">{jobs.map((job) => <JobCard key={job.id} job={job} busy={busy.has(`cancel:${job.id}`) || busy.has(`show:${job.id}`)} onCancel={(id) => action(`cancel:${id}`, "cancel", { id })} onShowOutput={showOutput} onShowBrowser={showBrowser} />)}</ol> : <div className="sb-activity-empty"><Download size={22} aria-hidden="true" /><p>Your downloads and conversions will appear here.</p></div>}</aside>
+          <aside className="sb-activity" aria-labelledby="sb-activity-title"><div className="sb-section-heading"><h2 id="sb-activity-title">Song activity</h2>{activeCount ? <span className="sb-count">{activeCount} pending</span> : null}</div><p className="sb-activity-description">Songs are processed one at a time.</p>{jobs.length ? <ol className="sb-job-list">{jobs.map((job) => <JobCard key={job.id} job={job} busy={["cancel", "show", "retry", "review", "clear"].some((key) => busy.has(`${key}:${job.id}`))} onCancel={(id) => action(`cancel:${id}`, "cancel", { id })} onRetry={(id) => action(`retry:${id}`, "retry", { id })} onReview={reviewCached} onClearCache={(id) => action(`clear:${id}`, "clearCache", { id })} onShowOutput={showOutput} onShowBrowser={showBrowser} />)}</ol> : <div className="sb-activity-empty"><Download size={22} aria-hidden="true" /><p>Your downloads and conversions will appear here.</p></div>}<button className="sb-text-button sb-export" type="button" disabled={busy.has("report")} onClick={exportReport}>Export troubleshooting report</button></aside>
         </div>
       </>}
     </section>
