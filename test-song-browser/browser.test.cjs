@@ -137,6 +137,59 @@ test('search construction encodes literal input and rejects malformed pagination
   for (const bad of [0, -1, 1.5, 10001, '2']) assert.throws(() => searchUrl('Song', bad));
 });
 
+test('search failure clears stale connection and pagination state', async (t) => {
+  const { browser } = fixture(t);
+  browser.updateConnection('connected', 'Connected to CustomsForge');
+  browser.lastSearch = { query: 'fixture', page: 2 };
+  const win = browser.ensureSearchWindow();
+  win.loadURL = () => Promise.reject(new Error('offline fixture'));
+  await assert.rejects(browser.search({ query: 'different' }), /could not be loaded/);
+  assert.equal(browser.connection.status, 'error'); assert.equal(browser.lastSearch, null);
+});
+
+test('ordinary login completion and later sign-out update connection from the loaded page', async (t) => {
+  const { browser } = fixture(t); const win = browser.ensureSearchWindow();
+  win.webContents.url = 'https://ignition4.customsforge.com/';
+  win.webContents.responses.push({ status: 'ready', results: [], hasNext: false, page: 1 });
+  win.webContents.emit('did-finish-load'); await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(browser.connection.status, 'connected');
+  browser.lastSearch = { query: 'fixture', page: 2 };
+  win.webContents.url = 'https://customsforge.com/oauth/authorize';
+  win.webContents.responses.push({ status: 'login_required' });
+  win.webContents.emit('did-finish-load'); await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(browser.connection.status, 'signed_out'); assert.equal(browser.lastSearch, null);
+});
+
+test('an old login-page read cannot replace the connection established by a newer search', async (t) => {
+  const { browser } = fixture(t); const win = browser.ensureSearchWindow();
+  win.webContents.url = searchUrl('fixture');
+  let resolve;
+  const oldPage = new Promise((done) => { resolve = done; });
+  win.webContents.executeJavaScript = () => oldPage;
+  const reading = browser.readConnection(win);
+  win.webContents.executeJavaScript = async () => ({ status: 'ready', results: [], page: 1 });
+  await browser.search({ query: 'fixture' });
+  resolve({ status: 'login_required' }); await reading;
+  assert.equal(browser.connection.status, 'connected');
+  assert.equal(browser.lastSearch.query, 'fixture');
+});
+
+test('connection inspection waits for the loaded page to render its table', async (t) => {
+  const { browser } = fixture(t); const win = browser.ensureSearchWindow();
+  win.webContents.url = 'https://ignition4.customsforge.com/';
+  win.webContents.responses.push({ status: 'layout_changed', results: [] }, { status: 'ready', results: [], page: 1 });
+  await browser.readConnection(win);
+  assert.equal(browser.connection.status, 'connected');
+});
+
+test('search waits for an incomplete table and accepts a later explicit empty result', async (t) => {
+  const { browser } = fixture(t); const win = browser.ensureSearchWindow();
+  win.webContents.responses.push({ status: 'layout_changed', results: [] }, { status: 'ready', results: [], page: 1, total: 0 });
+  const result = await browser.search({ query: 'fixture' });
+  assert.equal(result.status, 'ready'); assert.equal(result.total, 0);
+  assert.equal(browser.connection.status, 'connected');
+});
+
 test('browser profile windows deny native permissions, retain sandbox and block unsupported navigation/popups', (t) => {
   const { browser, session } = fixture(t);
   const win = browser.ensureSearchWindow();
@@ -412,6 +465,30 @@ test('MediaFire rejects spoofed download hosts and clicks an approved link only 
   assert.equal(hostAction({ url: 'https://www.mediafire.com/file/test/', link }).result.status, 'clicked');
   assert.equal(hostAction({ url: 'https://www.mediafire.com/file/test/', link }).result.status, 'already_clicked');
   assert.equal(link.clicked, 1);
+});
+
+test('MediaFire skips hidden and disabled controls and rejects credential-bearing download URLs', () => {
+  const states = [(link) => { link.hidden = true; }, (link) => { link.disabled = true; },
+    (link) => link.setAttribute('aria-disabled', 'true'), (link) => link.setAttribute('aria-hidden', 'true'),
+    (link) => { link.style = { visibility: 'hidden' }; }, (link) => { link.getClientRects = () => []; },
+    (link) => { link.href = 'https://private:secret@download1.mediafire.com/file/chart.psarc'; },
+    (link) => { link.href = 'https://download1.mediafire.com:8443/file/chart.psarc'; }];
+  for (const configure of states) {
+    const link = button('Download', 'https://download1.mediafire.com/file/chart.psarc'); configure(link);
+    assert.equal(hostAction({ url: 'https://www.mediafire.com/file/test/', link }).result.status, 'needs_attention');
+    assert.equal(link.clicked, 0);
+  }
+});
+
+test('Google Drive ignores aria-disabled or hidden controls and uses the next visible download', () => {
+  const disabled = button('Download'); disabled.setAttribute('aria-disabled', 'true');
+  const hidden = button('Download'); hidden.hidden = true;
+  const parent = button(''); parent.style = { display: 'none' };
+  const nested = button('Download'); nested.parentElement = parent;
+  const visible = button('Download anyway');
+  const response = hostAction({ url: 'https://drive.google.com/file/d/fixture/view', buttons: [disabled, hidden, nested, visible] });
+  assert.equal(response.result.status, 'clicked'); assert.equal(visible.clicked, 1);
+  assert.equal(disabled.clicked, 0); assert.equal(hidden.clicked, 0); assert.equal(nested.clicked, 0);
 });
 
 test('IPC rejects foreign senders and subframes before touching local state', async () => {

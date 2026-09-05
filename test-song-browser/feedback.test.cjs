@@ -84,3 +84,33 @@ test('FeedBack refresh rejects a junction escaping its configured library', asyn
   await assert.rejects(refreshFeedback(f.url, path.join(link, 'song.feedpak')), /output folder/);
   assert.equal(f.calls.some(([method]) => method === 'POST'), false);
 });
+
+test('a logical redirected library and native published path compare in the same namespace', async (t) => {
+  const f = await fixture(t);
+  const logical = path.join(f.root, 'logical-library');
+  fs.symlinkSync(f.library, logical, process.platform === 'win32' ? 'junction' : 'dir');
+  f.routes['/api/settings'].dlc_dir = logical;
+  const published = path.join(fs.realpathSync.native(f.library), 'published.feedpak');
+  fs.writeFileSync(published, 'fixture feedpak');
+  const outside = path.join(f.root, 'outside.feedpak'); fs.writeFileSync(outside, 'outside fixture');
+
+  // Reproduce observed Windows package virtualization: the legacy sync API
+  // retains the logical alias, while .native and async realpath resolve it.
+  // The real junction models the same physical directory without accessing
+  // any app profile or modifying the actual game library.
+  const original = fs.realpathSync;
+  function legacyRealpath(filename, options) {
+    return path.resolve(filename) === logical ? logical : original(filename, options);
+  }
+  legacyRealpath.native = original.native;
+  fs.realpathSync = legacyRealpath;
+  try {
+    assert.notEqual(fs.realpathSync(logical), fs.realpathSync.native(logical));
+    const info = await inspectFeedback(f.url);
+    assert.equal(info.libraryDir, fs.realpathSync.native(f.library));
+    await refreshFeedback(f.url, published);
+    assert.equal(f.calls.filter(([method]) => method === 'POST').length, 1);
+    await assert.rejects(refreshFeedback(f.url, outside), /output folder/);
+    assert.equal(f.calls.filter(([method]) => method === 'POST').length, 1, 'canonicalization must preserve the containment guard');
+  } finally { fs.realpathSync = original; }
+});

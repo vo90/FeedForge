@@ -25,7 +25,20 @@ function readSearchPage() {
   }
   if (current.origin !== 'https://ignition4.customsforge.com') return empty('layout_changed', 'Open the CustomsForge song search page.');
   const table = document.querySelector('#cdlc-table');
-  if (!table) return empty('layout_changed', 'The CustomsForge search table is not available.');
+  if (!table) {
+    // Ignition's observed signed-out landing page stays at the search origin
+    // and has no password input. Its visible login prompt is enough to ask
+    // the user to sign in; a missing table alone is never treated as login.
+    const loginLabels = all(document, 'a, button, h1, h2, h3').filter(visible).map(text);
+    if (loginLabels.some((label) => /^login to customsforge$/i.test(label))
+      || (loginLabels.some((label) => /^sign in$/i.test(label)) && /\bcustom songs for rocksmith 2014\b/i.test(bodyText))) {
+      return empty('login_required', 'Sign in to CustomsForge in the browser.');
+    }
+    return empty('layout_changed', 'The CustomsForge search table is not available.');
+  }
+  // A table explicitly marked busy can still contain the previous query's rows
+  // or an empty placeholder. Let the adapter keep waiting for a settled render.
+  if (table.getAttribute('aria-busy') === 'true') return empty('layout_changed', 'The CustomsForge search results are still loading.');
 
   const attributes = ['title', 'aria-label', 'data-bs-original-title', 'data-original-title', 'data-tippy-content'];
   const hints = (root) => [root, ...all(root, '[title], [aria-label], [data-bs-original-title], [data-original-title], [data-tippy-content]')]

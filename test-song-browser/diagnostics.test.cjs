@@ -8,7 +8,7 @@ test('diagnostics retain only fixed event codes and bounded numeric timing', () 
   assert.equal(diagnostics.record({ code: 'download_failed', stage: 'downloading', host: 'dropbox',
     outcome: 'interrupted', durationMs: 124.7, url: 'https://secret.test/file?signature=secret',
     cookie: 'private session', title: 'private song', error: 'private user error', path: 'C:\\private' }), true);
-  assert.deepEqual(diagnostics.report(), { schemaVersion: 1, adapterVersion: 2, appVersion: '0.1.40-song-browser.2', omittedEvents: 0,
+  assert.deepEqual(diagnostics.report(), { schemaVersion: 1, adapterVersion: 3, appVersion: '0.1.40-song-browser.2', omittedEvents: 0,
     events: [{ elapsedMs: diagnostics.report().events[0].elapsedMs, code: 'download_failed',
       stage: 'downloading', host: 'dropbox', outcome: 'interrupted', durationMs: 125 }] });
   assert.doesNotMatch(JSON.stringify(diagnostics.report()), /private|signature|secret|cookie/);

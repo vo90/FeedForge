@@ -9,6 +9,18 @@ function hostDownloadAction() {
     return { status: 'needs_attention', error: 'The file is restricted, unavailable, or has reached its download limit. Check the browser.' };
   }
   if (host === 'accounts.google.com') return { status: 'login_required', error: 'This file needs a Google sign-in. Continue in the browser.' };
+  const usable = (element) => {
+    if (!element || element.disabled || element.hasAttribute('disabled') || !element.getClientRects().length) return false;
+    for (let node = element; node; node = node.parentElement) {
+      if (node.hidden || node.getAttribute('aria-hidden') === 'true' || node.getAttribute('aria-disabled') === 'true'
+        || node.style?.display === 'none' || node.style?.visibility === 'hidden') return false;
+      if (typeof getComputedStyle === 'function') {
+        const style = getComputedStyle(node);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+      }
+    }
+    return true;
+  };
   const marker = 'data-feedforge-download-requested';
   const click = (element) => {
     if (element.hasAttribute(marker)) return { status: 'already_clicked' };
@@ -28,10 +40,11 @@ function hostDownloadAction() {
   }
   if (host === 'www.mediafire.com' || host === 'mediafire.com') {
     const link = document.querySelector('#downloadButton');
-    if (link) {
+    if (usable(link)) {
       try {
         const target = new URL(link.href, location.href);
-        if (target.protocol === 'https:' && /^download\d+\.mediafire\.com$/.test(target.hostname)) return click(link);
+        if (target.protocol === 'https:' && !target.username && !target.password && (!target.port || target.port === '443')
+          && /^download\d+\.mediafire\.com$/.test(target.hostname)) return click(link);
       } catch { /* Let the user inspect an unfamiliar page. */ }
     }
     return { status: 'needs_attention', error: 'Use the file download button on MediaFire to continue.' };
@@ -40,7 +53,7 @@ function hostDownloadAction() {
     const buttons = [...document.querySelectorAll('button, [role="button"], a, input[type="submit"]')];
     const download = buttons.find((el) => {
       const label = (el.getAttribute('aria-label') || el.getAttribute('data-tooltip') || el.innerText || el.value || '').trim();
-      return /^(?:download|download anyway)$/i.test(label) && !el.disabled && el.getClientRects().length > 0;
+      return /^(?:download|download anyway)$/i.test(label) && usable(el);
     });
     if (download) return click(download);
     return { status: 'waiting' };

@@ -50,6 +50,7 @@ class CustomsForgeBrowser {
     this.active = null;
     this.searching = false;
     this.lastSearch = null;
+    this.connectionRead = 0;
     this.disposed = false;
     this.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     this.session.setPermissionCheckHandler(() => false);
@@ -94,6 +95,9 @@ class CustomsForgeBrowser {
     wc.on('will-navigate', guard);
     wc.on('will-redirect', guard);
     wc.on('will-attach-webview', (event) => event.preventDefault());
+    wc.on('did-finish-load', () => {
+      if (!job && win === this.searchWindow) void this.readConnection(win);
+    });
     wc.setWindowOpenHandler(({ url }) => {
       if (!job || !allowedNavigation(url)) return { action: 'deny' };
       return { action: 'allow', overrideBrowserWindowOptions: { show: false, autoHideMenuBar: true,
@@ -110,6 +114,31 @@ class CustomsForgeBrowser {
   ensureSearchWindow() {
     if (!this.searchWindow || this.searchWindow.isDestroyed()) this.searchWindow = this.createWindow();
     return this.searchWindow;
+  }
+
+  async readConnection(win) {
+    if (this.searching || this.disposed || win.isDestroyed()) return;
+    const revision = ++this.connectionRead;
+    const url = win.webContents.getURL();
+    if (!allowedNavigation(url)) return;
+    try {
+      for (let i = 0; i < 12; i++) {
+        if (revision !== this.connectionRead || this.searching || this.disposed || win.isDestroyed() || win.webContents.getURL() !== url) return;
+        const result = await win.webContents.executeJavaScript(`(${readSearchPage.toString()})()`);
+        if (revision !== this.connectionRead || this.searching || this.disposed || win.isDestroyed() || win.webContents.getURL() !== url) return;
+        // Inspect only the already-loaded page after a normal login/navigation.
+        // An incomplete OAuth/table render is inconclusive, never proof of login.
+        if (result.status === 'ready') { this.updateConnection('connected', 'Connected to CustomsForge'); return; }
+        if (result.status === 'login_required' || result.status === 'challenge') {
+          this.lastSearch = null;
+          this.updateConnection(result.status === 'challenge' ? 'challenge' : 'signed_out',
+            result.status === 'challenge' ? 'Complete the check in the browser, then search again.' : 'Sign in in the browser, then search again.');
+          return;
+        }
+        if (result.status !== 'layout_changed') return;
+        await pause(300);
+      }
+    } catch { /* The page may be replaced while its normal login redirect finishes. */ }
   }
 
   async signIn() {
@@ -141,6 +170,7 @@ class CustomsForgeBrowser {
     const url = searchUrl(query, page);
     if (this.searching) throw new Error('A search is already running.');
     this.searching = true;
+    this.connectionRead++;
     const started = Date.now();
     this.diagnostic({ code: 'search_started', stage: 'search', host: 'customsforge', outcome: 'started' });
     try {
@@ -169,13 +199,19 @@ class CustomsForgeBrowser {
         this.updateConnection('connected', 'Connected to CustomsForge');
       }
       else if (result.status === 'login_required' || result.status === 'challenge') {
+        this.lastSearch = null;
         this.updateConnection(result.status === 'challenge' ? 'challenge' : 'signed_out',
           result.status === 'challenge' ? 'Complete the check in the browser, then search again.' : 'Sign in in the browser, then search again.');
         win.show(); win.focus();
-      } else this.updateConnection('error', 'The search page could not be read. Open the browser to check it.');
+      } else {
+        this.lastSearch = null;
+        this.updateConnection('error', 'The search page could not be read. Open the browser to check it.');
+      }
       this.diagnostic({ code: 'search_finished', stage: 'search', host: 'customsforge', outcome: result.status, durationMs: Date.now() - started });
       return { ...result, page };
     } catch (error) {
+      this.lastSearch = null;
+      this.updateConnection('error', 'The search could not be completed. Try again or open the browser.');
       this.diagnostic({ code: 'search_failed', stage: 'search', host: 'customsforge', outcome: 'failed', durationMs: Date.now() - started });
       throw error;
     } finally { this.searching = false; }

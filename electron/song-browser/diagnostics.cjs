@@ -40,7 +40,7 @@ function createDiagnostics({ appVersion = 'unknown', maxEvents = 200 } = {}) {
       return true;
     },
     report() {
-      return { schemaVersion: 1, adapterVersion: 2, appVersion: version, omittedEvents, events: events.map((event) => ({ ...event })) };
+      return { schemaVersion: 1, adapterVersion: 3, appVersion: version, omittedEvents, events: events.map((event) => ({ ...event })) };
     }
   });
 }

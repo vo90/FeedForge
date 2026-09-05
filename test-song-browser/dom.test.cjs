@@ -24,7 +24,7 @@ class Element {
   querySelectorAll(selector) {
     const match = (element, simple) => {
       if (simple.startsWith('#')) return element.getAttribute('id') === simple.slice(1);
-      const m = simple.match(/^([a-z]+)?(?:\[([^=\]]+)(?:="([^"]*)")?\])?$/i);
+      const m = simple.match(/^([a-z][a-z0-9]*)?(?:\[([^=\]]+)(?:="([^"]*)")?\])?$/i);
       if (!m) throw new Error('Unsupported fixture selector: ' + simple);
       return (!m[1] || element.tagName === m[1].toUpperCase()) && (!m[2] || (m[3] === undefined ? element.hasAttribute(m[2]) : element.getAttribute(m[2]) === m[3]));
     };
@@ -105,6 +105,16 @@ test('distinguishes explicit empty results from missing or partial markup', () =
   assert.equal(run(readSearchPage, doc).status, 'layout_changed');
 });
 
+test('a busy search table never publishes old rows or an empty placeholder', () => {
+  for (const rows of [[row()], [el('tr', {}, [el('td', { colspan: '14' }, [], 'No matching records found')])]]) {
+    const doc = page(rows); const table = doc.querySelector('#cdlc-table');
+    table.attrs['aria-busy'] = 'true';
+    assert.equal(run(readSearchPage, doc).status, 'layout_changed');
+    delete table.attrs['aria-busy'];
+    assert.equal(run(readSearchPage, doc).status, 'ready');
+  }
+});
+
 test('unsupported and conflicting host hints do not become downloadable results', () => {
   const mega = run(readSearchPage, page([row({ host: 'MEGA' })])).results[0];
   assert.equal(mega.host, 'mega'); assert.equal(mega.supported, false);
@@ -140,6 +150,24 @@ test('login and security interstitials are recognized without solving them', () 
   assert.equal(run(requestChartDownload, challenge, { id: '6420' }).status, 'challenge');
   const ordinary = page([row()], { extras: [el('iframe', { src: 'https://example.test/embed' })] });
   assert.equal(run(readSearchPage, ordinary).status, 'ready');
+});
+
+test('observed signed-out Ignition landing page asks for login without a password field', () => {
+  const doc = page([], { text: 'Custom songs for Rocksmith 2014', extras: [
+    el('h1', {}, [], 'Custom songs for Rocksmith 2014'),
+    el('a', { href: '/login' }, [], 'Login to CustomsForge'),
+    el('button', {}, [], 'Sign in')
+  ] });
+  doc.body.children = doc.body.children.filter((node) => node.getAttribute('id') !== 'cdlc-table');
+  assert.equal(run(readSearchPage, doc).status, 'login_required');
+  doc.body.children = [el('button', {}, [], 'Sign in')];
+  assert.equal(run(readSearchPage, doc).status, 'login_required');
+  doc.body.ownText = 'A page still rendering';
+  assert.equal(run(readSearchPage, doc).status, 'layout_changed', 'an unrelated sign-in control is inconclusive');
+  doc.body.children = [el('button', { hidden: true }, [], 'Login to CustomsForge')];
+  assert.equal(run(readSearchPage, doc).status, 'layout_changed', 'a hidden login template is inconclusive');
+  const signedIn = page([row()], { extras: [el('a', {}, [], 'Login to CustomsForge')] });
+  assert.equal(run(readSearchPage, signedIn).status, 'ready', 'the observed search table takes precedence over a lingering login label');
 });
 
 test('clicks one current Windows button and never returns its signed URL', () => {

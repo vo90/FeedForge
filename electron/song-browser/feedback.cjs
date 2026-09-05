@@ -61,7 +61,9 @@ async function inspectFeedback(endpoint) {
   let libraryDir;
   try {
     if (typeof settings?.dlc_dir !== 'string' || !path.isAbsolute(settings.dlc_dir)) throw new Error();
-    libraryDir = fs.realpathSync(settings.dlc_dir);
+    // Match Node's async/native canonicalization used by song publication.
+    // Windows package redirection can leave the legacy sync spelling logical.
+    libraryDir = fs.realpathSync.native(settings.dlc_dir);
     if (!fs.statSync(libraryDir).isDirectory()) throw new Error();
   } catch { throw new Error('FeedBack must have an accessible song-library folder configured before connecting.'); }
   return { url, libraryDir, version: version.version.slice(0, 80), running: status.running };
@@ -71,7 +73,7 @@ async function refreshFeedback(endpoint, outputPath) {
   // Recheck both service identity and library path before every mutation.
   const info = await inspectFeedback(endpoint);
   let target;
-  try { target = fs.realpathSync(outputPath); }
+  try { target = fs.realpathSync.native(outputPath); }
   catch { throw new Error('The converted file or output folder is no longer available.'); }
   const relative = path.relative(info.libraryDir, target);
   if (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) {

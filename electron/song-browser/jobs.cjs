@@ -94,7 +94,9 @@ class SongJobs {
       throw new TypeError("SongJobs needs root, outputDir, download, and runConverter.");
     }
     fs.mkdirSync(path.resolve(root), { recursive: true });
-    this.root = fs.realpathSync(path.resolve(root));
+    // Match fs.promises.realpath: Windows app-data redirection can differ from
+    // the legacy JavaScript resolver even when no junction is visible.
+    this.root = fs.realpathSync.native(path.resolve(root));
     this.outputDir = path.resolve(outputDir);
     this.download = download;
     this.runConverter = runConverter;
@@ -122,7 +124,7 @@ class SongJobs {
     if (job.state === "completed" && job.outputPath) {
       try {
         const stat = fs.lstatSync(job.outputPath);
-        result.inOutputDir = stat.isFile() && !stat.isSymbolicLink() && fs.realpathSync(path.dirname(job.outputPath)) === fs.realpathSync(this.outputDir);
+        result.inOutputDir = stat.isFile() && !stat.isSymbolicLink() && fs.realpathSync.native(path.dirname(job.outputPath)) === fs.realpathSync.native(this.outputDir);
       } catch { /* A missing file is not ready in the selected output. */ }
     }
     if (job.warning || this.persistenceWarning) result.warning = text([job.warning, this.persistenceWarning].filter(Boolean).join(" "), 500);
@@ -184,7 +186,7 @@ class SongJobs {
   _safeCacheDirectory(create = false) {
     if (create) fs.mkdirSync(this.cacheDir, { recursive: true });
     const stat = fs.lstatSync(this.cacheDir);
-    if (!stat.isDirectory() || stat.isSymbolicLink() || fs.realpathSync(this.cacheDir) !== this.cacheDir) throw new Error("The song cache folder is not a supported local directory.");
+    if (!stat.isDirectory() || stat.isSymbolicLink() || fs.realpathSync.native(this.cacheDir) !== this.cacheDir) throw new Error("The song cache folder is not a supported local directory.");
   }
 
   _deleteCache(job) {
@@ -272,7 +274,7 @@ class SongJobs {
     let probe, link, ownsProbe = false, ownsLink = false;
     try {
       fs.mkdirSync(resolved, { recursive: true });
-      const real = fs.realpathSync(resolved);
+      const real = fs.realpathSync.native(resolved);
       if (real === this.root || inside(this.root, real)) throw new Error("Choose a folder outside the song browser's temporary storage.");
       probe = path.join(real, `.feedforge-preflight-${crypto.randomUUID()}.tmp`);
       link = `${probe}.link`;
@@ -615,7 +617,7 @@ class SongJobs {
     const currentRoot = await fsp.realpath(this.outputDir);
     const candidates = [...this.jobs].reverse();
     candidates.sort((a, b) => {
-      const selected = (item) => { try { return fs.realpathSync(path.dirname(item.outputPath)) === currentRoot ? 1 : 0; } catch { return 0; } };
+      const selected = (item) => { try { return fs.realpathSync.native(path.dirname(item.outputPath)) === currentRoot ? 1 : 0; } catch { return 0; } };
       return selected(b) - selected(a);
     });
     for (const previous of candidates) {

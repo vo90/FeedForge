@@ -597,3 +597,124 @@ test("a deleted completed output is no longer ready in the selected folder", asy
   assert.equal((await f.result(f.manager.enqueue(CHART).id)).state, "completed");
   assert.equal(f.calls.filter((args) => args[1] === "-o").length, 2);
 });
+
+test("Windows native path identity survives redirected profiles without weakening containment", { skip: process.platform !== "win32" }, async (t) => {
+  const directory = await fsp.mkdtemp(path.join(os.tmpdir(), "feedforge-native-path-"));
+  const physicalProfile = path.join(directory, "native-profile");
+  const logicalProfile = path.join(directory, "roaming-profile");
+  const physicalRoot = path.join(physicalProfile, "jobs");
+  const logicalRoot = path.join(logicalProfile, "jobs");
+  const outputDir = path.join(directory, "output");
+  await fsp.mkdir(physicalRoot, { recursive: true });
+  await fsp.symlink(physicalProfile, logicalProfile, "junction");
+  const escapedDirectory = path.join(directory, "outside-job");
+  await fsp.mkdir(escapedDirectory);
+  const escapedFile = path.join(escapedDirectory, "source.psarc");
+  await fsp.writeFile(escapedFile, PSARC);
+
+  // MSIX app-data redirection can leave the legacy JavaScript resolver at
+  // a logical profile path while the native and async resolvers return the
+  // backing directory. A real junction provides the native filesystem side;
+  // this narrowly scoped shim supplies the observed logical resolver result.
+  const realpath = fs.realpathSync;
+  function logicalRealpath(filename, options) {
+    const resolved = path.resolve(String(filename));
+    if (resolved === logicalProfile || resolved.startsWith(logicalProfile + path.sep)) {
+      fs.lstatSync(resolved);
+      return options?.encoding === "buffer" ? Buffer.from(resolved) : resolved;
+    }
+    return realpath(filename, options);
+  }
+  logicalRealpath.native = realpath.native;
+  fs.realpathSync = logicalRealpath;
+  let manager;
+  t.after(async () => {
+    try { if (manager) await manager.dispose(); }
+    finally {
+      fs.realpathSync = realpath;
+      // Both junction targets and the simulated escape are inside this new,
+      // test-owned directory; no profile, user input or library is touched.
+      assert.equal(path.dirname(directory), path.resolve(os.tmpdir()));
+      assert.match(path.basename(directory), /^feedforge-native-path-/);
+      await fsp.rm(directory, { recursive: true, force: true });
+    }
+  });
+  assert.equal(fs.realpathSync(logicalRoot), logicalRoot);
+  assert.equal(fs.realpathSync.native(logicalRoot), physicalRoot);
+  assert.equal(await fsp.realpath(logicalRoot), physicalRoot);
+
+  let failConversion = true, returnEscapedInput = false, downloads = 0;
+  const calls = [];
+  manager = new SongJobs({ root: logicalRoot, outputDir,
+    download: async (_chart, args) => {
+      downloads++;
+      if (returnEscapedInput) {
+        const junction = path.join(args.directory, "escaped");
+        await fsp.symlink(escapedDirectory, junction, "junction");
+        return path.join(junction, "source.psarc");
+      }
+      await fsp.writeFile(args.destination, PSARC);
+      // The browser returns its assigned destination verbatim; the queue's
+      // subsequent async realpath check sees the native backing directory.
+      return args.destination;
+    },
+    runConverter: async (args) => {
+      calls.push(args);
+      if (args[0] === "--inspect-json") return inspect();
+      if (args[0] === "--validate-feedpak") return { code: 0, stderr: "", stdout: JSON.stringify({ ok: true,
+        results: [{ input_path: args[1], validation: { ok: true, errors: [] } }],
+      }) };
+      if (failConversion) return { code: 1, stdout: "", stderr: "temporary encoder failure" };
+      await fsp.writeFile(args[2], FEEDPAK);
+      return { code: 0, stdout: "Converted", stderr: "" };
+    },
+  });
+  const finish = async (queued) => {
+    await manager.jobs.find((job) => job.id === queued.id).done;
+    return manager.snapshot().find((job) => job.id === queued.id);
+  };
+
+  const failed = await finish(manager.enqueue(CHART));
+  assert.equal(failed.state, "failed");
+  assert.match(failed.error, /temporary encoder failure/, "A valid native-path download must reach conversion, not fail logical-path containment.");
+  assert.equal(manager.root, physicalRoot);
+  assert.equal(failed.hasCachedInput, true);
+  const retained = await manager.getCachedInput(failed.id);
+  assert.equal(path.dirname(retained), path.join(physicalRoot, "cache"));
+  assert.deepEqual(await fsp.readFile(retained), PSARC);
+  assert.equal(fs.existsSync(path.join(physicalRoot, failed.id)), false, "The failed attempt's native UUID folder must be cleaned.");
+  assert.throws(() => manager.validateOutputDir(path.join(logicalRoot, "cache")), /temporary storage/, "A logical alias must not bypass output containment.");
+
+  failConversion = false;
+  const completed = await finish(manager.retry(failed.id));
+  assert.equal(completed.state, "completed", completed.error);
+  assert.equal(completed.inOutputDir, true);
+  assert.equal(downloads, 1, "Retry must use the verified retained native-path PSARC.");
+  assert.equal(fs.existsSync(path.join(physicalRoot, completed.id)), false);
+  const before = await fsp.stat(completed.outputPath);
+  const reused = await finish(manager.enqueue(CHART));
+  assert.equal(reused.state, "completed", reused.error);
+  assert.equal(reused.outputPath, completed.outputPath);
+  assert.equal((await fsp.stat(completed.outputPath)).mtimeMs, before.mtimeMs);
+  const secondOutput = path.join(directory, "second-output");
+  manager.setOutputDir(secondOutput);
+  const copied = await finish(manager.enqueue(CHART));
+  assert.equal(copied.state, "completed", copied.error);
+  assert.equal(path.dirname(copied.outputPath), secondOutput);
+  assert.equal(copied.outputHash, completed.outputHash);
+  assert.deepEqual(await fsp.readFile(copied.outputPath), FEEDPAK);
+  assert.equal(calls.filter((args) => args[1] === "-o").length, 2, "Only the initial failed conversion and cached successful retry may convert.");
+
+  returnEscapedInput = true;
+  const callsBeforeEscape = calls.length;
+  const escaped = await finish(manager.enqueue(CHART));
+  assert.equal(escaped.state, "failed");
+  assert.match(escaped.error, /not a regular file in its job folder/);
+  assert.equal(escaped.hasCachedInput, false);
+  assert.equal(calls.length, callsBeforeEscape, "Native containment must reject a junction escape before invoking the converter.");
+  assert.deepEqual(await fsp.readFile(escapedFile), PSARC, "Cleanup must not follow the escaped junction and delete its target.");
+  assert.equal(fs.existsSync(path.join(physicalRoot, escaped.id)), false);
+  await manager.clearCache(failed.id);
+  assert.deepEqual(await fsp.readdir(path.join(physicalRoot, "cache")), []);
+  assert.deepEqual(await fsp.readdir(physicalRoot), ["cache", "jobs.json"], "Every owned UUID folder must be cleaned after settlement.");
+});
