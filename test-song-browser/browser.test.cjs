@@ -44,8 +44,14 @@ class FakeDownload extends EventEmitter {
   getReceivedBytes() { return this.received; }
   getState() { return this.state; }
   setSavePath(value) { this.savePath = value; }
-  cancel() { this.cancelled = true; this.state = 'cancelled'; this.emit('done', {}, 'cancelled'); }
-  update(state = 'progressing') { this.emit('updated', {}, state); }
+  cancel() {
+    assert.notEqual(this.notifyingUpdate, true, 'Chromium must not be reentered from its updated observer');
+    this.cancelled = true; this.state = 'cancelled'; this.emit('done', {}, 'cancelled');
+  }
+  update(state = 'progressing') {
+    this.notifyingUpdate = true;
+    try { this.emit('updated', {}, state); } finally { this.notifyingUpdate = false; }
+  }
   finish(state = 'completed') { this.state = state; this.emit('done', {}, state); }
 }
 

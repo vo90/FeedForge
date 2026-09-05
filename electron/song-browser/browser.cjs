@@ -38,11 +38,12 @@ function searchUrl(query, page = 1) {
 }
 
 class CustomsForgeBrowser {
-  constructor({ BrowserWindow, session, profilePath, parent, onConnection = () => {} }) {
+  constructor({ BrowserWindow, session, profilePath, parent, onConnection = () => {}, onDiagnostic = () => {} }) {
     this.BrowserWindow = BrowserWindow;
     this.parent = parent;
     this.session = session.fromPath(profilePath);
     this.onConnection = onConnection;
+    this.onDiagnostic = onDiagnostic;
     this.connection = { status: 'signed_out', message: 'Sign in to CustomsForge to start searching.' };
     this.searchWindow = null;
     this.windows = new Set();
@@ -59,6 +60,11 @@ class CustomsForgeBrowser {
   updateConnection(status, message) {
     this.connection = { status, message };
     this.onConnection(this.connection);
+  }
+
+  diagnostic(event) {
+    // Diagnostic reporting must never interrupt the user's operation.
+    try { this.onDiagnostic(event); } catch { /* Nonessential local telemetry. */ }
   }
 
   createWindow(job = null) {
@@ -81,6 +87,7 @@ class CustomsForgeBrowser {
     const guard = (event, url) => {
       if (!allowedNavigation(url)) {
         event.preventDefault();
+        this.diagnostic({ code: 'navigation_blocked', stage: 'browser', outcome: 'unsupported' });
         if (job) this.attention(job, 'This destination is not supported in the first version.');
       }
     };
@@ -134,6 +141,8 @@ class CustomsForgeBrowser {
     const url = searchUrl(query, page);
     if (this.searching) throw new Error('A search is already running.');
     this.searching = true;
+    const started = Date.now();
+    this.diagnostic({ code: 'search_started', stage: 'search', host: 'customsforge', outcome: 'started' });
     try {
       const win = this.ensureSearchWindow();
       let paging = false;
@@ -164,15 +173,31 @@ class CustomsForgeBrowser {
           result.status === 'challenge' ? 'Complete the check in the browser, then search again.' : 'Sign in in the browser, then search again.');
         win.show(); win.focus();
       } else this.updateConnection('error', 'The search page could not be read. Open the browser to check it.');
+      this.diagnostic({ code: 'search_finished', stage: 'search', host: 'customsforge', outcome: result.status, durationMs: Date.now() - started });
       return { ...result, page };
+    } catch (error) {
+      this.diagnostic({ code: 'search_failed', stage: 'search', host: 'customsforge', outcome: 'failed', durationMs: Date.now() - started });
+      throw error;
     } finally { this.searching = false; }
   }
 
   attention(job, message) {
     if (job.finished || job.attention === message) return;
     job.attention = message;
+    this.diagnostic({ code: 'browser_attention', stage: 'needs_attention', host: job.host, outcome: 'needs_attention' });
     job.onAttention(message);
     this.showBrowser();
+  }
+
+  cancelTransfer(job) {
+    if (!job.item || job.cancelScheduled) return;
+    job.cancelScheduled = true;
+    // Chromium forbids reentering its DownloadItem observer list from an
+    // updated/done callback. Cancel on the next event-loop turn, then continue
+    // waiting for the actual terminal event before touching files/windows.
+    setImmediate(() => {
+      if (!job.transferFinished && ['progressing', 'interrupted'].includes(job.item.getState())) job.item.cancel();
+    });
   }
 
   acceptDownload(event, item, contents) {
@@ -181,7 +206,7 @@ class CustomsForgeBrowser {
     if (!job || job.finished || !ownsWindow || job.item ||
         !allowedDownload(item.getURL(), item.getFilename(), item.getTotalBytes())) {
       event.preventDefault();
-      if (job && ownsWindow && !job.item) job.reject(new Error('The host did not return a supported PSARC file.'));
+      if (job && ownsWindow && !job.item) job.reject(new Error('The host did not return a supported PSARC file.'), 'unsupported');
       return;
     }
     job.item = item;
@@ -191,21 +216,22 @@ class CustomsForgeBrowser {
     item.on('updated', (_event, state) => {
       if (job.finished) return;
       if (item.getReceivedBytes() > MAX_BYTES || item.getTotalBytes() > MAX_BYTES) {
-        job.reject(new Error('This download exceeds the 512 MB limit.')); item.cancel(); return;
+        job.reject(new Error('This download exceeds the 512 MB limit.')); this.cancelTransfer(job); return;
       }
       if (state === 'interrupted') {
-        job.reject(new Error('The download was interrupted. Retry when the connection is available.')); item.cancel(); return;
+        job.reject(new Error('The download was interrupted. Retry when the connection is available.'), 'interrupted'); this.cancelTransfer(job); return;
       }
       const total = item.getTotalBytes();
       job.onProgress(total > 0 ? Math.min(99, item.getReceivedBytes() * 100 / total) : 0);
     });
     item.once('done', (_event, state) => {
+      job.transferFinished = true;
       job.onTransferSettled();
       if (job.finished) return;
       if (state === 'completed' && item.getReceivedBytes() > 0 && item.getReceivedBytes() <= MAX_BYTES && item.getTotalBytes() <= MAX_BYTES) {
         job.onProgress(100); job.resolve(job.destination);
       } else if (state === 'completed') job.reject(new Error('The downloaded file is empty or exceeds the 512 MB limit.'));
-      else job.reject(new Error(state === 'cancelled' ? 'Download cancelled.' : 'The download did not complete.'));
+      else job.reject(new Error(state === 'cancelled' ? 'Download cancelled.' : 'The download did not complete.'), state === 'cancelled' ? 'cancelled' : 'interrupted');
     });
   }
 
@@ -213,21 +239,23 @@ class CustomsForgeBrowser {
     if (this.active) throw new Error('Another download is already active.');
     if (!/^\d+$/.test(String(chart.id))) throw new Error('Invalid chart.');
     if (!chart.supported) throw new Error('This host is not supported yet.');
-    const job = { windows: new Set(), destination, onProgress, onAttention, clicked: false,
+    const started = Date.now();
+    this.diagnostic({ code: 'download_started', stage: 'download', host: chart.host, outcome: 'started' });
+    const job = { windows: new Set(), destination, onProgress, onAttention, clicked: false, host: chart.host,
       finished: false, item: null, attention: null };
     this.active = job;
     const completion = new Promise((resolve, reject) => {
       job.resolve = (value) => { if (!job.finished) { job.finished = true; resolve(value); } };
-      job.reject = (error) => { if (!job.finished) { job.finished = true; reject(error); } };
+      job.reject = (error, outcome = 'failed') => { if (!job.finished) { job.finished = true; job.failure = outcome; reject(error); } };
     });
     // Install rejection handling before any asynchronous navigation.
     const guarded = completion.then((value) => ({ value }), (error) => ({ error }));
     const abort = () => {
-      if (job.item && !job.finished) job.item.cancel();
-      job.reject(new Error('Download cancelled.'));
+      job.reject(new Error('Download cancelled.'), 'cancelled');
+      this.cancelTransfer(job);
     };
     signal?.addEventListener('abort', abort, { once: true });
-    const deadline = setTimeout(() => job.reject(new Error('Download timed out. Retry when you are ready.')), 10 * 60 * 1000);
+    const deadline = setTimeout(() => job.reject(new Error('Download timed out. Retry when you are ready.'), 'timeout'), 10 * 60 * 1000);
     try {
       if (signal?.aborted) abort();
       if (!job.finished) {
@@ -238,12 +266,17 @@ class CustomsForgeBrowser {
       }
       const result = await guarded;
       if (result.error) throw result.error;
+      this.diagnostic({ code: 'download_finished', stage: 'download', host: chart.host, outcome: 'success', durationMs: Date.now() - started });
       return result.value;
+    } catch (error) {
+      this.diagnostic({ code: signal?.aborted ? 'download_cancelled' : 'download_failed', stage: 'download', host: chart.host,
+        outcome: signal?.aborted ? 'cancelled' : (job.failure || 'failed'), durationMs: Date.now() - started });
+      throw error;
     } finally {
       clearTimeout(deadline);
       signal?.removeEventListener('abort', abort);
       if (!job.finished) job.reject(new Error('Download stopped.'));
-      if (job.item && job.item.getState() === 'progressing') job.item.cancel();
+      if (job.item && !job.transferFinished) this.cancelTransfer(job);
       // Electron cancellation completes asynchronously. Do not release the job's files yet.
       if (job.transferSettled) await job.transferSettled;
       for (const win of job.windows) if (!win.isDestroyed()) win.destroy();
@@ -270,7 +303,7 @@ class CustomsForgeBrowser {
             else if (result.status === 'expired' && !refreshed) {
               refreshed = true; await this.navigate(win, `${CF}/cdlc/${chart.id}`);
             } else if (result.status === 'unsupported' || result.status === 'invalid_request' || result.status === 'click_failed') {
-              job.reject(new Error(result.error || 'This chart cannot be downloaded by this version.'));
+              job.reject(new Error(result.error || 'This chart cannot be downloaded by this version.'), result.status === 'unsupported' ? 'unsupported' : 'failed');
             }
           } else {
             result = await win.webContents.executeJavaScript(`(${hostDownloadAction.toString()})()`, true);
@@ -288,8 +321,8 @@ class CustomsForgeBrowser {
   dispose() {
     this.disposed = true;
     if (this.active) {
-      if (this.active.item) this.active.item.cancel();
       this.active.reject(new Error('Application closed.'));
+      this.cancelTransfer(this.active);
     }
     this.session.removeListener('will-download', this.onDownload);
     for (const win of this.windows) {
