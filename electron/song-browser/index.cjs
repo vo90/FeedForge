@@ -199,7 +199,10 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
   handler('refreshFeedback', () => refresh(outputDir));
   handler('showOutput', ({ id }) => {
     const job = jobs.snapshot().find((entry) => entry.id === String(id));
-    if (!job || job.state !== 'completed' || !job.outputPath || !fs.existsSync(job.outputPath)) {
+    if (!job || job.state !== 'completed' || !job.outputPath || job.outputAvailable !== true || !fs.existsSync(job.outputPath)) {
+      // A file may have been moved since the last renderer snapshot. Publish
+      // its current availability so the search card can offer a fresh download.
+      emit();
       throw new Error('This converted file is no longer available.');
     }
     shell.showItemInFolder(job.outputPath);

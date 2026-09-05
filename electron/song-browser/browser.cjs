@@ -160,7 +160,12 @@ class CustomsForgeBrowser {
     // ERR_ABORTED is expected when a navigation turns into a file download.
     let timer;
     try { await Promise.race([win.loadURL(url), new Promise((_resolve, reject) => {
-      timer = setTimeout(() => { if (!win.isDestroyed()) win.webContents.stop(); reject(new Error('Page load timed out.')); }, 30000);
+      timer = setTimeout(() => {
+        // Reject first: stop() can synchronously reject loadURL with ERR_ABORTED,
+        // which is otherwise a successful navigation-to-download transition.
+        reject(new Error('Page load timed out.'));
+        try { if (!win.isDestroyed()) win.webContents.stop(); } catch { /* The timed-out window may already be closing. */ }
+      }, 30000);
     })]); } catch (error) {
       if (error.code !== 'ERR_ABORTED' && error.errno !== -3) throw new Error('The page could not be loaded. Open the browser and try again.');
     } finally { clearTimeout(timer); }
@@ -218,11 +223,11 @@ class CustomsForgeBrowser {
   }
 
   attention(job, message) {
-    if (job.finished || job.attention === message) return;
+    if (job.finished || this.disposed || job.item || job.attention === message) return;
     job.attention = message;
     this.diagnostic({ code: 'browser_attention', stage: 'needs_attention', host: job.host, outcome: 'needs_attention' });
     job.onAttention(message);
-    this.showBrowser();
+    if (!job.finished && !this.disposed && !job.item) this.showBrowser();
   }
 
   cancelTransfer(job) {
@@ -323,9 +328,10 @@ class CustomsForgeBrowser {
   async driveDownload(job, chart) {
     let refreshed = false;
     let idleTicks = 0;
-    while (!job.finished && !this.disposed) {
-      if (job.item) { await pause(400); continue; }
+    const canAct = () => !job.finished && !this.disposed && !job.item;
+    while (canAct()) {
       for (const win of [...job.windows]) {
+        if (!canAct()) return;
         if (win.isDestroyed()) continue;
         const url = win.webContents.getURL();
         if (!allowedNavigation(url)) continue;
@@ -335,7 +341,12 @@ class CustomsForgeBrowser {
           if (['customsforge.com', 'ignition4.customsforge.com'].includes(host)) {
             if (job.clicked) continue; // Never replay a collection/download click after an ambiguous response.
             result = await win.webContents.executeJavaScript(`(${requestChartDownload.toString()})(${JSON.stringify({ id: String(chart.id) })})`, true);
+            if (!canAct()) return;
+            // A click can legitimately replace its document before the reply.
+            // Retain the once-only collection marker, but never act on an
+            // expired/error reply belonging to a page the user has left.
             if (result.status === 'clicked' || result.status === 'already_clicked') job.clicked = true;
+            else if (win.isDestroyed() || win.webContents.getURL() !== url) continue;
             else if (result.status === 'expired' && !refreshed) {
               refreshed = true; await this.navigate(win, `${CF}/cdlc/${chart.id}`);
             } else if (result.status === 'unsupported' || result.status === 'invalid_request' || result.status === 'click_failed') {
@@ -345,10 +356,13 @@ class CustomsForgeBrowser {
             result = await win.webContents.executeJavaScript(`(${hostDownloadAction.toString()})()`, true);
           }
         } catch { continue; } // A document may be replaced while its ordinary navigation completes.
+        if (!canAct()) return;
+        if (win.isDestroyed() || win.webContents.getURL() !== url) continue;
         if (result?.status === 'login_required' || result?.status === 'challenge' || result?.status === 'needs_attention') {
           this.attention(job, result.error || 'Continue in the browser to finish this download.');
         }
       }
+      if (!canAct()) return;
       if (++idleTicks === 12 && !job.item) this.attention(job, 'The host needs attention. Continue in the browser; conversion starts after the download.');
       await pause(600);
     }

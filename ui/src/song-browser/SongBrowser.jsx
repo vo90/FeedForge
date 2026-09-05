@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AlertTriangle, Check, ChevronLeft, ChevronRight, Download, ExternalLink, FileMusic, FolderOpen, LoaderCircle, Search, X } from "lucide-react";
 import "./song-browser.css";
+import { getSearchSession } from "./search-session.mjs";
 
 const FINISHED = new Set(["completed", "done", "failed", "error", "cancelled", "canceled"]);
 const COMPLETE = new Set(["completed", "done"]);
@@ -37,7 +38,7 @@ function partsText(parts) {
   return text(parts);
 }
 
-function ResultCard({ song, job, busy, canDownload, onDownload, onShowOutput }) {
+export function ResultCard({ song, job, busy, canDownload, onDownload, onShowOutput }) {
   const host = hostInfo(song.host);
   const supported = song.supported === true && host.available;
   const jobState = job ? stateOf(job) : "";
@@ -77,25 +78,26 @@ function ResultCard({ song, job, busy, canDownload, onDownload, onShowOutput }) 
   );
 }
 
-function JobCard({ job, busy, onCancel, onShowOutput, onShowBrowser, onRetry, onReview, onClearCache }) {
+export function JobCard({ job, busy, onCancel, onShowOutput, onShowBrowser, onRetry, onReview, onClearCache }) {
   const status = stateOf(job);
   const completed = COMPLETE.has(status);
+  const missingOutput = completed && job.outputAvailable === false;
   const failed = status === "failed" || status === "error";
   const attention = status === "needs_attention";
   const rawProgress = Number(job.progress);
   const progress = Number.isFinite(rawProgress) ? Math.min(100, Math.max(0, rawProgress)) : null;
   const active = !FINISHED.has(status) && status !== "queued";
   return (
-    <li className={`sb-job ${completed ? "sb-job-completed" : failed ? "sb-job-failed" : ""}`}>
+    <li className={`sb-job ${completed && !missingOutput ? "sb-job-completed" : failed ? "sb-job-failed" : ""}`}>
       <div className="sb-job-top">
         <div className="sb-job-heading"><strong>{text(job.title, "Song")}</strong>{job.artist ? <span>{text(job.artist)}</span> : null}</div>
-        <span className="sb-job-status">{completed ? <Check size={14} aria-hidden="true" /> : failed || attention ? <AlertTriangle size={14} aria-hidden="true" /> : active ? <LoaderCircle size={14} className="sb-spin" aria-hidden="true" /> : null}{STATE_LABELS[status] || "In progress"}</span>
+        <span className="sb-job-status">{missingOutput ? <AlertTriangle size={14} aria-hidden="true" /> : completed ? <Check size={14} aria-hidden="true" /> : failed || attention ? <AlertTriangle size={14} aria-hidden="true" /> : active ? <LoaderCircle size={14} className="sb-spin" aria-hidden="true" /> : null}{missingOutput ? "File unavailable" : STATE_LABELS[status] || "In progress"}</span>
       </div>
       {active && !attention ? <progress className="sb-progress" max="100" value={progress ?? undefined} aria-label={`${text(job.title, "Song")}: ${STATE_LABELS[status] || "In progress"}`} /> : null}
       <div className="sb-job-bottom">
-        <p>{job.error ? errorText(job.error) : text(job.message, completed ? "Your feedpak is ready in the output folder." : status === "queued" ? "Waiting for the previous song to finish." : "")}</p>
+        <p>{missingOutput ? "The converted file has been moved or removed. Find the chart in search results to download it again." : job.error ? errorText(job.error) : text(job.message, completed ? "Your feedpak is ready in the output folder." : status === "queued" ? "Waiting for the previous song to finish." : "")}</p>
         {job.warning ? <p role="status">{text(job.warning)}</p> : null}
-        {completed ? <button type="button" className="sb-text-button" disabled={busy} onClick={() => onShowOutput(job.id)}><FolderOpen size={14} aria-hidden="true" /> Show file</button> : !FINISHED.has(status) ? <div className="sb-job-controls">{attention ? <button type="button" className="sb-text-button" onClick={onShowBrowser}>Open browser</button> : null}<button type="button" className="sb-text-button" disabled={busy || status === "cancelling"} onClick={() => onCancel(job.id)}><X size={14} aria-hidden="true" />{busy || status === "cancelling" ? "Cancelling…" : "Cancel"}</button></div> : null}
+        {completed && !missingOutput ? <button type="button" className="sb-text-button" disabled={busy} onClick={() => onShowOutput(job.id)}><FolderOpen size={14} aria-hidden="true" /> Show file</button> : !FINISHED.has(status) ? <div className="sb-job-controls">{attention ? <button type="button" className="sb-text-button" onClick={onShowBrowser}>Open browser</button> : null}<button type="button" className="sb-text-button" disabled={busy || status === "cancelling"} onClick={() => onCancel(job.id)}><X size={14} aria-hidden="true" />{busy || status === "cancelling" ? "Cancelling…" : "Cancel"}</button></div> : null}
       </div>
       {FINISHED.has(status) && (job.canRetry || job.hasCachedInput) ? <div className="sb-job-controls sb-recovery">
         {job.canRetry ? <button type="button" className="sb-text-button" disabled={busy} onClick={() => onRetry(job.id)}>{job.hasCachedInput ? "Retry conversion" : "Retry download"}</button> : null}
@@ -108,19 +110,17 @@ function JobCard({ job, busy, onCancel, onShowOutput, onShowBrowser, onRetry, on
 export default function SongBrowser({ api: providedApi, onReview }) {
   const api = providedApi ?? (typeof window !== "undefined" ? window.songBrowser : undefined);
   const available = typeof api?.getState === "function" && typeof api?.search === "function";
+  const searchSession = useMemo(() => getSearchSession(api), [api]);
+  const searchState = useSyncExternalStore(searchSession.subscribe, searchSession.getSnapshot, searchSession.getSnapshot);
+  const { query, searchedQuery, result: searchResult, pending: searching } = searchState;
   const [snapshot, setSnapshot] = useState({ outputDir: "", jobs: [], connection: { status: "signed_out" } });
   const [loading, setLoading] = useState(available);
-  const [query, setQuery] = useState("");
-  const [searchedQuery, setSearchedQuery] = useState("");
-  const [searchResult, setSearchResult] = useState(null);
-  const [searching, setSearching] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [feedbackAddress, setFeedbackAddress] = useState("");
   const [busy, setBusy] = useState(new Set());
   const busyRef = useRef(new Set());
   const mounted = useRef(false);
-  const searchSequence = useRef(0);
   const jobs = Array.isArray(snapshot.jobs) ? snapshot.jobs : [];
   const feedback = snapshot.feedback || {};
   useEffect(() => { if (feedback.url) setFeedbackAddress(feedback.url); }, [feedback.url]);
@@ -157,7 +157,7 @@ export default function SongBrowser({ api: providedApi, onReview }) {
       if (next?.ok === false) throw new Error(errorText(next.error));
       if (live && next && !receivedEvent) setSnapshot((current) => ({ ...current, ...next }));
     }).catch((err) => { if (live) setError(errorText(err)); }).finally(() => { if (live) setLoading(false); });
-    return () => { live = false; mounted.current = false; searchSequence.current += 1; if (typeof unsubscribe === "function") unsubscribe(); };
+    return () => { live = false; mounted.current = false; if (typeof unsubscribe === "function") unsubscribe(); };
   }, [api, available]);
 
   async function action(key, method, args) {
@@ -184,23 +184,10 @@ export default function SongBrowser({ api: providedApi, onReview }) {
     }
   }
 
-  async function search(searchQuery, nextPage = 1) {
-    const trimmed = searchQuery.trim();
-    if (trimmed.length < 2 || searching || !available) return;
-    const request = ++searchSequence.current;
-    setSearching(true);
+  function search(searchQuery, nextPage = 1) {
+    if (!available) return;
     setError("");
-    setSearchedQuery(trimmed);
-    try {
-      const result = await api.search({ query: trimmed, page: nextPage });
-      if (result?.ok === false) throw new Error(errorText(result.error));
-      if (!result) throw new Error("The song search returned no response. Please try again.");
-      if (mounted.current && request === searchSequence.current) setSearchResult({ ...result, page: result.page ?? nextPage });
-    } catch (err) {
-      if (mounted.current && request === searchSequence.current) { setSearchResult(null); setError(errorText(err)); }
-    } finally {
-      if (mounted.current && request === searchSequence.current) setSearching(false);
-    }
+    return searchSession.search(searchQuery, nextPage);
   }
 
   const showBrowser = () => action("browser", "showBrowser");
@@ -216,7 +203,7 @@ export default function SongBrowser({ api: providedApi, onReview }) {
     const result = await action("report", "exportDiagnostics");
     if (result?.exported && mounted.current) setNotice("Troubleshooting report saved.");
   };
-  const searchError = searchResult?.error ? errorText(searchResult.error) : searchResult?.status === "layout_changed" ? "CustomsForge’s search page could not be read. Open the browser to check it, then try again." : searchResult?.status === "error" ? "Search is temporarily unavailable. Please try again." : "";
+  const searchError = searchState.error || (searchResult?.error ? errorText(searchResult.error) : searchResult?.status === "layout_changed" ? "CustomsForge’s search page could not be read. Open the browser to check it, then try again." : searchResult?.status === "error" ? "Search is temporarily unavailable. Please try again." : "");
 
   return (
     <section className="song-browser" aria-labelledby="sb-title">
@@ -253,7 +240,7 @@ export default function SongBrowser({ api: providedApi, onReview }) {
 
         <form className="sb-search-form" onSubmit={(event) => { event.preventDefault(); search(query); }}>
           <label htmlFor="sb-query">Search by artist or song title</label>
-          <div className="sb-search-row"><div className="sb-search-input"><Search size={20} aria-hidden="true" /><input id="sb-query" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Artist or song title" autoComplete="off" minLength={2} maxLength={160} /></div><button type="submit" className="sb-button sb-primary" disabled={query.trim().length < 2 || searching || loading}>{searching ? <LoaderCircle size={17} className="sb-spin" aria-hidden="true" /> : <Search size={17} aria-hidden="true" />}{searching ? "Searching…" : "Search"}</button></div>
+          <div className="sb-search-row"><div className="sb-search-input"><Search size={20} aria-hidden="true" /><input id="sb-query" type="search" value={query} onChange={(event) => searchSession.setQuery(event.target.value)} placeholder="Artist or song title" autoComplete="off" minLength={2} maxLength={160} /></div><button type="submit" className="sb-button sb-primary" disabled={query.trim().length < 2 || searching || loading}>{searching ? <LoaderCircle size={17} className="sb-spin" aria-hidden="true" /> : <Search size={17} aria-hidden="true" />}{searching ? "Searching…" : "Search"}</button></div>
           <p>Choose a chart and we’ll download and convert it. Dropbox, Google Drive and MediaFire are supported.</p>
           <p>CustomsForge’s download action also adds the chart to your collection.</p>
         </form>

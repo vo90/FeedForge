@@ -182,6 +182,18 @@ test('connection inspection waits for the loaded page to render its table', asyn
   assert.equal(browser.connection.status, 'connected');
 });
 
+test('a navigation timeout cannot become success when stopping the page emits ERR_ABORTED', async (t) => {
+  const { browser } = fixture(t); const win = browser.ensureSearchWindow();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let rejectLoad;
+  win.loadURL = () => new Promise((_resolve, reject) => { rejectLoad = reject; });
+  win.webContents.stop = () => rejectLoad(Object.assign(new Error('Stopped by the timeout.'), { code: 'ERR_ABORTED', errno: -3 }));
+  const navigation = browser.navigate(win, 'https://ignition4.customsforge.com/').then(() => ({ error: null }), (error) => ({ error }));
+  t.mock.timers.tick(30000);
+  const result = await navigation;
+  assert.ok(result.error, 'a timed-out page must fail even when Chromium reports its abort first');
+});
+
 test('search waits for an incomplete table and accepts a later explicit empty result', async (t) => {
   const { browser } = fixture(t); const win = browser.ensureSearchWindow();
   win.webContents.responses.push({ status: 'layout_changed', results: [] }, { status: 'ready', results: [], page: 1, total: 0 });
@@ -415,6 +427,64 @@ test('dispose rejects a running download and removes the session download listen
   assert.equal(win.isDestroyed(), true);
   assert.equal(session.listenerCount('will-download'), 0);
   assert.equal(browser.windows.size, 0);
+});
+
+test('a late expired-button reply cannot refresh after cancellation or disposal', async (t) => {
+  for (const stop of ['cancel', 'dispose']) {
+    await t.test(stop, async (subtest) => {
+      const { browser } = fixture(subtest); const transfer = begin(browser);
+      const win = [...transfer.job.windows][0]; let refreshes = 0;
+      win.loadURL = () => { refreshes++; return Promise.resolve(); };
+      win.webContents.executeJavaScript = async () => {
+        if (stop === 'cancel') transfer.controller.abort(); else browser.dispose();
+        return { status: 'expired' };
+      };
+      await CustomsForgeBrowser.prototype.driveDownload.call(browser, transfer.job, { id: '123' });
+      assert.ok((await transfer.outcome).error);
+      assert.equal(refreshes, 0, 'an awaited old-page result must not cause another navigation');
+    });
+  }
+});
+
+test('a download starting during a page action stops later window actions and stale attention', async (t) => {
+  const { browser, session } = fixture(t); const transfer = begin(browser);
+  const first = [...transfer.job.windows][0]; first.webContents.url = 'https://drive.google.com/file/d/fixture/view';
+  const child = new FakeWindow({}); child.webContents.url = 'https://www.dropbox.com/s/fixture/chart.psarc';
+  browser.attachWindow(child, transfer.job);
+  let laterActions = 0;
+  child.webContents.executeJavaScript = async () => { laterActions++; return { status: 'clicked' }; };
+  const item = new FakeDownload();
+  first.webContents.executeJavaScript = async () => {
+    session.emit('will-download', event(), item, first.webContents);
+    setImmediate(() => { item.received = item.total; item.finish(); });
+    return { status: 'needs_attention', error: 'Reply from the document that just initiated the transfer.' };
+  };
+  await CustomsForgeBrowser.prototype.driveDownload.call(browser, transfer.job, { id: '123' });
+  assert.equal((await transfer.outcome).value, transfer.destination);
+  assert.equal(laterActions, 0); assert.deepEqual(transfer.attention, []);
+});
+
+test('an attention callback cancelling its job cannot reopen the cancelled browser window', async (t) => {
+  const { browser } = fixture(t); const transfer = begin(browser);
+  const win = [...transfer.job.windows][0];
+  transfer.job.onAttention = () => transfer.controller.abort();
+  browser.attention(transfer.job, 'A host step needs attention.');
+  assert.equal(win.visible, false);
+  assert.ok((await transfer.outcome).error);
+});
+
+test('an expired reply from a replaced chart document cannot navigate away from its host page', async (t) => {
+  const { browser } = fixture(t); const transfer = begin(browser);
+  const win = [...transfer.job.windows][0]; let refreshes = 0;
+  win.loadURL = () => { refreshes++; return Promise.resolve(); };
+  win.webContents.executeJavaScript = async () => {
+    win.webContents.url = 'https://www.dropbox.com/s/fixture/chart.psarc';
+    setImmediate(() => transfer.controller.abort());
+    return { status: 'expired' };
+  };
+  await CustomsForgeBrowser.prototype.driveDownload.call(browser, transfer.job, { id: '123' });
+  await transfer.outcome;
+  assert.equal(refreshes, 0);
 });
 
 function hostAction({ url, body = '', title = '', link = null, buttons = [] }) {

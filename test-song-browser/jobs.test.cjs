@@ -368,12 +368,15 @@ test("changing output folders copies a validated duplicate into the selected fol
   const f = await fixture(t);
   const first = await f.result(f.manager.enqueue(CHART).id);
   const firstStat = await fsp.stat(first.outputPath);
+  assert.equal(first.outputAvailable, true);
   assert.equal(first.inOutputDir, true);
   const secondFolder = path.join(f.directory, "FeedBack library");
   f.manager.setOutputDir(secondFolder);
+  assert.equal(f.manager.snapshot()[0].outputAvailable, true, "A file in the old folder remains available.");
   assert.equal(f.manager.snapshot()[0].inOutputDir, false);
   const duplicate = await f.result(f.manager.enqueue(CHART).id);
   assert.equal(duplicate.state, "completed");
+  assert.equal(duplicate.outputAvailable, true);
   assert.equal(duplicate.duplicateOf, first.id);
   assert.equal(duplicate.inOutputDir, true);
   assert.equal(path.dirname(duplicate.outputPath), secondFolder);
@@ -591,11 +594,50 @@ test("retry pins its cached source before a full history can evict it", async (t
 test("a deleted completed output is no longer ready in the selected folder", async (t) => {
   const f = await fixture(t);
   const done = await f.result(f.manager.enqueue(CHART).id);
+  assert.equal(done.outputAvailable, true);
   assert.equal(done.inOutputDir, true);
   await fsp.unlink(done.outputPath);
-  assert.equal(f.manager.snapshot()[0].inOutputDir, false);
+  const missing = f.manager.snapshot()[0];
+  assert.equal(missing.outputAvailable, false);
+  assert.equal(missing.inOutputDir, false);
+  assert.equal(missing.state, "completed", "Missing output must not rewrite completed history.");
+  assert.equal(missing.canRetry, false);
+  assert.equal(f.downloads.length, 1, "Reading missing-output state must not automatically download again.");
   assert.equal((await f.result(f.manager.enqueue(CHART).id)).state, "completed");
   assert.equal(f.calls.filter((args) => args[1] === "-o").length, 2);
+});
+
+test("a moved completed output is unavailable while the moved file is preserved", async (t) => {
+  const f = await fixture(t);
+  const done = await f.result(f.manager.enqueue(CHART).id);
+  const moved = path.join(f.outputDir, "renamed-by-user.feedpak");
+  await fsp.rename(done.outputPath, moved);
+  const snapshot = f.manager.snapshot()[0];
+  assert.equal(snapshot.outputAvailable, false);
+  assert.equal(snapshot.inOutputDir, false);
+  assert.equal(snapshot.state, "completed");
+  assert.equal(snapshot.canRetry, false);
+  assert.deepEqual(await fsp.readFile(moved), FEEDPAK);
+  assert.equal(f.downloads.length, 1);
+});
+
+test("a completed output replaced by a file symlink is unavailable", async (t) => {
+  const f = await fixture(t);
+  const done = await f.result(f.manager.enqueue(CHART).id);
+  const target = path.join(f.outputDir, "kept-original.feedpak");
+  await fsp.rename(done.outputPath, target);
+  try { await fsp.symlink(target, done.outputPath, "file"); }
+  catch (error) {
+    if (process.platform === "win32" && error.code === "EPERM") { t.skip("File symlinks require Windows Developer Mode or the corresponding privilege."); return; }
+    throw error;
+  }
+  const snapshot = f.manager.snapshot()[0];
+  assert.equal(snapshot.outputAvailable, false);
+  assert.equal(snapshot.inOutputDir, false);
+  assert.equal(snapshot.state, "completed");
+  assert.equal(snapshot.canRetry, false);
+  assert.deepEqual(await fsp.readFile(target), FEEDPAK);
+  assert.equal(f.downloads.length, 1);
 });
 
 test("Windows native path identity survives redirected profiles without weakening containment", { skip: process.platform !== "win32" }, async (t) => {

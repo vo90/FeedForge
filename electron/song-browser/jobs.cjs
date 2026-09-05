@@ -120,11 +120,13 @@ class SongJobs {
     }
     result.hasCachedInput = Boolean(job.cacheHash && job.cacheAt > Date.now() - CACHE_LIFETIME_MS);
     result.canRetry = ["failed", "cancelled"].includes(job.state) && (result.hasCachedInput || job.supported === true);
+    result.outputAvailable = false;
     result.inOutputDir = false;
     if (job.state === "completed" && job.outputPath) {
       try {
         const stat = fs.lstatSync(job.outputPath);
-        result.inOutputDir = stat.isFile() && !stat.isSymbolicLink() && fs.realpathSync.native(path.dirname(job.outputPath)) === fs.realpathSync.native(this.outputDir);
+        result.outputAvailable = stat.isFile() && !stat.isSymbolicLink();
+        result.inOutputDir = result.outputAvailable && fs.realpathSync.native(path.dirname(job.outputPath)) === fs.realpathSync.native(this.outputDir);
       } catch { /* A missing file is not ready in the selected output. */ }
     }
     if (job.warning || this.persistenceWarning) result.warning = text([job.warning, this.persistenceWarning].filter(Boolean).join(" "), 500);

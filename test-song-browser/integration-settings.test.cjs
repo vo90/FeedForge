@@ -15,10 +15,10 @@ function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'feedforge-ipc-settings-'));
   const libraryDir = path.join(directory, 'fixture-library'); fs.mkdirSync(libraryDir);
   const handlers = new Map(); const created = { browsers: [], queues: [] };
-  const mainFrame = {}; const webContents = { mainFrame, send() {} };
+  const mainFrame = {}; const webContents = { mainFrame, send(channel, value) { if (channel === 'song-browser:state') calls.states.push(plain(value)); } };
   const win = { webContents, isDestroyed: () => false };
   const trusted = { sender: webContents, senderFrame: mainFrame };
-  const calls = { inspections: [], refreshes: [], retries: [], cleared: [], saves: [], opens: [] };
+  const calls = { inspections: [], refreshes: [], retries: [], cleared: [], saves: [], opens: [], states: [], revealed: [] };
   const options = { selectedOutput: path.join(directory, 'selected-output'), savePath: path.join(directory, 'report.json'), failSettings: false };
   const info = (url) => ({ url: normalizeEndpoint(url), libraryDir, version: '0.3.0-alpha.1', running: false });
   const remote = { inspect: async (url) => info(url), refresh: async (url) => info(url) };
@@ -59,7 +59,7 @@ function fixture(t) {
     BrowserWindow: Browser, session: {}, ipcMain: { handle(name, action) { handlers.set(name, action); } },
     dialog: { showSaveDialog: async (_win, request) => { calls.saves.push(request); return { canceled: false, filePath: options.savePath }; },
       showOpenDialog: async () => { calls.opens.push(true); return { canceled: false, filePaths: [options.selectedOutput] }; } },
-    shell: {}, getMainWindow: () => win, runConverter() { throw new Error('No real converter in IPC fixture.'); }
+    shell: { showItemInFolder(filename) { calls.revealed.push(filename); } }, getMainWindow: () => win, runConverter() { throw new Error('No real converter in IPC fixture.'); }
   });
   t.after(async () => { await service.close(); fs.rmSync(directory, { recursive: true, force: true }); });
   const call = (name, payload, event = trusted) => handlers.get('song-browser:' + name)(event, payload);
@@ -119,6 +119,26 @@ test('connecting, opting into refresh and selecting a library preserve settings 
   settings = JSON.parse(fs.readFileSync(f.settingsPath));
   assert.equal(settings.feedback.autoRefresh, true); assert.equal(settings.outputDir, f.options.selectedOutput);
   const state = await f.call('getState'); assert.equal(state.feedback.autoRefresh, true);
+});
+
+test('an unavailable output publishes fresh queue state instead of leaving a stale reveal-only card', async (t) => {
+  const f = fixture(t); await f.call('getState');
+  const outputPath = path.join(f.directory, 'completed.feedpak'); fs.writeFileSync(outputPath, 'fixture');
+  const queue = f.created.queues[0];
+  queue.entries = [{ id: 'completed', state: 'completed', outputPath, outputAvailable: true, inOutputDir: false }];
+  assert.equal((await f.call('showOutput', { id: 'completed' })).ok, true, 'an existing output in another folder remains revealable');
+  assert.deepEqual(f.calls.revealed, [outputPath]);
+  fs.unlinkSync(outputPath);
+  // Queue filesystem detection is covered in jobs.test; inject its refreshed
+  // snapshot at this IPC seam and verify it reaches the renderer on failure.
+  queue.entries[0].outputAvailable = false;
+  const response = await f.call('showOutput', { id: 'completed' });
+  assert.equal(response.ok, false);
+  assert.match(response.error, /no longer available/);
+  assert.equal(f.calls.states.at(-1).jobs[0].outputAvailable, false);
+  assert.equal(f.calls.states.at(-1).jobs[0].inOutputDir, false);
+  assert.equal(f.calls.states.at(-1).jobs[0].state, 'completed', 'historical completion remains intact');
+  assert.equal(f.calls.revealed.length, 1, 'no reveal is attempted for an unavailable file');
 });
 
 test('failed settings writes retain the previous connection, refresh choice and queue output folder', async (t) => {
