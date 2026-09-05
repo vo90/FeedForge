@@ -25,7 +25,7 @@ $revision = (& git -C $sourceRoot rev-parse HEAD).Trim()
 $pythonExe = (Resolve-Path -LiteralPath $PythonPath).Path
 $electronExe = (Resolve-Path -LiteralPath $ElectronPath).Path
 $audioPath = (Resolve-Path -LiteralPath $AudioToolsPath).Path
-$nodeExe = (Get-Command node -CommandType Application -ErrorAction Stop).Source
+$nodeExe = (Get-Command node -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $builderCli = Join-Path $sourceRoot 'node_modules\electron-builder\out\cli\cli.js'
 $viteCli = Join-Path $sourceRoot 'node_modules\vite\bin\vite.js'
 foreach ($filename in @($builderCli, $viteCli, (Join-Path $audioPath 'vgmstream-cli.exe'), (Join-Path $audioPath 'ffmpeg.exe'))) {
