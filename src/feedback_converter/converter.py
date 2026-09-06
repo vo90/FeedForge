@@ -24,6 +24,7 @@ import soundfile as sf
 import yaml
 
 from .feedpak_validator import FeedpakValidationResult, require_valid_feedpak
+from .bend_curves import normalize_sng_bend_curve
 from .output_naming import (
     arrangement_parts_code as naming_arrangement_parts_code,
     output_path as build_output_path,
@@ -729,6 +730,7 @@ def convert_psarc(
                 include_tones=include_tones,
                 cent_offset=cent_offset,
                 arrangement_id=arr_id,
+                warnings=warnings,
             )
         except ValueError as exc:
             warnings.append(ConversionWarning(f"Skipped SNG {path}: {exc}"))
@@ -1816,10 +1818,20 @@ def _song_to_arrangement(
     include_tones: bool = True,
     cent_offset: float = 0.0,
     arrangement_id: str | None = None,
+    warnings: list[ConversionWarning] | None = None,
 ) -> dict[str, Any]:
     tuning = [int(x) for x in list(song.metadata.tuning or [])]
     templates = _templates_to_feedpak(song)
-    chart = _song_chart_data(song, templates)
+    bend_adjustments: set[str] = set()
+    chart = _song_chart_data(song, templates, bend_adjustments=bend_adjustments)
+    if warnings is not None:
+        descriptions = {
+            "pre-onset": "pre-onset bend segments were interpolated at note onset",
+            "entirely-pre-onset": "entirely pre-onset bends were held at their last authored value",
+            "past-sustain": "bend segments beyond sustain were interpolated at note end",
+        }
+        for kind in sorted(bend_adjustments):
+            warnings.append(ConversionWarning(f"{source_path}: {descriptions[kind]} (source normalization)."))
     normalized_cent_offset = (
         _num(cent_offset)
         if not isinstance(cent_offset, bool) and _finite_number(cent_offset)
@@ -1875,10 +1887,12 @@ def _highest_level(song: Any) -> Any:
     return max(levels, key=lambda level: int(level.difficulty))
 
 
-def _song_chart_data(song: Any, templates: list[dict[str, Any]]) -> dict[str, Any]:
+def _song_chart_data(
+    song: Any, templates: list[dict[str, Any]], *, bend_adjustments: set[str] | None = None,
+) -> dict[str, Any]:
     level_payloads: dict[int, dict[str, Any]] = {}
     for level in sorted(song.levels, key=lambda item: int(item.difficulty)):
-        notes, chords = _notes_and_chords(song, level, templates)
+        notes, chords = _notes_and_chords(song, level, templates, bend_adjustments=bend_adjustments)
         level_payloads[int(level.difficulty)] = {
             "difficulty": int(level.difficulty),
             "notes": notes,
@@ -2383,7 +2397,8 @@ def _slice_by_time(
 
 
 def _notes_and_chords(
-    song: Any, level: Any, templates: list[dict[str, Any]]
+    song: Any, level: Any, templates: list[dict[str, Any]], *,
+    bend_adjustments: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     notes: list[dict[str, Any]] = []
     chords: list[dict[str, Any]] = []
@@ -2398,16 +2413,16 @@ def _notes_and_chords(
             chord = {"t": _num(note.time), "id": chord_id}
             if int(note.mask) & NOTE_MASK_HIGHDENSITY:
                 chord["hd"] = True
-            chord_notes = _chord_notes(song, note, chord_id)
+            chord_notes = _chord_notes(song, note, chord_id, bend_adjustments=bend_adjustments)
             if chord_notes:
                 chord["notes"] = chord_notes
             chords.append(chord)
         else:
-            notes.append(_note_to_feedpak(note))
+            notes.append(_note_to_feedpak(note, bend_adjustments=bend_adjustments))
     return notes, chords
 
 
-def _note_to_feedpak(note: Any) -> dict[str, Any]:
+def _note_to_feedpak(note: Any, *, bend_adjustments: set[str] | None = None) -> dict[str, Any]:
     out: dict[str, Any] = {
         "t": _num(note.time), "s": int(note.string),
         "f": _muted_source_fret(int(note.fret), int(note.mask)),
@@ -2422,16 +2437,17 @@ def _note_to_feedpak(note: Any) -> dict[str, Any]:
     bend = _bend_value(note)
     if bend:
         out["bn"] = bend
-    bend_curve = _bend_curve(float(note.time), note.bends)
-    if bend_curve:
-        out["bnv"] = bend_curve
+    bend_curve = _bend_curve(float(note.time), note.bends, sustain, adjustments=bend_adjustments)
+    _store_bend_curve(out, bend_curve)
     if int(note.leftHand) >= 0:
         out["fg"] = int(note.leftHand)
     _apply_note_mask(out, int(note.mask))
     return out
 
 
-def _chord_notes(song: Any, note: Any, chord_id: int) -> list[dict[str, Any]]:
+def _chord_notes(
+    song: Any, note: Any, chord_id: int, *, bend_adjustments: set[str] | None = None,
+) -> list[dict[str, Any]]:
     sustain = float(note.sustain or 0.0)
     if 0 <= int(note.chordNoteId) < len(song.chordNotes):
         chord_note = song.chordNotes[int(note.chordNoteId)]
@@ -2454,9 +2470,10 @@ def _chord_notes(song: Any, note: Any, chord_id: int) -> list[dict[str, Any]]:
             bend = _bend_value_from_points(bend_values)
             if bend:
                 entry["bn"] = bend
-            bend_curve = _bend_curve(float(note.time), bend_values)
-            if bend_curve:
-                entry["bnv"] = bend_curve
+            bend_curve = _bend_curve(
+                float(note.time), bend_values, entry.get("sus", 0.0), adjustments=bend_adjustments,
+            )
+            _store_bend_curve(entry, bend_curve)
             _apply_note_mask(entry, string_mask | int(note.mask))
             notes.append(entry)
         return notes
@@ -2518,26 +2535,28 @@ def _bend_value_from_points(bends: Any) -> float | None:
     return None
 
 
-def _bend_curve(note_time: float, bends: Any) -> list[dict[str, float]] | None:
-    points = []
-    last: tuple[float, float] | None = None
-    for bend in bends:
-        step = float(bend.step)
-        time_value = float(bend.time)
-        relative_time = time_value - note_time
-        if relative_time < -0.001:
-            relative_time = time_value
-        relative_time = max(0.0, relative_time)
-        point = (_num(relative_time), _num(step))
-        if last == point:
-            continue
-        points.append({"t": point[0], "v": point[1]})
-        last = point
-    if len(points) < 2:
+def _bend_curve(
+    note_time: float, bends: Any, sustain: float, *, adjustments: set[str] | None = None,
+) -> list[dict[str, float]] | None:
+    source_points = [(float(b.time), float(b.step)) for b in bends]
+    if len(source_points) < 2:
         return None
-    if not any(abs(float(point["v"])) > 0 for point in points):
-        return None
+    points, changes = normalize_sng_bend_curve(note_time, sustain, source_points)
+    if adjustments is not None:
+        adjustments.update(changes)
     return points
+
+
+def _store_bend_curve(note: dict[str, Any], curve: list[dict[str, float]] | None) -> None:
+    if curve is None:
+        return
+    # bn is the peak inside the sounding window, including interpolated edges.
+    # A curve fully released before onset must not leave a phantom scalar bend.
+    note.pop("bn", None)
+    peak = max((point["v"] for point in curve), default=0.0, key=abs)
+    if peak:
+        note["bn"] = peak
+        note["bnv"] = curve
 
 
 def _muted_source_fret(fret: int, mask: int) -> int:
