@@ -16,6 +16,19 @@ const charts = Object.freeze({
   retry: Object.freeze({ id: '1102', title: 'Fixture Recovery', artist: 'Fixture Artist', host: 'google-drive' }),
   slow: Object.freeze({ id: '1103', title: 'Fixture Cancel', artist: 'Fixture Artist', host: 'mediafire' }),
 });
+// Catalogue-only rows reproduce Ignition's adjacent one-letter arrangement
+// badges. Keep these separate from the download fixtures and their counts.
+const compactCharts = Object.freeze({
+  all: Object.freeze({ id: '1140', title: 'Leaders Of The Blind', artist: 'Green Lung', host: 'dropbox', parts: 'LRB', compactParts: true }),
+  lead: Object.freeze({ id: '1141', title: 'Fixture Lead Only', artist: 'Green Lung', host: 'dropbox', parts: 'L', compactParts: true }),
+  rhythm: Object.freeze({ id: '1142', title: 'Fixture Rhythm Only', artist: 'Green Lung', host: 'dropbox', parts: 'R', compactParts: true }),
+  bass: Object.freeze({ id: '1143', title: 'Fixture Bass Only', artist: 'Green Lung', host: 'dropbox', parts: 'B', compactParts: true }),
+});
+const officialCharts = Object.freeze({
+  official: Object.freeze({ id: '1150', title: 'Fixture Official Song', artist: 'Fixture Artist', host: 'unknown', official: true }),
+  custom: Object.freeze({ id: '1151', title: 'ODLC Custom Tribute', artist: 'Fixture Artist', host: 'dropbox' }),
+  unknown: Object.freeze({ id: '1152', title: 'Fixture Unidentified Host', artist: 'Fixture Artist', host: 'unknown' }),
+});
 const byId = new Map(Object.values(charts).map((chart) => [chart.id, chart]));
 const counters = { search: 0, searchCompleted: 0, downloads: {}, conversions: {}, plans: [], outputSettings: null, outputPicks: [], songBrowserFolderPicks: 0, reveals: 0, browserActions: { signIn: 0, showBrowser: 0 } };
 const tests = [], rendererErrors = [], unexpected = [], transfers = [], savedReports = [];
@@ -140,6 +153,8 @@ function searchPage(query) {
   if (query.toLowerCase() === 'login') return html('<h1>Custom songs for Rocksmith 2014</h1><a href="/">Login to CustomsForge</a><button>Sign in</button>');
   if (query.toLowerCase() === 'challenge') return html('<p>Verify you are human</p>', 'Just a moment...');
   const rows = query.toLowerCase() === 'empty' ? [] : [...Object.values(charts), { id: '1110', title: 'Fixture Unsupported', artist: 'Fixture Artist', host: 'unknown' }];
+  if (query.toLowerCase() === 'green lung') rows.splice(0, rows.length, ...Object.values(compactCharts));
+  if (query.toLowerCase() === 'official fixture') rows.splice(0, rows.length, ...Object.values(officialCharts));
   if (query.toLowerCase() === 'catalogue') rows.push(
     { id: '1111', title: 'Fixture Beneath', artist: 'Fixture Artist', host: 'dropbox', parts: 'Bass', tuning: 'Bb Standard' },
     { id: '1112', title: 'Fixture Beneath', artist: 'Fixture Artist', host: 'dropbox', parts: 'Lead', tuning: 'Bb Standard' },
@@ -164,7 +179,11 @@ function searchPage(query) {
       const ordered = [...data].sort((a, b) => (field === 'downloads' || field === 'year' ? a[field] - b[field] : String(a[field]).localeCompare(String(b[field]), 'en', { numeric: true })) * (direction === 'desc' ? -1 : 1));
       const offset = (page - 1) * perPage;
       const shown = ordered.slice(offset, offset + perPage);
-      const tableRows = shown.map((chart) => `<tr><td><span title="Hosted on ${escape(chart.hostName)}">File</span></td><td>${escape(chart.artist)}</td><td><a href="/cdlc/${chart.id}">${escape(chart.title)}</a></td><td>${escape(chart.album)}</td><td>${escape(chart.tuning)}</td><td>${escape(chart.creator)}</td><td>${chart.added}</td><td>${chart.updated}</td><td>${chart.parts}</td><td>${chart.version}</td><td>${chart.year}</td><td>${chart.duration}</td><td>${chart.downloads}</td></tr>`).join('') || '<tr><td colspan="13">No matching records found</td></tr>';
+      const tableRows = shown.map((chart) => {
+        const parts = chart.compactParts ? [...chart.parts].map((part) => `<span class="instrument-badge">${escape(part)}</span>`).join('') : escape(chart.parts);
+        const album = escape(chart.album) + (chart.official ? ' <span class="badge">OFFICIAL DLC</span>' : '');
+        return `<tr><td><span title="Hosted on ${escape(chart.hostName)}">File</span></td><td>${escape(chart.artist)}</td><td><a href="/cdlc/${chart.id}">${escape(chart.title)}</a></td><td>${album}</td><td>${escape(chart.tuning)}</td><td>${escape(chart.creator)}</td><td>${chart.added}</td><td>${chart.updated}</td><td>${parts}</td><td>${chart.version}</td><td>${chart.year}</td><td>${chart.duration}</td><td>${chart.downloads}</td></tr>`;
+      }).join('') || '<tr><td colspan="13">No matching records found</td></tr>';
       document.body.innerHTML = `<p>Showing ${data.length ? offset + 1 : 0} to ${offset + shown.length} of ${data.length} results</p> <table id="cdlc-table"><thead><tr><th>Download</th>${heading('artist', 'Artist')}${heading('title', 'Title')}${heading('album', 'Album')}${heading('tuning', 'Tuning')}${heading('creator', 'Creator')}${heading('added', 'Added')}${heading('updated', 'Updated')}<th>Parts</th><th>Version</th>${heading('year', 'Year')}${heading('duration', 'Duration')}${heading('downloads', 'DLs')}</tr></thead><tbody>${tableRows}</tbody></table><span aria-current="page">${page}</span><button aria-label="Previous page" ${page === 1 ? 'disabled' : ''} onclick="window.fixturePage(-1)">Previous</button><button aria-label="Next page" ${offset + shown.length >= data.length ? 'disabled' : ''} onclick="window.fixturePage(1)">Next</button>`;
     }
     window.fixtureSort = (next) => { direction = field === next && direction === 'asc' ? 'desc' : 'asc'; field = next; page = 1; render(); };
@@ -232,7 +251,7 @@ function ownedFile(filename) {
 }
 function fixtureApi() {
   return Object.freeze({
-    charts,
+    charts, compactCharts, officialCharts,
     async captureScreenshot(name, selector) {
       assert.match(name, /^[a-zA-Z0-9_-]{1,80}$/);
       if (selector) await mainWindow.webContents.mainFrame.executeJavaScript(`document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({block:'start'})`);

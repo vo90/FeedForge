@@ -12,6 +12,7 @@ const HOSTS = Object.freeze({
   mega: Object.freeze({ id: 'mega', label: 'MEGA', supported: true, status: 'experimental' }),
 });
 const UNKNOWN = Object.freeze({ id: 'unknown', label: 'Other host', supported: false, status: 'unsupported' });
+const ODLC = Object.freeze({ id: 'odlc', label: 'ODLC', supported: false, status: 'unavailable' });
 const SUBDOMAIN = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
 function inDomain(host, domain) {
   return host === domain || (host.endsWith('.' + domain) && SUBDOMAIN.test(host));
@@ -34,7 +35,7 @@ function hostFromUrl(value) {
   if (['mega.nz', 'www.mega.nz', 'mega.co.nz', 'www.mega.co.nz'].includes(host)) return 'mega';
   return 'unknown';
 }
-function getHostCapabilities(id) { return HOSTS[id] || UNKNOWN; }
+function getHostCapabilities(id) { return id === 'odlc' ? ODLC : HOSTS[id] || UNKNOWN; }
 function allowedNavigation(value, context = {}) {
   const url = secureUrl(value);
   if (!url) return false;

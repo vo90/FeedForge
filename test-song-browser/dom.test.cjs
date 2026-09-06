@@ -161,6 +161,36 @@ test('unsupported and conflicting host hints do not become downloadable results'
   assert.equal(run(readSearchPage, page([fixture])).results[0].host, 'unknown');
 });
 
+test('official DLC album badges and explicit labels are ODLC, never download hosts', () => {
+  const markers = [
+    el('span', { class: 'badge bg-primary' }, [], 'OFFICIAL DLC'),
+    el('span', { class: 'badge' }, [], 'ODLC'),
+    el('i', { 'data-bs-original-title': 'Official DLC' }),
+    el('span', { class: 'official-dlc' }, [], 'Official'),
+  ];
+  for (const marker of markers) {
+    const fixture = row({ host: 'Dropbox' });
+    fixture.children[3].children.push(marker); marker.parentElement = fixture.children[3];
+    const result = run(readSearchPage, page([fixture])).results[0];
+    assert.equal(result.host, 'odlc');
+    assert.equal(result.supported, false, 'an official badge overrides a lingering host hint');
+  }
+});
+
+test('ordinary title/creator words, unsupported hosts and hidden badges do not imply ODLC', () => {
+  const fixture = row({ title: 'Official DLC', host: 'Unrecognized File Host' });
+  fixture.children[2].children[0].attrs.title = 'Official DLC';
+  fixture.children[5].ownText = 'Ubisoft';
+  const hiddenBadge = el('span', { class: 'badge', hidden: true }, [], 'OFFICIAL DLC');
+  fixture.children[3].children.push(hiddenBadge); hiddenBadge.parentElement = fixture.children[3];
+  const result = run(readSearchPage, page([fixture])).results[0];
+  assert.equal(result.title, 'Official DLC');
+  assert.equal(result.host, 'unknown'); assert.equal(result.supported, false);
+  const custom = row({ title: 'My ODLC Cover', host: 'Dropbox' });
+  custom.children[5].ownText = 'Ubisoft';
+  assert.equal(run(readSearchPage, page([custom])).results[0].host, 'dropbox');
+});
+
 test('observed domain host hints work in table and Windows download buttons', () => {
   const names = [['drive.google.com', 'google-drive', true], ['dropbox.com', 'dropbox', true], ['mediafire.com', 'mediafire', true], ['1drv.ms', 'onedrive', false], ['mega.nz', 'mega', false], ['drive.google.com.evil.test', 'unknown', false], ['dropbox.com.evil.test', 'unknown', false]];
   for (const [name, host, supported] of names) {

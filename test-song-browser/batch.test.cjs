@@ -11,6 +11,26 @@ const { BatchCoordinator, planBatch, MAX_BATCH_CHARTS } = require("../electron/s
 function chart(id, extra = {}) { return { id: String(id), artist: "Meshuggah", title: `Song ${id}`, parts: "Lead, Rhythm, Bass",
   tuning: "Bb Standard", version: "1.1", creator: "Griorb", host: "mediafire", supported: true, downloads: 100, ...extra }; }
 function deferred() { let resolve; const promise = new Promise((yes) => { resolve = yes; }); return { promise, resolve }; }
+
+test('batch requirements recognize CustomsForge compact arrangement badges', () => {
+  const plan = planBatch([
+    chart(62795, { artist: 'Green Lung', title: 'Leaders Of The Blind', parts: 'LRB' }),
+    chart(2, { parts: 'B' }),
+  ], { requiredParts: ['lead', 'rhythm', 'bass'] });
+  assert.deepEqual(plan.charts[0].parts, ['lead', 'rhythm', 'bass']);
+  assert.deepEqual(plan.selectedIds, ['62795']);
+  assert.equal(plan.groups[0].unresolved, false);
+  assert.equal(plan.groups[1].unresolved, true);
+});
+
+test('official DLC retains its label and cannot be recommended even when unsupported hosts are allowed', () => {
+  const plan = planBatch([chart(3872, { host: 'odlc', supported: true })], { allowUnsupported: true });
+  assert.equal(plan.charts[0].host, 'odlc');
+  assert.equal(plan.charts[0].supported, false);
+  assert.deepEqual(plan.selectedIds, []);
+  assert.equal(plan.groups[0].options[0].eligible, false);
+  assert.match(plan.groups[0].options[0].reasons.join(' '), /Official DLC \(ODLC\).*not available for download from CustomsForge/);
+});
 async function until(predicate) { const end = Date.now() + 4000; while (!predicate()) { if (Date.now() > end) throw new Error("Condition did not complete."); await delay(3); } }
 function fixture(t, options = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "feedforge-batch-"));

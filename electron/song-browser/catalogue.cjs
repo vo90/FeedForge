@@ -66,9 +66,19 @@ function hasLocalFilters(filters) {
 }
 
 function parseParts(value) {
-  if (Array.isArray(value)) return PARTS.filter((part) => value.some((item) => comparable(item) === part));
-  const label = compact(value);
-  return PARTS.filter((part) => new RegExp('\\b' + part + '\\b', 'i').test(label));
+  const found = new Set();
+  for (const label of Array.isArray(value) ? value : [value]) {
+    if (typeof label !== 'string') continue;
+    for (const token of label.toLowerCase().match(/[a-z]+/g) || []) {
+      if (PARTS.includes(token)) found.add(token);
+      // Ignition's arrangement badges expose compact text such as LRB.
+      // Decode only complete badge tokens, never letters inside other words.
+      else if (/^[lrb]{1,3}$/.test(token) && new Set(token).size === token.length) {
+        for (const code of token) found.add({ l: 'lead', r: 'rhythm', b: 'bass' }[code]);
+      }
+    }
+  }
+  return PARTS.filter((part) => found.has(part));
 }
 
 function chartFilterDecision(chart, filters = EMPTY_FILTERS) {

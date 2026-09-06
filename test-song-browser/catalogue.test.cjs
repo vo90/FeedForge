@@ -1,7 +1,25 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeSearchRequest, searchIdentity, hasLocalFilters, chartFilterDecision, filterCharts, sortCharts } = require('../electron/song-browser/catalogue.cjs');
+const { normalizeSearchRequest, searchIdentity, hasLocalFilters, parseParts, chartFilterDecision, filterCharts, sortCharts } = require('../electron/song-browser/catalogue.cjs');
+
+test('arrangement badges decode compact and separated path codes without matching unrelated words', () => {
+  for (const value of ['LRB', 'lrb', 'L R B', 'L/R/B', 'Lead, Rhythm, Bass', ['L', 'R', 'B']]) {
+    assert.deepEqual(parseParts(value), ['lead', 'rhythm', 'bass'], String(value));
+  }
+  for (const [value, expected] of [['L', ['lead']], ['R', ['rhythm']], ['B', ['bass']], ['LR', ['lead', 'rhythm']], ['LB', ['lead', 'bass']], ['RB', ['rhythm', 'bass']]]) {
+    assert.deepEqual(parseParts(value), expected);
+  }
+  for (const value of ['', 'Unknown', 'Bridge', 'Blur', 'LRBX', 'BB', 'Rhythmical', 'Leadbetter', ['guitar'], null]) assert.deepEqual(parseParts(value), []);
+});
+
+test('Green Lung LRB metadata satisfies each requested arrangement and all checked paths', () => {
+  const songs = [{ id: '62795', title: 'Leaders Of The Blind', artist: 'Green Lung', parts: 'LRB', arrangements: [] },
+    { id: '2', parts: 'L' }, { id: '3', parts: 'B' }, { id: '4', parts: 'Unknown' }];
+  for (const [parts, expected] of [[['lead'], ['62795', '2']], [['rhythm'], ['62795']], [['bass'], ['62795', '3']], [['lead', 'bass'], ['62795']], [['lead', 'rhythm', 'bass'], ['62795']]]) {
+    assert.deepEqual(filterCharts(songs, { parts }).map((song) => song.id), expected);
+  }
+});
 
 test('search contracts validate bounds and normalize equivalent search definitions', () => {
   const request = normalizeSearchRequest({ query: '  Iron   Maiden  ', page: 2, sort: { field: 'downloads', direction: 'desc' }, filters: { parts: ['bass', 'lead'], exactArtist: 'IRON MAIDEN' } });

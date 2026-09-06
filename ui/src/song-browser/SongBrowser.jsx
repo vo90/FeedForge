@@ -32,6 +32,7 @@ function stateOf(job) {
 
 function hostInfo(value) {
   const host = text(value).toLowerCase().replace(/[\s_-]/g, "");
+  if (host === 'odlc') return { label: 'ODLC', available: false, official: true };
   if (host.includes("dropbox")) return { label: "Dropbox", available: true };
   if (host === "drive" || host.includes("googledrive") || host.includes("drive.google")) return { label: "Google Drive", available: true };
   if (host.includes("mediafire")) return { label: "MediaFire", available: true };
@@ -59,7 +60,7 @@ export function ResultCard({ song, job, busy, canDownload, onDownload, onShowOut
 
   return (
     <article className="sb-result">
-      {onSelect ? <input type="checkbox" className="sb-chart-select" aria-label={`Select ${song.title} chart ${song.id}`} checked={selected === true} onChange={(event) => onSelect(String(song.id), event.target.checked)} /> : null}
+      {onSelect ? <input type="checkbox" className="sb-chart-select" aria-label={`Select ${song.title} chart ${song.id}`} checked={selected === true && !host.official} disabled={host.official === true} onChange={(event) => onSelect(String(song.id), event.target.checked)} /> : null}
       <div className="sb-result-icon" aria-hidden="true"><FileMusic size={23} /></div>
       <div className="sb-result-info">
         <h3>{text(song.title, "Untitled song")}</h3>
@@ -81,7 +82,7 @@ export function ResultCard({ song, job, busy, canDownload, onDownload, onShowOut
         ) : (
           <button type="button" className="sb-button sb-primary" onClick={() => onDownload(song.id)} disabled={!supported || !canDownload || busy || Boolean(pending) || checkingOutput}>
             {busy || pending ? <LoaderCircle size={16} className={jobState === "queued" ? "" : "sb-spin"} aria-hidden="true" /> : <Download size={16} aria-hidden="true" />}
-            {supported ? label : "Host not supported"}
+            {supported ? label : host.official ? 'ODLC not downloadable' : "Host not supported"}
           </button>
         )}
         {savedOutput && !completed ? <button type="button" className="sb-text-button" disabled={busy} onClick={() => onShowOutput(job.id)}>Show saved FeedPak</button> : null}
@@ -89,7 +90,7 @@ export function ResultCard({ song, job, busy, canDownload, onDownload, onShowOut
         {savedOutput && !suitability?.reusable && job?.reuseCompatible === false ? <small>The saved file uses an older or unknown conversion recipe.</small> : null}
         {song.availability?.reason && !pending ? <small>{text(song.availability.reason)}</small> : null}
         {suitability?.reason && !pending ? <small>{text(suitability.reason)}</small> : null}
-        {!supported ? <small>Automatic download is unavailable.</small> : !completed && !pending && !canDownload ? <small>Choose an output folder in Settings.</small> : null}
+        {!supported ? <small>{host.official ? 'Official DLC (ODLC) is not available for download from CustomsForge.' : 'Automatic download is unavailable.'}</small> : !completed && !pending && !canDownload ? <small>Choose an output folder in Settings.</small> : null}
       </div>
     </article>
   );

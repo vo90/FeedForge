@@ -20,6 +20,24 @@ const song = { id: '42', title: 'One', artist: 'Metallica', host: 'google-drive'
 const completed = { ...song, id: 'job-42', chartId: '42', state: 'completed', message: 'FeedPak ready.' };
 const render = (Component, props) => renderToStaticMarkup(React.createElement(Component, props));
 
+test('official DLC cards explain ODLC and cannot be selected or downloaded', () => {
+  const result = render(ResultCard, { song: { ...song, host: 'odlc', supported: true },
+    canDownload: true, busy: false, onSelect: () => {}, selected: true });
+  assert.match(result, />ODLC<\/span>/);
+  assert.match(result, /ODLC not downloadable/);
+  assert.match(result, /Official DLC \(ODLC\) is not available for download from CustomsForge\./);
+  assert.match(result, /<input[^>]*disabled=""/);
+  assert.match(result, /<button[^>]*disabled=""/);
+  assert.doesNotMatch(result, /checked=""|Unknown host|Host not supported|Automatic download is unavailable/);
+});
+
+test('an unknown download host is not mislabeled as official DLC', () => {
+  const result = render(ResultCard, { song: { ...song, title: 'ODLC', creator: 'Ubisoft', host: 'unknown', supported: false }, canDownload: true });
+  assert.match(result, /Host not supported/);
+  assert.match(result, /Automatic download is unavailable/);
+  assert.doesNotMatch(result, /ODLC not downloadable|Official DLC \(ODLC\)/);
+});
+
 test('missing output is shown honestly in history and offers a fresh download in search', () => {
   const job = { ...completed, outputAvailable: false, inOutputDir: false };
   const history = render(JobCard, { job, busy: false });

@@ -229,6 +229,7 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
     requireOutput();
     const chart = charts.get(String(id));
     if (!chart) throw new Error('Search for the chart again before downloading it.');
+    if (chart.host === 'odlc') throw new Error('Official DLC (ODLC) is not available for download from CustomsForge.');
     if (!chart.supported) throw new Error('This host is not supported yet.');
     await ensureRecipe();
     requireOutput();

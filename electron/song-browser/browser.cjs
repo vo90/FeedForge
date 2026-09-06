@@ -398,7 +398,8 @@ class CustomsForgeBrowser {
         if (request.sort && result.sort && (request.sort.field !== result.sort.field || request.sort.direction !== result.sort.direction)) {
           throw new Error('The catalogue sort changed. Run the search again.');
         }
-        result.results = result.results.map((row) => ({ ...row, ...require('./hosts.cjs').getHostCapabilities(row.host), id: row.id }));
+        result.results = result.results.map((row) => ({ ...row, ...require('./hosts.cjs').getHostCapabilities(row.host), id: row.id,
+          arrangements: require('./catalogue.cjs').parseParts(row.arrangements?.length ? row.arrangements : row.parts) }));
         if (this.decorateCharts) result.results = await this.decorateCharts(result.results, request, this.catalogueSignal);
         this.lastSearch = { query: query.trim(), signature, page: result.page || page };
         this.updateConnection('connected', 'Connected to CustomsForge');
@@ -575,6 +576,7 @@ class CustomsForgeBrowser {
   async download(chart, { signal, destination, onProgress = () => {}, onAttention = () => {}, onResolvedFile, parkOnAttention = false, interactive = false }) {
     if (this.active) throw new Error('Another download is already active.');
     if (!/^\d+$/.test(String(chart.id))) throw new Error('Invalid chart.');
+    if (chart.host === 'odlc') throw new Error('Official DLC (ODLC) is not available for download from CustomsForge.');
     if (!chart.supported) throw new Error('This host is not supported yet.');
     const started = Date.now();
     this.diagnostic({ code: 'download_started', stage: 'download', host: chart.host, outcome: 'started' });

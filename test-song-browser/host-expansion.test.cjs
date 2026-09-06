@@ -20,6 +20,13 @@ test('host registry recognizes approved aliases without accepting lookalikes', (
   assert.equal(HOSTS.mega.supported, true); assert.equal(HOSTS.mega.status, 'experimental'); assert.equal(allowedNavigation('https://mega.nz/file/example'), true);
 });
 
+test('ODLC has explicit unavailable metadata without enabling a download provider', () => {
+  const { getHostCapabilities } = require('../electron/song-browser/hosts.cjs');
+  assert.deepEqual(getHostCapabilities('odlc'), { id: 'odlc', label: 'ODLC', supported: false, status: 'unavailable' });
+  assert.equal(Object.hasOwn(HOSTS, 'odlc'), false);
+  assert.equal(getHostCapabilities('unknown').supported, false);
+});
+
 test('new transfer policies check host family, filenames, byte limits and platform', () => {
   for (const url of ['https://public.bn.files.1drv.com/file', 'https://onedrive.live.com/download?id=example', 'https://example.sharepoint.com/download', 'https://c123.pcloud.com/file']) {
     assert.equal(allowedDownload(url, 'Song_p.psarc', MAX_BYTES), true, url);

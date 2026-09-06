@@ -6,6 +6,7 @@ const crypto = require("node:crypto");
 const { arrangementPart, tuningMatches } = require("./file-selection.cjs");
 const { possibleDuplicates } = require('./duplicate-suggestions.cjs');
 const { normalizeRecipe } = require('./provenance.cjs');
+const { parseParts } = require('./catalogue.cjs');
 
 const MAX_BATCH_CHARTS = 5000;
 const MAX_BATCHES = 25;
@@ -41,10 +42,7 @@ function partsOf(value) {
   for (const item of values) {
     const identified = typeof item === "object" && item ? arrangementPart(item) : "unknown";
     const label = identified !== "unknown" ? identified : typeof item === "object" && item ? item.type ?? item.path ?? item.name : item;
-    for (const token of String(label ?? "").toLowerCase().split(/[^a-z]+/)) {
-      const part = ({ l: "lead", r: "rhythm", b: "bass" })[token] || token;
-      if (PARTS.includes(part)) found.add(part);
-    }
+    for (const part of parseParts(label)) found.add(part);
   }
   return PARTS.filter((part) => found.has(part));
 }
@@ -70,8 +68,8 @@ function sanitizeChart(input) {
         ? [...item.tuning] : cleanText(item.tuning, 160), tuning_name: cleanText(item.tuning_name, 160),
       instrument_family: ['guitar', 'bass'].includes(item.instrument_family) ? item.instrument_family : null,
       string_count: Number.isInteger(item.string_count) && item.string_count >= 4 && item.string_count <= 8 ? item.string_count : null }));
-  chart.host = ["google-drive", "dropbox", "mediafire", "onedrive", "mega", "pcloud"].includes(input.host) ? input.host : "unknown";
-  chart.supported = input.supported === true;
+  chart.host = ["google-drive", "dropbox", "mediafire", "onedrive", "mega", "pcloud", "odlc"].includes(input.host) ? input.host : "unknown";
+  chart.supported = chart.host !== 'odlc' && input.supported === true;
   chart.downloads = count(input.downloads);
   chart.loves = count(input.loves);
   chart.reported = typeof input.reported === "boolean" ? input.reported : null;
@@ -119,7 +117,8 @@ function eligibleParts(chart, preferences) {
 function optionFor(chart, preferences) {
   const reasons = [];
   const parts = eligibleParts(chart, preferences);
-  if (!chart.supported && !preferences.allowUnsupported) reasons.push("Download host needs manual support.");
+  if (chart.host === 'odlc') reasons.push('Official DLC (ODLC) is not available for download from CustomsForge.');
+  else if (!chart.supported && !preferences.allowUnsupported) reasons.push("Download host needs manual support.");
   if (preferences.excludeReported && chart.reported) reasons.push("Excluded because the chart is reported.");
   if (preferences.excludeAbandoned && chart.abandoned) reasons.push("Excluded because the chart is abandoned.");
   if (preferences.tuning && !parts.length) reasons.push("Required tuning is unavailable or cannot be established.");

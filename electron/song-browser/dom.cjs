@@ -46,7 +46,24 @@ function readSearchPage() {
   const attributes = ['title', 'aria-label', 'data-bs-original-title', 'data-original-title', 'data-tippy-content'];
   const hints = (root) => [root, ...all(root, '[title], [aria-label], [data-bs-original-title], [data-original-title], [data-tippy-content]')]
     .flatMap((node) => attributes.map((name) => node.getAttribute?.(name) || ''));
+  const officialDlc = (root) => {
+    const label = /^(?:ODLC|official\s+DLC)(?:\s*\((?:ODLC|official\s+DLC)\))?[.!]?$/i;
+    // This is a catalogue type badge, not a file host. Read only explicit
+    // badges/tooltips, never infer official content from its artist or creator.
+    return [root, ...all(root, '[class], [title], [aria-label], [data-bs-original-title], [data-original-title], [data-tippy-content]')].some((node) => {
+      if (!visible(node)) return false;
+      const classes = String(node.getAttribute?.('class') || '').split(/\s+/);
+      if (classes.some((name) => /^(?:odlc|official[-_]dlc)$/i.test(name))) return true;
+      // A chart title/link can happen to contain the same words; it is not a badge.
+      for (let parent = node; parent && parent !== root; parent = parent.parentElement) {
+        if (parent.tagName === 'A') return false;
+      }
+      if (attributes.some((name) => label.test(String(node.getAttribute?.(name) || '').trim()))) return true;
+      return classes.some((name) => /(?:^|[-_])badge(?:[-_]|$)/i.test(name)) && label.test(text(node));
+    });
+  };
   const hostFrom = (root) => {
+    if (officialDlc(root)) return 'odlc';
     const found = new Set();
     for (const hint of hints(root)) {
       const match = hint.match(/\bhosted\s+(?:on|by)\s*:?\s*(.+)/i);

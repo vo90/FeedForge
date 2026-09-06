@@ -15,6 +15,8 @@ function rendererSnapshot() {
   const results = [...document.querySelectorAll('.sb-result')].map((card) => ({
     title: clean(card.querySelector('h3')?.textContent),
     text: clean(card.textContent),
+    host: clean(card.querySelector('.sb-host')?.textContent),
+    selectionDisabled: card.querySelector('.sb-chart-select')?.disabled,
     buttons: [...card.querySelectorAll('button')].map(button),
   }));
   const jobs = [...document.querySelectorAll('.sb-job')].map((card) => ({
@@ -41,6 +43,7 @@ function rendererSnapshot() {
     sort: document.querySelector('select[aria-label="Sort results"]')?.value,
     direction: document.querySelector('select[aria-label="Sort direction"]')?.value,
     exactArtist: document.querySelector('input[aria-label="Exact artist"]')?.value,
+    searchParts: [...document.querySelectorAll('.sb-search-form .sb-filter-checks label')].filter((label) => label.querySelector('input:checked')).map((label) => clean(label.textContent)),
     pagination: clean(document.querySelector('.sb-pagination span')?.textContent),
     resultCount: clean(document.querySelector('.sb-results .sb-section-heading [role="status"]')?.textContent),
     selectionCount: clean(document.querySelector('.sb-batch-prepare p')?.textContent),
@@ -48,6 +51,7 @@ function rendererSnapshot() {
     searchProgress: [...document.querySelectorAll('.sb-search-form [role="status"]')].map((element) => clean(element.textContent)),
     batches: [...document.querySelectorAll('.sb-batch')].map((batch) => ({ summary: clean(batch.querySelector('summary')?.textContent), text: clean(batch.textContent), status: [...batch.querySelectorAll('[role="status"]')].map((element) => clean(element.textContent)), buttons: [...batch.querySelectorAll('button')].map(button),
       selected: [...batch.querySelectorAll('.sb-batch-option input:checked')].map((input) => input.getAttribute('aria-label')),
+      options: [...batch.querySelectorAll('.sb-batch-option')].map((label) => ({ label: label.querySelector('input')?.getAttribute('aria-label'), checked: label.querySelector('input')?.checked, disabled: label.querySelector('input')?.disabled, text: clean(label.textContent) })),
       suggestions: [...batch.querySelectorAll('.sb-duplicate-suggestion summary')].map((element) => clean(element.textContent)),
       items: [...batch.querySelectorAll('.sb-batch-item')].map((element) => ({ title: clean(element.querySelector('strong')?.textContent), text: clean(element.textContent), buttons: [...element.querySelectorAll('button')].map(button) })) })),
   };
@@ -118,7 +122,8 @@ function rendererAction(action) {
     const scope = action.legend ? [...document.querySelectorAll('fieldset')].find((element) => clean(element.querySelector('legend')?.textContent) === action.legend) : document.querySelector(action.scope || '.song-browser');
     const label = [...scope.querySelectorAll('label')].find((element) => clean(element.textContent) === action.label);
     if (!label?.querySelector('input[type="checkbox"]')) throw new Error('Requested checkbox is absent: ' + action.label);
-    label.querySelector('input[type="checkbox"]').click(); return;
+    const input = label.querySelector('input[type="checkbox"]');
+    if (typeof action.checked !== 'boolean' || input.checked !== action.checked) input.click(); return;
   }
   if (action.kind === 'expand') {
     const scope = document.querySelector(action.scope || '.song-browser');
@@ -530,6 +535,85 @@ async function runUiScenarios({ win, fixture, test }) {
     assert.equal(changed.batches[0].suggestions.length, 0);
     await action({ kind: 'batch', label: 'Remove batch record' });
     evidence.duplicateReview = { suggestedPunctuationOnly: true, livePreserved: true, manualOverrideRetained: true, dismissalRetained: true };
+  });
+
+  await test('production arrangement filters and batch review recognize compact LRB catalogue badges', async () => {
+    const compact = fixture.compactCharts;
+    for (const name of ['all', 'lead', 'rhythm', 'bass']) assert.ok(compact?.[name]?.id && compact[name].title);
+    await action({ kind: 'control', label: 'Exact artist', value: '' });
+    await action({ kind: 'control', label: 'Sort results', value: 'title' });
+    await action({ kind: 'control', label: 'Sort direction', value: 'asc' });
+    await action({ kind: 'query', value: 'green lung' });
+    await action({ kind: 'search' });
+    const initial = await until((state) => !state.pending && state.query === 'green lung' && state.resultCount === '4 charts', 'Compact arrangement catalogue before filtering');
+    assert.ok(resultFor(initial, compact.all), 'The Green Lung regression chart must be present before filtering.');
+    const before = await fixture.counts();
+    const cases = [['lead'], ['rhythm'], ['bass'], ['lead', 'rhythm'], ['lead', 'bass'], ['lead', 'rhythm', 'bass']];
+    const matches = [];
+    for (const required of cases) {
+      for (const part of ['lead', 'rhythm', 'bass']) await action({ kind: 'checkbox', scope: '.sb-search-form', label: part, checked: required.includes(part) });
+      await action({ kind: 'search' });
+      const expected = [compact.all.title, ...(required.length === 1 ? [compact[required[0]].title] : [])].sort();
+      const filtered = await until((state) => !state.pending && state.searchParts.join(',') === required.join(',') && JSON.stringify(state.results.map((row) => row.title).sort()) === JSON.stringify(expected), 'Compact badges match ' + required.join(' + '));
+      assert.deepEqual(filtered.alerts, []);
+      matches.push({ required, titles: filtered.results.map((row) => row.title) });
+    }
+    for (const part of ['lead', 'rhythm', 'bass']) await action({ kind: 'checkbox', scope: '.sb-search-form', label: part, checked: false });
+    await action({ kind: 'search' });
+    await until((state) => !state.pending && state.resultCount === '4 charts', 'Reset compact catalogue filters before batch review');
+    await action({ kind: 'checkbox', scope: '.sb-batch-prepare', label: 'lead', checked: true });
+    await action({ kind: 'prepare', label: 'Prepare all results' });
+    const draft = await until((state) => state.batches[0]?.summary.startsWith('Review selections') && state.batches[0]?.options.some((option) => option.label === `Select ${compact.all.title} chart ${compact.all.id}`), 'Compact LRB batch draft');
+    assert.deepEqual([...draft.batches[0].selected].sort(), [compact.all, compact.lead].map((chart) => `Select ${chart.title} chart ${chart.id}`).sort(), 'Required Lead must recommend the LRB chart and Lead-only chart.');
+    for (const name of ['all', 'lead', 'rhythm', 'bass']) {
+      const chart = compact[name];
+      const option = draft.batches[0].options.find((item) => item.label === `Select ${chart.title} chart ${chart.id}`);
+      assert.ok(option);
+      assert.equal(option.disabled, ['rhythm', 'bass'].includes(name), 'Only charts missing Lead must be ineligible.');
+      if (option.disabled) assert.match(option.text, /Does not contain a required arrangement/);
+    }
+    const after = await fixture.counts();
+    assert.deepEqual(after.downloads, before.downloads, 'Filtering and reviewing compact arrangements cannot download a source.');
+    assert.deepEqual(after.conversions, before.conversions);
+    await action({ kind: 'batch', label: 'Remove batch record' });
+    await until((state) => !state.batches.some((batch) => batch.options.some((option) => option.label === `Select ${compact.all.title} chart ${compact.all.id}`)), 'Remove compact arrangement draft');
+    await action({ kind: 'checkbox', scope: '.sb-batch-prepare', label: 'lead', checked: false });
+    evidence.compactArrangements = { sourceBadge: 'LRB', matches, batchLeadRecommendations: [compact.all.title, compact.lead.title], sourceDownloads: 0 };
+  });
+
+  await test('production results identify ODLC and exclude official releases from batch downloads', async () => {
+    const { official, custom, unknown } = fixture.officialCharts;
+    await action({ kind: 'query', value: 'official fixture' });
+    await action({ kind: 'search' });
+    const found = await until((state) => !state.pending && state.query === 'official fixture' && state.resultCount === '3 charts', 'Official and custom catalogue fixture');
+    const officialRow = resultFor(found, official);
+    assert.equal(officialRow.host, 'ODLC');
+    assert.equal(buttonWith(officialRow, 'ODLC not downloadable')?.disabled, true);
+    assert.equal(officialRow.selectionDisabled, true);
+    assert.match(officialRow.text, /Official DLC \(ODLC\) is not available for download from CustomsForge\./);
+    assert.equal(buttonWith(officialRow, 'Host not supported'), undefined, 'An identified official release needs a specific explanation.');
+    const customRow = resultFor(found, custom);
+    assert.equal(customRow.host, 'Dropbox', 'ODLC in a song title is not evidence of an official release.');
+    assert.equal(buttonWith(customRow, 'Download & convert')?.disabled, false);
+    assert.equal(customRow.selectionDisabled, false);
+    const unknownRow = resultFor(found, unknown);
+    assert.notEqual(unknownRow.host, 'ODLC', 'An unidentified host is not evidence of an official release.');
+    assert.equal(buttonWith(unknownRow, 'Host not supported')?.disabled, true);
+    const before = await fixture.counts();
+    await action({ kind: 'prepare', label: 'Prepare all results' });
+    const draft = await until((state) => state.batches[0]?.summary.startsWith('Review selections') && state.batches[0]?.options.some((option) => option.label === `Select ${official.title} chart ${official.id}`), 'Official release shown in batch review');
+    assert.deepEqual(draft.batches[0].selected, [`Select ${custom.title} chart ${custom.id}`]);
+    const officialOption = draft.batches[0].options.find((option) => option.label === `Select ${official.title} chart ${official.id}`);
+    assert.equal(officialOption.disabled, true);
+    assert.match(officialOption.text, /Official DLC \(ODLC\)/);
+    assert.deepEqual((await fixture.counts()).downloads, before.downloads);
+    await action({ kind: 'batch', label: 'Remove batch record' });
+    await action({ kind: 'checkbox', scope: '.sb-search-form', label: 'Available hosts', checked: true });
+    await action({ kind: 'search' });
+    const available = await until((state) => !state.pending && state.resultCount === '1 chart' && state.results[0]?.title === custom.title, 'Available-host filter excludes ODLC and unidentified hosts');
+    assert.equal(available.results[0].host, 'Dropbox');
+    await action({ kind: 'checkbox', scope: '.sb-search-form', label: 'Available hosts', checked: false });
+    evidence.officialDlc = { label: officialRow.host, downloadDisabled: true, individualSelectionDisabled: true, excludedFromBatch: true, titleOnlyMarkerIgnored: true, unknownHostPreserved: true, sourceDownloads: 0 };
   });
 
   await test('production filtered-search collection shows scoped progress and can be cancelled', async () => {
