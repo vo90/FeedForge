@@ -32,6 +32,22 @@ function fixture(t) {
   return { index, entry, directory, root, outputPath };
 }
 
+test('output availability follows the saved naming convention and accepts artist subfolders', async (t) => {
+  const f = fixture(t);
+  f.index.record(f.entry());
+  const settings = { outputLayout: 'artist', nameTemplate: '{artist} - {title}' };
+  const options = { recipe: RECIPE, outputDir: f.directory, outputSettings: settings };
+  const old = await f.index.assess(CHART, options);
+  assert.equal(old.reusable, false); assert.equal(old.code, 'other_output_settings');
+  assert.ok(await f.index.find(CHART, { recipe: RECIPE }), 'Existing bytes remain reusable independently of publication settings.');
+  const artist = path.join(f.directory, 'Meshuggah'); fs.mkdirSync(artist);
+  const outputPath = path.join(artist, 'Meshuggah - Beneath.feedpak'); fs.writeFileSync(outputPath, CONTENT);
+  f.index.record(f.entry({ outputPath, outputSettings: settings }));
+  const restored = new ImportIndex({ root: f.root });
+  assert.equal((await restored.assess(CHART, options)).reusable, true);
+  assert.equal((await restored.assess(CHART, { ...options, outputSettings: { ...settings, nameTemplate: '{source}' } })).reusable, false);
+});
+
 test("completed records persist independently of the bounded job history", async (t) => {
   const f = fixture(t);
   for (let i = 0; i < 120; i++) f.index.record(f.entry());

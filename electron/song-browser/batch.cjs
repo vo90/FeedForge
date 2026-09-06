@@ -102,6 +102,7 @@ function normalizePreferences(input = {}) {
     instrumentRequirements: [],
     macFallback: input.macFallback === true || input.allowMacFallback === true,
     allowMacFallback: input.macFallback === true || input.allowMacFallback === true,
+    ...(input.outputSettings ? { outputSettings: require('./output-settings.cjs').normalizeOutputSettings(input.outputSettings) } : {}),
   };
 }
 

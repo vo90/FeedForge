@@ -70,6 +70,15 @@ function rendererAction(action) {
     return;
   }
   if (action.kind === 'navigate') return clickButton(document.querySelector('.side-nav'), action.label);
+  if (action.kind === 'setting') {
+    const label = [...document.querySelectorAll('.settings-page label')].find((element) => clean([...element.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE).map((node) => node.textContent).join(' ')) === action.label);
+    const input = label?.querySelector('input, select');
+    if (!input || input.disabled) throw new Error('The requested Settings control is absent or disabled: ' + action.label);
+    const prototype = input.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(prototype, 'value').set.call(input, action.value);
+    input.dispatchEvent(new Event(input.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true }));
+    return;
+  }
   if (action.kind === 'control') {
     const input = [...document.querySelectorAll('.song-browser input, .song-browser select')].find((element) => element.getAttribute('aria-label') === action.label);
     if (!input) throw new Error('The requested search control is absent: ' + action.label);
@@ -126,7 +135,7 @@ function rendererAction(action) {
 async function runUiScenarios({ win, fixture, test }) {
   assert.ok(win?.webContents && typeof win.webContents.executeJavaScript === 'function');
   assert.equal(typeof test, 'function');
-  for (const method of ['holdNextSearch', 'waitForSearch', 'releaseSearch', 'waitForSearchSettled', 'counts', 'waitForDownload', 'failConversionOnce', 'removeOutput']) {
+  for (const method of ['holdNextSearch', 'waitForSearch', 'releaseSearch', 'waitForSearchSettled', 'counts', 'waitForDownload', 'failConversionOnce', 'removeOutput', 'waitForOutputSettings', 'outputFor']) {
     assert.equal(typeof fixture?.[method], 'function', `The main-side fixture must provide ${method}().`);
   }
   for (const name of ['slow', 'fast', 'retry']) assert.ok(fixture.charts?.[name]?.id && fixture.charts[name].title);
@@ -167,6 +176,14 @@ async function runUiScenarios({ win, fixture, test }) {
   async function navigate(label) {
     await action({ kind: 'navigate', label });
     return until((state) => state.activeView === label && state.mounted === (label === 'Find songs'), `Navigate to ${label}`);
+  }
+  async function setOutputSettings(format, outputLayout, nameTemplate) {
+    await navigate('Settings');
+    await action({ kind: 'setting', label: 'File names', value: format });
+    if (format === 'custom') await action({ kind: 'setting', label: 'Naming template', value: nameTemplate });
+    await action({ kind: 'setting', label: 'Output layout', value: outputLayout });
+    await navigate('Find songs');
+    await bounded(fixture.waitForOutputSettings({ outputLayout, nameTemplate }), 'Shared output settings');
   }
 
   await test('production renderer does not infer sign-out before checking CustomsForge', async () => {
@@ -231,11 +248,19 @@ async function runUiScenarios({ win, fixture, test }) {
     await until((state) => jobFor(state, slow, 'Downloading'), 'Downloading queue card');
     await action({ kind: 'result', title: fast.title, label: 'Download & convert' });
     await until((state) => jobFor(state, fast, 'Queued'), 'Second queued chart');
+    const queuedOutput = await fixture.outputFor(fast.id, 'queued');
+    assert.deepEqual(queuedOutput.outputSettings, { outputLayout: 'flat', nameTemplate: '{source}' });
+    await setOutputSettings('artist-title', 'artist', '{artist} - {title}');
     const before = await fixture.counts();
     assert.equal(countFor(before, 'downloads', slow), 1);
     assert.equal(countFor(before, 'downloads', fast), 0, 'The queued chart cannot download before the active transfer settles.');
     await action({ kind: 'job', title: slow.title, status: 'Downloading', label: 'Cancel' });
-    const completed = await until((state) => jobFor(state, slow, 'Cancelled') && jobFor(state, fast, 'FeedPak ready') && buttonWith(resultFor(state, fast), 'FeedPak ready'), 'Cancellation and queue progress');
+    await until((state) => jobFor(state, slow, 'Cancelled') && jobFor(state, fast, 'FeedPak ready'), 'Cancellation and queue progress');
+    const completedOutput = await fixture.outputFor(fast.id);
+    assert.deepEqual(completedOutput.outputSettings, queuedOutput.outputSettings, 'Changing Settings after queueing cannot rename or move an existing job.');
+    assert.equal(completedOutput.relativePath, 'fixture-1101.feedpak', 'Source filename uses the observed download name without a CustomsForge ID suffix.');
+    await setOutputSettings('source', 'flat', '{source}');
+    const completed = await until((state) => buttonWith(resultFor(state, fast), 'FeedPak ready'), 'Restored naming settings reuse their completed output');
     assert.equal(buttonWith(resultFor(completed, slow), 'Download & convert')?.disabled, false);
     assert.equal(buttonWith(resultFor(completed, fast), 'FeedPak ready')?.disabled, false);
     const after = await fixture.counts();
@@ -244,9 +269,11 @@ async function runUiScenarios({ win, fixture, test }) {
     assert.equal(countFor(after, 'conversions', slow), 0);
     assert.equal(countFor(after, 'conversions', fast), 1);
     evidence.cancellation = { cancelledChart: slow.id, completedChart: fast.id, downloadsBeforeCancel: before.downloads, downloadsAfter: after.downloads };
+    evidence.queuedOutputSettings = { ...completedOutput, retainedAcrossSettingsChange: true };
   });
 
   await test('production Retry conversion action uses the retained PSARC without another download', async () => {
+    await setOutputSettings('artist-title', 'artist', '{artist} - {title}');
     await fixture.failConversionOnce(retry.id);
     await action({ kind: 'result', title: retry.title, label: 'Download & convert' });
     const failed = await until((state) => buttonWith(jobFor(state, retry, 'Failed'), 'Retry conversion'), 'Cached conversion failure');
@@ -260,7 +287,13 @@ async function runUiScenarios({ win, fixture, test }) {
     const after = await fixture.counts();
     assert.equal(countFor(after, 'downloads', retry), 1, 'Retry conversion must not request another host transfer.');
     assert.equal(countFor(after, 'conversions', retry), 2);
+    const output = await fixture.outputFor(retry.id);
+    assert.deepEqual(output.outputSettings, { outputLayout: 'artist', nameTemplate: '{artist} - {title}' });
+    assert.equal(output.relativePath, 'Fixture Artist/Fixture Artist - Fixture Recovery.feedpak', 'Find songs follows the main Settings naming template and artist folder layout.');
+    assert.doesNotMatch(output.relativePath, /\[CF\s|CF[-_ ]1102/);
+    evidence.sharedOutputSettings = output;
     evidence.cachedRetry = { chart: retry.id, downloads: countFor(after, 'downloads', retry), conversions: countFor(after, 'conversions', retry) };
+    await setOutputSettings('source', 'flat', '{source}');
   });
 
   await test('production Show file action refreshes unavailable output state and restores the download action', async () => {

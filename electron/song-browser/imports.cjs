@@ -6,6 +6,7 @@ const crypto = require("node:crypto");
 const { sanitizeChart, normalizePreferences, partsOf, cleanText } = require("./batch.cjs");
 const { arrangementPart, normalizeRequirements } = require("./file-selection.cjs");
 const { sanitizeChoice, sanitizeFileEvidence, normalizeRecipe, reuseDecision, decision, UUID } = require("./provenance.cjs");
+const { normalizeOutputSettings } = require('./output-settings.cjs');
 
 const HASH = /^[a-f0-9]{64}$/;
 const MAX_IMPORTS = 20000;
@@ -75,6 +76,7 @@ function sanitizeRecord(input, { legacy = false } = {}) {
     requestedChoice: legacy ? null : sanitizeChoice(input.requestedChoice ?? input.selection?.choice),
     resolvedFile: legacy ? null : sanitizeFileEvidence(input.resolvedFile),
     recipe: legacy ? null : normalizeRecipe(input.recipe),
+    outputSettings: input.outputSettings ? normalizeOutputSettings(input.outputSettings) : null,
     completedAt: Number.isFinite(input.completedAt) ? input.completedAt : Number.isFinite(input.updatedAt) ? input.updatedAt : Date.now(),
   };
   if (typeof input.batchId === "string" && /^[a-f0-9-]{36}$/.test(input.batchId)) record.batchId = input.batchId;
@@ -178,7 +180,7 @@ class ImportIndex {
     return null;
   }
 
-  async assess(input, { outputDir, preferences = {}, requirements, requestedChoice, recipe, sourceHash, reviewAnother = false, signal, jobId } = {}) {
+  async assess(input, { outputDir, outputSettings, preferences = {}, requirements, requestedChoice, recipe, sourceHash, reviewAnother = false, signal, jobId } = {}) {
     if (signal?.aborted) throw Object.assign(new Error("Import verification cancelled."), { code: "ABORT_ERR" });
     const chart = sanitizeChart(input);
     const exactSource = HASH.test(sourceHash || "");
@@ -196,7 +198,9 @@ class ImportIndex {
         sourceHash, reviewAnother });
       if (result.reusable) {
         if (!await this.verify(record, { signal })) result = decision("missing_output");
-        else if (outputDir && !sameDirectory(path.dirname(record.outputPath), outputDir)) result = decision("other_folder");
+        else if (outputDir && !sameDirectory(path.dirname(record.outputPath), outputDir)
+          && !(record.outputSettings?.outputLayout === 'artist' && sameDirectory(path.dirname(path.dirname(record.outputPath)), outputDir))) result = decision("other_folder");
+        else if (outputSettings && JSON.stringify(record.outputSettings) !== JSON.stringify(normalizeOutputSettings(outputSettings))) result = { reusable: false, code: 'other_output_settings', reason: 'The saved file uses different output naming or folder settings.' };
         else return describe(result, record);
       }
       // A latest candidate's reason is useful; a known missing output or another

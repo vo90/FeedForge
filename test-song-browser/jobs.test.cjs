@@ -60,7 +60,7 @@ async function fixture(t, options = {}) {
     await fsp.writeFile(args[2], FEEDPAK);
     return { code: 0, stdout: "Wrote and validated FeedPak", stderr: "" };
   };
-  const manager = new SongJobs({ recipe: require('./fixture-recipe.cjs'), root, outputDir,
+  const manager = new SongJobs({ recipe: require('./fixture-recipe.cjs'), root, outputDir, outputSettings: options.outputSettings,
     download: options.download ? (chart, args) => options.download(chart, args, normalDownload) : normalDownload,
     runConverter: (args, context) => {
       contexts.push(context);
@@ -83,13 +83,43 @@ async function fixture(t, options = {}) {
   return { manager, root, outputDir, directory, calls, contexts, downloads, events, result };
 }
 
+test('output settings are captured per job, artist folders are available, and reusable bytes get the new name', async (t) => {
+  const original = { outputLayout: 'flat', nameTemplate: '{source}' };
+  const renamed = { outputLayout: 'artist', nameTemplate: '{title} - {artist}' };
+  const f = await fixture(t, { outputSettings: original, runConverter: async (args, _context, normal) => {
+    if (args[0] !== '--plan-conversion-file') return normal(args);
+    const request = JSON.parse(await fsp.readFile(args[1], 'utf8'));
+    const inputPath = request.items[0].inputPath;
+    assert.equal(path.basename(inputPath), 'Original_Name_p.psarc', 'Retained source naming must not use the job/cache name.');
+    const filename = request.nameTemplate === '{source}' ? 'Original_Name_p.feedpak' : 'One - Metallica.feedpak';
+    const target = path.join(request.outputDir, request.outputLayout === 'artist' ? 'Metallica' : '', filename);
+    return { code: 0, stdout: JSON.stringify({ ok: true, items: [{ ok: true, inputPath, sourceSize: PSARC.length, outputs: [{ path: target }] }] }) };
+  } });
+  const chart = { ...CHART, resolvedFile: { filename: 'Original_Name_p.psarc', platform: 'pc' } };
+  const queued = f.manager.enqueue(chart);
+  f.manager.outputSettings = renamed;
+  const first = await f.result(queued.id);
+  assert.equal(first.state, 'completed'); assert.equal(path.basename(first.outputPath), 'Original_Name_p.feedpak');
+  assert.deepEqual(first.outputSettings, original);
+  const second = await f.result(f.manager.enqueue(chart).id);
+  assert.equal(second.state, 'completed'); assert.equal(second.duplicateOf, first.id);
+  assert.equal(second.outputPath, path.join(f.outputDir, 'Metallica', 'One - Metallica.feedpak'));
+  assert.equal(second.inOutputDir, true); assert.deepEqual(second.outputSettings, renamed);
+  assert.deepEqual(await fsp.readFile(first.outputPath), FEEDPAK, 'Renaming preferences never remove an earlier output.');
+  assert.equal(f.calls.filter((args) => args[1] === '-o').length, 1, 'Only publication changes when the validated bytes are reusable.');
+  const third = await f.result(f.manager.enqueue(chart).id);
+  assert.equal(third.outputPath, second.outputPath, 'The same output settings reuse the artist-folder copy.');
+  const ledger = JSON.parse(await fsp.readFile(path.join(f.root, 'jobs.json'), 'utf8'));
+  assert.deepEqual(ledger.jobs.find((job) => job.id === second.id).outputSettings, renamed);
+});
+
 test("converts, validates, saves without stems and persists only bounded public metadata", async (t) => {
   const f = await fixture(t);
   const job = f.manager.enqueue({ ...CHART, creator: "Someone https://host.test/token?secret=yes", url: "https://host.test/private-token", cookie: "secret-cookie" });
   const done = await f.result(job.id);
   assert.equal(done.state, "completed");
   assert.equal(done.progress, 100);
-  assert.equal(done.outputPath, path.join(f.outputDir, "Metallica - One [CF 42].feedpak"));
+  assert.equal(done.outputPath, path.join(f.outputDir, "Metallica - One.feedpak"));
   assert.deepEqual(await fsp.readFile(done.outputPath), FEEDPAK);
   assert.equal(done.sourceHash, crypto.createHash("sha256").update(PSARC).digest("hex"));
   assert.equal(done.outputHash, crypto.createHash("sha256").update(FEEDPAK).digest("hex"));
@@ -211,7 +241,7 @@ test("reuses an unchanged completed source hash and reconverts after its output 
   const changed = await f.result(f.manager.enqueue(CHART).id);
   assert.equal(changed.state, "completed");
   assert.notEqual(changed.outputPath, first.outputPath);
-  assert.equal(path.basename(changed.outputPath), "Metallica - One [CF 42] (2).feedpak");
+  assert.equal(path.basename(changed.outputPath), "Metallica - One (2).feedpak");
   assert.equal(await fsp.readFile(first.outputPath, "utf8"), "changed externally");
   assert.equal(f.calls.filter((args) => args[1] === "-o").length, 2);
 });
@@ -219,11 +249,11 @@ test("reuses an unchanged completed source hash and reconverts after its output 
 test("exclusive publication preserves an existing destination and selects a suffix", async (t) => {
   const f = await fixture(t);
   await fsp.mkdir(f.outputDir);
-  const existing = path.join(f.outputDir, "Metallica - One [CF 42].feedpak");
+  const existing = path.join(f.outputDir, "Metallica - One.feedpak");
   await fsp.writeFile(existing, "previous song");
   const done = await f.result(f.manager.enqueue(CHART).id);
   assert.equal(done.state, "completed");
-  assert.equal(path.basename(done.outputPath), "Metallica - One [CF 42] (2).feedpak");
+  assert.equal(path.basename(done.outputPath), "Metallica - One (2).feedpak");
   assert.equal(await fsp.readFile(existing, "utf8"), "previous song");
   assert.equal((await fsp.readdir(f.outputDir)).some((name) => name.endsWith(".part")), false);
 });

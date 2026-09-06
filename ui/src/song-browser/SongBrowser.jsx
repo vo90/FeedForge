@@ -9,6 +9,7 @@ import { createResultAssessmentSession } from './result-assessment-session.mjs';
 const FINISHED = new Set(["completed", "done", "failed", "error", "cancelled", "canceled", "parked"]);
 const selectionSessions = new WeakMap();
 const COMPLETE = new Set(["completed", "done"]);
+const OUTPUT_SETTINGS_ACTIONS = new Set(['enqueue', 'retry', 'prepareBatch', 'updateBatchPreferences', 'chooseBatch', 'startBatch', 'resumeBatch', 'retryBatchItem', 'resolveBatchItem', 'chooseFile', 'chooseBatchFile']);
 const STATE_LABELS = {
   queued: "Queued", downloading: "Downloading", inspecting: "Checking song", converting: "Converting",
   validating: "Validating FeedPak", completed: "FeedPak ready", done: "FeedPak ready", failed: "Failed",
@@ -125,7 +126,7 @@ export function JobCard({ job, busy, onCancel, onShowOutput, onShowBrowser, onRe
   );
 }
 
-export default function SongBrowser({ api: providedApi, onReview }) {
+export default function SongBrowser({ api: providedApi, onReview, outputSettings, onChooseOutput, onOutputDirChange }) {
   const api = providedApi ?? (typeof window !== "undefined" ? window.songBrowser : undefined);
   const available = typeof api?.getState === "function" && typeof api?.search === "function";
   const searchSession = useMemo(() => getSearchSession(api), [api]);
@@ -136,6 +137,8 @@ export default function SongBrowser({ api: providedApi, onReview }) {
   const [snapshot, setSnapshot] = useState({ outputDir: "", jobs: [], connection: { status: "unknown" } });
   const [loading, setLoading] = useState(available);
   const [error, setError] = useState("");
+  const [outputSettingsError, setOutputSettingsError] = useState('');
+  const [appliedOutputSettingsKey, setAppliedOutputSettingsKey] = useState('');
   const [notice, setNotice] = useState("");
   const [feedbackAddress, setFeedbackAddress] = useState("");
   const [busy, setBusy] = useState(new Set());
@@ -158,6 +161,47 @@ export default function SongBrowser({ api: providedApi, onReview }) {
   });
   const busyRef = useRef(new Set());
   const mounted = useRef(false);
+  const outputSettingsSync = useRef({ api: null, key: '', failed: false, promise: Promise.resolve() });
+  const outputSettingsKey = outputSettings ? JSON.stringify({
+    ...(typeof outputSettings.outputDir === 'string' && outputSettings.outputDir ? { outputDir: outputSettings.outputDir } : {}),
+    outputLayout: outputSettings.outputLayout || 'flat', nameTemplate: outputSettings.nameTemplate ?? '{source}',
+  }) : '';
+
+  function synchronizeOutputSettings(retry = false) {
+    const previous = outputSettingsSync.current;
+    if (!available || !outputSettingsKey || typeof api?.setOutputSettings !== 'function') {
+      if (previous.api !== null) outputSettingsSync.current = { api: null, key: '', failed: false, promise: Promise.resolve() };
+      return;
+    }
+    if (previous.api === api && previous.key === outputSettingsKey && !(retry && previous.failed)) return;
+    const synchronization = { api, key: outputSettingsKey, failed: false, promise: null };
+    synchronization.promise = previous.promise.catch(() => {}).then(() => api.setOutputSettings({ settings: JSON.parse(outputSettingsKey) })).then((next) => {
+      if (next?.ok === false) throw new Error(errorText(next.error));
+      if (mounted.current && outputSettingsSync.current === synchronization) {
+        setOutputSettingsError('');
+        setAppliedOutputSettingsKey(outputSettingsKey);
+        if (next) setSnapshot((current) => ({ ...current, ...next }));
+      }
+      return next;
+    }).catch((err) => {
+      synchronization.failed = true;
+      throw err;
+    });
+    outputSettingsSync.current = synchronization;
+  }
+
+  async function waitForOutputSettings(retry = false) {
+    synchronizeOutputSettings(retry);
+    // A newer Settings change may arrive while the previous request is in flight.
+    // Actions must use the final applied settings, not the first completed call.
+    while (true) {
+      const synchronization = outputSettingsSync.current;
+      try { await synchronization.promise; }
+      catch (err) { if (outputSettingsSync.current === synchronization) throw err; }
+      if (outputSettingsSync.current === synchronization) return;
+    }
+  }
+
   const jobs = Array.isArray(snapshot.jobs) ? snapshot.jobs : [];
   const feedback = snapshot.feedback || {};
   useEffect(() => { if (feedback.url) setFeedbackAddress(feedback.url); }, [feedback.url]);
@@ -169,6 +213,11 @@ export default function SongBrowser({ api: providedApi, onReview }) {
   const results = Array.isArray(searchResult?.results) ? searchResult.results : [];
   const page = Number(searchResult?.page) || 1;
   const activeCount = jobs.filter((job) => !FINISHED.has(stateOf(job))).length;
+  useEffect(() => {
+    let live = true;
+    void waitForOutputSettings(activeCount === 0).catch((err) => { if (live) setOutputSettingsError(errorText(err)); });
+    return () => { live = false; };
+  }, [api, outputSettingsKey, activeCount]);
   const latestJobs = new Map();
   for (const job of jobs) {
     const key = String(job.chartId ?? job.songId ?? job.recordId ?? "");
@@ -180,11 +229,14 @@ export default function SongBrowser({ api: providedApi, onReview }) {
     const job = latestJobs.get(String(song.id));
     return { id: String(song.id), version: song.version, updated: song.updated, jobId: job.id, outputHash: job.outputHash, outputAvailable: job.outputAvailable, recipe: job.recipe, reuseCompatible: job.reuseCompatible };
   });
-  const assessmentScope = JSON.stringify({ entries: assessmentEntries, selection: currentSelection, outputDir: snapshot.outputDir });
+  const assessmentScope = JSON.stringify({ entries: assessmentEntries, selection: currentSelection, outputDir: snapshot.outputDir, outputSettingsKey, appliedOutputSettingsKey });
   useEffect(() => {
     if (typeof api?.assessResult !== 'function') return;
-    void assessmentSession.assess(assessmentEntries, currentSelection, assessmentScope);
-    return () => assessmentSession.cancel();
+    let live = true;
+    void waitForOutputSettings().then(() => {
+      if (live) return assessmentSession.assess(assessmentEntries, currentSelection, assessmentScope);
+    }).catch((err) => { if (live) setOutputSettingsError(errorText(err)); });
+    return () => { live = false; assessmentSession.cancel(); };
   }, [api, assessmentSession, assessmentScope]);
 
   useEffect(() => {
@@ -216,10 +268,15 @@ export default function SongBrowser({ api: providedApi, onReview }) {
     setBusy(new Set(busyRef.current));
     setError("");
     try {
-      if (typeof api?.[method] !== "function") throw new Error("This action is unavailable in this version of FeedForge.");
-      const result = await api[method](args);
+      const handler = method === 'chooseOutput' && typeof onChooseOutput === 'function' ? onChooseOutput : api?.[method];
+      if (typeof handler !== "function") throw new Error("This action is unavailable in this version of FeedForge.");
+      if (OUTPUT_SETTINGS_ACTIONS.has(method)) await waitForOutputSettings(true);
+      const result = await handler.call(api, args);
       if (result?.ok === false) throw new Error(errorText(result.error));
-      if (mounted.current && ['chooseOutput', 'useFeedbackFolder'].includes(method) && result && Object.prototype.hasOwnProperty.call(result, "outputDir")) setSnapshot((current) => ({ ...current, outputDir: result.outputDir }));
+      if (mounted.current && ['chooseOutput', 'useFeedbackFolder'].includes(method) && result && Object.prototype.hasOwnProperty.call(result, "outputDir")) {
+        setSnapshot((current) => ({ ...current, outputDir: result.outputDir }));
+        if (method === 'useFeedbackFolder' && typeof onOutputDirChange === 'function') onOutputDirChange(result.outputDir);
+      }
       if (["enqueue", "retry"].includes(method) && result && mounted.current) {
         const job = result.job || result;
         if (job.id) setSnapshot((current) => (current.jobs || []).some((item) => item.id === job.id) ? current : ({ ...current, jobs: [...(current.jobs || []), job] }));
@@ -273,7 +330,7 @@ export default function SongBrowser({ api: providedApi, onReview }) {
         <div className="sb-empty sb-desktop-message"><div className="sb-empty-icon"><Download size={28} aria-hidden="true" /></div><h2>Find songs in FeedForge desktop</h2><p>Searching CustomsForge and downloading songs needs the FeedForge desktop app. Open its Find songs tab to connect your account, choose an output folder, and convert songs here.</p></div>
       ) : <>
         <div className="sb-output"><div className="sb-output-label"><FolderOpen size={19} aria-hidden="true" /><div><strong>Feedpak output folder</strong><p title={text(snapshot.outputDir)}>{text(snapshot.outputDir, "Choose where to save your converted songs.") || "Choose where to save your converted songs."}</p></div></div><button type="button" className="sb-button" disabled={busy.has("folder")} onClick={() => action("folder", "chooseOutput")}>{busy.has("folder") ? "Choosing…" : "Choose folder"}</button></div>
-        <p className="sb-library-help">Choose your FeedBack song library to save songs there. Folder compatibility is checked before downloading.</p>
+        <p className="sb-library-help">File names and folder layout follow Settings. Choose your FeedBack song library to save songs there. Folder compatibility is checked before downloading.</p>
 
         <details className="sb-feedback">
           <summary>FeedBack connection <span>{feedback.autoRefresh ? "Automatic refresh enabled" : "Optional library refresh"}</span></summary>
@@ -292,7 +349,7 @@ export default function SongBrowser({ api: providedApi, onReview }) {
 
         {notice ? <p className="sb-library-help" role="status">{notice}</p> : null}
 
-        {(error || searchError) ? <div className="sb-notice sb-error" role="alert"><AlertTriangle size={18} aria-hidden="true" /><p>{error || searchError}</p></div> : null}
+        {(error || outputSettingsError || searchError) ? <div className="sb-notice sb-error" role="alert"><AlertTriangle size={18} aria-hidden="true" /><p>{error || outputSettingsError || searchError}</p></div> : null}
         {(challenge || needsSignIn || connection.status === "error") && !searchError ? <div className="sb-notice" role="status"><AlertTriangle size={18} aria-hidden="true" /><p>{text(connection.message, challenge ? "Complete the browser check in the CustomsForge window, then search again." : needsSignIn ? "Sign in to CustomsForge in the browser window, then search again." : "The CustomsForge connection needs attention. Open the browser to reconnect.")}</p><button type="button" className="sb-text-button" disabled={busy.has("browser")} onClick={showBrowser}>Open browser <ExternalLink size={14} aria-hidden="true" /></button></div> : null}
 
         <form className="sb-search-form" onSubmit={(event) => { event.preventDefault(); search(query); }}>

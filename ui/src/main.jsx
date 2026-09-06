@@ -460,6 +460,7 @@ function App() {
   async function chooseOutput() {
     const folder = await api.pickOutput({ defaultPath: outputDir || lastSourcePath || undefined });
     if (folder) setOutputDir(folder);
+    return folder;
   }
 
   async function startLocalStemServer() {
@@ -1239,7 +1240,7 @@ function App() {
           <ConversionProgress progress={conversionProgress} isConverting={isConverting} />
         )}
 
-        {activeView === "songs" ? <SongBrowser api={window.songBrowser} onReview={async (inputPath) => { await addFiles([inputPath]); setActiveView("workspace"); }} /> : activeView === "settings" || activeView === "stems" ? (
+        {activeView === "songs" ? <SongBrowser api={window.songBrowser} outputSettings={{ outputDir: outputDir || undefined, outputLayout, nameTemplate: outputNameTemplateForFormat(outputNameFormat, outputNameTemplate) }} onChooseOutput={chooseOutput} onOutputDirChange={setOutputDir} onReview={async (inputPath) => { await addFiles([inputPath]); setActiveView("workspace"); }} /> : activeView === "settings" || activeView === "stems" ? (
           <section className={`settings-page ${activeView === "stems" ? "settings-page-full" : ""}`}>
             {activeView === "settings" && (
               <div className="settings-nav" aria-label="Settings sections">

@@ -6,6 +6,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { execFile } = require("node:child_process");
 const { normalizeRecipe, recipesCompatible, sanitizeChoice, sanitizeFileEvidence, reuseDecision } = require('./provenance.cjs');
+const { normalizeOutputSettings, planSongOutput } = require('./output-settings.cjs');
 
 const ACTIVE = new Set(["queued", "downloading", "needs_attention", "inspecting", "converting", "validating"]);
 const TERMINAL = new Set(["completed", "failed", "cancelled", "parked"]);
@@ -44,10 +45,10 @@ function identity(value) {
     .toLowerCase().replace(/&/g, "and").replace(/[^\p{L}\p{N}]/gu, "");
 }
 
-function outputName(artist, title, id) {
+function outputName(artist, title) {
   const base = `${text(artist) || "Unknown artist"} - ${text(title) || "Untitled"}`
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").replace(/\s+/g, " ").trim().replace(/[. ]+$/, "").slice(0, 160);
-  return `${base} [CF ${id}].feedpak`;
+  return `${base}.feedpak`;
 }
 
 function aborted() {
@@ -98,7 +99,7 @@ function selectionForChart(chart, selection = {}) {
 
 /** A serial, local queue. The downloader owns the browser session, never this class. */
 class SongJobs {
-  constructor({ root, outputDir, download, runConverter, recipe = null, findReusable = null, emit = () => {}, onCompleted = () => {} }) {
+  constructor({ root, outputDir, outputSettings = null, download, runConverter, recipe = null, findReusable = null, emit = () => {}, onCompleted = () => {} }) {
     if (!root || !outputDir || typeof download !== "function" || typeof runConverter !== "function") {
       throw new TypeError("SongJobs needs root, outputDir, download, and runConverter.");
     }
@@ -107,6 +108,7 @@ class SongJobs {
     // the legacy JavaScript resolver even when no junction is visible.
     this.root = fs.realpathSync.native(path.resolve(root));
     this.outputDir = path.resolve(outputDir);
+    this.outputSettings = outputSettings ? normalizeOutputSettings(outputSettings) : null;
     this.download = download;
     this.runConverter = runConverter;
     this.recipe = normalizeRecipe(recipe);
@@ -131,6 +133,7 @@ class SongJobs {
       if (job[key] !== undefined) result[key] = job[key];
     }
     result.hasCachedInput = Boolean(job.cacheHash && job.cacheAt > Date.now() - CACHE_LIFETIME_MS);
+    if (job.outputSettings) result.outputSettings = { ...job.outputSettings };
     result.canRetry = ["failed", "cancelled", "parked"].includes(job.state) && !job.batchId && (result.hasCachedInput || job.supported === true);
     result.outputAvailable = false;
     result.inOutputDir = false;
@@ -139,7 +142,9 @@ class SongJobs {
       try {
         const stat = fs.lstatSync(job.outputPath);
         result.outputAvailable = stat.isFile() && !stat.isSymbolicLink();
-        result.inOutputDir = result.outputAvailable && fs.realpathSync.native(path.dirname(job.outputPath)) === fs.realpathSync.native(this.outputDir);
+        const outputRoot = fs.realpathSync.native(this.outputDir);
+        const fileFolder = fs.realpathSync.native(path.dirname(job.outputPath));
+        result.inOutputDir = result.outputAvailable && (fileFolder === outputRoot || (job.outputSettings?.outputLayout === 'artist' && path.dirname(fileFolder) === outputRoot));
       } catch { /* A missing file is not ready in the selected output. */ }
     }
     if (job.warning || this.persistenceWarning) result.warning = text([job.warning, this.persistenceWarning].filter(Boolean).join(" "), 500);
@@ -283,6 +288,7 @@ class SongJobs {
     if (existing) return this._public(existing);
     const retryOf = job.cacheHash && job.cacheAt > Date.now() - CACHE_LIFETIME_MS ? id : undefined;
     return this._enqueue({ ...this._public(job), id: job.chartId, supported: job.supported,
+      outputSettings: this.outputSettings,
       selection: replacement ? { ...require('./file-selection.cjs').normalizeRequirements(replacement), choice: job.selection?.choice } : job.selection,
       recipe: this.recipe, intentId: replacement || !recipesCompatible(job.recipe, this.recipe) ? crypto.randomUUID() : job.intentId,
     }, retryOf);
@@ -408,6 +414,7 @@ class SongJobs {
     const selection = chart.selection ? normalizeRequirements(chart.selection) : undefined;
     if (selection && sanitizeChoice(chart.selection.choice)) selection.choice = sanitizeChoice(chart.selection.choice);
     const metadata = { version: text(chart.version), chartUpdated: text(chart.chartUpdated ?? chart.updated),
+      outputSettings: chart.outputSettings ? normalizeOutputSettings(chart.outputSettings) : undefined,
       tuning: text(chart.tuning), parts: Array.isArray(chart.parts) ? chart.parts.slice(0, 8).map((part) => text(part, 32)) : text(chart.parts),
       selection, batchId: UUID.test(chart.batchId || '') ? chart.batchId : undefined,
       intentId: UUID.test(chart.intentId || '') ? chart.intentId : undefined,
@@ -433,7 +440,7 @@ class SongJobs {
     const previous = itemId && [...this.jobs].reverse().find((job) => job.itemId === itemId && job.cacheHash && job.cacheAt > Date.now() - CACHE_LIFETIME_MS
       && !reviewAnother && (!intentId || job.intentId === intentId)
       && (!selection.choice || (job.selection?.choice?.label === selection.choice.label && job.selection?.choice?.platform === selection.choice.platform)));
-    const created = this._enqueue({ ...chart, selection, batchId, itemId, intentId, recipe, reviewAnother }, previous?.id, { outputDir, parkOnAttention: !interactive, interactive });
+    const created = this._enqueue({ ...chart, selection, batchId, itemId, intentId, recipe, reviewAnother, outputSettings: selection.outputSettings || this.outputSettings }, previous?.id, { outputDir, parkOnAttention: !interactive, interactive });
     const job = this.jobs.find((row) => row.id === created.id);
     const cancel = () => { void this.cancel(job.id); };
     signal?.addEventListener('abort', cancel, { once: true });
@@ -458,6 +465,7 @@ class SongJobs {
       host: SUPPORTED_HOSTS.has(chart.host) ? chart.host : "unknown", supported: chart.supported === true && SUPPORTED_HOSTS.has(chart.host),
       state: "queued", progress: 0, message: "Waiting in queue.", error: "", createdAt: now, updatedAt: now,
       ...this._metadata(chart), outputDir: options.outputDir ? this.validateOutputDir(options.outputDir) : this.outputDir,
+      outputSettings: chart.outputSettings ? normalizeOutputSettings(chart.outputSettings) : this.outputSettings ? { ...this.outputSettings } : null,
       recipe: normalizeRecipe(chart.recipe) || this.recipe, intentId: UUID.test(chart.intentId || '') ? chart.intentId : crypto.randomUUID(),
       parkOnAttention: options.parkOnAttention === true,
       interactive: options.interactive === true,
@@ -677,6 +685,13 @@ class SongJobs {
     job.artist = text(preview.artist);
     if (job.selection) this._checkRequirements(preview, job.selection, job);
     job.coverage = this._metadata({ coverage: preview }).coverage;
+    if (job.outputSettings) {
+      const sourceFilename = job.resolvedFile?.filename || (job.retryOf ? outputName(job.artist, job.title).replace(/\.feedpak$/, '.psarc') : path.basename(input));
+      const planned = await planSongOutput({ inputPath: input, sourceFilename, outputDir: job.outputDir, settings: job.outputSettings, directory,
+        runConverter: (args) => this._converter(job, args) });
+      job.outputRelativePath = planned.relativePath;
+      check(job);
+    }
     const duplicate = await this._duplicate(job);
     if (duplicate) {
       check(job);
@@ -685,13 +700,17 @@ class SongJobs {
       const currentRoot = await fsp.realpath(job.outputDir);
       const previousRoot = await fsp.realpath(path.dirname(duplicate.outputPath));
       let output = duplicate.outputPath;
-      if (currentRoot !== previousRoot) output = await this._publish(job, duplicate.outputPath);
+      const sameSettings = JSON.stringify(job.outputSettings || null) === JSON.stringify(duplicate.outputSettings || null);
+      const expectedFolder = path.resolve(currentRoot, path.dirname(job.outputRelativePath || '.'));
+      const sameSourceName = !job.outputSettings?.nameTemplate.toLowerCase().includes('{source}') || job.resolvedFile?.filename === duplicate.resolvedFile?.filename;
+      const keepOutput = sameSettings && sameSourceName && previousRoot === expectedFolder;
+      if (!keepOutput) output = await this._publish(job, duplicate.outputPath);
       else {
         this._writeReceipt(job, output);
         job.outputPath = output; job.committed = true;
       }
       this._deleteCache(job);
-      this._set(job, "completed", { progress: 100, outputPath: output, outputHash: duplicate.outputHash, duplicateOf: duplicate.id, message: currentRoot === previousRoot ? "This file was already converted in the selected folder." : "Existing FeedPak copied into the selected folder.", error: "" });
+      this._set(job, "completed", { progress: 100, outputPath: output, outputHash: duplicate.outputHash, duplicateOf: duplicate.id, message: keepOutput ? "This file was already converted in the selected folder." : "Existing FeedPak saved using the selected output settings.", error: "" });
       return;
     }
     const staging = path.join(directory, "converted.feedpak");
@@ -726,9 +745,11 @@ class SongJobs {
       if (saved) return saved;
     }
     const currentRoot = await fsp.realpath(job.outputDir);
+    const expectedFolder = path.resolve(currentRoot, path.dirname(job.outputRelativePath || '.'));
     const candidates = [...this.jobs].reverse();
     candidates.sort((a, b) => {
-      const selected = (item) => { try { return fs.realpathSync.native(path.dirname(item.outputPath)) === currentRoot ? 1 : 0; } catch { return 0; } };
+      const selected = (item) => { try { return fs.realpathSync.native(path.dirname(item.outputPath)) === expectedFolder
+        && JSON.stringify(item.outputSettings || null) === JSON.stringify(job.outputSettings || null) ? 1 : 0; } catch { return 0; } };
       return selected(b) - selected(a);
     });
     for (const previous of candidates) {
@@ -746,7 +767,19 @@ class SongJobs {
   async _publish(job, staging) {
     check(job);
     await fsp.mkdir(job.outputDir, { recursive: true });
-    const root = await fsp.realpath(job.outputDir);
+    const outputRoot = await fsp.realpath(job.outputDir);
+    const relative = job.outputRelativePath || outputName(job.artist, job.title);
+    if (path.isAbsolute(relative) || relative.split(/[\\/]/).some((part) => !part || part === '..' || part === '.') || path.extname(relative).toLowerCase() !== '.feedpak') throw new Error('The planned output filename is invalid.');
+    const folder = path.dirname(relative);
+    if (folder !== '.' && (job.outputSettings?.outputLayout !== 'artist' || folder.split(/[\\/]/).length !== 1)) throw new Error('The planned output folder is invalid.');
+    const destination = path.resolve(outputRoot, folder);
+    if (folder !== '.') {
+      try { await fsp.mkdir(destination); } catch (error) { if (error.code !== 'EEXIST') throw error; }
+      const stat = await fsp.lstat(destination);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('The artist output folder must be a regular directory.');
+    }
+    const root = await fsp.realpath(destination);
+    if (root !== outputRoot && path.dirname(root) !== outputRoot) throw new Error('The output folder changed outside the selected library.');
     const temporary = path.join(root, `.feedforge-${job.id}-${crypto.randomUUID()}.part`);
     let ownsTemporary = false;
     try {
@@ -757,7 +790,7 @@ class SongJobs {
       await fsp.copyFile(staging, temporary);
       check(job);
       if (await hashFile(temporary, job.controller.signal) !== job.outputHash) throw new Error("The FeedPak changed while it was being saved. Retry the job.");
-      const name = outputName(job.artist, job.title, job.chartId);
+      const name = path.basename(relative);
       const stem = name.slice(0, -".feedpak".length);
       for (let index = 0; index < 1000; index++) {
         check(job);

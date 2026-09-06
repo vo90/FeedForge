@@ -10,6 +10,7 @@ const { ImportIndex } = require('./imports.cjs');
 const { normalizeSearchRequest, searchIdentity } = require('./catalogue.cjs');
 const { normalizeRequirements } = require('./file-selection.cjs');
 const { normalizeRecipe, recipesCompatible } = require('./provenance.cjs');
+const { normalizeOutputSettings } = require('./output-settings.cjs');
 
 function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, shell, getMainWindow, runConverter, getConverterRecipe = async () => null }) {
   let browser, jobs, outputDir, root, batches, imports, collecting = null, searching = null, recipePromise;
@@ -92,11 +93,12 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
     }
     outputDir = typeof config.outputDir === 'string' && path.isAbsolute(config.outputDir)
       ? config.outputDir : path.join(root, 'FeedPaks');
+    if (typeof config.sharedOutputDir === 'string' && path.isAbsolute(config.sharedOutputDir)) outputDir = config.sharedOutputDir;
     browser = new CustomsForgeBrowser({ BrowserWindow, session,
       profilePath: path.join(root, 'browser-profile'), parent: getMainWindow, onConnection: () => emit(), onDiagnostic: diagnostics.record });
     try {
       imports = new ImportIndex({ root: path.join(root, 'imports') });
-      jobs = new SongJobs({ root: path.join(root, 'jobs'), outputDir,
+      jobs = new SongJobs({ root: path.join(root, 'jobs'), outputDir, outputSettings: config.sharedOutputSettings || null,
         download: (chart, options) => browser.download(chart, options), runConverter, emit,
         findReusable: ({ chart, sourceHash, recipe, requirements, signal }) => imports.find(chart, { sourceHash, recipe, requirements, signal }),
         onCompleted: (entry) => { imports.record(entry); browser.filteredSnapshot = null; } });
@@ -105,7 +107,7 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
         const result = [];
         for (const chart of charts) {
           if (signal?.aborted) throw new Error('Collection cancelled.');
-          result.push({ ...chart, alreadyConverted: Boolean(await imports.find(chart, { outputDir, recipe: jobs.recipe, preferences: normalizeRequirements(request.filters || {}), signal })) });
+          result.push({ ...chart, alreadyConverted: Boolean(await imports.find(chart, { outputDir, outputSettings: jobs.outputSettings, recipe: jobs.recipe, preferences: normalizeRequirements(request.filters || {}), signal })) });
         }
         return result;
       };
@@ -118,7 +120,7 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
         execute: async (chart, context) => {
           if (!recipesCompatible(context.recipe, jobs.recipe)) throw new Error('The converter changed. Resume the batch to update its conversion settings.');
           const selection = selectionForChart(chart, chart.selection || context.selection);
-          const saved = context.reviewAnother || selection.choice ? null : await imports.find(chart, { outputDir: context.outputDir, preferences: selection, requestedChoice: selection.choice, recipe: context.recipe, signal: context.signal });
+          const saved = context.reviewAnother || selection.choice ? null : await imports.find(chart, { outputDir: context.outputDir, outputSettings: selection.outputSettings || jobs.outputSettings, preferences: selection, requestedChoice: selection.choice, recipe: context.recipe, signal: context.signal });
           if (saved) return { ...saved, status: 'skipped', skipKind: 'available', message: 'Already available in this output folder.' };
           return jobs.run(chart, { ...context, selection });
         },
@@ -144,7 +146,7 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
     const decisions = {};
     for (const chart of selected) {
       if (signal?.aborted) throw new Error('Batch preparation cancelled.');
-      const assessment = await imports.assess(chart, { outputDir: directory, preferences: selectionForChart(chart, preferences), recipe: jobs.recipe, signal });
+      const assessment = await imports.assess(chart, { outputDir: directory, outputSettings: preferences.outputSettings || jobs.outputSettings, preferences: selectionForChart(chart, preferences), recipe: jobs.recipe, signal });
       decisions[chart.id] = { status: assessment.status, reason: assessment.reason };
     }
     return decisions;
@@ -160,6 +162,22 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
     });
   }
   handler('getState', () => state());
+  handler('setOutputSettings', ({ settings }) => {
+    const normalized = normalizeOutputSettings(settings);
+    const sharedDir = settings?.outputDir || '';
+    if (typeof sharedDir !== 'string' || (sharedDir && (!path.isAbsolute(sharedDir) || sharedDir.length > 4096 || sharedDir.includes('\0')))) throw new Error('Choose a valid FeedForge output folder.');
+    const target = sharedDir || config.outputDir || path.join(root, 'FeedPaks');
+    const previous = jobs.outputDir;
+    let selected = previous;
+    try {
+      if (path.resolve(target) !== previous) selected = jobs.setOutputDir(target);
+      saveSettings({ ...config, sharedOutputSettings: normalized, sharedOutputDir: sharedDir });
+    } catch (error) { jobs.outputDir = previous; throw error; }
+    outputDir = selected;
+    jobs.outputSettings = normalized;
+    browser.filteredSnapshot = null;
+    emit(); return state();
+  });
   handler('signIn', () => browser.signIn());
   handler('showBrowser', () => browser.showBrowser());
   handler('search', async (request) => {
@@ -194,13 +212,14 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
     const job = jobs.snapshot().find((entry) => entry.id === jobId && entry.chartId === chart.id && entry.state === 'completed');
     if (!job) throw new Error('The saved song has changed. Refresh its results.');
     await ensureRecipe();
-    const assessment = await imports.assess(chart, { jobId: job.id, outputDir, preferences: selectionForChart(chart, normalizeRequirements(selection || {})), recipe: jobs.recipe });
+    const assessment = await imports.assess(chart, { jobId: job.id, outputDir, outputSettings: jobs.outputSettings, preferences: selectionForChart(chart, normalizeRequirements(selection || {})), recipe: jobs.recipe });
     return { reusable: assessment.reusable, code: assessment.code, reason: assessment.reason, status: assessment.status };
   });
   handler('prepareBatch', async ({ request, ids, preferences, scope = 'all' }) => {
     if (collecting) throw new Error('A batch is already being prepared.');
     const query = normalizeSearchRequest(request);
     const target = jobs.validateOutputDir(outputDir);
+    preferences = { ...preferences, ...(jobs.outputSettings ? { outputSettings: { ...jobs.outputSettings } } : {}) };
     const operation = { controller: new AbortController(), progress: { collected: 0, total: null } };
     collecting = operation; emit();
     try {
@@ -227,6 +246,7 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
     const batch = batches.snapshot().find((item) => item.id === String(id));
     if (!batch || batch.state !== 'draft') throw new Error('Choose a batch that is still being reviewed.');
     await ensureRecipe();
+    preferences = { ...preferences, ...(jobs.outputSettings ? { outputSettings: { ...jobs.outputSettings } } : {}) };
     return batches.updatePreferences(String(id), { preferences, importDecisions: await importDecisions(batch.charts, preferences || {}, batch.outputDir) });
   });
   handler('skipBatchItem', ({ id, itemId }) => batches.skipItem(String(id), String(itemId)));

@@ -17,7 +17,7 @@ const charts = Object.freeze({
   slow: Object.freeze({ id: '1103', title: 'Fixture Cancel', artist: 'Fixture Artist', host: 'mediafire' }),
 });
 const byId = new Map(Object.values(charts).map((chart) => [chart.id, chart]));
-const counters = { search: 0, searchCompleted: 0, downloads: {}, conversions: {}, reveals: 0, browserActions: { signIn: 0, showBrowser: 0 } };
+const counters = { search: 0, searchCompleted: 0, downloads: {}, conversions: {}, plans: [], outputSettings: null, reveals: 0, browserActions: { signIn: 0, showBrowser: 0 } };
 const tests = [], rendererErrors = [], unexpected = [], transfers = [], savedReports = [];
 const conversionFailures = new Map();
 let runtime, receipt, mainWindow, registration, searchGate, scenarioEvidence, currentOutput = 'first';
@@ -97,6 +97,27 @@ function previewFrom(filename) {
 }
 async function runConverter(args) {
   if (args[0] === '--inspect-json') return { code: 0, stderr: '', stdout: JSON.stringify({ ok: true, preview: previewFrom(args[1]).preview }) };
+  if (args[0] === '--plan-conversion-file') {
+    assert.equal(args.length, 2);
+    const request = JSON.parse(fs.readFileSync(ownedFile(args[1]), 'utf8'));
+    assert.equal(request.items?.length, 1); assert.equal(request.overwrite, false);
+    assert.ok(inside(runtime, canonical(request.outputDir)));
+    assert.ok(['flat', 'preserve', 'artist'].includes(request.outputLayout));
+    const inputPath = ownedFile(request.items[0].inputPath);
+    const { chart, preview } = previewFrom(inputPath);
+    const values = { source: path.basename(inputPath, path.extname(inputPath)), artist: preview.artist, title: preview.title, album: preview.album, year: '2020', parts: 'L' };
+    assert.ok(typeof request.nameTemplate === 'string' && request.nameTemplate.length > 0);
+    const filename = request.nameTemplate.replace(/\{(artist|title|album|year|source|parts)\}/gi, (_match, key) => values[key.toLowerCase()]) + '.feedpak';
+    assert.equal(path.basename(filename), filename, 'Fixture templates cannot escape their output folder.');
+    const folder = path.join(request.outputDir, ...(request.outputLayout === 'artist' ? [preview.artist] : []));
+    let target = path.join(folder, filename), suffix = 2;
+    while (fs.existsSync(target)) target = path.join(folder, path.basename(filename, '.feedpak') + ` (${suffix++}).feedpak`);
+    const stat = fs.statSync(inputPath, { bigint: true });
+    counters.plans.push({ chartId: chart.id, outputLayout: request.outputLayout, nameTemplate: request.nameTemplate, sourceName: path.basename(inputPath), relativePath: path.relative(request.outputDir, target).replace(/\\/g, '/') });
+    return { code: 0, stderr: '', stdout: JSON.stringify({ ok: true, total: 1, planned: 1, failed: 0, cached: 0, workers: 1, durationMs: 0,
+      items: [{ ok: true, inputPath, sourceSize: Number(stat.size), sourceMtimeNs: String(stat.mtimeNs),
+        outputs: [{ key: chart.id, path: target, artist: preview.artist, title: preview.title, album: preview.album, year: values.year, parts: values.parts }] }] }) };
+  }
   if (args[0] === '--validate-feedpak') {
     assert.ok(inside(runtime, canonical(args[1])));
     assert.match(fs.readFileSync(args[1], 'utf8'), /^PK fixture FeedPak /);
@@ -224,6 +245,15 @@ function fixtureApi() {
       return 'screenshots/' + name + '.png';
     },
     counts: () => JSON.parse(JSON.stringify(counters)),
+    waitForOutputSettings: (expected) => waitFor(() => Object.entries(expected).every(([key, value]) => counters.outputSettings?.[key] === value), 'shared output settings synchronization'),
+    outputFor(id, state = 'completed') {
+      assert.ok(byId.has(String(id)));
+      const ledger = JSON.parse(fs.readFileSync(path.join(runtime, 'profile', 'song-browser', 'jobs', 'jobs.json')));
+      const job = [...ledger.jobs].reverse().find((item) => item.chartId === String(id) && item.state === state);
+      assert.ok(job, 'No fixture job in the requested state exists for ' + id);
+      if (job.outputPath && fs.existsSync(job.outputPath)) ownedFile(job.outputPath);
+      return { state: job.state, outputSettings: job.outputSettings, relativePath: job.outputPath ? path.relative(path.join(runtime, 'profile', 'song-browser', 'FeedPaks'), job.outputPath).replace(/\\/g, '/') : null };
+    },
     holdNextSearch() {
       assert.ok(!searchGate || searchGate.released, 'A fixture search is already held.');
       searchGate = { entered: false, released: false, targetCompleted: counters.searchCompleted + 1, release: defer() };
@@ -298,7 +328,11 @@ async function main() {
         assert.equal(request.backingStrict, false, name + ' must not require backing verification.');
         assert.deepEqual(request.instrumentRequirements, [], name + ' must not retain removed instrument/string constraints.');
       }
-      try { return await action(...args); }
+      try {
+        const result = await action(...args);
+        if (name === 'song-browser:setOutputSettings' && result?.ok !== false) { counters.outputSettings = { ...args[1].settings }; signalWaiters(); }
+        return result;
+      }
       finally { if (name === 'song-browser:search') { counters.searchCompleted++; signalWaiters(); } }
     });
   } };

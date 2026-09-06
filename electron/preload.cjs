@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("songBrowser", {
   search: (request) => ipcRenderer.invoke("song-browser:search", request),
   cancelSearch: (request) => ipcRenderer.invoke("song-browser:cancelSearch", request),
   chooseOutput: () => ipcRenderer.invoke("song-browser:chooseOutput"),
+  setOutputSettings: (request) => ipcRenderer.invoke("song-browser:setOutputSettings", request),
   enqueue: (request) => ipcRenderer.invoke("song-browser:enqueue", request),
   assessResult: (request) => ipcRenderer.invoke("song-browser:assessResult", request),
   chooseFile: (request) => ipcRenderer.invoke("song-browser:chooseFile", request),
