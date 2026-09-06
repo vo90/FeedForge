@@ -27,6 +27,11 @@ def normalize_sng_bend_curve(
             relative.append(point)
     if not relative:
         return [], set()
+    if len(relative) == 1 and relative[0][0] > 0 and relative[0][1] > 0:
+        # One later SNG target describes a bend up to that authored point.
+        # Explicit onset zero supplies interpolation support; it is not a
+        # recovered source event. No release or extra target is invented.
+        relative.insert(0, (0.0, 0.0))
 
     def sample(time: float) -> float:
         if time < relative[0][0]:

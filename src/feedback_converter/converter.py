@@ -1829,6 +1829,7 @@ def _song_to_arrangement(
             "pre-onset": "pre-onset bend segments were interpolated at note onset",
             "entirely-pre-onset": "entirely pre-onset bends were held at their last authored value",
             "past-sustain": "bend segments beyond sustain were interpolated at note end",
+            "zero-target": "a lone zero-valued bend target and its declared peak were retained without inferring the missing initial shape",
         }
         for kind in sorted(bend_adjustments):
             warnings.append(ConversionWarning(f"{source_path}: {descriptions[kind]} (source normalization)."))
@@ -2438,7 +2439,15 @@ def _note_to_feedpak(note: Any, *, bend_adjustments: set[str] | None = None) -> 
     if bend:
         out["bn"] = bend
     bend_curve = _bend_curve(float(note.time), note.bends, sustain, adjustments=bend_adjustments)
-    _store_bend_curve(out, bend_curve)
+    # A lone release target with a declared peak does not establish its initial
+    # trajectory. Preserve both source facts without inventing a prebend/ramp.
+    zero_target = (
+        len(note.bends) == 1 and float(note.bends[0].step) == 0.0
+        and float(note.bends[0].time) >= float(note.time) and bool(bend)
+    )
+    _store_bend_curve(out, bend_curve, preserve_declared_peak=zero_target)
+    if zero_target and bend_adjustments is not None:
+        bend_adjustments.add("zero-target")
     if int(note.leftHand) >= 0:
         out["fg"] = int(note.leftHand)
     _apply_note_mask(out, int(note.mask))
@@ -2539,7 +2548,7 @@ def _bend_curve(
     note_time: float, bends: Any, sustain: float, *, adjustments: set[str] | None = None,
 ) -> list[dict[str, float]] | None:
     source_points = [(float(b.time), float(b.step)) for b in bends]
-    if len(source_points) < 2:
+    if not source_points:
         return None
     points, changes = normalize_sng_bend_curve(note_time, sustain, source_points)
     if adjustments is not None:
@@ -2547,8 +2556,13 @@ def _bend_curve(
     return points
 
 
-def _store_bend_curve(note: dict[str, Any], curve: list[dict[str, float]] | None) -> None:
+def _store_bend_curve(
+    note: dict[str, Any], curve: list[dict[str, float]] | None, *, preserve_declared_peak: bool = False,
+) -> None:
     if curve is None:
+        return
+    if preserve_declared_peak:
+        note["bnv"] = curve
         return
     # bn is the peak inside the sounding window, including interpolated edges.
     # A curve fully released before onset must not leave a phantom scalar bend.

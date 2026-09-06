@@ -20,6 +20,18 @@ Only its intersection with the note's sounding interval is emitted:
 - `bn` is the peak of the emitted curve in the sounding interval. Valid in-window
   curves, including positive-onset prebends, keep their authored shape.
 
+A single positive authored target is retained. When it occurs after onset, an explicit
+`(0, 0)` point supplies linear interpolation from the unbent onset to that target;
+this support point is not claimed to be a recovered source event. The target's
+time/value are retained, and its value is held afterward rather than inventing a
+release. A target exactly at onset is a held prebend. An earlier target follows
+the exceptional pre-onset policy above. Scalar bends with no source points stay
+scalar; their missing timing is not reconstructed.
+
+A lone zero-valued target combined with a positive declared peak is ambiguous
+about its initial trajectory. Conversion preserves the declared `bn` and literal
+zero target, reports a warning, and does not infer a prebend or a release path.
+
 `feedback_converter.bend_curves.normalize_sng_bend_curve` is a small standard-
 library-only adapter shared with source-assisted repair workflows. Its adjustment
 categories are descriptive; they do not authorize heuristic repair of a Feedpak
