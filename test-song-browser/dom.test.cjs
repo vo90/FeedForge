@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
-const { readSearchPage, requestChartDownload, requestSearchPage, requestSearchSort } = require('../electron/song-browser/dom.cjs');
+const { readSearchPage, requestChartDownload, requestSearchPage, requestSearchSort, prepareSearchUpdates } = require('../electron/song-browser/dom.cjs');
 
 // A small DOM fixture, not a live site client. Element selection is limited to
 // the browser primitives the page functions need; there is no network access.
@@ -20,6 +20,7 @@ class Element {
   getClientRects() { return this.hidden || this.style.display === 'none' ? [] : [{}]; }
   click() { this.clicked++; if (this.throwClick) throw new Error('fixture click failed'); }
   descendants() { return this.children.flatMap((child) => [child, ...child.descendants()]); }
+  contains(node) { return this === node || this.descendants().includes(node); }
   querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
   querySelectorAll(selector) {
     const match = (element, simple) => {
@@ -69,11 +70,31 @@ function decorateHeading(heading, { label = heading.ownText, field = label.toLow
   heading.attrs['aria-sort'] = direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : 'none';
   return { button, indicator, content };
 }
-function run(fn, doc, request) {
+function run(fn, doc, request, globals = {}) {
   // Serialization proves no hidden module closure is needed in Electron.
-  const context = { document: doc, location: { href: doc.URL }, URL, request, Date };
+  const context = { document: doc, location: { href: doc.URL, origin: new URL(doc.URL).origin }, URL, request, Date, ...globals };
   const value = vm.runInNewContext('(' + fn.toString() + ')(request)', context);
   return JSON.parse(JSON.stringify(value));
+}
+function searchLifecycle() {
+  const next = el('button', { 'aria-label': 'Next page' });
+  const input = el('input', { 'aria-label': 'Go to page', value: '1' });
+  const doc = page([row()], { extras: [next, input] });
+  const table = doc.querySelector('#cdlc-table');
+  const container = el('section', { 'data-cdlc-table': '' }, [table]);
+  doc.body.children[0] = container; container.parentElement = doc.body;
+  const heading = doc.querySelectorAll('thead th')[2];
+  const { button } = decorateHeading(heading);
+  const hooks = new Map();
+  const Livewire = { hook(name, callback) { const list = hooks.get(name) || []; list.push(callback); hooks.set(name, list); } };
+  const component = { el: container };
+  const emit = (name, event) => { for (const callback of hooks.get(name) || []) callback(event); };
+  const commit = (target = component) => {
+    const callbacks = {};
+    emit('commit', { component: target, succeed(callback) { callbacks.succeed = callback; }, fail(callback) { callbacks.fail = callback; } });
+    return callbacks;
+  };
+  return { doc, table, heading, button, next, input, hooks, Livewire, component, emit, commit };
 }
 function downloadPage({ id = '6420', host = 'Google Drive', href, expires = Math.floor(Date.now() / 1000) + 600, platform = 'pc', extraLinks = [] } = {}) {
   const anchor = el('a', { href: href || `/user/collectedcdlcs/toggle/${id}?platform=${platform}&expires=${expires}&signature=fixture-signature`, 'data-bs-original-title': 'Hosted on ' + host }, [], 'Windows');
@@ -374,6 +395,114 @@ test('sorting refuses missing, duplicate, disabled and off-site controls', () =>
   headings.children.push(duplicate);
   assert.equal(run(requestSearchSort, doc, { field: 'title', direction: 'asc' }).status, 'layout_changed');
   assert.equal(disabled.clicked, 0);
+});
+
+test('search lifecycle setup waits for Livewire and registers hooks once per document', () => {
+  const fixture = searchLifecycle();
+  assert.equal(run(prepareSearchUpdates, fixture.doc).status, 'waiting');
+  assert.equal(run(prepareSearchUpdates, fixture.doc, undefined, { Livewire: {} }).status, 'waiting');
+  for (let i = 0; i < 3; i++) assert.equal(run(prepareSearchUpdates, fixture.doc, undefined, { Livewire: fixture.Livewire }).status, 'ready');
+  assert.deepEqual([...fixture.hooks.keys()].sort(), ['commit', 'morphed']);
+  for (const callbacks of fixture.hooks.values()) assert.equal(callbacks.length, 1);
+  assert.equal(run(prepareSearchUpdates, page()).status, 'ready', 'ordinary fixtures without the Livewire catalogue need no hooks');
+  const outside = searchLifecycle(); outside.doc.URL = 'https://evil.test/';
+  assert.equal(run(prepareSearchUpdates, outside.doc, undefined, { Livewire: outside.Livewire }).status, 'layout_changed');
+  assert.equal(outside.hooks.size, 0);
+});
+
+test('optimistic sort metadata stays pending until both commit success and row morph in either order', () => {
+  for (const first of ['succeed', 'morphed']) {
+    const fixture = searchLifecycle();
+    const { doc, heading, button, next, Livewire, component, emit, commit } = fixture;
+    run(prepareSearchUpdates, doc, undefined, { Livewire });
+    assert.equal(run(requestSearchSort, doc, { field: 'title', direction: 'asc' }).status, 'clicked');
+    heading.attrs['aria-sort'] = 'ascending';
+    const assertPending = () => {
+      assert.equal(run(readSearchPage, doc).status, 'layout_changed');
+      assert.equal(run(requestSearchSort, doc, { field: 'title', direction: 'asc' }).status, 'waiting');
+      assert.equal(run(requestSearchPage, doc, { direction: 'next' }).status, 'waiting');
+      assert.equal(button.clicked, 1); assert.equal(next.clicked, 0);
+    };
+    assertPending();
+    const callbacks = commit();
+    if (first === 'succeed') callbacks.succeed();
+    else emit('morphed', { component });
+    assertPending();
+    if (first === 'succeed') emit('morphed', { component });
+    else callbacks.succeed();
+    assert.equal(run(readSearchPage, doc).status, 'ready');
+    assert.deepEqual(run(requestSearchSort, doc, { field: 'title', direction: 'asc' }), { status: 'applied', sort: { field: 'title', direction: 'asc' } });
+    assert.equal(button.clicked, 1, 'the confirmed order does not toggle again');
+  }
+});
+
+test('only the catalogue component can complete an armed search update', () => {
+  const { doc, table, heading, Livewire, component, emit, commit } = searchLifecycle();
+  run(prepareSearchUpdates, doc, undefined, { Livewire });
+  assert.deepEqual(commit(), {}, 'background commits before a search action are ignored');
+  run(requestSearchSort, doc, { field: 'title', direction: 'asc' });
+  heading.attrs['aria-sort'] = 'ascending';
+  const foreign = { el: el('section') };
+  assert.deepEqual(commit(foreign), {}, 'an unrelated component is not observed');
+  emit('morphed', { component: foreign });
+  assert.equal(run(readSearchPage, doc).status, 'layout_changed');
+  const callbacks = commit();
+  callbacks.succeed();
+  emit('morphed', { component: foreign });
+  assert.equal(run(readSearchPage, doc).status, 'layout_changed', 'an unrelated morph cannot finish the catalogue commit');
+  emit('morphed', { component });
+  assert.equal(run(readSearchPage, doc).status, 'ready');
+
+  run(requestSearchSort, doc, { field: 'title', direction: 'desc' });
+  const direct = { el: table };
+  const nextCommit = commit(direct);
+  emit('morphed', { component: direct }); nextCommit.succeed();
+  assert.equal(run(readSearchPage, doc).status, 'ready', 'a component rooted directly at the table is also supported');
+});
+
+test('pagination waits for the catalogue update despite an optimistic current page value', () => {
+  const { doc, input, next, Livewire, component, emit, commit } = searchLifecycle();
+  run(prepareSearchUpdates, doc, undefined, { Livewire });
+  assert.equal(run(requestSearchPage, doc, { direction: 'next' }).status, 'clicked');
+  input.value = '2';
+  assert.equal(run(readSearchPage, doc).status, 'layout_changed');
+  assert.equal(run(requestSearchPage, doc, { direction: 'next' }).status, 'waiting');
+  assert.equal(next.clicked, 1);
+  const callbacks = commit(); callbacks.succeed();
+  assert.equal(run(readSearchPage, doc).status, 'layout_changed');
+  emit('morphed', { component });
+  assert.equal(run(readSearchPage, doc).page, 2);
+});
+
+test('a failed catalogue commit rejects reading, sorting and paging until a fresh document', () => {
+  const { doc, heading, button, next, Livewire, component, emit, commit } = searchLifecycle();
+  run(prepareSearchUpdates, doc, undefined, { Livewire });
+  run(requestSearchSort, doc, { field: 'title', direction: 'asc' });
+  heading.attrs['aria-sort'] = 'ascending';
+  const callbacks = commit(); callbacks.fail();
+  emit('morphed', { component }); callbacks.succeed();
+  run(prepareSearchUpdates, doc, undefined, { Livewire });
+  for (const result of [run(readSearchPage, doc), run(requestSearchSort, doc, { field: 'title', direction: 'asc' }), run(requestSearchPage, doc, { direction: 'next' })]) {
+    assert.equal(result.status, 'layout_changed');
+    assert.match(result.error, /could not update the results/);
+  }
+  assert.equal(button.clicked, 1); assert.equal(next.clicked, 0);
+  const fresh = searchLifecycle();
+  run(prepareSearchUpdates, fresh.doc, undefined, { Livewire: fresh.Livewire });
+  assert.equal(run(readSearchPage, fresh.doc).status, 'ready');
+});
+
+test('a search control click exception leaves the update failed instead of accepting stale rows', () => {
+  for (const action of ['sort', 'page']) {
+    const { doc, button, next, Livewire } = searchLifecycle();
+    run(prepareSearchUpdates, doc, undefined, { Livewire });
+    const control = action === 'sort' ? button : next;
+    control.throwClick = true;
+    const result = action === 'sort' ? run(requestSearchSort, doc, { field: 'title', direction: 'asc' }) : run(requestSearchPage, doc, { direction: 'next' });
+    assert.equal(result.status, 'layout_changed');
+    assert.equal(control.clicked, 1);
+    assert.match(run(readSearchPage, doc).error, /could not update the results/);
+  }
 });
 
 test('download support is supplied by main-process registry, with a conservative legacy default', () => {

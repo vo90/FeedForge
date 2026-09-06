@@ -39,6 +39,9 @@ function readSearchPage() {
   // A table explicitly marked busy can still contain the previous query's rows
   // or an empty placeholder. Let the adapter keep waiting for a settled render.
   if (table.getAttribute('aria-busy') === 'true') return empty('layout_changed', 'The CustomsForge search results are still loading.');
+  const update = document[Symbol.for('feedforge.songBrowser.searchUpdate')];
+  if (update?.failed) return empty('layout_changed', 'CustomsForge could not update the results. Run the search again.');
+  if (update?.pending) return empty('layout_changed', 'The CustomsForge search results are still loading.');
 
   const attributes = ['title', 'aria-label', 'data-bs-original-title', 'data-original-title', 'data-tippy-content'];
   const hints = (root) => [root, ...all(root, '[title], [aria-label], [data-bs-original-title], [data-original-title], [data-tippy-content]')]
@@ -250,12 +253,52 @@ function requestChartDownload(request) {
   return reply('clicked', host);
 }
 
+// Ignition predicts aria-sort before its Livewire response updates the rows.
+// Observe public lifecycle hooks, scoped to the catalogue component, without
+// reading request payloads, snapshots, account data or framework state.
+function prepareSearchUpdates() {
+  if (globalThis.location?.origin !== 'https://ignition4.customsforge.com') return { status: 'layout_changed', error: 'The song search page is not available.' };
+  const key = Symbol.for('feedforge.songBrowser.searchUpdate');
+  if (document[key]) return { status: 'ready' };
+  if (!document.querySelector('[data-cdlc-table]')) return { status: 'ready' };
+  if (typeof globalThis.Livewire?.hook !== 'function') return { status: 'waiting', error: 'The search controls are still loading.' };
+  const state = { pending: false, failed: false, generation: 0, commits: new Set() };
+  const matches = (component) => {
+    const table = document.querySelector('#cdlc-table');
+    return !!table && (component?.el === table || component?.el?.contains?.(table));
+  };
+  const finish = () => {
+    if (state.pending && state.commits.size && [...state.commits].every((commit) => commit.succeeded && commit.morphed)) {
+      state.pending = false; state.commits.clear();
+    }
+  };
+  state.arm = () => { state.generation++; state.pending = true; state.failed = false; state.commits.clear(); };
+  globalThis.Livewire.hook('commit', ({ component, succeed, fail }) => {
+    if (!state.pending || !matches(component)) return;
+    const generation = state.generation;
+    const commit = { component, succeeded: false, morphed: false };
+    state.commits.add(commit);
+    succeed(() => { if (state.generation === generation) { commit.succeeded = true; finish(); } });
+    fail(() => { if (state.generation === generation) { state.failed = true; state.pending = false; state.commits.clear(); } });
+  });
+  globalThis.Livewire.hook('morphed', ({ component }) => {
+    if (!state.pending) return;
+    for (const commit of state.commits) if (commit.component === component) commit.morphed = true;
+    finish();
+  });
+  Object.defineProperty(document, key, { value: state });
+  return { status: 'ready' };
+}
+
 function requestSearchPage(request) {
   const direction = request?.direction;
   if (direction !== 'next' && direction !== 'previous') return { status: 'layout_changed', error: 'Select a valid page direction.' };
   let current;
   try { current = new URL(String(globalThis.location?.href || document.URL || '')); } catch { return { status: 'layout_changed', error: 'The song page URL could not be read.' }; }
   if (current.origin !== 'https://ignition4.customsforge.com' || !document.querySelector('#cdlc-table')) return { status: 'layout_changed', error: 'The song search page is not available.' };
+  const update = document[Symbol.for('feedforge.songBrowser.searchUpdate')];
+  if (update?.failed) return { status: 'layout_changed', error: 'CustomsForge could not update the results. Run the search again.' };
+  if (update?.pending) return { status: 'waiting' };
   const text = (node) => String(node?.textContent || '').replace(/\s+/g, ' ').trim();
   const matches = direction === 'next' ? /^(?:next(?: page)?|go to next page|[›»])$/i : /^(?:prev(?:ious)?(?: page)?|go to previous page|[‹«])$/i;
   for (const node of Array.from(document.querySelectorAll('a, button'))) {
@@ -267,7 +310,8 @@ function requestSearchPage(request) {
     if (node.tagName === 'A') {
       try { const url = new URL(node.getAttribute('href'), current.href); if (url.origin !== current.origin || url.username || url.password) continue; } catch { continue; }
     }
-    try { node.click(); } catch { return { status: 'layout_changed', error: 'The browser could not activate the page button.' }; }
+    update?.arm();
+    try { node.click(); } catch { if (update) { update.pending = false; update.failed = true; } return { status: 'layout_changed', error: 'The browser could not activate the page button.' }; }
     return { status: 'clicked' };
   }
   return { status: 'layout_changed', error: 'The requested page button is unavailable.' };
@@ -286,6 +330,9 @@ function requestSearchSort(request) {
   const table = document.querySelector('#cdlc-table');
   if (url.origin !== 'https://ignition4.customsforge.com' || !table) return failed('The song search page is not available.');
   if (table.getAttribute('aria-busy') === 'true') return { status: 'waiting', error: 'The search results are still loading.' };
+  const update = document[Symbol.for('feedforge.songBrowser.searchUpdate')];
+  if (update?.failed) return failed('CustomsForge could not update the results. Run the search again.');
+  if (update?.pending) return { status: 'waiting' };
   const text = (node) => String(node?.textContent || '').replace(/\s+/g, ' ').trim();
   const visible = (node) => !!node && !node.hidden && node.getAttribute?.('aria-hidden') !== 'true' && node.style?.display !== 'none' && node.style?.visibility !== 'hidden' && (!node.getClientRects || node.getClientRects().length > 0);
   // Ignition includes an aria-hidden ▲/▼ indicator even on unsorted columns.
@@ -301,8 +348,9 @@ function requestSearchSort(request) {
   if (new Set(values).size > 1) return failed('The current search order is ambiguous.');
   const observed = values.length ? { field, direction: values[0] === 'ascending' ? 'asc' : 'desc' } : null;
   if (observed?.direction === direction) return { status: 'applied', sort: observed };
-  try { controls[0].click(); } catch { return failed('The browser could not activate the sort button.'); }
+  update?.arm();
+  try { controls[0].click(); } catch { if (update) { update.pending = false; update.failed = true; } return failed('The browser could not activate the sort button.'); }
   return { status: 'clicked', sort: observed };
 }
 
-module.exports = { readSearchPage, requestChartDownload, requestSearchPage, requestSearchSort };
+module.exports = { readSearchPage, requestChartDownload, requestSearchPage, requestSearchSort, prepareSearchUpdates };

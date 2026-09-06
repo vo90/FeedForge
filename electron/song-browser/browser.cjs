@@ -1,5 +1,5 @@
 // All website interaction stays in this adapter. No cookies or signed URLs leave it.
-const { readSearchPage, requestChartDownload, requestSearchPage } = require('./dom.cjs');
+const { readSearchPage, requestChartDownload, requestSearchPage, prepareSearchUpdates } = require('./dom.cjs');
 
 const CF = 'https://ignition4.customsforge.com';
 const MAX_BYTES = 512 * 1024 * 1024;
@@ -348,7 +348,7 @@ class CustomsForgeBrowser {
         if (this.lastSearch?.signature !== signature || Math.abs(this.lastSearch.page - page) !== 1) {
           throw new Error('Start with the first search page, then use Next or Previous.');
         }
-        const changed = await win.webContents.mainFrame.executeJavaScript(`(${requestSearchPage.toString()})(${JSON.stringify({direction: page > this.lastSearch.page ? 'next' : 'previous'})})`, true);
+        const changed = await win.webContents.mainFrame.executeJavaScript(`(() => { const setup = (${prepareSearchUpdates.toString()})(); return setup.status === 'ready' ? (${requestSearchPage.toString()})(${JSON.stringify({direction: page > this.lastSearch.page ? 'next' : 'previous'})}) : setup; })()`, true);
         if (changed.status !== 'clicked') throw new Error(changed.error || 'The next page is unavailable.');
         paging = true;
       } else await this.navigate(win, url, { waitForDocument: true });
@@ -370,7 +370,7 @@ class CustomsForgeBrowser {
         let applied = false;
         for (let attempt = 0; attempt < 24; attempt++) {
           cancelled(this.catalogueSignal);
-          const action = await win.webContents.mainFrame.executeJavaScript(`(${requestSearchSort.toString()})(${JSON.stringify(request.sort)})`, true);
+          const action = await win.webContents.mainFrame.executeJavaScript(`(() => { const setup = (${prepareSearchUpdates.toString()})(); return setup.status === 'ready' ? (${requestSearchSort.toString()})(${JSON.stringify(request.sort)}) : setup; })()`, true);
           if (action.status === 'applied') { applied = true; break; }
           if (!['clicked', 'waiting'].includes(action.status)) throw new Error(action.error || 'The selected catalogue sort is unavailable.');
           await waitCatalogue(350, this.catalogueSignal);

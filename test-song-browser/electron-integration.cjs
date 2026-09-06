@@ -75,11 +75,53 @@ function searchPage(page = 1, pendingImage = false, query = 'fixture', sortField
   const heading = (field, label) => `<th data-column-key="${field}" aria-sort="${sortField === field ? direction === 'asc' ? 'ascending' : 'descending' : 'none'}"><div class="header-content"><i class="header-drag-grip" aria-hidden="true"></i><button type="button" class="header-sort-button" onclick="${action(1, field, sortField === field && direction === 'asc' ? 'desc' : 'asc')}"><i class="header-icon" aria-hidden="true"></i><span class="header-text">${label}</span><span class="header-sort-indicator" aria-hidden="true"${sortField === field ? '' : ' style="display:none"'}>${sortField === field && direction === 'asc' ? '▲' : '▼'}</span></button></div></th>`;
   return html(`<p>Showing ${page} to ${page} of 2 results</p> <table id="cdlc-table"><thead><tr><th>Download</th><th>Artist</th>${heading('title', 'Title')}<th>Album</th><th>Tuning</th><th>Creator</th><th>Parts</th><th>Version</th>${heading('downloads', 'DLs')}</tr></thead><tbody><tr><td><span title="Hosted on Dropbox">File</span></td><td>Fixture Artist</td><td><a href="/cdlc/${current.id}">${current.title}</a></td><td>Fixture Album</td><td>E Standard</td><td>Fixture Creator</td><td>Lead</td><td>1</td><td>${current.downloads}</td></tr></tbody></table><span aria-current="page">${page}</span><button aria-label="Previous page" ${page === 1 ? 'disabled' : ''} onclick="${action(1)}">Previous</button><button aria-label="Next page" ${page === 2 ? 'disabled' : ''} onclick="${action(2)}">Next</button>${pendingImage ? '<img id="pending-image" src="/fixture-pending-image.svg" alt="Controlled unfinished image">' : ''}`);
 }
+function delayedSortPage(mode) {
+  // Only the observed lifecycle contract is simulated. No request payloads,
+  // credentials or Livewire internals are needed to reproduce optimistic sort.
+  function mount(mode) {
+    const callbacks = new Map();
+    window.Livewire = { hook(name, callback) {
+      if (!callbacks.has(name)) callbacks.set(name, new Set());
+      callbacks.get(name).add(callback);
+      return () => callbacks.get(name)?.delete(callback);
+    } };
+    const emit = (name, detail) => { for (const callback of callbacks.get(name) || []) callback(detail); };
+    document.body.innerHTML = '<div data-cdlc-table wire:id="offline-catalogue"><p>Showing 1 to 2 of 2 results</p><table id="cdlc-table"><thead><tr><th>Download</th><th>Artist</th><th data-column-key="title" aria-sort="none"><div class="header-content"><i class="header-drag-grip" aria-hidden="true"></i><button type="button" class="header-sort-button"><i class="header-icon" aria-hidden="true"></i><span class="header-text">Title</span><span class="header-sort-indicator" aria-hidden="true" style="display:none">▼</span></button></div></th><th>Downloads</th></tr></thead><tbody></tbody></table><span aria-current="page">1</span></div>';
+    const root = document.querySelector('[data-cdlc-table]');
+    const component = { el: root };
+    const rows = [{ id: '1002', title: 'Zeta Fixture Song' }, { id: '1001', title: 'Alpha Fixture Song' }];
+    const renderRows = (data) => { root.querySelector('tbody').innerHTML = data.map((row) => `<tr><td><span title="Hosted on Dropbox">File</span></td><td>Fixture Artist</td><td><a href="/cdlc/${row.id}">${row.title}</a></td><td>10</td></tr>`).join(''); };
+    renderRows(rows);
+    const state = window.fixtureSortState = { clicks: 0, rowsUpdated: false, morphed: false, succeeded: false, failed: false };
+    root.querySelector('button').addEventListener('click', () => {
+      state.clicks++;
+      const heading = root.querySelector('[data-column-key="title"]');
+      heading.setAttribute('aria-sort', 'ascending');
+      const indicator = heading.querySelector('.header-sort-indicator');
+      indicator.style.display = ''; indicator.textContent = '▲';
+      const succeeded = [], failed = [];
+      emit('commit', { component, succeed: (callback) => succeeded.push(callback), fail: (callback) => failed.push(callback) });
+      const success = () => { state.succeeded = true; for (const callback of succeeded) callback({}); };
+      if (mode === 'slow-sort-failure') {
+        setTimeout(() => { state.failed = true; for (const callback of failed) callback(); }, 500);
+        return;
+      }
+      if (mode === 'slow-sort-success-first') setTimeout(success, 200);
+      setTimeout(() => {
+        renderRows([...rows].reverse()); state.rowsUpdated = true;
+        state.morphed = true; emit('morphed', { component, el: root });
+        if (mode !== 'slow-sort-success-first') setTimeout(success, 200);
+      }, 900);
+    });
+  }
+  return html(`<script>(${mount.toString()})(${JSON.stringify(mode)})</script>`);
+}
 function fixtureResponse(request) {
   const url = new URL(request.url);
   const key = url.hostname + url.pathname + (url.searchParams.get('dl') === '1' ? '?dl=1' : '');
   visits.set(key, (visits.get(key) || 0) + 1);
   if (url.hostname === 'ignition4.customsforge.com') {
+    if (url.pathname === '/' && ['slow-sort', 'slow-sort-success-first', 'slow-sort-failure'].includes(url.searchParams.get('search'))) return delayedSortPage(url.searchParams.get('search'));
     if (url.pathname === '/') return searchPage(Number(url.searchParams.get('page') || 1), url.searchParams.get('search') === 'slow-resource', url.searchParams.get('search') || 'fixture', url.searchParams.get('sort') || '', url.searchParams.get('direction') || 'asc');
     if (url.pathname === '/fixture-pending-image.svg') {
       const body = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>');
@@ -205,6 +247,21 @@ async function run() {
     assert.deepEqual(collected.results.map((row) => row.id), ['1002', '1001']);
     assert.deepEqual(progress, [1, 2]);
     assert.equal(visits.get('ignition4.customsforge.com/user/collectedcdlcs/toggle/1001') || 0, 0, 'Catalogue preparation must not download or alter a collection.');
+  });
+  await test('optimistic sort waits for successful updated rows in either lifecycle order', async () => {
+    for (const query of ['slow-sort', 'slow-sort-success-first']) {
+      const result = await browser.search({ query, sort: { field: 'title', direction: 'asc' } });
+      assert.equal(result.status, 'ready');
+      assert.deepEqual(result.sort, { field: 'title', direction: 'asc' });
+      assert.deepEqual(result.results.map((row) => row.id), ['1001', '1002'], 'An optimistic header must never publish the old row order.');
+      const state = await browser.searchWindow.webContents.mainFrame.executeJavaScript('window.fixtureSortState');
+      assert.deepEqual(state, { clicks: 1, rowsUpdated: true, morphed: true, succeeded: true, failed: false });
+    }
+  });
+  await test('failed optimistic sort rejects stale rows without clicking the control again', async () => {
+    await assert.rejects(browser.search({ query: 'slow-sort-failure', sort: { field: 'title', direction: 'asc' } }));
+    const state = await browser.searchWindow.webContents.mainFrame.executeJavaScript('window.fixtureSortState');
+    assert.deepEqual(state, { clicks: 1, rowsUpdated: false, morphed: false, succeeded: false, failed: true });
   });
   await test('real DownloadItem follows signed-button redirect and shared-file download', async () => {
     const file = await download('1001');
