@@ -21,7 +21,7 @@ function DraftPreferences({ batch, run, working }) {
   </details>;
 }
 
-export function BatchPanel({ batches = [], action, busy = new Set() }) {
+export function BatchPanel({ batches = [], action, busy = new Set(), outputReady = true }) {
   if (!batches.length) return null;
   return <section className="sb-batches" aria-label="Song batches">
     <h2>Song batches</h2>
@@ -68,14 +68,14 @@ export function BatchPanel({ batches = [], action, busy = new Set() }) {
             <button type="button" className="sb-button" disabled={working} onClick={() => run('dismissBatchSuggestion', { suggestionId: suggestion.id })}>Keep selections and dismiss suggestion</button>
           </details>)}
           {batch.suggestionsLimited ? <p>Possible-duplicate checks reached their review limit. Your complete chart list remains available.</p> : null}
-          <button type="button" className="sb-button sb-primary" disabled={working || !selected.size || !batch.complete || !!batch.reviewConflicts?.length} onClick={() => run('startBatch')}>Start batch ({selected.size} charts)</button>
+          <button type="button" className="sb-button sb-primary" disabled={!outputReady || working || !selected.size || !batch.complete || !!batch.reviewConflicts?.length} onClick={() => run('startBatch')}>Start batch ({selected.size} charts)</button>
         </> : <>
           <p role="status">{counts.completed || 0} converted · {counts.available || 0} already available · {counts.userSkipped || 0} skipped by you · {counts.pending || 0} waiting · {counts.needs_attention || 0} need attention · {counts.failed || 0} failed</p>
           <progress max={Math.max(1, batch.items.length)} value={(counts.completed || 0) + (counts.skipped || 0) + (counts.failed || 0) + (counts.cancelled || 0)} aria-label="Batch completion" />
           <div className="sb-job-controls">
             {batch.state === 'running' ? <button type="button" className="sb-button" disabled={working} onClick={() => run('pauseBatch')}>Pause after current song</button> : null}
-            {batch.state === 'paused' ? <button type="button" className="sb-button" disabled={working} onClick={() => run('resumeBatch')}>Resume batch</button> : null}
-            {['paused', 'completed'].includes(batch.state) && counts.failed ? <button type="button" className="sb-button" disabled={working} onClick={() => run('resumeBatch', { retryFailed: true })}>Retry failed songs</button> : null}
+            {batch.state === 'paused' ? <button type="button" className="sb-button" disabled={!outputReady || working} onClick={() => run('resumeBatch')}>Resume batch</button> : null}
+            {['paused', 'completed'].includes(batch.state) && counts.failed ? <button type="button" className="sb-button" disabled={!outputReady || working} onClick={() => run('resumeBatch', { retryFailed: true })}>Retry failed songs</button> : null}
             {['paused', 'running'].includes(batch.state) ? <button type="button" className="sb-button" disabled={working} onClick={() => run('cancelBatch')}>Cancel remaining</button> : null}
           </div>
           <div className="sb-batch-groups">
@@ -84,12 +84,12 @@ export function BatchPanel({ batches = [], action, busy = new Set() }) {
               <p>{item.outcome?.message}</p>
               <div className="sb-job-controls">
                 {!['skipped', 'completed', 'cancelled'].includes(item.state) ? <button type="button" className="sb-button" disabled={working || item.skipRequested} onClick={() => run('skipBatchItem', { itemId: item.id })}>{item.skipRequested ? 'Skipping…' : 'Skip song'}</button> : null}
-                {['needs_attention', 'failed', 'interrupted', 'skipped'].includes(item.state) ? <button type="button" className="sb-button" disabled={working} onClick={() => run('retryBatchItem', { itemId: item.id })}>Retry song</button> : null}
-                {['needs_attention', 'failed', 'interrupted'].includes(item.state) ? <button type="button" className="sb-button" disabled={working || batch.state === 'running'} onClick={() => run('resolveBatchItem', { itemId: item.id })}>Resolve with browser help</button> : null}
-                {['needs_attention', 'failed'].includes(item.state) && (batch.preferences.instrumentRequirements?.length || batch.preferences.backingStrict || batch.preferences.requiredParts?.length || batch.preferences.tuning) ? <button type="button" className="sb-text-button" disabled={working} onClick={() => run('retryBatchItem', { itemId: item.id, relaxRequirements: true })}>Relax requirements and retry</button> : null}
+                {['needs_attention', 'failed', 'interrupted', 'skipped'].includes(item.state) ? <button type="button" className="sb-button" disabled={!outputReady || working} onClick={() => run('retryBatchItem', { itemId: item.id })}>Retry song</button> : null}
+                {['needs_attention', 'failed', 'interrupted'].includes(item.state) ? <button type="button" className="sb-button" disabled={!outputReady || working || batch.state === 'running'} onClick={() => run('resolveBatchItem', { itemId: item.id })}>Resolve with browser help</button> : null}
+                {['needs_attention', 'failed'].includes(item.state) && (batch.preferences.instrumentRequirements?.length || batch.preferences.backingStrict || batch.preferences.requiredParts?.length || batch.preferences.tuning) ? <button type="button" className="sb-text-button" disabled={!outputReady || working} onClick={() => run('retryBatchItem', { itemId: item.id, relaxRequirements: true })}>Relax requirements and retry</button> : null}
               </div>
               {item.outcome?.candidates?.length ? <div className="sb-file-choices">{item.outcome.candidates.map((candidate) => <button type="button" key={candidate.id} className="sb-button"
-                disabled={working || batch.state === 'running' || candidate.platform === 'mac'} onClick={() => run('chooseBatchFile', { itemId: item.id, choice: { id: candidate.id } })}><FileCandidateDetails candidate={candidate} /></button>)}</div> : null}
+                disabled={!outputReady || working || batch.state === 'running' || candidate.platform === 'mac'} onClick={() => run('chooseBatchFile', { itemId: item.id, choice: { id: candidate.id } })}><FileCandidateDetails candidate={candidate} /></button>)}</div> : null}
               {item.choice ? <p>Selected file: {item.choice.label}. Resume the batch to continue.</p> : null}
             </div>)}
           </div>

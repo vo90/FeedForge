@@ -89,13 +89,13 @@ export function ResultCard({ song, job, busy, canDownload, onDownload, onShowOut
         {savedOutput && !suitability?.reusable && job?.reuseCompatible === false ? <small>The saved file uses an older or unknown conversion recipe.</small> : null}
         {song.availability?.reason && !pending ? <small>{text(song.availability.reason)}</small> : null}
         {suitability?.reason && !pending ? <small>{text(suitability.reason)}</small> : null}
-        {!supported ? <small>Automatic download is unavailable.</small> : !completed && !pending && !canDownload ? <small>Choose an output folder first.</small> : null}
+        {!supported ? <small>Automatic download is unavailable.</small> : !completed && !pending && !canDownload ? <small>Choose an output folder in Settings.</small> : null}
       </div>
     </article>
   );
 }
 
-export function JobCard({ job, busy, onCancel, onShowOutput, onShowBrowser, onRetry, onReview, onClearCache, onChooseFile, onRelax }) {
+export function JobCard({ job, busy, canSave = true, onCancel, onShowOutput, onShowBrowser, onRetry, onReview, onClearCache, onChooseFile, onRelax }) {
   const status = stateOf(job);
   const completed = COMPLETE.has(status);
   const missingOutput = completed && job.outputAvailable === false;
@@ -118,15 +118,15 @@ export function JobCard({ job, busy, onCancel, onShowOutput, onShowBrowser, onRe
         {completed && !missingOutput ? <button type="button" className="sb-text-button" disabled={busy} onClick={() => onShowOutput(job.id)}><FolderOpen size={14} aria-hidden="true" /> Show file</button> : !FINISHED.has(status) ? <div className="sb-job-controls">{attention ? <button type="button" className="sb-text-button" onClick={onShowBrowser}>Open browser</button> : null}<button type="button" className="sb-text-button" disabled={busy || status === "cancelling"} onClick={() => onCancel(job.id)}><X size={14} aria-hidden="true" />{busy || status === "cancelling" ? "Cancelling…" : "Cancel"}</button></div> : null}
       </div>
       {FINISHED.has(status) && (job.canRetry || job.hasCachedInput) ? <div className="sb-job-controls sb-recovery">
-        {job.canRetry ? <button type="button" className="sb-text-button" disabled={busy} onClick={() => onRetry(job.id)}>{job.hasCachedInput ? "Retry conversion" : "Retry download"}</button> : null}
+        {job.canRetry ? <button type="button" className="sb-text-button" disabled={busy || !canSave} onClick={() => onRetry(job.id)}>{job.hasCachedInput ? "Retry conversion" : "Retry download"}</button> : null}
         {job.hasCachedInput ? <><button type="button" className="sb-text-button" disabled={busy} onClick={() => onReview(job.id)}>Open in FeedForge</button><button type="button" className="sb-text-button" disabled={busy} onClick={() => onClearCache(job.id)}>Clear cached file</button></> : null}
-        {job.hasCachedInput && onRelax && (job.selection?.backingStrict || job.selection?.instrumentRequirements?.some((entry) => entry.strict !== false) || job.selection?.parts?.length || job.selection?.tuning) ? <button type="button" className="sb-text-button" disabled={busy} onClick={() => onRelax(job.id)}>Relax requirements and retry cached file</button> : null}
+        {job.hasCachedInput && onRelax && (job.selection?.backingStrict || job.selection?.instrumentRequirements?.some((entry) => entry.strict !== false) || job.selection?.parts?.length || job.selection?.tuning) ? <button type="button" className="sb-text-button" disabled={busy || !canSave} onClick={() => onRelax(job.id)}>Relax requirements and retry cached file</button> : null}
       </div> : null}
     </li>
   );
 }
 
-export default function SongBrowser({ api: providedApi, onReview, outputSettings, onChooseOutput, onOutputDirChange }) {
+export default function SongBrowser({ api: providedApi, onReview, outputSettings, onOpenOutputSettings, onOutputDirChange }) {
   const api = providedApi ?? (typeof window !== "undefined" ? window.songBrowser : undefined);
   const available = typeof api?.getState === "function" && typeof api?.search === "function";
   const searchSession = useMemo(() => getSearchSession(api), [api]);
@@ -135,6 +135,8 @@ export default function SongBrowser({ api: providedApi, onReview, outputSettings
   const searchState = useSyncExternalStore(searchSession.subscribe, searchSession.getSnapshot, searchSession.getSnapshot);
   const { query, searchedQuery, result: searchResult, pending: searching } = searchState;
   const [snapshot, setSnapshot] = useState({ outputDir: "", jobs: [], connection: { status: "unknown" } });
+  const selectedOutputDir = outputSettings ? outputSettings.outputDir || '' : snapshot.outputDir;
+  const outputReady = Boolean(selectedOutputDir);
   const [loading, setLoading] = useState(available);
   const [error, setError] = useState("");
   const [outputSettingsError, setOutputSettingsError] = useState('');
@@ -268,9 +270,12 @@ export default function SongBrowser({ api: providedApi, onReview, outputSettings
     setBusy(new Set(busyRef.current));
     setError("");
     try {
-      const handler = method === 'chooseOutput' && typeof onChooseOutput === 'function' ? onChooseOutput : api?.[method];
+      const handler = api?.[method];
       if (typeof handler !== "function") throw new Error("This action is unavailable in this version of FeedForge.");
-      if (OUTPUT_SETTINGS_ACTIONS.has(method)) await waitForOutputSettings(true);
+      if (OUTPUT_SETTINGS_ACTIONS.has(method)) {
+        await waitForOutputSettings(true);
+        if (!selectedOutputDir) throw new Error('Choose an output folder in Settings before downloading songs.');
+      }
       const result = await handler.call(api, args);
       if (result?.ok === false) throw new Error(errorText(result.error));
       if (mounted.current && ['chooseOutput', 'useFeedbackFolder'].includes(method) && result && Object.prototype.hasOwnProperty.call(result, "outputDir")) {
@@ -329,8 +334,8 @@ export default function SongBrowser({ api: providedApi, onReview, outputSettings
       {!available ? (
         <div className="sb-empty sb-desktop-message"><div className="sb-empty-icon"><Download size={28} aria-hidden="true" /></div><h2>Find songs in FeedForge desktop</h2><p>Searching CustomsForge and downloading songs needs the FeedForge desktop app. Open its Find songs tab to connect your account, choose an output folder, and convert songs here.</p></div>
       ) : <>
-        <div className="sb-output"><div className="sb-output-label"><FolderOpen size={19} aria-hidden="true" /><div><strong>Feedpak output folder</strong><p title={text(snapshot.outputDir)}>{text(snapshot.outputDir, "Choose where to save your converted songs.") || "Choose where to save your converted songs."}</p></div></div><button type="button" className="sb-button" disabled={busy.has("folder")} onClick={() => action("folder", "chooseOutput")}>{busy.has("folder") ? "Choosing…" : "Choose folder"}</button></div>
-        <p className="sb-library-help">File names and folder layout follow Settings. Choose your FeedBack song library to save songs there. Folder compatibility is checked before downloading.</p>
+        <div className="sb-output"><div className="sb-output-label"><FolderOpen size={19} aria-hidden="true" /><div><strong>Output folder from Settings</strong><p title={text(selectedOutputDir)}>{text(selectedOutputDir) || 'Choose an output folder in Settings.'}</p></div></div><button type="button" className="sb-button" disabled={busy.has("folder")} onClick={onOpenOutputSettings || (() => action("folder", "chooseOutput"))}>{onOpenOutputSettings ? outputReady ? 'Change in Settings' : 'Choose in Settings' : busy.has("folder") ? 'Choosing…' : 'Choose folder'}</button></div>
+        <p className="sb-library-help">{outputReady ? 'The output folder, file names, and folder layout all come from Settings.' : 'Settings currently uses source folders. Choose a fixed output folder there for downloaded songs.'} Choose your FeedBack song library to save songs there.</p>
 
         <details className="sb-feedback">
           <summary>FeedBack connection <span>{feedback.autoRefresh ? "Automatic refresh enabled" : "Optional library refresh"}</span></summary>
@@ -341,7 +346,7 @@ export default function SongBrowser({ api: providedApi, onReview, outputSettings
           {feedback.message ? <p role="status">{text(feedback.message)}</p> : <p>Use the address shown by your FeedBack app. You can also use Songs → Refresh directly in the game.</p>}
           {feedback.libraryDir ? <p className="sb-folder-path">FeedBack library: {text(feedback.libraryDir)}</p> : null}
           <div className="sb-feedback-actions">
-            <button type="button" className="sb-text-button" disabled={feedback.status !== "connected" || activeCount > 0 || busy.has("feedback-folder")} onClick={() => action("feedback-folder", "useFeedbackFolder")}>Use FeedBack folder</button>
+            <button type="button" className="sb-text-button" disabled={feedback.status !== "connected" || activeCount > 0 || busy.has("feedback-folder")} onClick={() => action("feedback-folder", "useFeedbackFolder")}>Use as Settings output folder</button>
             <button type="button" className="sb-text-button" disabled={!feedback.url || feedback.status === "refreshing" || busy.has("feedback-refresh")} onClick={() => action("feedback-refresh", "refreshFeedback")}>Refresh library now</button>
           </div>
           <label className="sb-auto-refresh"><input type="checkbox" checked={feedback.autoRefresh === true} disabled={busy.has("feedback-auto") || (!feedback.autoRefresh && feedback.status !== "connected")} onChange={(event) => action("feedback-auto", "setAutoRefresh", { enabled: event.target.checked })} /> Refresh FeedBack after each successful conversion</label>
@@ -381,18 +386,18 @@ export default function SongBrowser({ api: providedApi, onReview, outputSettings
           <div className="sb-filter-grid"><label>Required tuning<input aria-label="Batch required tuning" value={batchTuning} onChange={(event) => setBatchTuning(event.target.value)} placeholder="Any tuning" /></label><label>Prefer between compatible charts<select aria-label="Batch preference" value={ranking} onChange={(event) => setRanking(event.target.value)}><option value="downloads">Most downloads</option><option value="updated">Recently updated</option><option value="none">Review without popularity preference</option></select></label></div>
           <label>Preferred creators, in order<input aria-label="Preferred creators" value={preferredCreators} onChange={(event) => setPreferredCreators(event.target.value)} placeholder="Creator one, Creator two" /></label>
           <p>Listed creators are preferred after required arrangements and tuning. Other creators remain eligible.</p>
-          <div className="sb-job-controls"><button type="button" className="sb-button" disabled={!selected.size || searching || busy.has('prepare-batch') || snapshot.preparation?.pending} onClick={() => prepareBatch('selected')}>Prepare selected</button><button type="button" className="sb-button sb-primary" disabled={searching || busy.has('prepare-batch') || snapshot.preparation?.pending || !results.length} onClick={() => prepareBatch('all')}>Prepare all results</button></div>
+          <div className="sb-job-controls"><button type="button" className="sb-button" disabled={!outputReady || !selected.size || searching || busy.has('prepare-batch') || snapshot.preparation?.pending} onClick={() => prepareBatch('selected')}>Prepare selected</button><button type="button" className="sb-button sb-primary" disabled={!outputReady || searching || busy.has('prepare-batch') || snapshot.preparation?.pending || !results.length} onClick={() => prepareBatch('all')}>Prepare all results</button></div>
         </section> : null}
         {snapshot.preparation?.pending ? <div className="sb-notice" role="status"><span>Preparing results: {snapshot.preparation.collected}{snapshot.preparation.total != null ? ` of ${snapshot.preparation.total}` : ''}</span><button type="button" className="sb-button" onClick={() => action('cancel-preparation','cancelPreparation')}>Cancel preparation</button></div> : null}
-        <BatchPanel batches={snapshot.batches} action={action} busy={busy} />
+        <BatchPanel batches={snapshot.batches} action={action} busy={busy} outputReady={outputReady} />
 
         <div className="sb-content-grid">
           <section className="sb-results" aria-label="Search results" aria-busy={searching}>
             <div className="sb-section-heading"><h2>{searchResult ? "Search results" : "Discover your next song"}</h2><span role="status">{searching ? "Searching CustomsForge…" : searchResult && results.length ? `${typeof searchResult.total === "number" ? searchResult.total.toLocaleString() : results.length} ${searchResult.total === 1 || (searchResult.total == null && results.length === 1) ? "chart" : "charts"}` : ""}</span></div>
-            {results.length ? <><div className={`sb-result-list ${searching ? "sb-searching" : ""}`}>{results.map((song) => <ResultCard key={String(song.id)} song={song} job={latestJobs.get(String(song.id))} busy={busy.has(`enqueue:${song.id}`)} canDownload={Boolean(snapshot.outputDir) && !searching} onDownload={(id) => downloadSong(id)} onReviewAnother={(id) => downloadSong(id, true)} suitability={typeof api?.assessResult === 'function' && assessmentEntries.some((entry) => entry.id === String(song.id)) ? assessments.scope === assessmentScope ? assessments.results[String(song.id)] || { pending: true, reusable: false } : { pending: true, reusable: false } : undefined} onShowOutput={showOutput} selected={selected.has(String(song.id))} onSelect={selectChart} />)}</div><nav className="sb-pagination" aria-label="Search results pages"><button type="button" className="sb-button" disabled={page <= 1 || searching} onClick={() => search(searchedQuery, page - 1)}><ChevronLeft size={16} aria-hidden="true" /> Previous</button><span>Page {page}</span><button type="button" className="sb-button" disabled={!searchResult.hasNext || searching} onClick={() => search(searchedQuery, page + 1)}>Next <ChevronRight size={16} aria-hidden="true" /></button></nav></> : <div className="sb-empty"><div className="sb-empty-icon">{searching ? <LoaderCircle size={28} className="sb-spin" aria-hidden="true" /> : <Search size={28} aria-hidden="true" />}</div><h3>{searching ? "Looking for your song…" : challenge || needsSignIn ? "Complete your connection" : searchError || error ? "Search needs attention" : searchResult ? "No charts found" : "Start with an artist or a song"}</h3><p>{searching ? "Results will appear here." : challenge || needsSignIn ? "Finish the step in the browser window, then run your search again." : searchError || error ? "Check the message above and try again." : searchResult ? `No results for “${searchedQuery}”. Try another title or a shorter artist name.` : "Compare chart versions, instruments and tunings before adding a song."}</p></div>}
+            {results.length ? <><div className={`sb-result-list ${searching ? "sb-searching" : ""}`}>{results.map((song) => <ResultCard key={String(song.id)} song={song} job={latestJobs.get(String(song.id))} busy={busy.has(`enqueue:${song.id}`)} canDownload={outputReady && !searching} onDownload={(id) => downloadSong(id)} onReviewAnother={(id) => downloadSong(id, true)} suitability={typeof api?.assessResult === 'function' && assessmentEntries.some((entry) => entry.id === String(song.id)) ? assessments.scope === assessmentScope ? assessments.results[String(song.id)] || { pending: true, reusable: false } : { pending: true, reusable: false } : undefined} onShowOutput={showOutput} selected={selected.has(String(song.id))} onSelect={selectChart} />)}</div><nav className="sb-pagination" aria-label="Search results pages"><button type="button" className="sb-button" disabled={page <= 1 || searching} onClick={() => search(searchedQuery, page - 1)}><ChevronLeft size={16} aria-hidden="true" /> Previous</button><span>Page {page}</span><button type="button" className="sb-button" disabled={!searchResult.hasNext || searching} onClick={() => search(searchedQuery, page + 1)}>Next <ChevronRight size={16} aria-hidden="true" /></button></nav></> : <div className="sb-empty"><div className="sb-empty-icon">{searching ? <LoaderCircle size={28} className="sb-spin" aria-hidden="true" /> : <Search size={28} aria-hidden="true" />}</div><h3>{searching ? "Looking for your song…" : challenge || needsSignIn ? "Complete your connection" : searchError || error ? "Search needs attention" : searchResult ? "No charts found" : "Start with an artist or a song"}</h3><p>{searching ? "Results will appear here." : challenge || needsSignIn ? "Finish the step in the browser window, then run your search again." : searchError || error ? "Check the message above and try again." : searchResult ? `No results for “${searchedQuery}”. Try another title or a shorter artist name.` : "Compare chart versions, instruments and tunings before adding a song."}</p></div>}
           </section>
 
-          <aside className="sb-activity" aria-labelledby="sb-activity-title"><div className="sb-section-heading"><h2 id="sb-activity-title">Song activity</h2>{activeCount ? <span className="sb-count">{activeCount} pending</span> : null}</div><p className="sb-activity-description">Songs are processed one at a time.</p>{jobs.length ? <ol className="sb-job-list">{jobs.map((job) => <JobCard key={job.id} job={job} busy={["cancel", "show", "retry", "review", "clear"].some((key) => busy.has(`${key}:${job.id}`))} onCancel={(id) => action(`cancel:${id}`, "cancel", { id })} onRetry={(id) => action(`retry:${id}`, "retry", { id })} onRelax={(id) => action(`retry:${id}`, "retry", { id, relaxRequirements: true })} onReview={reviewCached} onClearCache={(id) => action(`clear:${id}`, "clearCache", { id })} onShowOutput={showOutput} onShowBrowser={showBrowser} onChooseFile={(id) => action(`file:${id}`, "chooseFile", { id })} />)}</ol> : <div className="sb-activity-empty"><Download size={22} aria-hidden="true" /><p>Your downloads and conversions will appear here.</p></div>}<button className="sb-text-button sb-export" type="button" disabled={busy.has("report")} onClick={exportReport}>Export troubleshooting report</button></aside>
+          <aside className="sb-activity" aria-labelledby="sb-activity-title"><div className="sb-section-heading"><h2 id="sb-activity-title">Song activity</h2>{activeCount ? <span className="sb-count">{activeCount} pending</span> : null}</div><p className="sb-activity-description">Songs are processed one at a time.</p>{jobs.length ? <ol className="sb-job-list">{jobs.map((job) => <JobCard key={job.id} job={job} canSave={outputReady} busy={["cancel", "show", "retry", "review", "clear"].some((key) => busy.has(`${key}:${job.id}`))} onCancel={(id) => action(`cancel:${id}`, "cancel", { id })} onRetry={(id) => action(`retry:${id}`, "retry", { id })} onRelax={(id) => action(`retry:${id}`, "retry", { id, relaxRequirements: true })} onReview={reviewCached} onClearCache={(id) => action(`clear:${id}`, "clearCache", { id })} onShowOutput={showOutput} onShowBrowser={showBrowser} onChooseFile={(id) => action(`file:${id}`, "chooseFile", { id })} />)}</ol> : <div className="sb-activity-empty"><Download size={22} aria-hidden="true" /><p>Your downloads and conversions will appear here.</p></div>}<button className="sb-text-button sb-export" type="button" disabled={busy.has("report")} onClick={exportReport}>Export troubleshooting report</button></aside>
         </div>
       </>}
     </section>

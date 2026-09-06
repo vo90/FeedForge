@@ -1240,7 +1240,7 @@ function App() {
           <ConversionProgress progress={conversionProgress} isConverting={isConverting} />
         )}
 
-        {activeView === "songs" ? <SongBrowser api={window.songBrowser} outputSettings={{ outputDir: outputDir || undefined, outputLayout, nameTemplate: outputNameTemplateForFormat(outputNameFormat, outputNameTemplate) }} onChooseOutput={chooseOutput} onOutputDirChange={setOutputDir} onReview={async (inputPath) => { await addFiles([inputPath]); setActiveView("workspace"); }} /> : activeView === "settings" || activeView === "stems" ? (
+        {activeView === "songs" ? <SongBrowser api={window.songBrowser} outputSettings={{ outputDir: outputDir || undefined, outputLayout, nameTemplate: outputNameTemplateForFormat(outputNameFormat, outputNameTemplate) }} onOpenOutputSettings={() => { setSettingsSection("conversion"); setActiveView("settings"); }} onOutputDirChange={setOutputDir} onReview={async (inputPath) => { await addFiles([inputPath]); setActiveView("workspace"); }} /> : activeView === "settings" || activeView === "stems" ? (
           <section className={`settings-page ${activeView === "stems" ? "settings-page-full" : ""}`}>
             {activeView === "settings" && (
               <div className="settings-nav" aria-label="Settings sections">
@@ -1254,7 +1254,7 @@ function App() {
               <div className="settings-card-head">
                 <div>
                   <h2>Conversion</h2>
-                  <p>Output, naming, and package options.</p>
+                  <p>The output folder, file names, and folder layout apply to conversions and song downloads.</p>
                 </div>
               </div>
               <div className="settings-grid">

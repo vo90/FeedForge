@@ -31,6 +31,10 @@ function rendererSnapshot() {
     searchButton: submit ? button(submit) : null,
     connection: clean(document.querySelector('.sb-connection')?.textContent),
     accountButton: account ? button(account) : null,
+    outputFolder: clean(document.querySelector('.sb-output-label p')?.textContent),
+    outputButtons: [...document.querySelectorAll('.sb-output button')].map(button),
+    settingsSection: clean(document.querySelector('.settings-nav button.active')?.textContent),
+    settingsOutputFolder: clean(document.querySelector('.settings-page .path-action.wide b')?.textContent),
     results, jobs,
     alerts: [...document.querySelectorAll('.song-browser [role="alert"]')].map((element) => clean(element.textContent)),
     pendingCount: clean(document.querySelector('.sb-count')?.textContent),
@@ -70,6 +74,12 @@ function rendererAction(action) {
     return;
   }
   if (action.kind === 'navigate') return clickButton(document.querySelector('.side-nav'), action.label);
+  if (action.kind === 'output') return clickButton(document.querySelector('.sb-output'), action.label);
+  if (action.kind === 'settingsOutput') {
+    const button = [...document.querySelectorAll('.settings-page button.path-action')].find((element) => clean(element.querySelector('span')?.textContent) === 'Output');
+    if (!button || button.disabled) throw new Error('The Settings Output folder control is absent or disabled.');
+    button.click(); return;
+  }
   if (action.kind === 'setting') {
     const label = [...document.querySelectorAll('.settings-page label')].find((element) => clean([...element.childNodes].filter((node) => node.nodeType === Node.TEXT_NODE).map((node) => node.textContent).join(' ')) === action.label);
     const input = label?.querySelector('input, select');
@@ -135,7 +145,7 @@ function rendererAction(action) {
 async function runUiScenarios({ win, fixture, test }) {
   assert.ok(win?.webContents && typeof win.webContents.executeJavaScript === 'function');
   assert.equal(typeof test, 'function');
-  for (const method of ['holdNextSearch', 'waitForSearch', 'releaseSearch', 'waitForSearchSettled', 'counts', 'waitForDownload', 'failConversionOnce', 'removeOutput', 'waitForOutputSettings', 'outputFor']) {
+  for (const method of ['holdNextSearch', 'waitForSearch', 'releaseSearch', 'waitForSearchSettled', 'counts', 'waitForDownload', 'failConversionOnce', 'removeOutput', 'waitForOutputSettings', 'outputFor', 'chooseOutput']) {
     assert.equal(typeof fixture?.[method], 'function', `The main-side fixture must provide ${method}().`);
   }
   for (const name of ['slow', 'fast', 'retry']) assert.ok(fixture.charts?.[name]?.id && fixture.charts[name].title);
@@ -194,6 +204,13 @@ async function runUiScenarios({ win, fixture, test }) {
     assert.equal(initial.accountButton?.disabled, false);
     assert.equal(initial.advancedPreferencesPresent, false, 'Find songs must expose the straightforward arrangement and tuning filters without the removed advanced preferences.');
     assert.equal((await fixture.counts()).search, 0, 'Checking the UI must not request a website page.');
+    assert.equal(initial.outputFolder, 'Choose an output folder in Settings.');
+    assert.deepEqual(initial.outputButtons, [{ label: 'Choose in Settings', disabled: false }], 'Find songs must navigate to the shared setting instead of offering an independent folder picker.');
+    await action({ kind: 'output', label: 'Choose in Settings' });
+    const settings = await until((state) => state.activeView === 'Settings' && state.settingsSection === 'Conversion', 'Output shortcut opens Conversion settings');
+    assert.equal(settings.settingsOutputFolder, 'Source folder', 'The test must begin with no explicit output folder in Settings.');
+    assert.equal((await fixture.counts()).outputPicks.length, 0, 'Opening Settings cannot open a folder picker by itself.');
+    await navigate('Find songs');
     evidence.initialConnection = { label: initial.connection, action: initial.accountButton.label };
   });
 
@@ -242,6 +259,34 @@ async function runUiScenarios({ win, fixture, test }) {
     evidence.search = { submitted: 'fixture', draft, resultTitles: titles, unsupportedTitle: unsupported[0].title, requests: counts.search, completed: counts.searchCompleted };
   });
 
+  await test('production Find songs uses the output folder selected in Settings', async () => {
+    const before = await until((state) => state.results.length > 0 && !state.pending, 'Search results without an output folder');
+    assert.equal(before.outputFolder, 'Choose an output folder in Settings.');
+    assert.equal(before.searchButton.disabled, false, 'Choosing an output folder must not be required for searching.');
+    for (const chart of [slow, fast, retry]) assert.equal(buttonWith(resultFor(before, chart), 'Download & convert')?.disabled, true, 'Downloading requires an explicit output folder in Settings.');
+    const chosen = [];
+    for (const name of ['first', 'second']) {
+      if (name === 'first') {
+        await action({ kind: 'output', label: 'Choose in Settings' });
+        await until((state) => state.activeView === 'Settings' && state.settingsSection === 'Conversion', 'Shared output folder settings');
+      } else await navigate('Settings');
+      const directory = await fixture.chooseOutput(name);
+      await action({ kind: 'settingsOutput' });
+      await until((state) => state.settingsOutputFolder === directory, 'Settings displays the selected ' + name + ' folder');
+      await navigate('Find songs');
+      await bounded(fixture.waitForOutputSettings({ outputDir: directory }), 'Shared ' + name + ' output folder synchronization');
+      const state = await until((value) => value.outputFolder === directory && buttonWith(resultFor(value, fast), 'Download & convert')?.disabled === false, 'Find songs uses the selected ' + name + ' folder');
+      assert.ok(state.outputButtons.every((button) => button.label !== 'Choose folder'), 'Find songs cannot expose a separate folder picker.');
+      chosen.push(directory);
+    }
+    const counts = await fixture.counts();
+    assert.deepEqual(counts.outputPicks.map((item) => item.selected), chosen);
+    assert.equal(counts.outputPicks[1].defaultPath, chosen[0], 'The main Settings picker reuses the previous shared output folder.');
+    assert.equal(counts.songBrowserFolderPicks, 0, 'No independent Song Browser folder dialog may run.');
+    assert.equal(counts.search, 1, 'Changing output settings must preserve the searched catalogue.');
+    evidence.sharedOutputFolder = { initial: 'Source folder', selected: chosen, searchAllowedBeforeSelection: true, downloadRequiresSelection: true };
+  });
+
   await test('production Cancel action settles a real download and unblocks the next queue job', async () => {
     await action({ kind: 'result', title: slow.title, label: 'Download & convert' });
     await bounded(fixture.waitForDownload(slow.id), 'Real cancellable DownloadItem');
@@ -259,6 +304,7 @@ async function runUiScenarios({ win, fixture, test }) {
     const completedOutput = await fixture.outputFor(fast.id);
     assert.deepEqual(completedOutput.outputSettings, queuedOutput.outputSettings, 'Changing Settings after queueing cannot rename or move an existing job.');
     assert.equal(completedOutput.relativePath, 'fixture-1101.feedpak', 'Source filename uses the observed download name without a CustomsForge ID suffix.');
+    assert.equal(completedOutput.outputFolder, 'second', 'The completed download must use the latest folder chosen in Settings.');
     await setOutputSettings('source', 'flat', '{source}');
     const completed = await until((state) => buttonWith(resultFor(state, fast), 'FeedPak ready'), 'Restored naming settings reuse their completed output');
     assert.equal(buttonWith(resultFor(completed, slow), 'Download & convert')?.disabled, false);

@@ -21,7 +21,7 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
   let quitting = false;
   const charts = new Map();
   const stages = new Map();
-  const state = () => ({ outputDir, jobs: jobs.snapshot(), connection: browser.connection,
+  const state = () => ({ outputDir, jobs: jobs.snapshot().map((job) => outputDir ? job : { ...job, inOutputDir: false }), connection: browser.connection,
     batches: batches?.snapshot() || [], preparation: collecting ? { ...collecting.progress, pending: true } : null,
     searchProgress: searching ? { ...searching.progress, requestId: searching.id, pending: true } : null,
     feedback: { ...feedback, url: config.feedback?.url || '', autoRefresh: config.feedback?.autoRefresh === true } });
@@ -91,19 +91,23 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
       try { config.feedback.url = normalizeEndpoint(config.feedback.url); }
       catch { config.feedback = { url: '', autoRefresh: false }; }
     }
-    outputDir = typeof config.outputDir === 'string' && path.isAbsolute(config.outputDir)
+    const legacyOutputDir = typeof config.outputDir === 'string' && path.isAbsolute(config.outputDir)
       ? config.outputDir : path.join(root, 'FeedPaks');
-    if (typeof config.sharedOutputDir === 'string' && path.isAbsolute(config.sharedOutputDir)) outputDir = config.sharedOutputDir;
+    const sharedOutputDir = typeof config.sharedOutputDir === 'string' && path.isAbsolute(config.sharedOutputDir) ? config.sharedOutputDir : '';
+    outputDir = usesSharedOutput() ? sharedOutputDir : legacyOutputDir;
     browser = new CustomsForgeBrowser({ BrowserWindow, session,
       profilePath: path.join(root, 'browser-profile'), parent: getMainWindow, onConnection: () => emit(), onDiagnostic: diagnostics.record });
     try {
       imports = new ImportIndex({ root: path.join(root, 'imports') });
-      jobs = new SongJobs({ root: path.join(root, 'jobs'), outputDir, outputSettings: config.sharedOutputSettings || null,
+      // SongJobs needs a nonempty internal path to read historical records. A
+      // missing shared folder is never exposed or admitted for new work.
+      jobs = new SongJobs({ root: path.join(root, 'jobs'), outputDir: outputDir || legacyOutputDir, outputSettings: config.sharedOutputSettings || null,
         download: (chart, options) => browser.download(chart, options), runConverter, emit,
         findReusable: ({ chart, sourceHash, recipe, requirements, signal, outputDir, outputSettings, sourceFilename }) => imports.find(chart, { sourceHash, recipe, requirements, signal, outputDir, outputSettings, sourceFilename }),
         onCompleted: (entry) => { imports.record(entry); browser.filteredSnapshot = null; } });
       browser.decorateCharts = async (charts, request, signal) => {
         if (!request.filters?.hideConverted) return charts;
+        if (!outputDir) return charts.map((chart) => ({ ...chart, alreadyConverted: false }));
         const result = [];
         for (const chart of charts) {
           if (signal?.aborted) throw new Error('Collection cancelled.');
@@ -142,6 +146,29 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
     jobs.recipe = await recipePromise;
     return jobs.recipe;
   }
+  function usesSharedOutput() {
+    return Object.hasOwn(config, 'sharedOutputDir') || Object.hasOwn(config, 'sharedOutputSettings');
+  }
+  function requireOutput(directory) {
+    if (!outputDir) throw new Error('Choose an output folder in FeedForge Settings before downloading songs.');
+    if (directory && usesSharedOutput() && path.resolve(directory) !== path.resolve(outputDir)) {
+      throw new Error('This batch was prepared for a different output folder. Restore that folder in FeedForge Settings or prepare a new batch.');
+    }
+    return outputDir;
+  }
+  function requireBatchOutput(id) {
+    requireOutput();
+    const batch = batches.snapshot().find((item) => item.id === String(id));
+    if (batch) requireOutput(batch.outputDir);
+  }
+  async function runBatchAction(id, action) {
+    requireBatchOutput(id);
+    await ensureRecipe();
+    requireBatchOutput(id);
+    await batches.setRecipe(String(id), jobs.recipe);
+    requireBatchOutput(id);
+    return action();
+  }
   async function importDecisions(selected, preferences, directory, signal) {
     const decisions = {};
     for (const chart of selected) {
@@ -164,15 +191,15 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
   handler('getState', () => state());
   handler('setOutputSettings', ({ settings }) => {
     const normalized = normalizeOutputSettings(settings);
-    const sharedDir = settings?.outputDir || '';
+    const sharedDir = settings?.outputDir ?? '';
     if (typeof sharedDir !== 'string' || (sharedDir && (!path.isAbsolute(sharedDir) || sharedDir.length > 4096 || sharedDir.includes('\0')))) throw new Error('Choose a valid FeedForge output folder.');
-    const target = sharedDir || config.outputDir || path.join(root, 'FeedPaks');
     const previous = jobs.outputDir;
-    let selected = previous;
+    let selected = '';
     try {
-      if (path.resolve(target) !== previous) selected = jobs.setOutputDir(target);
-      saveSettings({ ...config, sharedOutputSettings: normalized, sharedOutputDir: sharedDir });
+      if (sharedDir) selected = path.resolve(sharedDir) === previous ? previous : jobs.setOutputDir(sharedDir);
+      saveSettings({ ...config, sharedOutputSettings: normalized, sharedOutputDir: selected });
     } catch (error) { jobs.outputDir = previous; throw error; }
+    outputGeneration++;
     outputDir = selected;
     jobs.outputSettings = normalized;
     browser.filteredSnapshot = null;
@@ -199,10 +226,12 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
   });
   handler('cancelSearch', ({ requestId }) => { if (searching && (!requestId || searching.id === requestId)) searching.controller.abort(); return { ok: true }; });
   handler('enqueue', async ({ id, selection, reviewAnother = false }) => {
+    requireOutput();
     const chart = charts.get(String(id));
     if (!chart) throw new Error('Search for the chart again before downloading it.');
     if (!chart.supported) throw new Error('This host is not supported yet.');
     await ensureRecipe();
+    requireOutput();
     return jobs.enqueue({ ...chart, recipe: jobs.recipe, reviewAnother: reviewAnother === true, selection: normalizeRequirements(selection || {}) });
   });
   handler('chooseFile', ({ id }) => browser.chooseFile({ id: String(id) }));
@@ -211,11 +240,13 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
     if (!chart) throw new Error('Search for the chart again to check the saved song.');
     const job = jobs.snapshot().find((entry) => entry.id === jobId && entry.chartId === chart.id && entry.state === 'completed');
     if (!job) throw new Error('The saved song has changed. Refresh its results.');
+    if (!outputDir) return { reusable: false, code: 'missing_output_folder', reason: 'Choose an output folder in FeedForge Settings.', status: 'new_conversion' };
     await ensureRecipe();
     const assessment = await imports.assess(chart, { jobId: job.id, outputDir, outputSettings: jobs.outputSettings, preferences: selectionForChart(chart, normalizeRequirements(selection || {})), recipe: jobs.recipe });
     return { reusable: assessment.reusable, code: assessment.code, reason: assessment.reason, status: assessment.status };
   });
   handler('prepareBatch', async ({ request, ids, preferences, scope = 'all' }) => {
+    requireOutput();
     if (collecting) throw new Error('A batch is already being prepared.');
     const query = normalizeSearchRequest(request);
     const target = jobs.validateOutputDir(outputDir);
@@ -237,31 +268,37 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
       } else throw new Error('Choose selected charts or all results.');
       if (operation.controller.signal.aborted) throw new Error('Batch preparation cancelled.');
       const decisions = await importDecisions(selected, preferences || {}, target, operation.controller.signal);
+      requireOutput(target);
       return batches.prepare({ charts: selected, preferences, recipe: jobs.recipe, importDecisions: decisions, outputDir: target, query: searchIdentity(query), complete: true });
     } finally { if (collecting === operation) collecting = null; emit(); }
   });
   handler('cancelPreparation', () => { collecting?.controller.abort(); return { ok: true }; });
   handler('chooseBatch', ({ id, selectedIds, forceReviewIds }) => batches.choose(String(id), { selectedIds, forceReviewIds }));
   handler('updateBatchPreferences', async ({ id, preferences }) => {
+    requireBatchOutput(id);
     const batch = batches.snapshot().find((item) => item.id === String(id));
     if (!batch || batch.state !== 'draft') throw new Error('Choose a batch that is still being reviewed.');
     await ensureRecipe();
     preferences = { ...preferences, ...(jobs.outputSettings ? { outputSettings: { ...jobs.outputSettings } } : {}) };
-    return batches.updatePreferences(String(id), { preferences, importDecisions: await importDecisions(batch.charts, preferences || {}, batch.outputDir) });
+    const decisions = await importDecisions(batch.charts, preferences || {}, batch.outputDir);
+    requireBatchOutput(id);
+    return batches.updatePreferences(String(id), { preferences, importDecisions: decisions });
   });
   handler('skipBatchItem', ({ id, itemId }) => batches.skipItem(String(id), String(itemId)));
-  handler('retryBatchItem', async ({ id, itemId, relaxRequirements }) => { await ensureRecipe(); await batches.setRecipe(String(id), jobs.recipe); return batches.retryItem(String(id), String(itemId), { relaxRequirements: relaxRequirements === true }); });
+  handler('retryBatchItem', ({ id, itemId, relaxRequirements }) => runBatchAction(id, () => batches.retryItem(String(id), String(itemId), { relaxRequirements: relaxRequirements === true })));
   handler('dismissBatchSuggestion', ({ id, suggestionId }) => batches.dismissSuggestion(String(id), String(suggestionId)));
-  handler('startBatch', async ({ id }) => { await ensureRecipe(); await batches.setRecipe(String(id), jobs.recipe); return batches.start(String(id)); });
+  handler('startBatch', ({ id }) => runBatchAction(id, () => batches.start(String(id))));
   handler('pauseBatch', ({ id }) => batches.pause(String(id)));
-  handler('resumeBatch', async ({ id, retryFailed }) => { await ensureRecipe(); await batches.setRecipe(String(id), jobs.recipe); return batches.resume(String(id), { retryFailed: retryFailed === true }); });
-  handler('resolveBatchItem', async ({ id, itemId }) => { await ensureRecipe(); await batches.setRecipe(String(id), jobs.recipe); return batches.resumeItem(String(id), String(itemId)); });
+  handler('resumeBatch', ({ id, retryFailed }) => runBatchAction(id, () => batches.resume(String(id), { retryFailed: retryFailed === true })));
+  handler('resolveBatchItem', ({ id, itemId }) => runBatchAction(id, () => batches.resumeItem(String(id), String(itemId))));
   handler('cancelBatch', ({ id }) => batches.cancel(String(id)));
   handler('chooseBatchFile', ({ id, itemId, choice }) => batches.setItemChoice(String(id), String(itemId), { choice }));
   handler('removeBatch', ({ id }) => { batches.remove(String(id)); return { ok: true }; });
   handler('cancel', ({ id }) => jobs.cancel(String(id)));
   handler('retry', async ({ id, relaxRequirements }) => {
+    requireOutput();
     await ensureRecipe(); diagnostics.record({ code: 'retry_requested', stage: 'recovery' });
+    requireOutput();
     return jobs.retry(String(id), relaxRequirements === true ? { selection: { parts: [], tuning: null, platform: 'pc', strictPlatform: true, backingTrack: 'any', backingStrict: false, instrumentRequirements: [] } } : {});
   });
   handler('clearCache', async ({ id }) => {
@@ -291,11 +328,11 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
     return { ok: true, exported: true };
   });
   function selectOutput(selectedPath) {
-    const previous = outputDir;
+    const previous = jobs.outputDir;
     let selected;
     try {
       selected = jobs.setOutputDir(selectedPath);
-      saveSettings({ ...config, outputDir: selected });
+      saveSettings({ ...config, ...(usesSharedOutput() ? { sharedOutputDir: selected } : { outputDir: selected }) });
       outputDir = selected;
       browser.filteredSnapshot = null;
       diagnostics.record({ code: 'output_checked', stage: 'output' });

@@ -11,14 +11,14 @@ const { normalizeEndpoint } = require('../electron/song-browser/feedback.cjs');
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 function gate() { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; }
-function fixture(t) {
+function fixture(t, initialSettings) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'feedforge-ipc-settings-'));
   const libraryDir = path.join(directory, 'fixture-library'); fs.mkdirSync(libraryDir);
   const handlers = new Map(); const created = { browsers: [], queues: [] };
   const mainFrame = {}; const webContents = { mainFrame, send(channel, value) { if (channel === 'song-browser:state') calls.states.push(plain(value)); } };
   const win = { webContents, isDestroyed: () => false };
   const trusted = { sender: webContents, senderFrame: mainFrame };
-  const calls = { inspections: [], refreshes: [], retries: [], cleared: [], saves: [], opens: [], states: [], revealed: [] };
+  const calls = { inspections: [], refreshes: [], retries: [], enqueued: [], ran: [], cleared: [], saves: [], opens: [], states: [], revealed: [] };
   const options = { selectedOutput: path.join(directory, 'selected-output'), savePath: path.join(directory, 'report.json'), failSettings: false };
   const info = (url) => ({ url: normalizeEndpoint(url), libraryDir, version: '0.3.0-alpha.1', running: false });
   const remote = { inspect: async (url) => info(url), refresh: async (url) => info(url) };
@@ -30,7 +30,10 @@ function fixture(t) {
   class Queue {
     constructor(value) { this.options = value; this.outputDir = value.outputDir; this.entries = []; created.queues.push(this); }
     snapshot() { return this.entries.map((item) => ({ ...item })); }
+    validateOutputDir(value) { return path.resolve(value); }
     setOutputDir(value) { this.outputDir = path.resolve(value); fs.mkdirSync(this.outputDir, { recursive: true }); return this.outputDir; }
+    enqueue(chart) { const entry = { ...chart, outputDir: this.outputDir, outputSettings: this.outputSettings }; calls.enqueued.push(entry); return entry; }
+    async run(chart, context) { calls.ran.push({ chart, outputDir: context.outputDir }); return { status: 'completed' }; }
     retry(id) { calls.retries.push(id); return { ok: true, id }; }
     async clearCache(id) { calls.cleared.push(id); return { ok: true }; }
     async getCachedInput() { return path.join(directory, 'source.psarc'); }
@@ -45,7 +48,7 @@ function fixture(t) {
   const localRequire = (name) => {
     if (name === 'node:fs') return fsProxy;
     if (name === './browser.cjs') return { CustomsForgeBrowser: Browser };
-    if (name === './jobs.cjs') return { SongJobs: Queue };
+    if (name === './jobs.cjs') return { SongJobs: Queue, selectionForChart: require('../electron/song-browser/jobs.cjs').selectionForChart };
     if (name === './diagnostics.cjs') return { createDiagnostics };
     if (name === './feedback.cjs') return { normalizeEndpoint,
       inspectFeedback: async (url) => { calls.inspections.push(url); return remote.inspect(url); },
@@ -53,17 +56,19 @@ function fixture(t) {
     return require(name.startsWith('./') ? path.join(__dirname, '../electron/song-browser', name) : name);
   };
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../electron/song-browser/index.cjs'), 'utf8'),
-    { module, exports: module.exports, require: localRequire, process, console, setTimeout, clearTimeout });
+    { module, exports: module.exports, require: localRequire, process, console, setTimeout, clearTimeout, AbortController });
   const service = module.exports.registerSongBrowser({
     app: { getPath: () => directory, getVersion: () => '0.1.40', on() {} },
     BrowserWindow: Browser, session: {}, ipcMain: { handle(name, action) { handlers.set(name, action); } },
     dialog: { showSaveDialog: async (_win, request) => { calls.saves.push(request); return { canceled: false, filePath: options.savePath }; },
       showOpenDialog: async () => { calls.opens.push(true); return { canceled: false, filePaths: [options.selectedOutput] }; } },
-    shell: { showItemInFolder(filename) { calls.revealed.push(filename); } }, getMainWindow: () => win, runConverter() { throw new Error('No real converter in IPC fixture.'); }
+    shell: { showItemInFolder(filename) { calls.revealed.push(filename); } }, getMainWindow: () => win, runConverter() { throw new Error('No real converter in IPC fixture.'); },
+    getConverterRecipe: async () => require('./fixture-recipe.cjs')
   });
   t.after(async () => { await service.close(); fs.rmSync(directory, { recursive: true, force: true }); });
   const call = (name, payload, event = trusted) => handlers.get('song-browser:' + name)(event, payload);
   const settingsPath = path.join(directory, 'song-browser', 'settings.json');
+  if (initialSettings) { fs.mkdirSync(path.dirname(settingsPath), { recursive: true }); fs.writeFileSync(settingsPath, JSON.stringify(initialSettings)); }
   return { directory, libraryDir, handlers, options, calls, created, remote, info, call, settingsPath, trusted };
 }
 
@@ -219,4 +224,90 @@ test('a failed new connection attempt cannot strand the previous refresh in a re
   assert.equal((await f.call('connectFeedback', { url: 'http://127.0.0.1:8001' })).ok, false);
   running.resolve(); await refresh;
   assert.equal((await f.call('getState')).feedback.status, 'connected');
+});
+
+test('an empty shared output folder disables new work without hiding search or existing files', async (t) => {
+  const f = fixture(t); await f.call('getState');
+  const queue = f.created.queues[0];
+  const internal = queue.outputDir;
+  const saved = path.join(f.directory, 'existing.feedpak'); fs.writeFileSync(saved, 'fixture');
+  queue.entries = [{ id: 'saved', chartId: '123', state: 'completed', outputPath: saved, outputAvailable: true, inOutputDir: true }];
+  const shared = await f.call('setOutputSettings', { settings: { outputDir: '', outputLayout: 'artist', nameTemplate: '{artist} - {title}' } });
+  assert.equal(shared.outputDir, '', 'Settings without a directory must not pick an app-data fallback');
+  assert.equal(shared.jobs[0].inOutputDir, false);
+  assert.equal(shared.jobs[0].state, 'completed'); assert.equal(shared.jobs[0].outputAvailable, true);
+  assert.equal(queue.outputDir, internal, 'private history context stays intact');
+  assert.equal(fs.existsSync(internal), false, 'no hidden fallback output folder is created');
+  assert.equal(JSON.parse(fs.readFileSync(f.settingsPath)).sharedOutputDir, '');
+  for (const name of ['enqueue', 'prepareBatch', 'startBatch', 'resumeBatch', 'retryBatchItem', 'resolveBatchItem', 'updateBatchPreferences', 'retry']) {
+    const result = await f.call(name, { id: '123', itemId: 'fixture', request: { query: 'song' } });
+    assert.equal(result.ok, false, name); assert.match(result.error, /output folder in FeedForge Settings/, name);
+  }
+  assert.equal(f.calls.retries.length + f.calls.enqueued.length + f.calls.ran.length, 0);
+  assert.equal((await f.call('search', { query: 'song' })).status, 'ready');
+  assert.equal((await f.call('signIn')).ok, true);
+  assert.equal((await f.call('showOutput', { id: 'saved' })).ok, true);
+  assert.deepEqual(f.calls.revealed, [saved]);
+  assert.deepEqual(plain(await f.created.browsers[0].decorateCharts([{ id: '123', alreadyConverted: true }], { filters: { hideConverted: true } })), [{ id: '123', alreadyConverted: false }]);
+});
+
+test('persisted shared settings with no folder remain unconfigured after initialization', async (t) => {
+  const f = fixture(t, { outputDir: path.join(os.tmpdir(), 'old-customsforge-output'), sharedOutputDir: '', sharedOutputSettings: { outputLayout: 'flat', nameTemplate: '{source}' } });
+  assert.equal((await f.call('getState')).outputDir, '');
+  assert.match((await f.call('retry', { id: 'old-job' })).error, /FeedForge Settings/);
+  assert.equal((await f.call('search', { query: 'song' })).status, 'ready');
+});
+
+test('new songs and FeedBack folder shortcuts share the Settings output directory', async (t) => {
+  const f = fixture(t); await f.call('getState');
+  const chosen = path.join(f.directory, 'settings-output');
+  const settings = { outputDir: chosen, outputLayout: 'artist', nameTemplate: '{artist} - {title}' };
+  assert.equal((await f.call('setOutputSettings', { settings })).outputDir, chosen);
+  f.created.browsers[0].search = () => ({ status: 'ready', results: [{ id: '123', artist: 'Fixture', title: 'Song', host: 'dropbox', supported: true }] });
+  await f.call('search', { query: 'song' });
+  assert.equal((await f.call('enqueue', { id: '123' })).outputDir, chosen);
+  assert.equal(f.calls.enqueued[0].outputSettings.nameTemplate, settings.nameTemplate);
+  await f.call('connectFeedback', { url: 'http://localhost:8000' });
+  assert.equal((await f.call('useFeedbackFolder')).outputDir, f.libraryDir);
+  const persisted = JSON.parse(fs.readFileSync(f.settingsPath));
+  assert.equal(persisted.sharedOutputDir, f.libraryDir);
+  assert.equal(Object.hasOwn(persisted, 'outputDir'), false, 'the shortcut must not create an independent Song Browser choice');
+  assert.equal((await f.call('enqueue', { id: '123' })).outputDir, f.libraryDir);
+  f.options.failSettings = true;
+  assert.equal((await f.call('setOutputSettings', { settings: { ...settings, outputDir: '' } })).ok, false);
+  assert.equal((await f.call('getState')).outputDir, f.libraryDir);
+  assert.equal(f.created.queues[0].outputDir, f.libraryDir);
+});
+
+test('a batch cannot start or resume into an obsolete Settings folder', async (t) => {
+  const f = fixture(t); await f.call('getState');
+  const first = path.join(f.directory, 'first'); const second = path.join(f.directory, 'second');
+  const shared = (outputDir) => f.call('setOutputSettings', { settings: { outputDir, outputLayout: 'flat', nameTemplate: '{source}' } });
+  await shared(first);
+  f.created.browsers[0].search = () => ({ status: 'ready', results: [{ id: '123', artist: 'Fixture', title: 'Song', host: 'dropbox', supported: true }] });
+  await f.call('search', { query: 'song' });
+  const batch = await f.call('prepareBatch', { request: { query: 'song' }, scope: 'selected', ids: ['123'] });
+  assert.equal(batch.state, 'draft'); assert.equal(batch.outputDir, first);
+  await shared(second);
+  for (const name of ['startBatch', 'resumeBatch', 'retryBatchItem', 'resolveBatchItem', 'updateBatchPreferences']) {
+    const result = await f.call(name, { id: batch.id, itemId: 'fixture' });
+    assert.equal(result.ok, false); assert.match(result.error, /different output folder/);
+  }
+  const untouched = (await f.call('getState')).batches.find((item) => item.id === batch.id);
+  assert.equal(untouched.state, 'draft'); assert.equal(untouched.outputDir, first); assert.equal(untouched.items.length, 0);
+  assert.equal(f.calls.ran.length, 0);
+  await shared(first);
+  assert.equal((await f.call('startBatch', { id: batch.id })).state, 'running');
+  await tick(); assert.equal(f.calls.ran[0]?.outputDir, first);
+});
+
+test('clearing Settings during catalogue collection cannot prepare work for the previous folder', async (t) => {
+  const f = fixture(t); await f.call('setOutputSettings', { settings: { outputDir: f.options.selectedOutput } });
+  const collecting = gate();
+  f.created.browsers[0].collect = async () => { await collecting.promise; return { results: [] }; };
+  const pending = f.call('prepareBatch', { request: { query: 'song' } }); await tick();
+  await f.call('setOutputSettings', { settings: { outputDir: '' } });
+  collecting.resolve();
+  assert.match((await pending).error, /FeedForge Settings/);
+  assert.equal((await f.call('getState')).batches.length, 0);
 });

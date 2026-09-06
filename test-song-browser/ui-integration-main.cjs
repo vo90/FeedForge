@@ -17,7 +17,7 @@ const charts = Object.freeze({
   slow: Object.freeze({ id: '1103', title: 'Fixture Cancel', artist: 'Fixture Artist', host: 'mediafire' }),
 });
 const byId = new Map(Object.values(charts).map((chart) => [chart.id, chart]));
-const counters = { search: 0, searchCompleted: 0, downloads: {}, conversions: {}, plans: [], outputSettings: null, reveals: 0, browserActions: { signIn: 0, showBrowser: 0 } };
+const counters = { search: 0, searchCompleted: 0, downloads: {}, conversions: {}, plans: [], outputSettings: null, outputPicks: [], songBrowserFolderPicks: 0, reveals: 0, browserActions: { signIn: 0, showBrowser: 0 } };
 const tests = [], rendererErrors = [], unexpected = [], transfers = [], savedReports = [];
 const conversionFailures = new Map();
 let runtime, receipt, mainWindow, registration, searchGate, scenarioEvidence, currentOutput = 'first';
@@ -252,7 +252,9 @@ function fixtureApi() {
       const job = [...ledger.jobs].reverse().find((item) => item.chartId === String(id) && item.state === state);
       assert.ok(job, 'No fixture job in the requested state exists for ' + id);
       if (job.outputPath && fs.existsSync(job.outputPath)) ownedFile(job.outputPath);
-      return { state: job.state, outputSettings: job.outputSettings, relativePath: job.outputPath ? path.relative(path.join(runtime, 'profile', 'song-browser', 'FeedPaks'), job.outputPath).replace(/\\/g, '/') : null };
+      const outputRoot = job.outputPath ? ['first', 'second'].map((name) => path.join(runtime, 'outputs', name)).find((directory) => inside(directory, job.outputPath)) : null;
+      if (job.outputPath) assert.ok(outputRoot, 'Published output must stay in a folder explicitly selected in Settings.');
+      return { state: job.state, outputSettings: job.outputSettings, outputFolder: outputRoot ? path.basename(outputRoot) : null, relativePath: job.outputPath ? path.relative(outputRoot, job.outputPath).replace(/\\/g, '/') : null };
     },
     holdNextSearch() {
       assert.ok(!searchGate || searchGate.released, 'A fixture search is already held.');
@@ -263,7 +265,7 @@ function fixtureApi() {
     waitForSearchSettled: () => { const target = searchGate?.targetCompleted; assert.ok(target); return waitFor(() => counters.searchCompleted >= target, 'search IPC completion'); },
     waitForDownload: (id, count = 1) => waitFor(() => (counters.downloads[String(id)] || 0) >= count, 'download ' + id),
     failConversionOnce(id) { assert.ok(byId.has(String(id))); conversionFailures.set(String(id), 1); },
-    chooseOutput(name) { assert.ok(['first', 'second'].includes(name)); currentOutput = name; },
+    chooseOutput(name) { assert.ok(['first', 'second'].includes(name)); currentOutput = name; return path.join(runtime, 'outputs', name); },
     removeOutput(id) {
       const ledger = JSON.parse(fs.readFileSync(path.join(runtime, 'profile', 'song-browser', 'jobs', 'jobs.json')));
       const job = [...ledger.jobs].reverse().find((item) => item.chartId === String(id) && item.state === 'completed' && item.outputPath);
@@ -315,6 +317,13 @@ async function main() {
     'stemServer:status': { url: 'http://127.0.0.1:7865', running: false, processRunning: false, starting: false, healthy: false, accelerators: [] },
   };
   for (const [name, response] of Object.entries(inert)) ipcMain.handle(name, (event) => { trusted(event); return response; });
+  ipcMain.handle('dialog:pickOutput', (event, options = {}) => {
+    trusted(event);
+    const selected = path.join(runtime, 'outputs', currentOutput);
+    assert.ok(inside(runtime, canonical(selected)));
+    counters.outputPicks.push({ selected, defaultPath: options.defaultPath || null });
+    signalWaiters(); return selected;
+  });
   ipcMain.handle('converter:inspect', (event, filename) => { trusted(event); return { ok: true, preview: previewFrom(filename).preview }; });
   const observedIpc = { handle(name, action) {
     ipcMain.handle(name, async (...args) => {
@@ -339,7 +348,7 @@ async function main() {
   const { registerSongBrowser } = require('../electron/song-browser/index.cjs');
   registration = registerSongBrowser({ getConverterRecipe: async () => require('./fixture-recipe.cjs'), app, BrowserWindow, session, ipcMain: observedIpc, getMainWindow: () => mainWindow, runConverter,
     dialog: {
-      showOpenDialog: async () => ({ canceled: false, filePaths: [path.join(runtime, 'outputs', currentOutput)] }),
+      showOpenDialog: async () => { counters.songBrowserFolderPicks++; return { canceled: false, filePaths: [path.join(runtime, 'outputs', currentOutput)] }; },
       showSaveDialog: async (_window, options) => {
         const ext = options.filters?.[0]?.extensions?.[0] === 'psarc' ? '.psarc' : '.json';
         const filename = path.join(runtime, 'reports', 'fixture-export-' + (savedReports.length + 1) + ext);
