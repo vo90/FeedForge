@@ -51,6 +51,13 @@ function outputName(artist, title) {
   return `${base}.feedpak`;
 }
 
+function matchesOutput(job, previous, expectedFolder) {
+  const sameSettings = JSON.stringify(job.outputSettings || null) === JSON.stringify(previous.outputSettings || null);
+  const sameSourceName = !job.outputSettings?.nameTemplate.toLowerCase().includes('{source}') || job.resolvedFile?.filename === previous.resolvedFile?.filename;
+  try { return sameSettings && sameSourceName && fs.realpathSync.native(path.dirname(previous.outputPath)) === expectedFolder; }
+  catch { return false; }
+}
+
 function aborted() {
   const error = new Error("Cancelled.");
   error.name = "AbortError";
@@ -698,12 +705,9 @@ class SongJobs {
       job.coverage = require('./imports.cjs').coverageOf({ ...duplicate.coverage, source_platforms: preview.source_platforms });
       job.outputHash = duplicate.outputHash;
       const currentRoot = await fsp.realpath(job.outputDir);
-      const previousRoot = await fsp.realpath(path.dirname(duplicate.outputPath));
       let output = duplicate.outputPath;
-      const sameSettings = JSON.stringify(job.outputSettings || null) === JSON.stringify(duplicate.outputSettings || null);
       const expectedFolder = path.resolve(currentRoot, path.dirname(job.outputRelativePath || '.'));
-      const sameSourceName = !job.outputSettings?.nameTemplate.toLowerCase().includes('{source}') || job.resolvedFile?.filename === duplicate.resolvedFile?.filename;
-      const keepOutput = sameSettings && sameSourceName && previousRoot === expectedFolder;
+      const keepOutput = matchesOutput(job, duplicate, expectedFolder);
       if (!keepOutput) output = await this._publish(job, duplicate.outputPath);
       else {
         this._writeReceipt(job, output);
@@ -739,19 +743,17 @@ class SongJobs {
   }
 
   async _duplicate(job) {
-    if (this.findReusable) {
-      const saved = await this.findReusable({ chart: job.chart, sourceHash: job.sourceHash, recipe: job.recipe, requirements: { ...job.selection, platform: 'any' }, signal: job.controller.signal });
-      check(job);
-      if (saved) return saved;
-    }
     const currentRoot = await fsp.realpath(job.outputDir);
     const expectedFolder = path.resolve(currentRoot, path.dirname(job.outputRelativePath || '.'));
+    const lookup = { chart: job.chart, sourceHash: job.sourceHash, recipe: job.recipe, requirements: { ...job.selection, platform: 'any' }, signal: job.controller.signal };
+    if (this.findReusable) {
+      const saved = await this.findReusable({ ...lookup, outputDir: job.outputDir, outputSettings: job.outputSettings,
+        sourceFilename: job.outputSettings?.nameTemplate.toLowerCase().includes('{source}') ? job.resolvedFile?.filename : undefined });
+      check(job);
+      if (saved && matchesOutput(job, saved, expectedFolder)) return saved;
+    }
     const candidates = [...this.jobs].reverse();
-    candidates.sort((a, b) => {
-      const selected = (item) => { try { return fs.realpathSync.native(path.dirname(item.outputPath)) === expectedFolder
-        && JSON.stringify(item.outputSettings || null) === JSON.stringify(job.outputSettings || null) ? 1 : 0; } catch { return 0; } };
-      return selected(b) - selected(a);
-    });
+    candidates.sort((a, b) => Number(matchesOutput(job, b, expectedFolder)) - Number(matchesOutput(job, a, expectedFolder)));
     for (const previous of candidates) {
       if (previous === job || previous.state !== "completed" || previous.sourceHash !== job.sourceHash || !previous.outputPath || !HASH.test(previous.outputHash || "")) continue;
       if (!reuseDecision(previous, { chart: job.chart, requirements: { ...job.selection, platform: 'any' }, requestedChoice: job.requestedChoice, recipe: job.recipe, sourceHash: job.sourceHash }).reusable) continue;
@@ -760,6 +762,13 @@ class SongJobs {
         if (!stat.isFile() || stat.isSymbolicLink()) continue;
         if (await hashFile(previous.outputPath, job.controller.signal) === previous.outputHash) return previous;
       } catch (error) { if (job.controller.signal.aborted) throw error; }
+    }
+    // A differently named or located import can still supply verified bytes
+    // after all existing outputs with the requested settings have been checked.
+    if (this.findReusable) {
+      const saved = await this.findReusable(lookup);
+      check(job);
+      if (saved) return saved;
     }
     return null;
   }

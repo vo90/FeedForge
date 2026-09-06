@@ -180,11 +180,12 @@ class ImportIndex {
     return null;
   }
 
-  async assess(input, { outputDir, outputSettings, preferences = {}, requirements, requestedChoice, recipe, sourceHash, reviewAnother = false, signal, jobId } = {}) {
+  async assess(input, { outputDir, outputSettings, sourceFilename, preferences = {}, requirements, requestedChoice, recipe, sourceHash, reviewAnother = false, signal, jobId } = {}) {
     if (signal?.aborted) throw Object.assign(new Error("Import verification cancelled."), { code: "ABORT_ERR" });
     const chart = sanitizeChart(input);
     const exactSource = HASH.test(sourceHash || "");
     const candidates = this.records.filter((record) => (jobId == null || record.id === jobId)
+      && (sourceFilename == null || record.resolvedFile?.filename === sourceFilename)
       && (record.chartId === chart.id || (exactSource && record.sourceHash === sourceHash))).sort((a, b) => b.completedAt - a.completedAt);
     const describe = (result, record) => ({ ...result,
       status: result.reusable ? "available" : ["different_file", "review_file", "different_requirements"].includes(result.code) ? "choose_file"

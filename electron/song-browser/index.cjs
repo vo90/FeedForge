@@ -100,7 +100,7 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
       imports = new ImportIndex({ root: path.join(root, 'imports') });
       jobs = new SongJobs({ root: path.join(root, 'jobs'), outputDir, outputSettings: config.sharedOutputSettings || null,
         download: (chart, options) => browser.download(chart, options), runConverter, emit,
-        findReusable: ({ chart, sourceHash, recipe, requirements, signal }) => imports.find(chart, { sourceHash, recipe, requirements, signal }),
+        findReusable: ({ chart, sourceHash, recipe, requirements, signal, outputDir, outputSettings, sourceFilename }) => imports.find(chart, { sourceHash, recipe, requirements, signal, outputDir, outputSettings, sourceFilename }),
         onCompleted: (entry) => { imports.record(entry); browser.filteredSnapshot = null; } });
       browser.decorateCharts = async (charts, request, signal) => {
         if (!request.filters?.hideConverted) return charts;

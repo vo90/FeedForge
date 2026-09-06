@@ -41,6 +41,7 @@ async function fixture(t, options = {}) {
   const directory = await fsp.mkdtemp(path.join(os.tmpdir(), "feedforge-song-jobs-"));
   const root = path.join(directory, "jobs");
   const outputDir = path.join(directory, "output");
+  const imports = options.useImportIndex ? new (require('../electron/song-browser/imports.cjs').ImportIndex)({ root: path.join(directory, 'imports') }) : null;
   const calls = [], contexts = [], downloads = [], events = [];
   const normalDownload = async (chart, args) => {
     downloads.push(chart.id);
@@ -61,6 +62,8 @@ async function fixture(t, options = {}) {
     return { code: 0, stdout: "Wrote and validated FeedPak", stderr: "" };
   };
   const manager = new SongJobs({ recipe: require('./fixture-recipe.cjs'), root, outputDir, outputSettings: options.outputSettings,
+    findReusable: imports ? ({ chart, ...query }) => imports.find(chart, query) : undefined,
+    onCompleted: imports ? (entry) => imports.record(entry) : undefined,
     download: options.download ? (chart, args) => options.download(chart, args, normalDownload) : normalDownload,
     runConverter: (args, context) => {
       contexts.push(context);
@@ -80,7 +83,7 @@ async function fixture(t, options = {}) {
     assert.match(path.basename(directory), /^feedforge-song-jobs-/);
     await fsp.rm(directory, { recursive: true, force: true });
   });
-  return { manager, root, outputDir, directory, calls, contexts, downloads, events, result };
+  return { manager, root, outputDir, directory, calls, contexts, downloads, events, result, imports };
 }
 
 test('output settings are captured per job, artist folders are available, and reusable bytes get the new name', async (t) => {
@@ -111,6 +114,39 @@ test('output settings are captured per job, artist folders are available, and re
   assert.equal(third.outputPath, second.outputPath, 'The same output settings reuse the artist-folder copy.');
   const ledger = JSON.parse(await fsp.readFile(path.join(f.root, 'jobs.json'), 'utf8'));
   assert.deepEqual(ledger.jobs.find((job) => job.id === second.id).outputSettings, renamed);
+});
+
+test('import-backed reuse prefers existing settings and source names after job history expires', async (t) => {
+  const original = { outputLayout: 'flat', nameTemplate: '{source}' };
+  const renamed = { outputLayout: 'artist', nameTemplate: '{title} - {artist}' };
+  const f = await fixture(t, { useImportIndex: true, outputSettings: original, runConverter: async (args, _context, normal) => {
+    if (args[0] !== '--plan-conversion-file') return normal(args);
+    const request = JSON.parse(await fsp.readFile(args[1], 'utf8'));
+    const inputPath = request.items[0].inputPath;
+    const filename = request.nameTemplate === '{source}' ? path.basename(inputPath).replace(/\.psarc$/i, '.feedpak') : 'One - Metallica.feedpak';
+    const target = path.join(request.outputDir, request.outputLayout === 'artist' ? 'Metallica' : '', filename);
+    return { code: 0, stdout: JSON.stringify({ ok: true, items: [{ ok: true, inputPath, sourceSize: PSARC.length, outputs: [{ path: target }] }] }) };
+  } });
+  const chart = { ...CHART, resolvedFile: { filename: 'Original_Name_p.psarc', platform: 'pc' } };
+  const first = await f.result(f.manager.enqueue(chart).id);
+  assert.equal(first.state, 'completed');
+  f.manager.outputSettings = renamed;
+  const second = await f.result(f.manager.enqueue(chart).id);
+  assert.equal(second.state, 'completed'); assert.notEqual(second.outputPath, first.outputPath);
+  f.manager.jobs = []; // The import index outlives the bounded job history.
+  f.manager.outputSettings = original;
+  const restored = await f.result(f.manager.enqueue(chart).id);
+  assert.equal(restored.state, 'completed');
+  assert.equal(restored.outputPath, first.outputPath, 'Returning to earlier naming/layout settings reuses that existing output.');
+  const otherName = await f.result(f.manager.enqueue({ ...chart, resolvedFile: { filename: 'Another_Name_p.psarc', platform: 'pc' } }).id);
+  assert.equal(otherName.state, 'completed'); assert.equal(path.basename(otherName.outputPath), 'Another_Name_p.feedpak');
+  f.manager.jobs = [];
+  const originalName = await f.result(f.manager.enqueue(chart).id);
+  assert.equal(originalName.state, 'completed');
+  assert.equal(originalName.outputPath, first.outputPath, 'The latest import with another source filename must not cause a numbered duplicate.');
+  assert.equal(f.calls.filter((args) => args[1] === '-o').length, 1, 'Naming changes still reuse validated conversion bytes.');
+  assert.deepEqual((await fsp.readdir(f.outputDir)).sort(), ['Another_Name_p.feedpak', 'Metallica', 'Original_Name_p.feedpak']);
+  assert.deepEqual(await fsp.readFile(first.outputPath), FEEDPAK);
 });
 
 test("converts, validates, saves without stems and persists only bounded public metadata", async (t) => {
