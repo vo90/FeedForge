@@ -51,6 +51,24 @@ function page(rows = [row()], { headers = columns, url = origin + '/', text = 'S
   const doc = el('document', {}, [body]); doc.body = body; doc.URL = url; doc.title = 'CustomsForge';
   return doc;
 }
+// Observed Ignition header shape: textContent includes the arrow even when
+// Alpine hides its aria-hidden indicator with display:none. Keep the arrow in
+// the fixture so both the metadata reader and sort action exercise that case.
+function decorateHeading(heading, { label = heading.ownText, field = label.toLowerCase(), direction = null } = {}) {
+  const indicator = el('span', { class: 'header-sort-indicator', 'aria-hidden': 'true' }, [], direction === 'asc' ? '▲' : '▼');
+  if (!direction) indicator.style.display = 'none';
+  const button = el('button', { type: 'button', class: 'header-sort-button' }, [
+    el('i', { class: 'header-icon', 'aria-hidden': 'true' }),
+    el('span', { class: 'header-text' }, [], label), indicator,
+  ]);
+  const content = el('div', { class: 'header-content' }, [
+    el('i', { class: 'header-drag-grip', title: 'Drag to reorder', 'aria-hidden': 'true' }), button,
+  ]);
+  heading.ownText = ''; heading.children = [content]; content.parentElement = heading;
+  heading.attrs['data-column-key'] = field;
+  heading.attrs['aria-sort'] = direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : 'none';
+  return { button, indicator, content };
+}
 function run(fn, doc, request) {
   // Serialization proves no hidden module closure is needed in Electron.
   const context = { document: doc, location: { href: doc.URL }, URL, request, Date };
@@ -271,6 +289,69 @@ test('sort metadata and commands use the same observed whole-table control', () 
   assert.deepEqual(run(readSearchPage, doc).sort, { field: 'title', direction: 'desc' });
   assert.equal(run(requestSearchSort, doc, { field: 'title', direction: 'desc' }).status, 'applied');
   assert.equal(button.clicked, 1, 'verified order must not toggle again');
+});
+
+test('real Ignition headers retain hidden sort arrows without blocking search', () => {
+  const doc = page();
+  const expected = run(readSearchPage, doc).results;
+  const sortable = new Set(['Artist', 'Title', 'Album', 'Tuning', 'Creator', 'Added', 'Updated', 'Year', 'Duration', 'Downloads']);
+  const decorated = new Map();
+  for (const heading of doc.querySelectorAll('thead th')) {
+    if (sortable.has(heading.ownText)) decorated.set(heading.ownText, decorateHeading(heading));
+  }
+  const title = decorated.get('Title');
+  assert.equal(title.indicator.style.display, 'none');
+  assert.match(doc.querySelectorAll('thead th')[2].textContent, /Title\s+▼/);
+  const result = run(readSearchPage, doc);
+  assert.equal(result.status, 'ready'); assert.deepEqual(result.results, expected);
+  assert.equal(result.sort, undefined);
+  assert.deepEqual(run(requestSearchSort, doc, { field: 'title', direction: 'asc' }), { status: 'clicked', sort: null });
+  assert.equal(title.button.clicked, 1);
+  for (const [label, fixture] of decorated) if (label !== 'Title') assert.equal(fixture.button.clicked, 0);
+});
+
+test('real Ignition active arrows preserve verified ascending and descending sorting', () => {
+  for (const [field, label] of [['title', 'Title'], ['downloads', 'DLs']]) {
+    for (const direction of ['asc', 'desc']) {
+      const doc = page();
+      const heading = doc.querySelectorAll('thead th')[field === 'title' ? 2 : 12];
+      const { button, indicator } = decorateHeading(heading, { label, field, direction });
+      assert.equal(indicator.getAttribute('aria-hidden'), 'true');
+      assert.notEqual(indicator.style.display, 'none');
+      assert.deepEqual(run(readSearchPage, doc).sort, { field, direction });
+      assert.deepEqual(run(requestSearchSort, doc, { field, direction }), { status: 'applied', sort: { field, direction } });
+      assert.equal(button.clicked, 0);
+      const opposite = direction === 'asc' ? 'desc' : 'asc';
+      assert.deepEqual(run(requestSearchSort, doc, { field, direction: opposite }), { status: 'clicked', sort: { field, direction } });
+      assert.equal(button.clicked, 1);
+      // aria-sort remains the source of truth while an indicator is stale.
+      indicator.ownText = direction === 'asc' ? '▼' : '▲';
+      assert.deepEqual(run(readSearchPage, doc).sort, { field, direction });
+      assert.equal(run(requestSearchSort, doc, { field, direction }).status, 'applied');
+      assert.equal(button.clicked, 1);
+    }
+  }
+});
+
+test('decorated headers still reject duplicate columns and multiple sort buttons', () => {
+  const duplicateDoc = page();
+  const first = decorateHeading(duplicateDoc.querySelectorAll('thead th')[2]);
+  const duplicate = el('th', {}, [], 'Title');
+  const second = decorateHeading(duplicate);
+  const headerRow = duplicateDoc.querySelectorAll('thead tr')[0];
+  duplicate.parentElement = headerRow; headerRow.children.push(duplicate);
+  assert.equal(run(readSearchPage, duplicateDoc).status, 'layout_changed');
+  assert.equal(run(requestSearchSort, duplicateDoc, { field: 'title', direction: 'asc' }).status, 'layout_changed');
+  assert.equal(first.button.clicked, 0); assert.equal(second.button.clicked, 0);
+
+  const buttonsDoc = page();
+  const { button, content } = decorateHeading(buttonsDoc.querySelectorAll('thead th')[2]);
+  const extra = el('button', { 'aria-label': 'Another action' });
+  extra.parentElement = content; content.children.push(extra);
+  const result = run(requestSearchSort, buttonsDoc, { field: 'title', direction: 'asc' });
+  assert.equal(result.status, 'layout_changed');
+  assert.equal(result.error, 'The requested sort button is unavailable.');
+  assert.equal(button.clicked, 0); assert.equal(extra.clicked, 0);
 });
 
 test('sorting refuses missing, duplicate, disabled and off-site controls', () => {

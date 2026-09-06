@@ -134,7 +134,9 @@ function searchPage(query) {
   function renderCatalogue(data, perPage) {
     let field = 'title', direction = 'asc', page = 1;
     const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
-    const heading = (key, label) => `<th aria-sort="${field === key ? direction === 'asc' ? 'ascending' : 'descending' : 'none'}"><button onclick="window.fixtureSort('${key}')">${label}</button></th>`;
+    // Preserve Ignition's decorative indicator text even when display:none;
+    // simplified plain-label headers previously concealed a live-site failure.
+    const heading = (key, label) => `<th data-column-key="${key}" aria-sort="${field === key ? direction === 'asc' ? 'ascending' : 'descending' : 'none'}"><div class="header-content"><i class="header-drag-grip" aria-hidden="true"></i><button type="button" class="header-sort-button" onclick="window.fixtureSort('${key}')"><i class="header-icon" aria-hidden="true"></i><span class="header-text">${label}</span><span class="header-sort-indicator" aria-hidden="true"${field === key ? '' : ' style="display:none"'}>${field === key && direction === 'asc' ? '▲' : '▼'}</span></button></div></th>`;
     function render() {
       const ordered = [...data].sort((a, b) => (field === 'downloads' || field === 'year' ? a[field] - b[field] : String(a[field]).localeCompare(String(b[field]), 'en', { numeric: true })) * (direction === 'desc' ? -1 : 1));
       const offset = (page - 1) * perPage;

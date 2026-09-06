@@ -288,7 +288,11 @@ function requestSearchSort(request) {
   if (table.getAttribute('aria-busy') === 'true') return { status: 'waiting', error: 'The search results are still loading.' };
   const text = (node) => String(node?.textContent || '').replace(/\s+/g, ' ').trim();
   const visible = (node) => !!node && !node.hidden && node.getAttribute?.('aria-hidden') !== 'true' && node.style?.display !== 'none' && node.style?.visibility !== 'hidden' && (!node.getClientRects || node.getClientRects().length > 0);
-  const headings = Array.from(table.querySelectorAll('thead th')).filter((cell) => visible(cell) && labels[field].some((label) => text(cell).toLowerCase() === label.toLowerCase()));
+  // Ignition includes an aria-hidden ▲/▼ indicator even on unsorted columns.
+  // textContent includes that hidden glyph. Use the same semantic normalization
+  // as readSearchPage so reading and activating a column agree.
+  const headerName = (node) => text(node).toLowerCase().replace(/[^a-z0-9]/g, '');
+  const headings = Array.from(table.querySelectorAll('thead th')).filter((cell) => visible(cell) && labels[field].some((label) => headerName(cell) === label.toLowerCase()));
   if (headings.length !== 1) return failed('The requested sort column could not be identified reliably.');
   const heading = headings[0];
   const controls = Array.from(heading.querySelectorAll('button, [role="button"]')).filter((node) => visible(node) && !node.disabled && !node.hasAttribute('disabled') && node.getAttribute('aria-disabled') !== 'true');
