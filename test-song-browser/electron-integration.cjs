@@ -75,6 +75,14 @@ function searchPage(page = 1, pendingImage = false, query = 'fixture', sortField
   const heading = (field, label) => `<th data-column-key="${field}" aria-sort="${sortField === field ? direction === 'asc' ? 'ascending' : 'descending' : 'none'}"><div class="header-content"><i class="header-drag-grip" aria-hidden="true"></i><button type="button" class="header-sort-button" onclick="${action(1, field, sortField === field && direction === 'asc' ? 'desc' : 'asc')}"><i class="header-icon" aria-hidden="true"></i><span class="header-text">${label}</span><span class="header-sort-indicator" aria-hidden="true"${sortField === field ? '' : ' style="display:none"'}>${sortField === field && direction === 'asc' ? '▲' : '▼'}</span></button></div></th>`;
   return html(`<p>Showing ${page} to ${page} of 2 results</p> <table id="cdlc-table"><thead><tr><th>Download</th><th>Artist</th>${heading('title', 'Title')}<th>Album</th><th>Tuning</th><th>Creator</th><th>Parts</th><th>Version</th>${heading('downloads', 'DLs')}</tr></thead><tbody><tr><td><span title="Hosted on Dropbox">File</span></td><td>Fixture Artist</td><td><a href="/cdlc/${current.id}">${current.title}</a></td><td>Fixture Album</td><td>E Standard</td><td>Fixture Creator</td><td>Lead</td><td>1</td><td>${current.downloads}</td></tr></tbody></table><span aria-current="page">${page}</span><button aria-label="Previous page" ${page === 1 ? 'disabled' : ''} onclick="${action(1)}">Previous</button><button aria-label="Next page" ${page === 2 ? 'disabled' : ''} onclick="${action(2)}">Next</button>${pendingImage ? '<img id="pending-image" src="/fixture-pending-image.svg" alt="Controlled unfinished image">' : ''}`);
 }
+function trivialSearchPage(count) {
+  // A complete empty/single-chart catalogue needs no reorder. These controls
+  // deliberately produce no lifecycle completion: clicking one would stall.
+  const heading = (field, label) => `<th data-column-key="${field}" aria-sort="${field === 'downloads' ? 'descending' : 'none'}"><button onclick="window.fixtureNoopSortClicks++"><span class="header-text">${label}</span><span aria-hidden="true">▼</span></button></th>`;
+  const rows = count ? '<tr><td><span title="Hosted on Dropbox">File</span></td><td>Fixture Artist</td><td><a href="/cdlc/1001">Only Fixture Song</a></td><td>10</td></tr>'
+    : '<tr><td colspan="4">No matching charts found</td></tr>';
+  return html(`<script>window.fixtureNoopSortClicks = 0; window.Livewire = { hook() {} };</script><div data-cdlc-table wire:id="offline-trivial-catalogue"><p>${count} ${count === 1 ? 'chart' : 'charts'}</p> <table id="cdlc-table"><thead><tr><th>Download</th><th>Artist</th>${heading('title', 'Title')}${heading('downloads', 'DLs')}</tr></thead><tbody>${rows}</tbody></table><input aria-label="Go to page" value="1"><span>of 1</span><button aria-label="Previous page" disabled>Previous</button><button aria-label="Next page" disabled>Next</button></div>`);
+}
 function delayedSortPage(mode) {
   // Only the observed lifecycle contract is simulated. No request payloads,
   // credentials or Livewire internals are needed to reproduce optimistic sort.
@@ -121,6 +129,7 @@ function fixtureResponse(request) {
   const key = url.hostname + url.pathname + (url.searchParams.get('dl') === '1' ? '?dl=1' : '');
   visits.set(key, (visits.get(key) || 0) + 1);
   if (url.hostname === 'ignition4.customsforge.com') {
+    if (url.pathname === '/' && ['complete-single', 'complete-empty'].includes(url.searchParams.get('search'))) return trivialSearchPage(url.searchParams.get('search') === 'complete-single' ? 1 : 0);
     if (url.pathname === '/' && ['slow-sort', 'slow-sort-success-first', 'slow-sort-failure'].includes(url.searchParams.get('search'))) return delayedSortPage(url.searchParams.get('search'));
     if (url.pathname === '/') return searchPage(Number(url.searchParams.get('page') || 1), url.searchParams.get('search') === 'slow-resource', url.searchParams.get('search') || 'fixture', url.searchParams.get('sort') || '', url.searchParams.get('direction') || 'asc');
     if (url.pathname === '/fixture-pending-image.svg') {
@@ -247,6 +256,43 @@ async function run() {
     assert.deepEqual(collected.results.map((row) => row.id), ['1002', '1001']);
     assert.deepEqual(progress, [1, 2]);
     assert.equal(visits.get('ignition4.customsforge.com/user/collectedcdlcs/toggle/1001') || 0, 0, 'Catalogue preparation must not download or alter a collection.');
+  });
+  await test('complete single and empty catalogues satisfy either sort direction without clicking no-op controls', async () => {
+    const complete = async (pending, label) => {
+      try { return await deadline(pending, 3000); }
+      catch (error) {
+        const parsed = await browser.searchWindow.webContents.mainFrame.executeJavaScript(`(${require('../electron/song-browser/dom.cjs').readSearchPage.toString()})()`);
+        const clicks = await browser.searchWindow.webContents.mainFrame.executeJavaScript('window.fixtureNoopSortClicks');
+        error.message += ` ${label}: ${JSON.stringify({ parsed, clicks })}`;
+        throw error;
+      }
+    };
+    for (const [query, count] of [['complete-single', 1], ['complete-empty', 0]]) {
+      for (const direction of ['asc', 'desc']) {
+        const request = { query, sort: { field: 'title', direction } };
+        const result = await complete(browser.search(request), `Search ${query} ${direction}`);
+        assert.equal(result.status, 'ready'); assert.equal(result.page, 1);
+        assert.equal(result.total, count); assert.equal(result.hasNext, false);
+        assert.equal(result.results.length, count);
+        assert.deepEqual(result.sort, request.sort, 'A complete set of at most one chart satisfies the requested order.');
+        assert.equal(await browser.searchWindow.webContents.mainFrame.executeJavaScript('window.fixtureNoopSortClicks'), 0);
+        const collected = await complete(browser.collect(request), `Collect ${query} ${direction}`);
+        assert.equal(collected.complete, true); assert.equal(collected.sourceTotal, count);
+        assert.equal(collected.results.length, count); assert.deepEqual(collected.request.sort, request.sort);
+        assert.deepEqual(collected.results.map((row) => row.id), count ? ['1001'] : []);
+        assert.equal(await browser.searchWindow.webContents.mainFrame.executeJavaScript('window.fixtureNoopSortClicks'), 0, 'Complete collection must also avoid no-op sorting.');
+      }
+    }
+  });
+  await test('a single visible chart still requires remote sorting when more catalogue pages exist', async () => {
+    const request = { query: 'one-row-page', sort: { field: 'title', direction: 'desc' } };
+    const first = await browser.search(request);
+    assert.equal(first.results.length, 1); assert.equal(first.total, 2); assert.equal(first.hasNext, true);
+    assert.equal(first.results[0].id, '1002', 'The first row must change through the real sort control before a partial page is accepted.');
+    assert.deepEqual(first.sort, request.sort);
+    const second = await browser.search({ ...request, page: 2 });
+    assert.equal(second.page, 2); assert.equal(second.results[0].id, '1001');
+    assert.equal(second.hasNext, false); assert.deepEqual(second.sort, request.sort);
   });
   await test('optimistic sort waits for successful updated rows in either lifecycle order', async () => {
     for (const query of ['slow-sort', 'slow-sort-success-first']) {

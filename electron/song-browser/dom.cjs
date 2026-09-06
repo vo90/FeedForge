@@ -158,7 +158,7 @@ function readSearchPage() {
   const inputValue = String(pageInput?.value || pageInput?.getAttribute('value') || '');
   const pageMatch = bodyText.match(/\bpage\s+(\d+)\s+of\s+\d+/i);
   const pageValue = /^[1-9]\d*$/.test(inputValue) ? inputValue : (selectedPage ? text(selectedPage) : pageMatch?.[1]);
-  const countMatch = bodyText.match(/\bshowing\s+[\d,]+\s+(?:to|[-–])\s+[\d,]+\s+of\s+([\d,]+)\s+(?:results|charts|songs|records)\b/i) || bodyText.match(/\b([\d,]+)\s+(?:results|charts|songs)\b/i);
+  const countMatch = bodyText.match(/\bshowing\s+[\d,]+\s+(?:to|[-–])\s+[\d,]+\s+of\s+([\d,]+)\s+(?:results?|charts?|songs?|records?)\b/i) || bodyText.match(/\b([\d,]+)\s+(?:results?|charts?|songs?)\b/i);
   const sortKeys = ['artist', 'title', 'album', 'tuning', 'creator', 'added', 'updated', 'year', 'duration', 'downloads'];
   const sorts = sortKeys.flatMap((key) => {
     const cell = headers[mapping[key]];

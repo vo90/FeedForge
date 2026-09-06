@@ -176,6 +176,65 @@ test('page reader cannot rewrite a stale first-page number into a successful req
   assert.equal(fixture.browser.lastSearch, null);
 });
 
+test('catalogue sorting can finish after ten seconds without accepting earlier rows', async () => {
+  const fixture = harness();
+  let applied = false, sortReads = 0, tableReads = 0;
+  fixture.browser.ensureSearchWindow = () => ({ isDestroyed: () => false, webContents: { mainFrame: { executeJavaScript: async (script) => {
+    if (script.includes('function requestSearchSort(')) {
+      sortReads++;
+      applied = fixture.timers.reduce((sum, delay) => sum + delay, 0) >= 10_000;
+      return { status: applied ? 'applied' : sortReads === 1 ? 'clicked' : 'waiting', ...(applied ? { sort: fixture.request.sort } : {}) };
+    }
+    tableReads++;
+    return ready(1, applied ? ['1', '2'] : ['2', '1'], { total: 2, hasNext: false,
+      sort: applied ? fixture.request.sort : { field: 'title', direction: 'desc' } });
+  } } } });
+  fixture.browser.navigate = async () => {};
+  const result = await fixture.browser.search(fixture.request);
+  assert.equal(result.status, 'ready'); assert.deepEqual(Array.from(result.results, (row) => row.id), ['1', '2']);
+  assert.deepEqual({ ...result.sort }, fixture.request.sort);
+  assert.equal(tableReads, 2, 'Only the initial table and the confirmed sorted table are read.');
+  assert.ok(sortReads > 24, 'The old 8.4-second attempt limit must not terminate an active sort.');
+  const waited = fixture.timers.reduce((sum, delay) => sum + delay, 0);
+  assert.ok(waited >= 10_000 && waited < 11_000);
+});
+
+test('a catalogue sort that never finishes is bounded by its thirty-second deadline', async () => {
+  const fixture = harness();
+  let sortReads = 0, tableReads = 0;
+  fixture.browser.ensureSearchWindow = () => ({ isDestroyed: () => false, webContents: { mainFrame: { executeJavaScript: async (script) => {
+    if (script.includes('function requestSearchSort(')) { sortReads++; return { status: sortReads === 1 ? 'clicked' : 'waiting' }; }
+    tableReads++; return ready(1, ['2', '1'], { total: 2, hasNext: false });
+  } } } });
+  fixture.browser.navigate = async () => {};
+  await assert.rejects(fixture.browser.search(fixture.request), /catalogue sort did not finish/i);
+  const waited = fixture.timers.reduce((sum, delay) => sum + delay, 0);
+  assert.ok(waited >= 30_000 && waited <= 30_350, 'Waiting must end at the bounded sort deadline.');
+  assert.ok(sortReads <= 90); assert.equal(tableReads, 1, 'A timeout cannot publish the original unsorted rows.');
+  assert.equal(fixture.browser.lastSearch, null); assert.equal(fixture.browser.searching, false);
+});
+
+test('cancelling an in-flight catalogue sort stops promptly without another sort or table read', async () => {
+  const controller = new AbortController();
+  let enteredWait;
+  const waiting = new Promise((resolve) => { enteredWait = resolve; });
+  const fixture = harness(undefined, { timerStarted: (delay) => { if (delay === 350) enteredWait(); } });
+  let sortReads = 0, tableReads = 0;
+  fixture.browser.ensureSearchWindow = () => ({ isDestroyed: () => false, webContents: { mainFrame: { executeJavaScript: async (script) => {
+    if (script.includes('function requestSearchSort(')) { sortReads++; return { status: 'clicked' }; }
+    tableReads++; return ready(1, ['2', '1'], { total: 2, hasNext: false });
+  } } } });
+  fixture.browser.navigate = async () => {};
+  const settled = fixture.browser.search(fixture.request, { signal: controller.signal }).then(() => ({ ok: true }), (error) => ({ error }));
+  await waiting; controller.abort();
+  let guard;
+  const outcome = await Promise.race([settled, new Promise((resolve) => { guard = setTimeout(() => resolve({ timeout: true }), 500); })]);
+  clearTimeout(guard);
+  assert.equal(outcome.timeout, undefined); assert.equal(outcome.error?.name, 'AbortError');
+  assert.equal(sortReads, 1); assert.equal(tableReads, 1); assert.deepEqual(fixture.timers, [350]);
+  assert.equal(fixture.browser.lastSearch, null); assert.equal(fixture.browser.searching, false);
+});
+
 test('classified transient errors honor a longer finite service wait without reducing normal backoff', async (t) => {
   for (const [retryAfterMs, expected] of [[5000, 5000], [1500.5, 1501], [200, 1000], [0, 1000], [-1, 1000], [Infinity, 1000], [NaN, 1000], ['5000', 1000]]) {
     await t.test(String(retryAfterMs), async () => {

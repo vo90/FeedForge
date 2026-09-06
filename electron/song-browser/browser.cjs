@@ -365,10 +365,18 @@ class CustomsForgeBrowser {
       }
       if (!result) throw new Error('Could not read search results. Try again.');
       if (paging && result.status === 'ready' && result.page !== page) throw new Error('The page did not change. Try again.');
-      if (result.status === 'ready' && request.sort && !paging) {
+      // A confirmed, complete zero/one-result search is already in every sort
+      // order. Ignition need not re-render that table after a sort click, so
+      // waiting for a server-driven row update can time out unnecessarily.
+      const trivialOrder = result.status === 'ready' && page === 1 &&
+        (!result.page || result.page === 1) && !result.hasNext &&
+        result.results.length <= 1 && result.total === result.results.length;
+      if (request.sort && trivialOrder) result.sort = { ...request.sort };
+      if (result.status === 'ready' && request.sort && !paging && !trivialOrder) {
         const { requestSearchSort } = require('./dom.cjs');
         let applied = false;
-        for (let attempt = 0; attempt < 24; attempt++) {
+        const sortDeadline = Date.now() + 30_000;
+        while (Date.now() < sortDeadline) {
           cancelled(this.catalogueSignal);
           const action = await win.webContents.mainFrame.executeJavaScript(`(() => { const setup = (${prepareSearchUpdates.toString()})(); return setup.status === 'ready' ? (${requestSearchSort.toString()})(${JSON.stringify(request.sort)}) : setup; })()`, true);
           if (action.status === 'applied') { applied = true; break; }
