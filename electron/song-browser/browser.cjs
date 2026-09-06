@@ -4,6 +4,16 @@ const { readSearchPage, requestChartDownload, requestSearchPage } = require('./d
 const CF = 'https://ignition4.customsforge.com';
 const MAX_BYTES = 512 * 1024 * 1024;
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+function cancelled(signal) { if (signal?.aborted) { const error = new Error('Search cancelled.'); error.name = 'AbortError'; throw error; } }
+function waitCatalogue(ms, signal) {
+  cancelled(signal);
+  return new Promise((resolve, reject) => {
+    const abort = () => { clearTimeout(timer); signal.removeEventListener('abort', abort); const error = new Error('Search cancelled.'); error.name = 'AbortError'; reject(error); };
+    const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, ms);
+    signal?.addEventListener('abort', abort, { once: true });
+  });
+}
+const transientCatalogueError = (error) => ['SONG_NETWORK', 'ERR_TIMED_OUT', 'ERR_CONNECTION_RESET', 'ERR_CONNECTION_CLOSED', 'ERR_NETWORK_CHANGED', 'ERR_NAME_NOT_RESOLVED', 'ERR_INTERNET_DISCONNECTED'].includes(error?.code);
 
 function allowedNavigation(value) {
   return require('./hosts.cjs').allowedNavigation(value);
@@ -180,13 +190,13 @@ class CustomsForgeBrowser {
       timer = setTimeout(() => {
         // Reject first: stop() can synchronously reject loadURL with ERR_ABORTED,
         // which is otherwise a successful navigation-to-download transition.
-        reject(new Error('Page load timed out.'));
+        reject(Object.assign(new Error('Page load timed out.'), { code: 'SONG_NETWORK' }));
         try { if (!win.isDestroyed()) win.webContents.stop(); } catch { /* The timed-out window may already be closing. */ }
       }, 30000);
     })]); } catch (error) {
       // A download may abort navigation when Chromium hands off the file.
       // A search abort before document readiness must never accept old rows.
-      if (waitForDocument || (error.code !== 'ERR_ABORTED' && error.errno !== -3)) throw new Error('The page could not be loaded. Open the browser and try again.');
+      if (waitForDocument || (error.code !== 'ERR_ABORTED' && error.errno !== -3)) throw Object.assign(new Error('The page could not be loaded. Open the browser and try again.'), { code: error.code });
     } finally {
       clearTimeout(timer);
       if (waitForDocument) {
@@ -206,16 +216,24 @@ class CustomsForgeBrowser {
     finally { release(); }
   }
 
-  async search(request) {
+  async withCatalogueSignal(signal, action) {
+    cancelled(signal); this.catalogueSignal = signal;
+    const abort = () => { try { this.searchWindow?.webContents.stop(); } catch { /* Its next checkpoint handles cancellation. */ } };
+    signal?.addEventListener('abort', abort, { once: true });
+    try { return await action(); }
+    finally { signal?.removeEventListener('abort', abort); this.catalogueSignal = null; }
+  }
+
+  async search(request, options = {}) {
     const { normalizeSearchRequest, searchIdentity, filterCharts, sortCharts } = require('./catalogue.cjs');
     const normalized = normalizeSearchRequest(request);
     const explicit = { ...normalized, sort: request.sort ? normalized.sort : undefined };
-    return this.catalogueOperation(async () => {
+    return this.catalogueOperation(() => this.withCatalogueSignal(options.signal, async () => {
       const filtered = Object.values(normalized.filters).some((value) => Array.isArray(value) ? value.length : Boolean(value));
       if (!filtered) return this._searchPage(explicit);
       const key = searchIdentity({ ...normalized, page: 1 });
       if (normalized.filters.hideConverted || this.filteredSnapshot?.key !== key) {
-        const collected = await this._collect({ ...explicit, page: 1 });
+        const collected = await this._collect({ ...explicit, page: 1 }, options);
         this.filteredSnapshot = { key, ...collected, results: sortCharts(filterCharts(collected.results, normalized.filters), normalized.sort) };
       }
       const snapshot = this.filteredSnapshot;
@@ -223,27 +241,72 @@ class CustomsForgeBrowser {
       return { status: 'ready', results: snapshot.results.slice(offset, offset + 50), total: snapshot.results.length,
         sourceTotal: snapshot.sourceTotal, page: normalized.page, hasNext: offset + 50 < snapshot.results.length,
         complete: true, scope: 'complete', request: normalized };
-    });
+    }));
   }
 
   async collect(request, options = {}) {
     const { normalizeSearchRequest, filterCharts, sortCharts } = require('./catalogue.cjs');
     const normalized = normalizeSearchRequest({ ...request, page: 1 });
-    return this.catalogueOperation(async () => {
+    return this.catalogueOperation(() => this.withCatalogueSignal(options.signal, async () => {
       const result = await this._collect({ ...normalized, sort: request.sort ? normalized.sort : undefined }, options);
       return { ...result, results: sortCharts(filterCharts(result.results, normalized.filters), normalized.sort), request: normalized };
-    });
+    }));
   }
 
   async _collect(request, { signal, onProgress = () => {} } = {}) {
     const records = new Map(), signatures = new Set();
+    const checkIdentity = (result, page) => {
+      if (result.status !== 'ready') return;
+      if (result.page != null && result.page !== page) throw new Error('The catalogue returned a different page. Run the search again.');
+      if (request.sort && result.sort && (request.sort.field !== result.sort.field || request.sort.direction !== result.sort.direction)) {
+        throw new Error('The catalogue sort changed. Run the search again.');
+      }
+    };
     const started = Date.now();
+    const checkpoint = () => {
+      cancelled(signal);
+      const remaining = 10 * 60 * 1000 - (Date.now() - started);
+      if (remaining <= 0) throw new Error('Collecting results timed out. Narrow the search and try again.');
+      return remaining;
+    };
     let total = null;
+    const pageRecords = [];
     for (let page = 1; page <= 100; page++) {
-      if (signal?.aborted) throw new Error('Batch preparation cancelled.');
-      if (Date.now() - started > 10 * 60 * 1000) throw new Error('Collecting results timed out. Narrow the search and try again.');
-      const result = await this._searchPage({ ...request, page });
-      if (signal?.aborted) throw new Error('Batch preparation cancelled.');
+      checkpoint();
+      let result;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        checkpoint();
+        try {
+          if (attempt > 1 && page > 1) {
+            // Re-anchor ordinary pagination after a failed navigation. Validate
+            // the collected prefix before clicking Next again; never skip a page.
+            for (let prior = 1; prior < page; prior++) {
+              checkpoint();
+              const restored = await this._searchPage({ ...request, page: prior });
+              checkpoint();
+              checkIdentity(restored, prior);
+              if (restored.status !== 'ready' || restored.results.map((row) => row.id).join(',') !== pageRecords[prior - 1]
+                || (total !== null && restored.total != null && restored.total !== total)) throw new Error('The catalogue changed during retry. Run the search again.');
+            }
+          }
+          checkpoint();
+          result = await this._searchPage({ ...request, page });
+          checkpoint();
+          checkIdentity(result, page); break;
+        } catch (error) {
+          const remaining = checkpoint();
+          if (!transientCatalogueError(error) || attempt === 3) throw error;
+          const normalDelay = attempt === 1 ? 1000 : 3000;
+          const serviceDelay = Number.isFinite(error.retryAfterMs) && error.retryAfterMs > 0 ? Math.ceil(error.retryAfterMs) : 0;
+          const delay = Math.max(normalDelay, serviceDelay);
+          if (delay >= remaining) throw new Error(serviceDelay > normalDelay
+            ? 'The requested retry wait exceeds the remaining search time. Try again later or narrow the search.'
+            : 'Collecting results timed out. Narrow the search and try again.');
+          onProgress({ collected: records.size, total, page, retrying: true, attempt: attempt + 1 });
+          await waitCatalogue(delay, signal);
+        }
+      }
+      checkpoint();
       if (result.status !== 'ready') throw new Error(result.error || 'Reconnect to CustomsForge before preparing this search.');
       if (total !== null && result.total != null && result.total !== total) throw new Error('The catalogue changed during preparation. Run the search again.');
       if (result.total != null) total = result.total;
@@ -251,22 +314,25 @@ class CustomsForgeBrowser {
       const signature = result.results.map((row) => row.id).join(',');
       if (signatures.has(signature)) throw new Error('A catalogue page repeated. Preparation stopped without downloading songs.');
       signatures.add(signature);
+      pageRecords.push(signature);
       for (const row of result.results) {
         if (records.has(row.id)) throw new Error('The catalogue moved between pages. Run the search again.');
         records.set(row.id, row);
       }
       onProgress({ collected: records.size, total, page });
+      checkpoint();
       if (!result.hasNext) {
         if (total !== null && records.size !== total) throw new Error('The complete search could not be collected. No batch downloads have started.');
         return { results: [...records.values()], sourceTotal: total ?? records.size, complete: true };
       }
       if (records.size >= 5000) break;
-      await pause(300);
+      await waitCatalogue(Math.min(300, checkpoint()), signal);
     }
     throw new Error('The search exceeds the preparation limit. Narrow it and try again.');
   }
 
   async _searchPage(request) {
+    cancelled(this.catalogueSignal);
     const { query, page = 1 } = request;
     const signature = JSON.stringify({ query: query.trim(), sort: request.sort || null });
     const url = searchUrl(query, page);
@@ -288,13 +354,14 @@ class CustomsForgeBrowser {
       } else await this.navigate(win, url, { waitForDocument: true });
       let result;
       for (let i = 0; i < 24; i++) {
+        cancelled(this.catalogueSignal);
         if (win.isDestroyed()) throw new Error('The search window closed. Try again.');
         // webContents.executeJavaScript waits for the full window load even
         // after dom-ready. The main frame can read the ready document now.
         try { result = await win.webContents.mainFrame.executeJavaScript(`(${readSearchPage.toString()})()`); }
-        catch { await pause(300); continue; }
+        catch { await waitCatalogue(300, this.catalogueSignal); continue; }
         if (result.status !== 'layout_changed' && (!paging || result.status !== 'ready' || result.page === page)) break;
-        await pause(300);
+        await waitCatalogue(300, this.catalogueSignal);
       }
       if (!result) throw new Error('Could not read search results. Try again.');
       if (paging && result.status === 'ready' && result.page !== page) throw new Error('The page did not change. Try again.');
@@ -302,22 +369,29 @@ class CustomsForgeBrowser {
         const { requestSearchSort } = require('./dom.cjs');
         let applied = false;
         for (let attempt = 0; attempt < 24; attempt++) {
+          cancelled(this.catalogueSignal);
           const action = await win.webContents.mainFrame.executeJavaScript(`(${requestSearchSort.toString()})(${JSON.stringify(request.sort)})`, true);
           if (action.status === 'applied') { applied = true; break; }
           if (!['clicked', 'waiting'].includes(action.status)) throw new Error(action.error || 'The selected catalogue sort is unavailable.');
-          await pause(350);
+          await waitCatalogue(350, this.catalogueSignal);
         }
         if (!applied) throw new Error('The catalogue sort did not finish. Try again.');
         for (let attempt = 0; attempt < 24; attempt++) {
+          cancelled(this.catalogueSignal);
           result = await win.webContents.mainFrame.executeJavaScript(`(${readSearchPage.toString()})()`);
           if (result.status === 'ready' && (!result.page || result.page === 1)) break;
-          await pause(300);
+          await waitCatalogue(300, this.catalogueSignal);
         }
         if (result.status !== 'ready') throw new Error('The sorted catalogue could not be read.');
       }
       if (result.status === 'ready') {
+        cancelled(this.catalogueSignal);
+        if (result.page != null && result.page !== page) throw new Error('The catalogue returned a different page. Run the search again.');
+        if (request.sort && result.sort && (request.sort.field !== result.sort.field || request.sort.direction !== result.sort.direction)) {
+          throw new Error('The catalogue sort changed. Run the search again.');
+        }
         result.results = result.results.map((row) => ({ ...row, ...require('./hosts.cjs').getHostCapabilities(row.host), id: row.id }));
-        if (this.decorateCharts) result.results = await this.decorateCharts(result.results, request);
+        if (this.decorateCharts) result.results = await this.decorateCharts(result.results, request, this.catalogueSignal);
         this.lastSearch = { query: query.trim(), signature, page: result.page || page };
         this.updateConnection('connected', 'Connected to CustomsForge');
       }
@@ -333,6 +407,7 @@ class CustomsForgeBrowser {
       return { ...result, page };
     } catch (error) {
       this.lastSearch = null;
+      cancelled(this.catalogueSignal);
       this.updateConnection('error', 'The search could not be completed. Try again or open the browser.');
       this.diagnostic({ code: 'search_failed', stage: 'search', host: 'customsforge', outcome: 'failed', durationMs: Date.now() - started });
       throw error;
@@ -358,12 +433,11 @@ class CustomsForgeBrowser {
     const job = this.active;
     const candidate = job?.candidates?.find((item) => item.id === id);
     if (!candidate || job.finished) throw new Error('This file choice has expired. Retry the song to read its files again.');
-    if (job.host === 'mega') {
-      const document = job.candidateDocument;
-      if (!document || document.contents.isDestroyed?.() || document.contents.getURL() !== document.url
-        || document.version !== (this.documentVersions.get(document.contents) || 0)) throw new Error('This file list has changed. Wait for its current choices.');
-      job.choice = { id: candidate.targetId, label: candidate.label, platform: candidate.platform };
-    } else job.choice = { id: candidate.id };
+    const document = job.candidateDocument;
+    if (!document || document.contents.isDestroyed?.() || document.contents.getURL() !== document.url
+      || document.version !== (this.documentVersions.get(document.contents) || 0)) throw new Error('This file list has changed. Wait for its current choices.');
+    job.choice = { id: candidate.targetId, label: candidate.label, platform: candidate.platform };
+    job.requestedChoice = require('./provenance.cjs').sanitizeChoice(candidate);
     job.megaPrepared = null;
     job.attention = null;
     job.onAttention('');
@@ -431,6 +505,14 @@ class CustomsForgeBrowser {
       && prepared.documentUrl === contents.getURL() && prepared.documentVersion === (this.documentVersions.get(contents) || 0);
     const context = { host: job?.host, allowMacFallback: job?.allowMacFallback === true,
       enableMegaBlob: ownedMegaDocument, ownedWindow: ownedMegaDocument, documentUrl: ownedMegaDocument ? prepared.documentUrl : '' };
+    if (job && !job.finished && ownsWindow && !job.item && typeof job.requestedChoice?.label === 'string'
+      && job.requestedChoice.label !== item.getFilename()) {
+      event.preventDefault();
+      const error = new Error('The host returned a different file from the one you chose. Retry and select the intended PSARC version.');
+      error.code = 'SONG_ATTENTION';
+      job.reject(error, 'needs_attention');
+      return;
+    }
     if (!job || job.finished || !ownsWindow || job.item ||
         !allowedDownload(item.getURL(), item.getFilename(), item.getTotalBytes(), context)
         || (job.host === 'mega' && (!ownedMegaDocument || item.getFilename() !== prepared.candidate.label))) {
@@ -469,19 +551,26 @@ class CustomsForgeBrowser {
       job.onTransferSettled();
       if (job.finished) return;
       if (state === 'completed' && item.getReceivedBytes() > 0 && item.getReceivedBytes() <= MAX_BYTES && item.getTotalBytes() <= MAX_BYTES) {
+        const descriptor = require('./provenance.cjs').sanitizeFileEvidence({
+          ...(job.megaPrepared?.candidate || job.resolvedFile || {}),
+          filename: item.getFilename(), label: item.getFilename(), sizeBytes: item.getReceivedBytes(),
+          platform: /_p\.psarc$/i.test(item.getFilename()) ? 'pc' : /_m\.psarc$/i.test(item.getFilename()) ? 'mac' : 'unknown',
+          evidence: { ...(job.megaPrepared?.candidate || job.resolvedFile)?.evidence, filename: 'observed', platform: 'filename_hint', sizeBytes: 'observed' },
+        });
+        job.onResolvedFile?.(descriptor, job.requestedChoice);
         job.onProgress(100, job.host === 'mega' ? { phase: 'saving' } : undefined); job.resolve(job.destination);
       } else if (state === 'completed') job.reject(new Error('The downloaded file is empty or exceeds the 512 MB limit.'));
       else job.reject(new Error(state === 'cancelled' ? 'Download cancelled.' : 'The download did not complete.'), state === 'cancelled' ? 'cancelled' : 'interrupted');
     });
   }
 
-  async download(chart, { signal, destination, onProgress = () => {}, onAttention = () => {}, parkOnAttention = false, interactive = false }) {
+  async download(chart, { signal, destination, onProgress = () => {}, onAttention = () => {}, onResolvedFile, parkOnAttention = false, interactive = false }) {
     if (this.active) throw new Error('Another download is already active.');
     if (!/^\d+$/.test(String(chart.id))) throw new Error('Invalid chart.');
     if (!chart.supported) throw new Error('This host is not supported yet.');
     const started = Date.now();
     this.diagnostic({ code: 'download_started', stage: 'download', host: chart.host, outcome: 'started' });
-    const job = { windows: new Set(), destination, onProgress, onAttention, clicked: false, host: chart.host,
+    const job = { windows: new Set(), destination, onProgress, onAttention, onResolvedFile, requestedChoice: chart.selection?.choice, clicked: false, host: chart.host,
       finished: false, item: null, attention: null, parkOnAttention, interactive, choice: chart.selection?.choice,
       allowMacFallback: chart.selection?.allowMacFallback === true, lastActivity: started, providerPhases: new Set() };
     this.active = job;
@@ -563,18 +652,26 @@ class CustomsForgeBrowser {
               job.reject(new Error(result.error || 'This chart cannot be downloaded by this version.'), result.status === 'unsupported' ? 'unsupported' : 'failed');
             }
           } else {
+            if (job.choice && job.candidateDocument) {
+              const owned = job.candidateDocument;
+              if (owned.contents !== win.webContents) continue;
+              if (owned.url !== url || owned.version !== documentVersion) {
+                job.reject(new Error('The file list changed after your choice. Retry to choose from its current files.'), 'needs_attention');
+                return;
+              }
+            }
             const prepared = job.megaPrepared;
             const matches = prepared?.contents === win.webContents && prepared.documentUrl === url && prepared.documentVersion === documentVersion;
             result = await win.webContents.mainFrame.executeJavaScript(require('./host-actions.cjs').hostActionScript({
-              choice: matches ? { ...prepared.candidate } : job.choice,
+              ...chart.selection, choice: matches ? { ...prepared.candidate } : job.choice,
               allowMacFallback: job.allowMacFallback, prepareOnly: job.host === 'mega' && !matches,
               expectedFile: matches ? prepared.candidate : undefined,
             }), true);
           }
         } catch { continue; } // A document may be replaced while its ordinary navigation completes.
         if (!canAct()) return;
-        if (job.host === 'mega' && documentVersion !== (this.documentVersions.get(win.webContents) || 0)) continue;
-        if (result?.selectedFile && result.status === 'clicked') { job.selectedFile = result.selectedFile; job.choice = undefined; job.candidates = []; job.onAttention(''); }
+        if (documentVersion !== (this.documentVersions.get(win.webContents) || 0)) continue;
+        if (result?.selectedFile && result.status === 'clicked') { job.selectedFile = result.selectedFile; job.resolvedFile = result.selectedFile; job.choice = undefined; job.candidates = []; job.onAttention(''); }
         if (result?.status === 'clicked') idleTicks = 0;
         if (win.isDestroyed() || win.webContents.getURL() !== url) continue;
         if (job.host === 'mega' && require('./hosts.cjs').hostFromUrl(url) === 'mega') {
@@ -597,10 +694,10 @@ class CustomsForgeBrowser {
         if (result?.status === 'choose_file') {
           job.megaPrepared = null;
           let candidates = (result.candidates || []).slice(0, 100);
-          if (job.host === 'mega') {
+          {
             candidates = candidates.filter((candidate) => candidate && /^[a-zA-Z0-9_-]{1,100}$/.test(candidate.id || '')
               && typeof candidate.label === 'string' && candidate.label.length <= 240 && /\.psarc$/i.test(candidate.label) && !/[\\/\x00-\x1f\x7f]/.test(candidate.label))
-              .map(({ id, label }) => ({ id, label, platform: /_p\.psarc$/i.test(label) ? 'pc' : /_m\.psarc$/i.test(label) ? 'mac' : 'unknown' }));
+              .map((candidate) => require('./file-selection.cjs').sanitizeFileCandidate(candidate)).filter(Boolean);
             const signature = JSON.stringify(candidates);
             const previous = job.candidateDocument;
             if (!previous || previous.contents !== win.webContents || previous.url !== url || previous.version !== documentVersion || previous.signature !== signature) {
@@ -608,8 +705,8 @@ class CustomsForgeBrowser {
               job.candidateDocument = { contents: win.webContents, url, version: documentVersion, signature };
               job.attention = null;
             }
-          } else job.candidates = candidates;
-          this.attention(job, result.error || 'Choose the PSARC file in FeedForge.', { candidates: job.candidates.map(({ id, label, platform }) => ({ id, label, platform })) });
+          }
+          this.attention(job, result.error || 'Choose the PSARC file in FeedForge.', { candidates: job.candidates.map((candidate) => require('./file-selection.cjs').sanitizeFileCandidate(candidate)).filter(Boolean) });
         }
         if (result?.status === 'login_required' || result?.status === 'challenge' || result?.status === 'needs_attention') {
           this.attention(job, result.error || 'Select Open browser to finish this download.', { sessionWide: ['customsforge.com', 'ignition4.customsforge.com'].includes(host) });

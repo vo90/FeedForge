@@ -191,3 +191,28 @@ test('invalid submissions and absent responses cannot strand a session as search
   assert.equal(session.getSnapshot().pending, false);
   assert.equal(session.getSnapshot().result, null);
 });
+
+
+test('scoped collection progress cannot cross cancellation or newer search generations', async () => {
+  const { getSearchSession } = await moduleReady;
+  const first = deferred(), second = deferred(), calls = [], cancellations = [];
+  const session = getSearchSession({ search: (request) => { calls.push(request); return calls.length === 1 ? first.promise : second.promise; }, cancelSearch: async (request) => { cancellations.push(request); } });
+  const old = session.search('Old song'); await Promise.resolve();
+  const oldId = calls[0].requestId;
+  session.setProgress({ requestId: oldId, collected: 50, total: 100, page: 1, pending: true });
+  assert.equal(session.getSnapshot().progress.collected, 50);
+  const latest = session.search('New song'); await Promise.resolve();
+  const newId = calls[1].requestId;
+  assert.notEqual(newId, oldId); assert.deepEqual(cancellations, [{ requestId: oldId }]);
+  session.setProgress({ requestId: oldId, collected: 100, page: 2 });
+  assert.equal(session.getSnapshot().progress, null);
+  session.setProgress({ requestId: newId, collected: 20, total: null, page: 1, retrying: true, attempt: 2 });
+  assert.equal(session.getSnapshot().progress.attempt, 2);
+  await session.cancel();
+  assert.deepEqual(cancellations, [{ requestId: oldId }, { requestId: newId }]);
+  session.setProgress({ requestId: newId, collected: 30 });
+  first.resolve({ status: 'ready', results: [{ id: 'old' }] }); second.resolve({ status: 'ready', results: [{ id: 'new' }] });
+  await Promise.all([old, latest]);
+  assert.equal(session.getSnapshot().pending, false); assert.equal(session.getSnapshot().progress, null);
+  assert.equal(session.getSnapshot().result, null); assert.equal(session.getSnapshot().error, 'Search cancelled.');
+});

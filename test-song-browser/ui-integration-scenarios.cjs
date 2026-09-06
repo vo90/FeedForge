@@ -14,6 +14,7 @@ function rendererSnapshot() {
   const account = document.querySelector('.sb-account button');
   const results = [...document.querySelectorAll('.sb-result')].map((card) => ({
     title: clean(card.querySelector('h3')?.textContent),
+    text: clean(card.textContent),
     buttons: [...card.querySelectorAll('button')].map(button),
   }));
   const jobs = [...document.querySelectorAll('.sb-job')].map((card) => ({
@@ -39,7 +40,12 @@ function rendererSnapshot() {
     pagination: clean(document.querySelector('.sb-pagination span')?.textContent),
     resultCount: clean(document.querySelector('.sb-results .sb-section-heading [role="status"]')?.textContent),
     selectionCount: clean(document.querySelector('.sb-batch-prepare p')?.textContent),
-    batches: [...document.querySelectorAll('.sb-batch')].map((batch) => ({ summary: clean(batch.querySelector('summary')?.textContent), status: [...batch.querySelectorAll('[role="status"]')].map((element) => clean(element.textContent)), buttons: [...batch.querySelectorAll('button')].map(button) })),
+    requirements: { backing: document.querySelector('[aria-label="Single song backing track"]')?.value, strings: document.querySelector('[aria-label="Single song lead strings"]')?.value },
+    searchProgress: [...document.querySelectorAll('.sb-search-form [role="status"]')].map((element) => clean(element.textContent)),
+    batches: [...document.querySelectorAll('.sb-batch')].map((batch) => ({ summary: clean(batch.querySelector('summary')?.textContent), text: clean(batch.textContent), status: [...batch.querySelectorAll('[role="status"]')].map((element) => clean(element.textContent)), buttons: [...batch.querySelectorAll('button')].map(button),
+      selected: [...batch.querySelectorAll('.sb-batch-option input:checked')].map((input) => input.getAttribute('aria-label')),
+      suggestions: [...batch.querySelectorAll('.sb-duplicate-suggestion summary')].map((element) => clean(element.textContent)),
+      items: [...batch.querySelectorAll('.sb-batch-item')].map((element) => ({ title: clean(element.querySelector('strong')?.textContent), text: clean(element.textContent), buttons: [...element.querySelectorAll('button')].map(button) })) })),
   };
 }
 
@@ -65,7 +71,7 @@ function rendererAction(action) {
   }
   if (action.kind === 'navigate') return clickButton(document.querySelector('.side-nav'), action.label);
   if (action.kind === 'control') {
-    const input = [...document.querySelectorAll('.sb-search-form input, .sb-search-form select')].find((element) => element.getAttribute('aria-label') === action.label);
+    const input = [...document.querySelectorAll('.song-browser input, .song-browser select')].find((element) => element.getAttribute('aria-label') === action.label);
     if (!input) throw new Error('The requested search control is absent: ' + action.label);
     const prototype = input.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
     Object.getOwnPropertyDescriptor(prototype, 'value').set.call(input, action.value);
@@ -76,10 +82,32 @@ function rendererAction(action) {
   if (action.kind === 'select') {
     const input = [...document.querySelectorAll('.sb-result input[type="checkbox"]')].find((element) => element.getAttribute('aria-label') === action.label);
     if (!input) throw new Error('The requested result selection is absent: ' + action.label);
-    input.click(); return;
+    if (typeof action.checked !== 'boolean' || input.checked !== action.checked) input.click(); return;
   }
   if (action.kind === 'prepare') return clickButton(document.querySelector('.sb-batch-prepare'), action.label);
   if (action.kind === 'batch') return clickButton(document.querySelector('.sb-batch'), action.label);
+  if (action.kind === 'batchItem') {
+    const item = [...document.querySelector('.sb-batch').querySelectorAll('.sb-batch-item')].find((element) => clean(element.querySelector('strong')?.textContent) === action.title);
+    return clickButton(item, action.label);
+  }
+  if (action.kind === 'batchSelect') {
+    const input = [...document.querySelector('.sb-batch').querySelectorAll('.sb-batch-option input')].find((element) => element.getAttribute('aria-label') === action.label);
+    if (!input || input.disabled) throw new Error('The requested batch selection is absent or disabled.');
+    if (typeof action.checked !== 'boolean' || input.checked !== action.checked) input.click(); return;
+  }
+  if (action.kind === 'checkbox') {
+    const scope = action.legend ? [...document.querySelectorAll('fieldset')].find((element) => clean(element.querySelector('legend')?.textContent) === action.legend) : document.querySelector(action.scope || '.song-browser');
+    const label = [...scope.querySelectorAll('label')].find((element) => clean(element.textContent) === action.label);
+    if (!label?.querySelector('input[type="checkbox"]')) throw new Error('Requested checkbox is absent: ' + action.label);
+    label.querySelector('input[type="checkbox"]').click(); return;
+  }
+  if (action.kind === 'expand') {
+    const scope = document.querySelector(action.scope || '.song-browser');
+    if (scope.tagName === 'DETAILS') scope.open = true;
+    for (const details of scope.querySelectorAll('details')) if (!action.label || clean(details.querySelector('summary')?.textContent) === action.label) details.open = true;
+    return;
+  }
+  if (action.kind === 'searchCancel') return clickButton(document.querySelector('.sb-search-form'), 'Cancel search');
   if (action.kind === 'search') return clickButton(document.querySelector('.sb-search-form'), 'Search');
   if (action.kind === 'account') return clickButton(document.querySelector('.sb-account'), action.label);
   if (action.kind === 'result') {
@@ -115,8 +143,8 @@ async function runUiScenarios({ win, fixture, test }) {
   const buttonWith = (item, label) => item?.buttons.find((button) => button.label === label);
 
   async function bounded(promise, label, timeoutMs = 15000) {
-    const remaining = Math.min(timeoutMs, 85000 - (Date.now() - started));
-    assert.ok(remaining > 0, 'Production renderer scenarios exceeded their 85-second budget.');
+    const remaining = Math.min(timeoutMs, 115000 - (Date.now() - started));
+    assert.ok(remaining > 0, 'Production renderer scenarios exceeded their 115-second budget.');
     let timer;
     try {
       return await Promise.race([promise, new Promise((_resolve, reject) => {
@@ -125,7 +153,7 @@ async function runUiScenarios({ win, fixture, test }) {
     } finally { clearTimeout(timer); }
   }
   async function until(predicate, label) {
-    const deadline = Math.min(started + 85000, Date.now() + 15000);
+    const deadline = Math.min(started + 115000, Date.now() + 15000);
     for (;;) {
       const remaining = deadline - Date.now();
       if (remaining <= 0) throw new Error(`${label} timed out. Last renderer state: ${JSON.stringify(latest)}`);
@@ -206,7 +234,7 @@ async function runUiScenarios({ win, fixture, test }) {
     assert.equal(countFor(before, 'downloads', slow), 1);
     assert.equal(countFor(before, 'downloads', fast), 0, 'The queued chart cannot download before the active transfer settles.');
     await action({ kind: 'job', title: slow.title, status: 'Downloading', label: 'Cancel' });
-    const completed = await until((state) => jobFor(state, slow, 'Cancelled') && jobFor(state, fast, 'FeedPak ready'), 'Cancellation and queue progress');
+    const completed = await until((state) => jobFor(state, slow, 'Cancelled') && jobFor(state, fast, 'FeedPak ready') && buttonWith(resultFor(state, fast), 'FeedPak ready'), 'Cancellation and queue progress');
     assert.equal(buttonWith(resultFor(completed, slow), 'Download & convert')?.disabled, false);
     assert.equal(buttonWith(resultFor(completed, fast), 'FeedPak ready')?.disabled, false);
     const after = await fixture.counts();
@@ -226,7 +254,7 @@ async function runUiScenarios({ win, fixture, test }) {
     assert.equal(countFor(before, 'downloads', retry), 1);
     assert.equal(countFor(before, 'conversions', retry), 1);
     await action({ kind: 'job', title: retry.title, status: 'Failed', label: 'Retry conversion' });
-    const completed = await until((state) => jobFor(state, retry, 'FeedPak ready'), 'Cached retry completion');
+    const completed = await until((state) => jobFor(state, retry, 'FeedPak ready') && buttonWith(resultFor(state, retry), 'FeedPak ready'), 'Cached retry completion');
     assert.equal(buttonWith(resultFor(completed, retry), 'FeedPak ready')?.disabled, false);
     const after = await fixture.counts();
     assert.equal(countFor(after, 'downloads', retry), 1, 'Retry conversion must not request another host transfer.');
@@ -336,6 +364,95 @@ async function runUiScenarios({ win, fixture, test }) {
     assert.equal(countFor(after, 'downloads', retry), countFor(before, 'downloads', retry) + 1, 'Missing output is downloaded again.');
     assert.equal(countFor(after, 'conversions', retry), countFor(before, 'conversions', retry) + 1);
     evidence.batch = { selectedCharts: 2, converted: 1, alreadyAvailable: 1, sourceDownloadsDuringPreparation: 0 };
+  });
+
+  await test('production requirements reassess saved outputs and explicit relaxation retries cached bytes', async () => {
+    await until((state) => buttonWith(resultFor(state, fast), 'FeedPak ready'), 'Verified ready result before changing requirements');
+    await action({ kind: 'expand', scope: '.sb-requirements', label: 'Instrument and string requirements' });
+    await action({ kind: 'control', label: 'Single song lead strings', value: '5' });
+    const incompatible = await until((state) => buttonWith(resultFor(state, fast), 'Download & convert')?.disabled === false && buttonWith(resultFor(state, fast), 'Show saved FeedPak'), 'Shared strict-string suitability decision');
+    assert.match(resultFor(incompatible, fast).text, /string|instrument|coverage|requirement/i);
+    await action({ kind: 'expand', scope: '.sb-requirements' });
+    evidence.requirementsScreenshot = await fixture.captureScreenshot('completion-requirements', '.sb-requirements');
+    const before = await fixture.counts();
+    await action({ kind: 'result', title: fast.title, label: 'Review another file/version' });
+    await until((state) => state.jobs.some((job) => job.title === fast.title && buttonWith(job, 'Relax requirements and retry cached file')), 'Strict requirement attention with cached source');
+    const parked = await fixture.counts();
+    const parkedJobCount = (await read()).jobs.length;
+    assert.equal(countFor(parked, 'downloads', fast), countFor(before, 'downloads', fast) + 1);
+    assert.equal(countFor(parked, 'conversions', fast), countFor(before, 'conversions', fast), 'Hard source requirements must stop before conversion.');
+    await action({ kind: 'job', title: fast.title, status: 'Needs attention', label: 'Relax requirements and retry cached file' });
+    await until((state) => state.jobs.length > parkedJobCount && state.jobs[0]?.title === fast.title && state.jobs[0]?.status === 'FeedPak ready', 'Relaxed cached retry completes');
+    const retried = await fixture.counts();
+    assert.equal(countFor(retried, 'downloads', fast), countFor(parked, 'downloads', fast), 'Relaxing requirements must use the existing cached source.');
+    await action({ kind: 'control', label: 'Single song lead strings', value: '' });
+    await until((state) => buttonWith(resultFor(state, fast), 'FeedPak ready'), 'Cleared requirements reassess the completed result');
+    evidence.requirements = { strictUnknownBlocked: true, explicitRelaxation: true, cachedRetryExtraDownloads: 0 };
+  });
+
+  await test('production batch Skip is individual and explicit retry requeues a user-skipped song', async () => {
+    for (const [chart, checked] of [[fast, true], [retry, false], [slow, true]]) await action({ kind: 'select', label: 'Select ' + chart.title + ' chart ' + chart.id, checked });
+    await action({ kind: 'prepare', label: 'Prepare selected' });
+    const draft = await until((state) => state.batches[0]?.summary.startsWith('Review selections') && state.batches[0].summary.includes('2 charts'), 'Batch containing available and cancellable songs');
+    assert.ok(draft.batches[0].status.some((status) => status.includes('1 planned downloads') && status.includes('1 already available')));
+    const before = await fixture.counts();
+    await action({ kind: 'batch', label: 'Start batch (2 charts)' });
+    await until((state) => state.batches[0]?.items.some((item) => item.title === slow.title && /running/.test(item.text)) && jobFor(state, slow, 'Downloading'), 'Active batch song');
+    await fixture.waitForDownload(slow.id, countFor(before, 'downloads', slow) + 1);
+    await action({ kind: 'batchItem', title: slow.title, label: 'Skip song' });
+    const skipped = await until((state) => state.batches[0]?.summary.startsWith('Finished') && state.batches[0].status.some((status) => status.includes('1 skipped by you') && status.includes('1 already available')), 'Skip cleanup and separate outcome counts');
+    assert.ok(skipped.batches[0].items.some((item) => item.title === slow.title && buttonWith(item, 'Retry song')));
+    const after = await fixture.counts();
+    assert.equal(countFor(after, 'downloads', fast), countFor(before, 'downloads', fast));
+    assert.equal(countFor(after, 'downloads', slow), countFor(before, 'downloads', slow) + 1);
+    await action({ kind: 'batchItem', title: slow.title, label: 'Retry song' });
+    await until((state) => state.batches[0]?.summary.startsWith('Paused') && state.batches[0].status.some((status) => status.includes('1 waiting') && status.includes('0 skipped by you')), 'Explicit retry returns just this song to pending');
+    await action({ kind: 'batchItem', title: slow.title, label: 'Skip song' });
+    await until((state) => state.batches[0]?.summary.startsWith('Finished') && state.batches[0]?.status.some((status) => status.includes('1 skipped by you')), 'Pending retry skipped before Resume');
+    assert.equal(countFor(await fixture.counts(), 'downloads', slow), countFor(after, 'downloads', slow));
+    await action({ kind: 'expand', scope: '.sb-batch' });
+    evidence.skipScreenshot = await fixture.captureScreenshot('completion-batch-skip', '.sb-batch');
+    evidence.skip = { oneAvailable: true, oneUserSkipped: true, activeCleanupCompleted: true, retryRequiresExplicitResume: true };
+  });
+
+  await test('production draft recommendations expose creators and possible duplicates without changing manual choices', async () => {
+    await action({ kind: 'query', value: 'completion' }); await action({ kind: 'search' });
+    await until((state) => !state.pending && state.query === 'completion' && state.results.some((row) => row.title === 'Fixture Success!'), 'Completion review catalogue');
+    await action({ kind: 'control', label: 'Preferred creators', value: 'Other Creator, Fixture Creator' });
+    await action({ kind: 'prepare', label: 'Prepare all results' });
+    const draft = await until((state) => state.batches[0]?.summary.startsWith('Review selections') && state.batches[0].suggestions.length > 0, 'Draft possible-duplicate review');
+    assert.ok(draft.batches[0].selected.includes('Select Fixture Success chart 1122'), 'Preferred eligible creator outranks the unlisted alternative.');
+    assert.equal(draft.batches[0].suggestions.length, 1, 'The live edition remains separate from the punctuation suggestion.');
+    const selectedBeforeDismiss = draft.batches[0].selected;
+    await action({ kind: 'expand', scope: '.sb-batch .sb-batch-groups' });
+    evidence.draftScreenshot = await fixture.captureScreenshot('completion-expanded-batch-draft', '.sb-batch');
+    await action({ kind: 'batch', label: 'Keep selections and dismiss suggestion' });
+    const dismissed = await until((state) => state.batches[0]?.suggestions.length === 0, 'Dismissed possible duplicate');
+    assert.deepEqual(dismissed.batches[0].selected, selectedBeforeDismiss);
+    await action({ kind: 'batchSelect', label: 'Select Fixture Success chart 1122', checked: false });
+    await until((state) => !state.batches[0].selected.includes('Select Fixture Success chart 1122'), 'Explicitly uncheck preferred alternative');
+    await action({ kind: 'batchSelect', label: 'Select Fixture Success chart ' + fast.id, checked: true });
+    await until((state) => state.batches[0].selected.includes('Select Fixture Success chart ' + fast.id), 'Manual chart override');
+    await action({ kind: 'expand', scope: '.sb-batch', label: 'Change draft preferences' });
+    await action({ kind: 'control', label: 'Draft ranking', value: 'updated' });
+    await action({ kind: 'batch', label: 'Update recommendations' });
+    const changed = await until((state) => !state.batches[0].buttons.some((button) => button.label === 'Update recommendations' && button.disabled), 'Updated draft recommendations');
+    assert.ok(changed.batches[0].selected.includes('Select Fixture Success chart ' + fast.id));
+    assert.ok(!changed.batches[0].selected.includes('Select Fixture Success chart 1122'));
+    assert.equal(changed.batches[0].suggestions.length, 0);
+    await action({ kind: 'batch', label: 'Remove batch record' });
+    evidence.duplicateReview = { suggestedPunctuationOnly: true, livePreserved: true, manualOverrideRetained: true, dismissalRetained: true };
+  });
+
+  await test('production filtered-search collection shows scoped progress and can be cancelled', async () => {
+    await action({ kind: 'query', value: 'catalogue' });
+    await action({ kind: 'control', label: 'Exact artist', value: 'Fixture Artist' });
+    await action({ kind: 'search' });
+    const collecting = await until((state) => state.pending && state.searchProgress.some((text) => /Collected [1-9]/.test(text)), 'Visible page collection progress');
+    await action({ kind: 'searchCancel' });
+    const cancelled = await until((state) => !state.pending && state.alerts.some((text) => /Search cancelled/.test(text)), 'Scoped search cancellation');
+    assert.equal(cancelled.results.length, 0); assert.deepEqual(cancelled.searchProgress, []);
+    evidence.searchCancellation = { progressObserved: collecting.searchProgress, cancelled: true, partialResultsAdvertised: false };
   });
   return { ...evidence, durationMs: Date.now() - started };
 }

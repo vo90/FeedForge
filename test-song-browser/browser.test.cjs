@@ -99,6 +99,113 @@ function prepareMega(job, win, browser, name = 'Song_p.psarc') {
     candidate: { id: 'fixture', label: name, platform: 'pc' } };
 }
 
+test('explicit non-MEGA filename choice rejects a different PC variant before creating any saved file', async (t) => {
+  const { browser, session } = fixture(t); let resolved = 0;
+  const run = begin(browser, { onResolvedFile: () => { resolved++; } });
+  const win = [...run.job.windows][0]; run.job.host = 'dropbox';
+  run.job.requestedChoice = { label: 'Song_v2_p.psarc', platform: 'pc' };
+  const item = new FakeDownload({ filename: 'Song_v1_p.psarc' });
+  const started = event(); session.emit('will-download', started, item, win.webContents);
+  const outcome = await run.outcome;
+  assert.equal(started.prevented, true); assert.equal(item.savePath, undefined); assert.equal(run.job.item, null);
+  assert.equal(outcome.error?.code, 'SONG_ATTENTION'); assert.equal(run.job.failure, 'needs_attention');
+  assert.equal(resolved, 0); assert.equal(item.listenerCount('done'), 0);
+});
+
+test('matching explicit filename succeeds and reports the actual observed download descriptor', async (t) => {
+  const { browser, session } = fixture(t); const resolved = [];
+  const run = begin(browser, { onResolvedFile: (file, choice) => resolved.push({ file, choice }) });
+  const win = [...run.job.windows][0]; run.job.host = 'dropbox';
+  run.job.requestedChoice = { label: 'Song_v2_p.psarc', platform: 'pc' };
+  run.job.resolvedFile = { label: 'Song_v2_p.psarc', platform: 'pc', sizeBytes: 100, versionHint: 'v2', evidence: { version: 'filename_hint' } };
+  const item = new FakeDownload({ filename: 'Song_v2_p.psarc', total: 200 });
+  const started = event(); session.emit('will-download', started, item, win.webContents);
+  assert.equal(started.prevented, false); assert.equal(item.savePath, run.destination);
+  item.received = 200; item.finish();
+  assert.equal((await run.outcome).value, run.destination); assert.equal(resolved.length, 1);
+  assert.equal(resolved[0].file.filename, 'Song_v2_p.psarc'); assert.equal(resolved[0].file.sizeBytes, 200);
+  assert.equal(resolved[0].file.platform, 'pc'); assert.equal(resolved[0].file.evidence.filename, 'observed');
+  assert.equal(resolved[0].file.evidence.sizeBytes, 'observed'); assert.equal(resolved[0].file.evidence.versionHint, 'filename_hint');
+  assert.deepEqual(resolved[0].choice, run.job.requestedChoice);
+});
+
+test('ordinary providers without an explicit file choice retain their accepted filename behavior', async (t) => {
+  const { browser, session } = fixture(t); const run = begin(browser);
+  const win = [...run.job.windows][0]; run.job.host = 'dropbox';
+  run.job.resolvedFile = { label: 'Host_display_name_p.psarc', platform: 'pc' };
+  const item = new FakeDownload({ filename: 'Actual_download_name_p.psarc' });
+  const started = event(); session.emit('will-download', started, item, win.webContents);
+  assert.equal(started.prevented, false); assert.equal(item.savePath, run.destination);
+  item.received = item.total; item.finish(); assert.equal((await run.outcome).value, run.destination);
+});
+
+test('non-MEGA chooser tokens are opaque and bind the selected row identity in its owned document', async (t) => {
+  const { browser } = fixture(t); const run = begin(browser);
+  const win = [...run.job.windows][0]; run.job.host = 'google-drive'; win.webContents.url = 'https://drive.google.com/drive/folders/fixture';
+  const target = 'document-row-7';
+  win.webContents.executeJavaScript = async () => ({ status: 'choose_file', candidates: [{ id: target, label: 'Song_v2_p.psarc', platform: 'pc' }] });
+  let captured;
+  run.job.onAttention = (value) => {
+    if (!value?.candidates) return;
+    const candidate = value.candidates[0];
+    assert.notEqual(candidate.id, target); assert.equal(candidate.targetId, undefined);
+    assert.match(candidate.id, /^[a-f0-9-]{36}$/i);
+    assert.deepEqual(browser.chooseFile({ id: candidate.id }), { ok: true });
+    captured = { ...run.job.choice };
+    run.controller.abort();
+  };
+  await CustomsForgeBrowser.prototype.driveDownload.call(browser, run.job, { id: '123' }); await run.outcome;
+  assert.deepEqual(captured, { id: target, label: 'Song_v2_p.psarc', platform: 'pc' });
+});
+
+test('non-MEGA chooser rejects a changed document URL or same-URL reload', async (t) => {
+  for (const changed of ['url', 'reload']) {
+    await t.test(changed, async (subtest) => {
+      const { browser } = fixture(subtest); const run = begin(browser);
+      const win = [...run.job.windows][0]; run.job.host = 'google-drive'; win.webContents.url = 'https://drive.google.com/drive/folders/fixture';
+      win.webContents.executeJavaScript = async () => ({ status: 'choose_file', candidates: [{ id: 'row-1', label: 'Song_p.psarc', platform: 'pc' }] });
+      let checked = false;
+      run.job.onAttention = (value) => {
+        if (!value?.candidates) return;
+        if (changed === 'url') win.webContents.url = 'https://drive.google.com/drive/folders/another';
+        else win.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false });
+        assert.throws(() => browser.chooseFile({ id: value.candidates[0].id }), /file list has changed/i);
+        assert.equal(run.job.choice, undefined); checked = true; run.controller.abort();
+      };
+      await CustomsForgeBrowser.prototype.driveDownload.call(browser, run.job, { id: '123' }); await run.outcome;
+      assert.equal(checked, true);
+    });
+  }
+});
+
+test('a replacement row in the same non-MEGA document invalidates the old opaque chooser token', async (t) => {
+  const { browser } = fixture(t); const run = begin(browser);
+  const win = [...run.job.windows][0]; run.job.host = 'google-drive'; win.webContents.url = 'https://drive.google.com/drive/folders/fixture';
+  let calls = 0, previousToken, checked = false;
+  win.webContents.executeJavaScript = async () => ({ status: 'choose_file', candidates: [{ id: ++calls === 1 ? 'old-row' : 'replacement-row', label: 'Same_p.psarc', platform: 'pc' }] });
+  run.job.onAttention = (value) => {
+    if (!value?.candidates) return;
+    if (!previousToken) { previousToken = value.candidates[0].id; return; }
+    assert.notEqual(value.candidates[0].id, previousToken);
+    assert.throws(() => browser.chooseFile({ id: previousToken }), /expired/i);
+    browser.chooseFile({ id: value.candidates[0].id });
+    assert.equal(run.job.choice.id, 'replacement-row'); checked = true; run.controller.abort();
+  };
+  await CustomsForgeBrowser.prototype.driveDownload.call(browser, run.job, { id: '123' }); await run.outcome;
+  assert.equal(checked, true); assert.equal(calls, 2);
+});
+
+test('non-MEGA action cannot run after a chosen document is replaced before the next poll', async (t) => {
+  const { browser } = fixture(t); const run = begin(browser);
+  const win = [...run.job.windows][0]; run.job.host = 'google-drive'; win.webContents.url = 'https://drive.google.com/drive/folders/fixture';
+  run.job.candidateDocument = { contents: win.webContents, url: win.webContents.url, version: browser.documentVersions.get(win.webContents) || 0 };
+  run.job.choice = { id: 'row-1', label: 'Song_p.psarc', platform: 'pc' };
+  win.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false });
+  let actions = 0; win.webContents.executeJavaScript = async () => { actions++; return { status: 'clicked' }; };
+  await CustomsForgeBrowser.prototype.driveDownload.call(browser, run.job, { id: '123' });
+  assert.ok((await run.outcome).error); assert.equal(run.job.failure, 'needs_attention'); assert.equal(actions, 0);
+});
+
 test('MEGA saves only the prepared file from its owned unchanged document', async (t) => {
   const { browser, session } = fixture(t); const run = begin(browser);
   const win = [...run.job.windows][0]; prepareMega(run.job, win, browser);

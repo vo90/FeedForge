@@ -20,12 +20,26 @@ function megaDownloadAction(request = {}, selectCandidate) {
   };
   const all = (selector, scope = document) => Array.from(scope.querySelectorAll(selector)).filter(visible);
   const first = (selector, scope = document) => all(selector, scope)[0];
-  const text = (element) => visible(element) ? clean(element.innerText || element.textContent) : '';
+  const text = (element) => visible(element) ? clean(typeof element.innerText === 'string' ? element.innerText : element.textContent) : '';
   const filename = (element) => {
     if (!visible(element)) return '';
     const name = first('.name', element), ext = first('.ext', element);
     const value = name && ext ? clean(text(name) + text(ext)) : text(element);
     return value.length <= 240 && /\.psarc$/i.test(value) && !/[\\/]/.test(value) ? value : '';
+  };
+  const visibleSize = (scope) => {
+    const value = text(first('.size, .file-size, .file-block-size', scope));
+    const match = value.match(/^(\d+(?:[.,]\d+)?)\s*(B|bytes?|[KMGT]i?B)$/i);
+    if (!match) return null;
+    const unit = match[2].toUpperCase(), power = /^[KMGT]/.test(unit) ? 'KMGT'.indexOf(unit[0]) + 1 : 0;
+    const bytes = Math.ceil(Number(match[1].replace(',', '.')) * 1024 ** power);
+    return Number.isSafeInteger(bytes) && bytes > 0 ? bytes : null;
+  };
+  const fileInfo = (target) => {
+    for (let node = target; node; node = node.parentElement) {
+      if (/(?:^|\s)fileinfo(?:\s|$)/.test(node.getAttribute('class') || '')) return node;
+    }
+    return target;
   };
   const body = document.body;
   const idFor = (element) => {
@@ -40,12 +54,16 @@ function megaDownloadAction(request = {}, selectCandidate) {
   const owned = () => {
     const label = body.getAttribute('data-feedforge-mega-label') || '';
     const id = body.getAttribute('data-feedforge-mega-id') || '';
-    return /\.psarc$/i.test(label) && !/[\\/\x00-\x1f]/.test(label) && /^[a-zA-Z0-9_-]{1,100}$/.test(id) ? { id, label, platform: platform(label) } : null;
+    if (!/\.psarc$/i.test(label) || /[\\/\x00-\x1f]/.test(label) || !/^[a-zA-Z0-9_-]{1,100}$/.test(id)) return null;
+    let metadata = {};
+    try { metadata = JSON.parse(body.getAttribute('data-feedforge-mega-file-info') || '{}'); } catch { /* Unknown optional metadata. */ }
+    return selectCandidate([{ ...metadata, id, label }], {}, true).candidates[0] || null;
   };
   const own = (file, mode) => {
     body.setAttribute('data-feedforge-mega-label', file.label);
     body.setAttribute('data-feedforge-mega-id', file.id);
     body.setAttribute('data-feedforge-mega-mode', mode);
+    body.setAttribute('data-feedforge-mega-file-info', JSON.stringify(file));
   };
   const controlLabel = (element) => clean([text(element), element.getAttribute('aria-label'), element.getAttribute('data-simpletip'), element.getAttribute('title')].filter(Boolean).join(' '));
   const control = (element) => {
@@ -103,7 +121,7 @@ function megaDownloadAction(request = {}, selectCandidate) {
   for (const element of headerFiles) {
     const label = filename(element);
     if (label && !candidates.some((candidate) => candidate.label === label)) {
-      const candidate = { id: idFor(element), label };
+      const candidate = { id: idFor(element), label, sizeBytes: visibleSize(fileInfo(element)) };
       candidates.push(candidate); elements.set(candidate.id, element);
     }
   }
@@ -120,7 +138,7 @@ function megaDownloadAction(request = {}, selectCandidate) {
       const name = first('.tranfer-filetype-txt, .transfer-filetype-txt, .file-block-title', row);
       const label = filename(name);
       if (!label) continue;
-      const candidate = { id: idFor(row), label };
+      const candidate = { id: idFor(row), label, sizeBytes: visibleSize(row) };
       candidates.push(candidate); elements.set(candidate.id, row);
     }
   }
@@ -135,7 +153,7 @@ function megaDownloadAction(request = {}, selectCandidate) {
   if (mode === 'folder' && !request.choice && selection.status === 'selected') {
     const counts = all('[aria-rowcount]').map((element) => Number(element.getAttribute('aria-rowcount'))).filter((count) => Number.isInteger(count) && count > 0);
     if (!counts.length || Math.max(...counts) > rows.length || rows.length >= 500) {
-      selection = { status: 'choose_file', candidates: candidates.map((candidate) => ({ ...candidate, platform: platform(candidate.label) })), error: 'Only part of this MEGA folder may be shown. Choose the individual PC PSARC file to download.' };
+      selection = { status: 'choose_file', candidates: selectCandidate(candidates, {}, true).candidates, error: 'Only part of this MEGA folder may be shown. Choose the individual PC PSARC file to download.' };
     }
   }
   if (selection.status !== 'selected') return selection;
@@ -143,21 +161,7 @@ function megaDownloadAction(request = {}, selectCandidate) {
   if (request.expectedFile && (request.expectedFile.label !== selectedFile.label || request.expectedFile.platform !== selectedFile.platform)) return attention('The MEGA file changed before the download started. Choose it again.');
   if (active && body.getAttribute('data-feedforge-mega-started') === 'true' && (active.label !== selectedFile.label || active.platform !== selectedFile.platform)) return attention('Another MEGA file is already being downloaded in this page.');
   const target = elements.get(selectedFile.id);
-  let sizeScope = target;
-  if (mode === 'single') {
-    for (let node = target; node; node = node.parentElement) {
-      if (/(?:^|\s)fileinfo(?:\s|$)/.test(node.getAttribute('class') || '')) { sizeScope = node; break; }
-    }
-  }
-  const sizeText = text(first(mode === 'single' ? '.size' : '.size, .file-size, .file-block-size', sizeScope));
-  const sizeMatch = sizeText.match(/^(\d+(?:[.,]\d+)?)\s*(B|bytes?|[KMGT]i?B)$/i);
-  let sizeBytes;
-  if (sizeMatch) {
-    const unit = sizeMatch[2].toUpperCase();
-    const power = /^[KMGT]/.test(unit) ? 'KMGT'.indexOf(unit[0]) + 1 : 0;
-    // MEGA formats sizes with binary units even when the label says MB.
-    sizeBytes = Math.ceil(Number(sizeMatch[1].replace(',', '.')) * 1024 ** power);
-  }
+  let sizeBytes = visibleSize(mode === 'single' ? fileInfo(target) : target);
   if (continueHiddenSingle) sizeBytes = Number(body.getAttribute('data-feedforge-mega-size'));
   if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) return attention('MEGA does not show a readable file size. Open the file to check it before downloading.');
   const maxBytes = Number.isFinite(request.maxBytes) && request.maxBytes > 0 ? Math.min(request.maxBytes, 512 * 1024 * 1024) : 512 * 1024 * 1024;

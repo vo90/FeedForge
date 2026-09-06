@@ -2,12 +2,37 @@
 
 // Self-contained so the browser can run the same policy on sanitized visible
 // filenames without exporting public-share URLs or depending on page scripts.
-function selectFileCandidate(candidates, request = {}) {
+function selectFileCandidate(candidates, request = {}, normalizeOnly = false) {
   const clean = (value) => typeof value === 'string' ? value.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 240) : '';
   const variant = (name) => /_p\.psarc$/i.test(name) ? 'pc' : /_m\.psarc$/i.test(name) ? 'mac' : 'unknown';
-  const list = (Array.isArray(candidates) ? candidates : []).slice(0, 500).filter((row) => row && typeof row === 'object').map((row) => ({
-    id: clean(row.id), label: clean(row.label), platform: variant(clean(row.label)),
-  })).filter((row) => /^[a-zA-Z0-9_-]{1,100}$/.test(row.id) && /\.psarc$/i.test(row.label) && !/[\\/]/.test(row.label));
+  const list = (Array.isArray(candidates) ? candidates : []).slice(0, 500).filter((row) => row && typeof row === 'object').map((row) => {
+    const label = clean(row.label), evidence = {};
+    const sizeBytes = Number.isSafeInteger(row.sizeBytes) && row.sizeBytes > 0 && row.sizeBytes <= 512 * 1024 * 1024 ? row.sizeBytes : null;
+    evidence.size = sizeBytes === null ? 'unknown' : 'observed';
+    const hintedVersion = label.match(/(?:^|[\s_([\]-])v(?:er(?:sion)?)?[\s_-]?(\d{1,8}(?:\.\d{1,8}){0,3}[a-z]?)(?=$|[\s_)\].-])/i)?.[1];
+    const observedVersion = clean(row.versionHint);
+    const versionHint = /^v?\d{1,8}(?:\.\d{1,8}){0,3}[a-z]?$/i.test(observedVersion) ? observedVersion : hintedVersion ? 'v' + hintedVersion : null;
+    evidence.version = versionHint ? observedVersion === versionHint && row.evidence?.version === 'observed' ? 'observed' : 'filename_hint' : 'unknown';
+    const words = label.toLowerCase().replace(/[()[\]_.-]+/g, ' ');
+    const editions = ['studio', 'live', 'acoustic', 'instrumental', 'remix', 'remaster', 'alternate'];
+    const observedEdition = editions.includes(row.editionHint) ? row.editionHint : null;
+    const foundEditions = editions.filter((edition) => new RegExp('(?:^|\\s)' + edition + '(?:ed)?(?:\\s|$)').test(words));
+    const editionHint = observedEdition || (foundEditions.length === 1 ? foundEditions[0] : null);
+    evidence.edition = editionHint ? observedEdition && row.evidence?.edition === 'observed' ? 'observed' : 'filename_hint' : 'unknown';
+    const foundBacking = [];
+    if (/(?:^|\s)(?:no|without|minus)\s+guitars?(?:\s|$)|(?:^|\s)guitarless(?:\s|$)/.test(words)) foundBacking.push('no-guitar');
+    if (/(?:^|\s)(?:no|without|minus)\s+bass(?:\s|$)|(?:^|\s)bassless(?:\s|$)/.test(words)) foundBacking.push('no-bass');
+    if (/(?:^|\s)full\s+(?:mix|backing|track)(?:\s|$)/.test(words)) foundBacking.push('full');
+    const observedBacking = ['full', 'no-guitar', 'no-bass'].includes(row.backingHint) ? row.backingHint : null;
+    const backingHint = observedBacking || (foundBacking.length === 1 ? foundBacking[0] : null);
+    evidence.backing = backingHint ? observedBacking && row.evidence?.backing === 'observed' ? 'observed' : 'filename_hint' : 'unknown';
+    return { id: clean(row.id), label, platform: variant(label), sizeBytes, versionHint, editionHint, backingHint, evidence };
+  }).filter((row) => /^[a-zA-Z0-9_-]{1,100}$/.test(row.id) && /\.psarc$/i.test(row.label) && !/[\\/]/.test(row.label)
+    && !/(?:\b(?:https?|ftp|file|blob|data):|\bwww\.)/i.test(row.label));
+  if (normalizeOnly) return { status: 'normalized', candidates: list };
+  const backing = request.backingTrack ?? request.requirements?.backingTrack ?? 'full';
+  list.sort((a, b) => (a.platform === 'mac') - (b.platform === 'mac') || (a.platform !== 'pc') - (b.platform !== 'pc')
+    || (backing === 'any' ? 0 : (b.backingHint === backing) - (a.backingHint === backing)));
   if (!list.length) return { status: 'waiting' };
   if (new Set(list.map((row) => row.id)).size !== list.length) return { status: 'needs_attention', error: 'The file list changed. Refresh it before choosing a file.' };
   const choice = request.choice;
@@ -34,6 +59,14 @@ function selectFileCandidate(candidates, request = {}) {
   return { status: 'choose_file', candidates: list, error: pc.length ? 'Choose the PSARC version to convert.' : 'Choose a PC PSARC file. No unambiguous PC version was found.' };
 }
 
+function sanitizeFileCandidate(value, { includeId = true } = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const result = selectFileCandidate([{ ...value, id: includeId ? value.id : 'durable-choice' }], {}, true).candidates[0];
+  if (!result) return null;
+  if (!includeId) delete result.id;
+  return result;
+}
+
 const PARTS = new Set(['lead', 'rhythm', 'bass', 'guitar']);
 function normalizeRequirements(value = {}) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid song requirements.');
@@ -48,9 +81,24 @@ function normalizeRequirements(value = {}) {
   } else if (tuning !== null) throw new Error('Invalid tuning requirement.');
   const platform = value.platform ?? 'pc';
   if (!['pc', 'mac', 'any'].includes(platform)) throw new Error('Invalid PSARC platform.');
-  const backingTrack = value.backingTrack ?? 'any';
+  const backingTrack = value.backingTrack ?? 'full';
   if (!['any', 'full', 'no-guitar', 'no-bass'].includes(backingTrack)) throw new Error('Invalid backing track preference.');
-  return { parts: [...new Set(parts)].sort(), tuning, platform, allowMacFallback: value.allowMacFallback === true, backingTrack, strictPlatform: value.strictPlatform === true };
+  if (value.backingStrict !== undefined && typeof value.backingStrict !== 'boolean') throw new Error('Invalid strict backing requirement.');
+  const instruments = value.instrumentRequirements ?? [];
+  if (!Array.isArray(instruments) || instruments.length > 4) throw new Error('Choose at most four arrangement instrument requirements.');
+  const instrumentRequirements = instruments.map((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry) || !PARTS.has(entry.part)) throw new Error('Choose a valid instrument arrangement.');
+    const family = entry.family ?? null, stringCount = entry.stringCount ?? null;
+    if (family !== null && !['bass', 'guitar'].includes(family)) throw new Error('Only guitar and bass instruments are supported.');
+    if (stringCount !== null && (!Number.isInteger(stringCount) || stringCount < 4 || stringCount > 6)) throw new Error('Choose an instrument with four, five or six strings.');
+    if (entry.strict !== undefined && typeof entry.strict !== 'boolean') throw new Error('Invalid instrument requirement strength.');
+    if (family === null && stringCount === null) throw new Error('Choose an instrument family or string count, or remove the requirement.');
+    return { part: entry.part, family, stringCount, strict: entry.strict !== false };
+  });
+  if (new Set(instrumentRequirements.map((entry) => entry.part)).size !== instrumentRequirements.length) throw new Error('Choose only one instrument requirement for each arrangement.');
+  instrumentRequirements.sort((a, b) => a.part.localeCompare(b.part));
+  return { parts: [...new Set(parts)].sort(), tuning, platform, allowMacFallback: value.allowMacFallback === true, backingTrack,
+    backingStrict: value.backingStrict === true, instrumentRequirements, strictPlatform: value.strictPlatform === true };
 }
 function arrangementPart(arrangement) {
   for (const key of ['path', 'id', 'name']) {
@@ -104,8 +152,28 @@ function validateRequirements(input, requested = {}) {
   }
   if (requirements.backingTrack !== 'any') {
     const actual = preview.backing_track ?? preview.backingTrack;
-    if (actual !== requirements.backingTrack) errors.push('The requested backing track variant could not be verified from this file.');
+    const proven = preview.backing_track_evidence === 'explicit' && ['full', 'no-guitar', 'no-bass'].includes(actual);
+    if (!proven || actual !== requirements.backingTrack) {
+      const message = proven ? `The backing track is ${actual}, rather than the requested ${requirements.backingTrack}.`
+        : 'The backing track type is unknown; filename hints and a file choice do not verify its audio.';
+      (requirements.backingStrict ? errors : warnings).push(message + (requirements.backingStrict ? ' Choose another file or relax the strict backing requirement and retry.' : ' The soft preference does not block this file.'));
+    }
+  }
+  for (const requirement of requirements.instrumentRequirements) {
+    const matches = arrangements.filter((arr) => arrangementPart(arr) === requirement.part
+      || (requirement.part === 'guitar' && ['guitar', 'lead', 'rhythm'].includes(arrangementPart(arr))))
+      .filter((arr) => requirements.tuning === null || tuningMatches(arr, requirements.tuning));
+    const suitable = matches.some((arr) => {
+      const family = arr.instrument_family_evidence === 'explicit' ? arr.instrument_family : null;
+      const count = arr.string_count_evidence === 'explicit' && Number.isInteger(arr.string_count) && arr.string_count >= 4 && arr.string_count <= 6 ? arr.string_count : null;
+      return (requirement.family === null || family === requirement.family) && (requirement.stringCount === null || count === requirement.stringCount);
+    });
+    if (!suitable) {
+      const description = [requirement.stringCount === null ? '' : `${requirement.stringCount}-string`, requirement.family || 'instrument'].filter(Boolean).join(' ');
+      (requirement.strict ? errors : warnings).push(`The requested ${description} could not be verified for the ${requirement.part} arrangement${requirements.tuning === null ? '' : ' in the requested tuning'}.`
+        + (requirement.strict ? ' Choose another file or relax this instrument requirement and retry; tuning slots and used notes do not prove an exact string count.' : ' The optional instrument preference does not block this file.'));
+    }
   }
   return { ok: errors.length === 0, errors, warnings, requirements };
 }
-module.exports = { selectFileCandidate, normalizeRequirements, validateRequirements, arrangementPart, tuningMatches };
+module.exports = { selectFileCandidate, sanitizeFileCandidate, normalizeRequirements, validateRequirements, arrangementPart, tuningMatches };

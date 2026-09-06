@@ -271,7 +271,7 @@ async function run() {
   await test('actual ipcMain boundary accepts the local app and rejects another renderer', async () => {
     const options = { show: false, webPreferences: { preload: path.join(__dirname, 'electron-preload.cjs'), sandbox: true, contextIsolation: true, nodeIntegration: false } };
     mainWindow = new BrowserWindow(options); untrustedWindow = new BrowserWindow(options);
-    integration = registerSongBrowser({ app, BrowserWindow, session, ipcMain,
+    integration = registerSongBrowser({ getConverterRecipe: async () => require('./fixture-recipe.cjs'), app, BrowserWindow, session, ipcMain,
       dialog: {}, shell: {}, getMainWindow: () => mainWindow, runConverter: () => { throw new Error('Converter should not run in browser fixture.'); } });
     await Promise.all([mainWindow.loadFile(path.join(__dirname, 'electron-fixture.html')), untrustedWindow.loadFile(path.join(__dirname, 'electron-fixture.html'))]);
     const state = await mainWindow.webContents.executeJavaScript("window.fixture.invoke('song-browser:getState')");

@@ -25,6 +25,7 @@ from .converter import (
 )
 from .psarc_format.psarc import PSARC
 from .psarc_format.sng import Song
+from .instrument_evidence import psarc_instrument_evidence
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,11 @@ class ArrangementPreview:
     chords: int
     event_count: int
     note_count: int
+    instrument_family: str | None = None
+    instrument_family_evidence: str = "unknown"
+    string_count: int | None = None
+    string_count_evidence: str = "unknown"
+    minimum_used_strings: int | None = None
 
 
 @dataclass(frozen=True)
@@ -93,6 +99,8 @@ class PsarcPreview:
     preview_scope: str = "package"
     warnings: list[str] = field(default_factory=list)
     source_platforms: list[str] = field(default_factory=list)
+    backing_track: str | None = None
+    backing_track_evidence: str = "unknown"
 
 
 def inspect_psarc(input_psarc: Path, *, cover_dir: Path | None = None) -> PsarcPreview:
@@ -157,6 +165,7 @@ def inspect_psarc(input_psarc: Path, *, cover_dir: Path | None = None) -> PsarcP
                 chords=chord_count,
                 event_count=_arrangement_event_count(chart_counts),
                 note_count=_arrangement_note_count(chart_counts),
+                **psarc_instrument_evidence(source_path, metadata, chart),
             )
         )
         tone_preview = _tone_preview(song, source_path, arr_id, _display_name(arr_id), metadata)

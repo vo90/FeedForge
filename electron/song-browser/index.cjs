@@ -9,9 +9,10 @@ const { BatchCoordinator } = require('./batch.cjs');
 const { ImportIndex } = require('./imports.cjs');
 const { normalizeSearchRequest, searchIdentity } = require('./catalogue.cjs');
 const { normalizeRequirements } = require('./file-selection.cjs');
+const { normalizeRecipe, recipesCompatible } = require('./provenance.cjs');
 
-function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, shell, getMainWindow, runConverter }) {
-  let browser, jobs, outputDir, root, batches, imports, collecting = null;
+function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, shell, getMainWindow, runConverter, getConverterRecipe = async () => null }) {
+  let browser, jobs, outputDir, root, batches, imports, collecting = null, searching = null, recipePromise;
   let config = {}, diagnostics;
   let feedback = { status: 'disconnected', message: '' };
   let refreshPromise = null;
@@ -21,6 +22,7 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
   const stages = new Map();
   const state = () => ({ outputDir, jobs: jobs.snapshot(), connection: browser.connection,
     batches: batches?.snapshot() || [], preparation: collecting ? { ...collecting.progress, pending: true } : null,
+    searchProgress: searching ? { ...searching.progress, requestId: searching.id, pending: true } : null,
     feedback: { ...feedback, url: config.feedback?.url || '', autoRefresh: config.feedback?.autoRefresh === true } });
   const emit = (job) => {
     if (job?.id && stages.get(job.id)?.stage !== job.state) {
@@ -96,21 +98,28 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
       imports = new ImportIndex({ root: path.join(root, 'imports') });
       jobs = new SongJobs({ root: path.join(root, 'jobs'), outputDir,
         download: (chart, options) => browser.download(chart, options), runConverter, emit,
+        findReusable: ({ chart, sourceHash, recipe, requirements, signal }) => imports.find(chart, { sourceHash, recipe, requirements, signal }),
         onCompleted: (entry) => { imports.record(entry); browser.filteredSnapshot = null; } });
-      browser.decorateCharts = async (charts, request) => {
+      browser.decorateCharts = async (charts, request, signal) => {
         if (!request.filters?.hideConverted) return charts;
-        return Promise.all(charts.map(async (chart) => ({ ...chart, alreadyConverted: Boolean(await imports.find(chart, { outputDir })) })));
+        const result = [];
+        for (const chart of charts) {
+          if (signal?.aborted) throw new Error('Collection cancelled.');
+          result.push({ ...chart, alreadyConverted: Boolean(await imports.find(chart, { outputDir, recipe: jobs.recipe, preferences: normalizeRequirements(request.filters || {}), signal })) });
+        }
+        return result;
       };
       const batchStates = new Map();
       batches = new BatchCoordinator({ root: path.join(root, 'batches'),
-        findCompleted: async ({ batchId, itemId }) => {
-          const saved = await imports.findByAttempt(batchId, itemId);
+        findCompleted: async ({ batchId, itemId, intentId, legacyIntent, selection, jobId }) => {
+          const saved = await imports.findByAttempt(batchId, itemId, { intentId: legacyIntent && !selection?.choice ? undefined : intentId, jobId });
           return saved ? { ...saved, status: 'completed', message: 'Previously saved FeedPak recovered.' } : null;
         },
         execute: async (chart, context) => {
+          if (!recipesCompatible(context.recipe, jobs.recipe)) throw new Error('The converter changed. Resume the batch to update its conversion settings.');
           const selection = selectionForChart(chart, chart.selection || context.selection);
-          const saved = await imports.find(chart, { outputDir: context.outputDir, preferences: selection });
-          if (saved) return { ...saved, status: 'skipped', message: 'Already available in this output folder.' };
+          const saved = context.reviewAnother || selection.choice ? null : await imports.find(chart, { outputDir: context.outputDir, preferences: selection, requestedChoice: selection.choice, recipe: context.recipe, signal: context.signal });
+          if (saved) return { ...saved, status: 'skipped', skipKind: 'available', message: 'Already available in this output folder.' };
           return jobs.run(chart, { ...context, selection });
         },
         onChange: (snapshots) => {
@@ -126,6 +135,20 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
       for (const job of jobs.snapshot()) stages.set(job.id, { stage: job.state, at: Date.now() });
     } catch (error) { browser.dispose(); browser = null; throw error; }
   }
+  async function ensureRecipe() {
+    if (!recipePromise) recipePromise = Promise.resolve().then(getConverterRecipe).then(normalizeRecipe).catch((error) => { recipePromise = null; throw error; });
+    jobs.recipe = await recipePromise;
+    return jobs.recipe;
+  }
+  async function importDecisions(selected, preferences, directory, signal) {
+    const decisions = {};
+    for (const chart of selected) {
+      if (signal?.aborted) throw new Error('Batch preparation cancelled.');
+      const assessment = await imports.assess(chart, { outputDir: directory, preferences: selectionForChart(chart, preferences), recipe: jobs.recipe, signal });
+      decisions[chart.id] = { status: assessment.status, reason: assessment.reason };
+    }
+    return decisions;
+  }
   function handler(name, action) {
     ipcMain.handle(`song-browser:${name}`, async (event, payload) => {
       const win = getMainWindow();
@@ -140,21 +163,40 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
   handler('signIn', () => browser.signIn());
   handler('showBrowser', () => browser.showBrowser());
   handler('search', async (request) => {
-    const result = await browser.search(request);
+    const id = typeof request.requestId === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(request.requestId) ? request.requestId : crypto.randomUUID();
+    searching?.controller.abort();
+    const operation = { id, controller: new AbortController(), progress: { collected: 0, total: null, page: 1 } };
+    searching = operation; emit();
+    try {
+    if (request.filters?.hideConverted) await ensureRecipe();
+    const result = await browser.search(request, { signal: operation.controller.signal, onProgress: (progress) => { if (searching === operation) { operation.progress = progress; emit(); } } });
+    if (operation.controller.signal.aborted) return { status: 'cancelled', requestId: id };
     if (result.status === 'ready') {
       // Only visible search results are eligible for enqueue. Never accept a supplied URL.
       for (const chart of result.results) charts.set(String(chart.id), chart);
       while (charts.size > 5000) charts.delete(charts.keys().next().value);
     }
     return result;
+    } finally { if (searching === operation) { searching = null; emit(); } }
   });
-  handler('enqueue', ({ id, selection }) => {
+  handler('cancelSearch', ({ requestId }) => { if (searching && (!requestId || searching.id === requestId)) searching.controller.abort(); return { ok: true }; });
+  handler('enqueue', async ({ id, selection, reviewAnother = false }) => {
     const chart = charts.get(String(id));
     if (!chart) throw new Error('Search for the chart again before downloading it.');
     if (!chart.supported) throw new Error('This host is not supported yet.');
-    return jobs.enqueue({ ...chart, selection: selection ? normalizeRequirements(selection) : undefined });
+    await ensureRecipe();
+    return jobs.enqueue({ ...chart, recipe: jobs.recipe, reviewAnother: reviewAnother === true, selection: normalizeRequirements(selection || {}) });
   });
   handler('chooseFile', ({ id }) => browser.chooseFile({ id: String(id) }));
+  handler('assessResult', async ({ id, jobId, selection }) => {
+    const chart = charts.get(String(id));
+    if (!chart) throw new Error('Search for the chart again to check the saved song.');
+    const job = jobs.snapshot().find((entry) => entry.id === jobId && entry.chartId === chart.id && entry.state === 'completed');
+    if (!job) throw new Error('The saved song has changed. Refresh its results.');
+    await ensureRecipe();
+    const assessment = await imports.assess(chart, { jobId: job.id, outputDir, preferences: selectionForChart(chart, normalizeRequirements(selection || {})), recipe: jobs.recipe });
+    return { reusable: assessment.reusable, code: assessment.code, reason: assessment.reason, status: assessment.status };
+  });
   handler('prepareBatch', async ({ request, ids, preferences, scope = 'all' }) => {
     if (collecting) throw new Error('A batch is already being prepared.');
     const query = normalizeSearchRequest(request);
@@ -162,6 +204,7 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
     const operation = { controller: new AbortController(), progress: { collected: 0, total: null } };
     collecting = operation; emit();
     try {
+      await ensureRecipe();
       let selected;
       if (scope === 'selected') {
         if (!Array.isArray(ids) || !ids.length || ids.length > 5000 || new Set(ids).size !== ids.length) throw new Error('Select charts to prepare.');
@@ -174,20 +217,33 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
         selected = result.results;
       } else throw new Error('Choose selected charts or all results.');
       if (operation.controller.signal.aborted) throw new Error('Batch preparation cancelled.');
-      return batches.prepare({ charts: selected, preferences, outputDir: target, query: searchIdentity(query), complete: true });
+      const decisions = await importDecisions(selected, preferences || {}, target, operation.controller.signal);
+      return batches.prepare({ charts: selected, preferences, recipe: jobs.recipe, importDecisions: decisions, outputDir: target, query: searchIdentity(query), complete: true });
     } finally { if (collecting === operation) collecting = null; emit(); }
   });
   handler('cancelPreparation', () => { collecting?.controller.abort(); return { ok: true }; });
-  handler('chooseBatch', ({ id, selectedIds }) => batches.choose(String(id), { selectedIds }));
-  handler('startBatch', ({ id }) => batches.start(String(id)));
+  handler('chooseBatch', ({ id, selectedIds, forceReviewIds }) => batches.choose(String(id), { selectedIds, forceReviewIds }));
+  handler('updateBatchPreferences', async ({ id, preferences }) => {
+    const batch = batches.snapshot().find((item) => item.id === String(id));
+    if (!batch || batch.state !== 'draft') throw new Error('Choose a batch that is still being reviewed.');
+    await ensureRecipe();
+    return batches.updatePreferences(String(id), { preferences, importDecisions: await importDecisions(batch.charts, preferences || {}, batch.outputDir) });
+  });
+  handler('skipBatchItem', ({ id, itemId }) => batches.skipItem(String(id), String(itemId)));
+  handler('retryBatchItem', async ({ id, itemId, relaxRequirements }) => { await ensureRecipe(); await batches.setRecipe(String(id), jobs.recipe); return batches.retryItem(String(id), String(itemId), { relaxRequirements: relaxRequirements === true }); });
+  handler('dismissBatchSuggestion', ({ id, suggestionId }) => batches.dismissSuggestion(String(id), String(suggestionId)));
+  handler('startBatch', async ({ id }) => { await ensureRecipe(); await batches.setRecipe(String(id), jobs.recipe); return batches.start(String(id)); });
   handler('pauseBatch', ({ id }) => batches.pause(String(id)));
-  handler('resumeBatch', ({ id, retryFailed }) => batches.resume(String(id), { retryFailed: retryFailed === true }));
-  handler('resolveBatchItem', ({ id, itemId }) => batches.resumeItem(String(id), String(itemId)));
+  handler('resumeBatch', async ({ id, retryFailed }) => { await ensureRecipe(); await batches.setRecipe(String(id), jobs.recipe); return batches.resume(String(id), { retryFailed: retryFailed === true }); });
+  handler('resolveBatchItem', async ({ id, itemId }) => { await ensureRecipe(); await batches.setRecipe(String(id), jobs.recipe); return batches.resumeItem(String(id), String(itemId)); });
   handler('cancelBatch', ({ id }) => batches.cancel(String(id)));
   handler('chooseBatchFile', ({ id, itemId, choice }) => batches.setItemChoice(String(id), String(itemId), { choice }));
   handler('removeBatch', ({ id }) => { batches.remove(String(id)); return { ok: true }; });
   handler('cancel', ({ id }) => jobs.cancel(String(id)));
-  handler('retry', ({ id }) => { diagnostics.record({ code: 'retry_requested', stage: 'recovery' }); return jobs.retry(String(id)); });
+  handler('retry', async ({ id, relaxRequirements }) => {
+    await ensureRecipe(); diagnostics.record({ code: 'retry_requested', stage: 'recovery' });
+    return jobs.retry(String(id), relaxRequirements === true ? { selection: { parts: [], tuning: null, platform: 'pc', strictPlatform: true, backingTrack: 'any', backingStrict: false, instrumentRequirements: [] } } : {});
+  });
   handler('clearCache', async ({ id }) => {
     const result = await jobs.clearCache(String(id));
     diagnostics.record({ code: 'cache_cleared', stage: 'recovery' }); return result;
@@ -279,9 +335,10 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
     event.preventDefault();
     quitting = true;
     collecting?.controller.abort();
+    searching?.controller.abort();
     browser.dispose();
     Promise.resolve(batches?.dispose?.()).finally(() => jobs.dispose()).finally(() => app.quit()).catch(() => {});
   });
-  return { close: async () => { collecting?.controller.abort(); await batches?.dispose(); browser?.dispose(); return jobs?.dispose(); } };
+  return { close: async () => { collecting?.controller.abort(); searching?.controller.abort(); await batches?.dispose(); browser?.dispose(); return jobs?.dispose(); } };
 }
 module.exports = { registerSongBrowser };

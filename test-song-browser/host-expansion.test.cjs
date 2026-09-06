@@ -83,7 +83,7 @@ test('requirements bind tuning to the requested arrangement and validate source 
   assert.equal(validateRequirements({ arrangements: preview.arrangements }, { strictPlatform: true }).ok, false);
   assert.equal(validateRequirements(preview, { parts: ['bass'], tuning: 'Mystery tuning' }).ok, false);
   assert.equal(validateRequirements(preview, { parts: ['lead'], tuning: [-1, -1, -1, -1, -1, -1] }).ok, true);
-  assert.equal(validateRequirements(preview, { backingTrack: 'no-guitar' }).ok, false);
+  assert.equal(validateRequirements(preview, { backingTrack: 'no-guitar', backingStrict: true }).ok, false);
   assert.deepEqual(normalizeRequirements({ parts: ['bass', 'lead', 'bass'] }).parts, ['bass', 'lead']);
   assert.throws(() => normalizeRequirements({ parts: ['vocals'] }));
   assert.throws(() => normalizeRequirements({ tuning: [0, '0', 0, 0] }));
@@ -148,6 +148,21 @@ test('ambiguous folder returns opaque choices; saved descriptor selects exactly 
   assert.doesNotMatch(JSON.stringify(result), /drive\.google|\/file\/d/);
   assert.equal(fixture.run({ choice: { label: 'Song_v2_p.psarc', platform: 'pc' } }).status, 'clicked');
   assert.equal(b.clicked, 1); assert.equal(all.clicked, 0);
+});
+
+test('host chooser carries readable observed metadata without exposing link tokens', () => {
+  const first = element('a', { href: 'https://drive.google.com/file/d/provider-secret-1/view' }, 'Song_v1_p.psarc', [
+    element('span', {}, '12 MB'), element('span', {}, 'Version: v1.5'), element('span', {}, 'Backing: no-bass'), element('span', {}, 'Edition: live'),
+  ]);
+  const second = element('a', { href: 'https://drive.google.com/file/d/provider-secret-2/view' }, 'Song_v2_p.psarc');
+  const result = page('https://drive.google.com/drive/folders/folder-secret', [first, second]).run();
+  assert.equal(result.status, 'choose_file');
+  const candidate = result.candidates.find((item) => item.label === 'Song_v1_p.psarc');
+  assert.equal(candidate.sizeBytes, 12_000_000); assert.equal(candidate.versionHint, 'v1.5');
+  assert.equal(candidate.backingHint, 'no-bass'); assert.equal(candidate.editionHint, 'live');
+  assert.equal(candidate.evidence.version, 'observed'); assert.equal(candidate.evidence.backing, 'observed');
+  assert.equal(result.candidates.find((item) => item.label === 'Song_v2_p.psarc').sizeBytes, null);
+  assert.doesNotMatch(JSON.stringify(result), /secret|https|\/file\/d/);
 });
 
 test('virtualized folder never treats its only rendered candidate as a complete file list', () => {

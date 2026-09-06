@@ -40,7 +40,7 @@ function identity(request, includeSort = true, includePage = false) {
 }
 
 function createSession(api) {
-  let state = { query: '', searchedQuery: '', sort: { field: 'title', direction: 'asc' }, filters: defaultFilters(), searchedRequest: null, requestIdentity: '', selectionScope: '', result: null, pending: false, error: '' };
+  let state = { query: '', searchedQuery: '', sort: { field: 'title', direction: 'asc' }, filters: defaultFilters(), searchedRequest: null, requestIdentity: '', selectionScope: '', result: null, pending: false, error: '', requestId: null, progress: null };
   let inFlight = null;
   let generation = 0;
   let controlsChosen = false;
@@ -54,6 +54,19 @@ function createSession(api) {
   return {
     getSnapshot: () => state,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+    setProgress(progress) {
+      if (!state.pending || !progress || progress.requestId !== state.requestId) return;
+      update({ progress: { ...progress } });
+    },
+    async cancel() {
+      const requestId = state.requestId;
+      if (!state.pending) return;
+      generation++; inFlight = null;
+      update({ pending: false, progress: null, requestId: null, error: 'Search cancelled.' });
+      if (requestId && typeof api.cancelSearch === 'function') {
+        try { await api.cancelSearch({ requestId }); } catch { /* Late cancellation cannot replace a newer search. */ }
+      }
+    },
     setQuery(query) { if (typeof query === 'string' && query !== state.query) update({ query }); },
     setSort(sort) {
       try { const normalized = normalizeSort(sort); controlsChosen = true; update({ sort: normalized, error: '' }); }
@@ -95,8 +108,10 @@ function createSession(api) {
       }
       const key = identity(request, true, true);
       if (inFlight?.key === key) return inFlight.promise;
+      if (state.pending && state.requestId && typeof api.cancelSearch === 'function') Promise.resolve(api.cancelSearch({ requestId: state.requestId })).catch(() => {});
       const current = ++generation;
-      const payload = legacy ? { query: request.query, page: request.page } : request;
+      const requestId = typeof api.cancelSearch === 'function' ? (globalThis.crypto?.randomUUID?.() || `search-${Date.now()}-${current}-${Math.random().toString(36).slice(2)}`) : null;
+      const payload = { ...(legacy ? { query: request.query, page: request.page } : request), ...(requestId ? { requestId } : {}) };
       if (!legacy) controlsChosen = true;
       // The main process serializes browser navigation. Only the newest request
       // may publish a result, failure, or pending-state change to this session.
@@ -111,11 +126,11 @@ function createSession(api) {
       }).finally(() => {
         if (current === generation) {
           inFlight = null;
-          update({ pending: false });
+          update({ pending: false, progress: null });
         }
       });
       inFlight = { key, promise };
-      update({ pending: true, result: null, error: '', searchedQuery: request.query, sort: request.sort, filters: request.filters, searchedRequest: request, requestIdentity: identity(request), selectionScope: identity(request, false) });
+      update({ pending: true, result: null, error: '', searchedQuery: request.query, sort: request.sort, filters: request.filters, searchedRequest: request, requestIdentity: identity(request), selectionScope: identity(request, false), requestId, progress: null });
       return promise;
     },
   };

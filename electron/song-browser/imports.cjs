@@ -3,8 +3,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const { sanitizeChart, normalizePreferences, partsOf, normalized, cleanText } = require("./batch.cjs");
-const { arrangementPart, validateRequirements } = require("./file-selection.cjs");
+const { sanitizeChart, normalizePreferences, partsOf, cleanText } = require("./batch.cjs");
+const { arrangementPart, normalizeRequirements } = require("./file-selection.cjs");
+const { sanitizeChoice, sanitizeFileEvidence, normalizeRecipe, reuseDecision, decision, UUID } = require("./provenance.cjs");
 
 const HASH = /^[a-f0-9]{64}$/;
 const MAX_IMPORTS = 20000;
@@ -43,16 +44,21 @@ function coverageOf(value) {
     } else if (typeof source.tuning === "string") result.tuning = cleanText(source.tuning, 160);
     const stringCount = source.string_count ?? source.stringCount;
     if (Number.isInteger(stringCount) && stringCount >= 4 && stringCount <= 8) result.string_count = stringCount;
+    if (source.string_count_evidence === "explicit") result.string_count_evidence = "explicit";
+    if (["guitar", "bass"].includes(source.instrument_family)) result.instrument_family = source.instrument_family;
+    if (source.instrument_family_evidence === "explicit") result.instrument_family_evidence = "explicit";
+    if (Number.isInteger(source.minimum_used_strings) && source.minimum_used_strings >= 0 && source.minimum_used_strings <= 8) result.minimum_used_strings = source.minimum_used_strings;
     return [result];
   }) };
   const platforms = value?.source_platforms ?? value?.platforms;
   if (Array.isArray(platforms)) coverage.source_platforms = [...new Set(platforms.filter((platform) => ["pc", "mac"].includes(platform)))];
   const backingTrack = value?.backing_track ?? value?.backingTrack;
   if (["full", "no-guitar", "no-bass"].includes(backingTrack)) coverage.backing_track = backingTrack;
+  if (value?.backing_track_evidence === "explicit") coverage.backing_track_evidence = "explicit";
   return coverage;
 }
 
-function sanitizeRecord(input) {
+function sanitizeRecord(input, { legacy = false } = {}) {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Invalid imported-song record.");
   if (input.state !== undefined && input.state !== "completed") throw new Error("Only successfully completed songs belong in the import index.");
   const chart = sanitizeChart(input.chart || input);
@@ -62,8 +68,13 @@ function sanitizeRecord(input) {
     id: cleanText(input.id || input.jobId || crypto.randomUUID(), 100), chartId: chart.id, chart,
     outputPath: path.resolve(input.outputPath), outputHash: input.outputHash,
     sourceHash: HASH.test(input.sourceHash || "") ? input.sourceHash : "",
-    selection: normalizePreferences(input.selection || input.preferences || {}),
+    selection: { ...normalizePreferences(input.selection || input.preferences || {}),
+      ...normalizeRequirements({ ...(input.selection || input.preferences || {}), parts: input.selection?.parts ?? input.selection?.requiredParts ?? input.preferences?.requiredParts ?? [] }) },
     coverage: coverageOf(input.coverage),
+    intentId: !legacy && UUID.test(input.intentId || "") ? input.intentId : null,
+    requestedChoice: legacy ? null : sanitizeChoice(input.requestedChoice ?? input.selection?.choice),
+    resolvedFile: legacy ? null : sanitizeFileEvidence(input.resolvedFile),
+    recipe: legacy ? null : normalizeRecipe(input.recipe),
     completedAt: Number.isFinite(input.completedAt) ? input.completedAt : Number.isFinite(input.updatedAt) ? input.updatedAt : Date.now(),
   };
   if (typeof input.batchId === "string" && /^[a-f0-9-]{36}$/.test(input.batchId)) record.batchId = input.batchId;
@@ -76,11 +87,17 @@ function sameDirectory(a, b) {
   catch { return path.resolve(a) === path.resolve(b); }
 }
 
-function covers(record, preferences) {
-  const requested = normalizePreferences(preferences);
-  if (requested.platform !== "any" && record.selection.platform !== requested.platform) return false;
-  return validateRequirements(record.coverage, { parts: requested.requiredParts, tuning: requested.tuning || null,
-    platform: requested.platform, allowMacFallback: requested.allowMacFallback, backingTrack: requested.backingTrack }).ok;
+function preserveLegacy(filename, original) {
+  let backup = filename.replace(/\.json$/, ".v1.backup.json");
+  if (fs.existsSync(backup)) {
+    const stat = fs.lstatSync(backup);
+    if (stat.isFile() && !stat.isSymbolicLink() && fs.readFileSync(backup).equals(original)) return backup;
+    backup = filename.replace(/\.json$/, `.v1.backup-${crypto.randomUUID()}.json`);
+  }
+  const descriptor = fs.openSync(backup, "wx", 0o600);
+  try { fs.writeFileSync(descriptor, original); fs.fsyncSync(descriptor); }
+  finally { fs.closeSync(descriptor); }
+  return backup;
 }
 
 class ImportIndex {
@@ -94,11 +111,16 @@ class ImportIndex {
       const stat = fs.lstatSync(this.filename);
       if (!stat.isFile() || stat.isSymbolicLink() || stat.size > MAX_BYTES) throw new Error("The imported-song index is not a supported local file.");
       let data;
-      try { data = JSON.parse(fs.readFileSync(this.filename, "utf8")); }
+      const original = fs.readFileSync(this.filename);
+      try { data = JSON.parse(original.toString("utf8")); }
       catch { throw new Error("The imported-song index could not be read. Keep it for recovery."); }
-      if (data?.version !== 1 || !Array.isArray(data.records) || data.records.length > MAX_IMPORTS) throw new Error("The imported-song index has an unsupported format.");
-      this.records = data.records.map(sanitizeRecord);
+      if (![1, 2].includes(data?.version) || !Array.isArray(data.records) || data.records.length > MAX_IMPORTS) throw new Error("The imported-song index has an unsupported format.");
+      this.records = data.records.map((record) => sanitizeRecord(record, { legacy: data.version === 1 }));
       if (new Set(this.records.map((item) => item.id)).size !== this.records.length) throw new Error("The imported-song index contains duplicate record IDs.");
+      if (data.version === 1) {
+        this.migrationBackup = preserveLegacy(this.filename, original);
+        writeAtomic(this.filename, { version: 2, records: this.records });
+      }
     }
   }
 
@@ -110,6 +132,13 @@ class ImportIndex {
     const next = [...this.records];
     const existing = next.findIndex((item) => item.id === record.id);
     if (existing >= 0) {
+      // Repeated old history events must not erase evidence written by the new
+      // completion path. Missing evidence is different from an explicit change.
+      if (record.outputHash === next[existing].outputHash && record.sourceHash === next[existing].sourceHash) {
+        for (const key of ["intentId", "requestedChoice", "resolvedFile", "recipe"]) {
+          if (!record[key] && next[existing][key]) record[key] = clone(next[existing][key]);
+        }
+      }
       // Repeated completion events are common while unrelated jobs update the UI.
       if (input.completedAt === undefined && input.updatedAt === undefined) record.completedAt = next[existing].completedAt;
       if (JSON.stringify(next[existing]) === JSON.stringify(record)) return clone(next[existing]);
@@ -119,45 +148,65 @@ class ImportIndex {
       if (next.length >= MAX_IMPORTS) throw new Error("The imported-song index is full. Existing duplicate records were preserved.");
       next.push(record);
     }
-    writeAtomic(this.filename, { version: 1, records: next });
+    writeAtomic(this.filename, { version: 2, records: next });
     this.records = next;
     return clone(record);
   }
 
-  async verify(input) {
+  async verify(input, { signal } = {}) {
+    if (signal?.aborted) throw Object.assign(new Error("Import verification cancelled."), { code: "ABORT_ERR" });
     if (!input || !HASH.test(input.outputHash || "") || typeof input.outputPath !== "string" || !path.isAbsolute(input.outputPath)) return false;
     try {
       const before = await fs.promises.lstat(input.outputPath);
-      if (!before.isFile() || before.isSymbolicLink()) return false;
+      if (!before.isFile() || before.isSymbolicLink() || !before.size || before.size > 2 * 1024 * 1024 * 1024) return false;
       const digest = crypto.createHash("sha256");
-      for await (const chunk of fs.createReadStream(input.outputPath)) digest.update(chunk);
+      for await (const chunk of fs.createReadStream(input.outputPath, { signal })) digest.update(chunk);
       const after = await fs.promises.lstat(input.outputPath);
       return after.isFile() && !after.isSymbolicLink() && before.size === after.size && before.mtimeMs === after.mtimeMs
         && digest.digest("hex") === input.outputHash;
-    } catch { return false; }
+    } catch (error) { if (signal?.aborted) throw Object.assign(new Error("Import verification cancelled."), { code: "ABORT_ERR" }); return false; }
   }
 
-  async findByAttempt(batchId, itemId) {
-    const candidates = this.records.filter((item) => item.batchId === batchId && item.itemId === itemId).sort((a, b) => b.completedAt - a.completedAt);
-    for (const record of candidates) if (await this.verify(record)) return clone(record);
+  async findByAttempt(batchId, itemId, { intentId, jobId, signal } = {}) {
+    if (!UUID.test(batchId || "") || typeof itemId !== "string" || (intentId != null && !UUID.test(intentId))) return null;
+    // Receipts recover an existing intent, regardless of today's converter.
+    // A new intent must never recover a prior variant of the same batch item.
+    const candidates = this.records.filter((item) => item.batchId === batchId && item.itemId === itemId
+      && (intentId != null ? item.intentId === intentId : !item.intentId)
+      && (jobId == null || item.id === jobId)).sort((a, b) => b.completedAt - a.completedAt);
+    for (const record of candidates) if (await this.verify(record, { signal })) return clone(record);
     return null;
   }
 
-  async find(input, { outputDir, preferences = {}, sourceHash } = {}) {
+  async assess(input, { outputDir, preferences = {}, requirements, requestedChoice, recipe, sourceHash, reviewAnother = false, signal, jobId } = {}) {
+    if (signal?.aborted) throw Object.assign(new Error("Import verification cancelled."), { code: "ABORT_ERR" });
     const chart = sanitizeChart(input);
     const exactSource = HASH.test(sourceHash || "");
-    const candidates = this.records.filter((record) => {
-      if (record.chartId !== chart.id || (outputDir && !sameDirectory(path.dirname(record.outputPath), outputDir)) || !covers(record, preferences)) return false;
-      if (exactSource) return record.sourceHash === sourceHash;
-      // Artist/title and chart ID alone are not proof of an unchanged chart. Compare every available revision marker.
-      if (!chart.version && !chart.updated) return false;
-      if (chart.version && record.chart.version !== chart.version) return false;
-      if (chart.updated && record.chart.updated !== chart.updated) return false;
-      return normalized(record.chart.artist) === normalized(chart.artist) && normalized(record.chart.title) === normalized(chart.title);
-    }).sort((a, b) => b.completedAt - a.completedAt);
-    for (const record of candidates) if (await this.verify(record)) return clone(record);
-    return null;
+    const candidates = this.records.filter((record) => (jobId == null || record.id === jobId)
+      && (record.chartId === chart.id || (exactSource && record.sourceHash === sourceHash))).sort((a, b) => b.completedAt - a.completedAt);
+    const describe = (result, record) => ({ ...result,
+      status: result.reusable ? "available" : ["different_file", "review_file", "different_requirements"].includes(result.code) ? "choose_file"
+        : result.code.startsWith("unknown_") ? "insufficient_evidence" : "new_conversion",
+      ...(record ? { record: clone(record) } : {}) });
+    let fallback = decision("no_record");
+    for (const record of candidates) {
+      if (signal?.aborted) throw Object.assign(new Error("Import verification cancelled."), { code: "ABORT_ERR" });
+      let result = reuseDecision(record, { chart, requirements: requirements ?? preferences,
+        requestedChoice: requestedChoice ?? input.requestedChoice ?? preferences.choice, recipe: recipe ?? input.recipe,
+        sourceHash, reviewAnother });
+      if (result.reusable) {
+        if (!await this.verify(record, { signal })) result = decision("missing_output");
+        else if (outputDir && !sameDirectory(path.dirname(record.outputPath), outputDir)) result = decision("other_folder");
+        else return describe(result, record);
+      }
+      // A latest candidate's reason is useful; a known missing output or another
+      // folder is more actionable than unrelated older incompatible versions.
+      if (fallback.code === "no_record" || ["missing_output", "other_folder"].includes(result.code)) fallback = result;
+    }
+    return describe(fallback);
   }
+
+  async find(input, options = {}) { const result = await this.assess(input, options); return result.reusable ? result.record : null; }
 }
 
 module.exports = { ImportIndex, coverageOf, MAX_IMPORTS };

@@ -4,6 +4,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { arrangementPart, tuningMatches } = require("./file-selection.cjs");
+const { possibleDuplicates } = require('./duplicate-suggestions.cjs');
+const { normalizeRecipe } = require('./provenance.cjs');
 
 const MAX_BATCH_CHARTS = 5000;
 const MAX_BATCHES = 25;
@@ -12,6 +14,7 @@ const MAX_STATE_BYTES = 32 * 1024 * 1024;
 const PARTS = ["lead", "rhythm", "bass"];
 const BATCH_STATES = new Set(["draft", "running", "paused", "completed", "cancelled"]);
 const ITEM_STATES = new Set(["pending", "running", "completed", "skipped", "failed", "needs_attention", "interrupted", "cancelled"]);
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 
 function cleanText(value, limit = 300) {
   return String(value ?? "").replace(/\b(?:https?|ftp|file|blob|data):[^\s<>"']+/gi, "[link]")
@@ -64,7 +67,9 @@ function sanitizeChart(input) {
     .filter((item) => item && typeof item === "object" && partsOf([item]).length)
     .map((item) => ({ id: partsOf([item])[0], type: partsOf([item])[0],
       tuning: Array.isArray(item.tuning) && item.tuning.length >= 4 && item.tuning.length <= 8 && item.tuning.every((note) => Number.isInteger(note) && note >= -24 && note <= 24)
-        ? [...item.tuning] : cleanText(item.tuning, 160), tuning_name: cleanText(item.tuning_name, 160) }));
+        ? [...item.tuning] : cleanText(item.tuning, 160), tuning_name: cleanText(item.tuning_name, 160),
+      instrument_family: ['guitar', 'bass'].includes(item.instrument_family) ? item.instrument_family : null,
+      string_count: Number.isInteger(item.string_count) && item.string_count >= 4 && item.string_count <= 8 ? item.string_count : null }));
   chart.host = ["google-drive", "dropbox", "mediafire", "onedrive", "mega", "pcloud"].includes(input.host) ? input.host : "unknown";
   chart.supported = input.supported === true;
   chart.downloads = count(input.downloads);
@@ -91,19 +96,29 @@ function normalizePreferences(input = {}) {
     excludeAbandoned: input.excludeAbandoned === true,
     allowUnsupported: input.allowUnsupported === true,
     platform: ["mac", "any"].includes(input.platform) ? input.platform : "pc",
-    backingTrack: ["full", "no-guitar", "no-bass", "any"].includes(input.backingTrack) ? input.backingTrack : "any",
+    backingTrack: ["full", "no-guitar", "no-bass", "any"].includes(input.backingTrack) ? input.backingTrack : "full",
+    backingStrict: input.backingStrict === true,
+    instrumentRequirements: require('./file-selection.cjs').normalizeRequirements({ instrumentRequirements: input.instrumentRequirements || [] }).instrumentRequirements || [],
     macFallback: input.macFallback === true || input.allowMacFallback === true,
     allowMacFallback: input.macFallback === true || input.allowMacFallback === true,
   };
 }
 
 function eligibleParts(chart, preferences) {
-  if (!preferences.tuning) return chart.parts;
+  const compatible = chart.parts.filter((part) => {
+    const requirement = preferences.instrumentRequirements.find((entry) => entry.part === part && entry.strict !== false);
+    if (!requirement) return true;
+    // Unknown catalogue evidence stays reviewable, with mandatory inspection later.
+    const arrangements = chart.arrangements.filter((entry) => entry.id === part);
+    return !arrangements.length || arrangements.some((entry) => (!requirement.family || !entry.instrument_family || entry.instrument_family === requirement.family)
+      && (!requirement.stringCount || !entry.string_count || entry.string_count === requirement.stringCount));
+  });
+  if (!preferences.tuning) return compatible;
   if (chart.arrangements.length) {
-    return chart.parts.filter((part) => chart.arrangements.some((item) => item.type === part && tuningMatches(item, preferences.tuning)));
+    return compatible.filter((part) => chart.arrangements.some((item) => item.type === part && tuningMatches(item, preferences.tuning)));
   }
   // A row advertising multiple tunings cannot establish which requested path uses which tuning.
-  return chart.tunings.length === 1 && tuningMatches({ tuning: chart.tunings[0] }, preferences.tuning) ? chart.parts : [];
+  return chart.tunings.length === 1 && tuningMatches({ tuning: chart.tunings[0] }, preferences.tuning) ? compatible : [];
 }
 
 function optionFor(chart, preferences) {
@@ -116,7 +131,11 @@ function optionFor(chart, preferences) {
   if (preferences.requiredParts.length && !parts.some((part) => preferences.requiredParts.includes(part))) {
     reasons.push("Does not contain a required arrangement.");
   }
-  return { id: chart.id, eligible: reasons.length === 0, parts, reasons };
+  if (preferences.instrumentRequirements.some((requirement) => requirement.strict !== false && chart.parts.includes(requirement.part) && !parts.includes(requirement.part))) reasons.push('The reported instrument is incompatible with the required arrangement.');
+  if (preferences.instrumentRequirements.some((requirement) => requirement.strict !== false && chart.parts.length && !chart.parts.includes(requirement.part) && requirement.part !== 'guitar')) reasons.push('The chart does not advertise an arrangement needed for the instrument requirement.');
+  const verificationPending = preferences.instrumentRequirements.some((requirement) => requirement.strict !== false && !chart.arrangements.some((arrangement) => arrangement.id === requirement.part
+    && (!requirement.family || arrangement.instrument_family === requirement.family) && (!requirement.stringCount || arrangement.string_count === requirement.stringCount)));
+  return { id: chart.id, eligible: reasons.length === 0, parts, reasons, verificationPending };
 }
 
 function rankCharts(a, b, preferences) {
@@ -179,7 +198,8 @@ function planBatch(inputs, inputPreferences = {}) {
     groups.push({ key, artist: alternatives[0].artist, title: alternatives[0].title, options,
       recommendedIds: unresolved ? [] : recommendedIds, reasons, unresolved });
   }
-  return { charts, preferences, groups, selectedIds: groups.flatMap((group) => group.recommendedIds),
+  const duplicateReview = possibleDuplicates(groups);
+  return { charts, preferences, groups, suggestions: duplicateReview.suggestions, suggestionsLimited: duplicateReview.limited, selectedIds: groups.flatMap((group) => group.recommendedIds),
     unresolvedCount: groups.filter((group) => group.unresolved).length };
 }
 
@@ -210,24 +230,36 @@ function outcomeOf(input) {
   const status = input.status ?? input.state;
   const result = { status: ["completed", "skipped", "failed", "needs_attention", "interrupted", "cancelled"].includes(status) ? status : "failed",
     message: cleanText(input.message || input.error, 500), sessionWide: input.sessionWide === true };
+  if (result.status === 'skipped') result.skipKind = input.skipKind === 'user' ? 'user' : 'available';
   for (const key of ["sourceHash", "outputHash"]) if (/^[a-f0-9]{64}$/.test(input[key] || "")) result[key] = input[key];
   if (typeof input.outputPath === "string" && path.isAbsolute(input.outputPath) && /\.feedpak$/i.test(input.outputPath)) result.outputPath = path.resolve(input.outputPath);
   if (input.id !== undefined || input.jobId !== undefined) result.jobId = cleanText(input.jobId ?? input.id, 80);
   if (Array.isArray(input.candidates)) result.candidates = input.candidates.slice(0, 100).map((item) => ({
+    ...(require('./file-selection.cjs').sanitizeFileCandidate?.(item) || {}),
     id: cleanText(item?.id, 160), label: cleanText(item?.label, 300),
     platform: ["pc", "mac", "unknown"].includes(item?.platform) ? item.platform : "unknown",
   })).filter((item) => item.id && item.label);
   return result;
 }
 
+function availabilityOf(value, charts) {
+  const result = {};
+  for (const chart of charts) {
+    const source = value?.[chart.id];
+    result[chart.id] = { status: cleanText(source?.status || 'insufficient_evidence', 60), reason: cleanText(source?.reason || 'Local availability will be checked before downloading.', 500) };
+  }
+  return result;
+}
+
 class BatchCoordinator {
-  constructor({ root, execute, findCompleted = null, onChange = () => {}, now = Date.now } = {}) {
+  constructor({ root, execute, findCompleted = null, recipe = null, onChange = () => {}, now = Date.now } = {}) {
     if (!root || typeof execute !== "function") throw new TypeError("BatchCoordinator needs root and execute.");
     fs.mkdirSync(path.resolve(root), { recursive: true });
     this.root = fs.realpathSync.native(path.resolve(root));
     this.filename = path.join(this.root, "batches.json");
     this.execute = execute;
     this.findCompleted = findCompleted;
+    this.recipe = normalizeRecipe(recipe);
     this.onChange = onChange;
     this.now = now;
     this.batches = [];
@@ -244,7 +276,7 @@ class BatchCoordinator {
     let data;
     try { data = JSON.parse(fs.readFileSync(this.filename, "utf8")); }
     catch { throw new Error("The batch ledger could not be read. Keep it for recovery."); }
-    if (data?.version !== 1 || !Array.isArray(data.batches) || data.batches.length > MAX_BATCHES) throw new Error("The batch ledger has an unsupported format.");
+    if (![1, 2].includes(data?.version) || !Array.isArray(data.batches) || data.batches.length > MAX_BATCHES) throw new Error("The batch ledger has an unsupported format. Keep the file and update FeedForge before resuming.");
     let total = 0;
     const ids = new Set();
     for (const saved of data.batches) {
@@ -252,26 +284,39 @@ class BatchCoordinator {
       ids.add(saved.id);
       const plan = planBatch(saved.charts, saved.preferences);
       if ((total += plan.charts.length) > MAX_TOTAL_CHARTS || !Array.isArray(saved.items) || saved.items.length > plan.charts.length) throw new Error("The batch ledger exceeds its record limit.");
-      const selectedIds = this._validateSelection(plan, saved.selectedIds);
+      const selectedIds = this._validateSelection(plan, saved.selectedIds, { allowConflicts: true });
       const seenItems = new Set();
       const items = saved.items.map((item) => {
         if (!item || typeof item.id !== "string" || item.id !== `${saved.id}:${item.chartId}` || seenItems.has(item.chartId)
           || !selectedIds.includes(item.chartId) || !ITEM_STATES.has(item.state)) throw new Error("The batch ledger contains an invalid song item.");
         seenItems.add(item.chartId);
+        if (data.version === 2 && !UUID.test(item.intentId || '')) throw new Error('The batch ledger contains an invalid request identity. Keep it for recovery.');
         return { id: item.id, chartId: item.chartId, state: item.state === "running" ? "interrupted" : item.state,
+          intentId: UUID.test(item.intentId || '') ? item.intentId : crypto.randomUUID(),
+          recipe: data.version === 1 ? null : normalizeRecipe(item.recipe || saved.recipe),
+          legacyIntent: data.version === 1 || item.legacyIntent === true,
+          reviewAnother: item.reviewAnother === true,
+          skipRequested: item.skipRequested === true,
+          selection: item.selection ? normalizePreferences(item.selection) : null,
           attempts: Number.isInteger(item.attempts) && item.attempts >= 0 ? Math.min(item.attempts, 100000) : 0,
           outcome: item.outcome ? outcomeOf(item.outcome) : null,
-          choice: item.choice ? this._choiceFrom({ candidates: item.choiceCandidates }, item.choice) : null,
+          choice: item.choice ? this._savedChoice(item.choiceCandidates, item.choice) : null,
           choiceCandidates: item.choice ? outcomeOf({ candidates: item.choiceCandidates }).candidates : undefined };
       });
       if (saved.state !== "draft" && items.length !== selectedIds.length) throw new Error("The batch ledger has incomplete selected items.");
       this.batches.push({ id: saved.id, state: saved.state === "running" ? "paused" : saved.state,
         ...plan, selectedIds, items, outputDir: outputDirectory(saved.outputDir), query: cleanText(saved.query, 4096),
+        recipe: data.version === 1 ? null : normalizeRecipe(saved.recipe),
+        availability: availabilityOf(saved.availability, plan.charts), forceReviewIds: (saved.forceReviewIds || []).filter((id) => plan.charts.some((chart) => chart.id === id)),
+        manualOverrideIds: (saved.manualOverrideIds || []).filter((id) => plan.charts.some((chart) => chart.id === id)),
+        dismissedSuggestions: (saved.dismissedSuggestions || []).filter((id) => plan.suggestions.some((suggestion) => suggestion.id === id)),
+        reviewConflicts: this._selectionConflicts(plan, selectedIds),
         complete: saved.complete === true, createdAt: Number(saved.createdAt) || this.now(), updatedAt: Number(saved.updatedAt) || this.now(),
         pauseReason: saved.state === "running" ? "Restarted. Resume this batch when ready." : cleanText(saved.pauseReason, 500) });
     }
     // Loading never starts work. Record recovery before returning an actionable snapshot.
-    atomicWrite(this.filename, { version: 1, batches: this.batches });
+    if (data.version === 1 && !fs.existsSync(`${this.filename}.v1.backup`)) fs.copyFileSync(this.filename, `${this.filename}.v1.backup`, fs.constants.COPYFILE_EXCL);
+    atomicWrite(this.filename, { version: 2, batches: this.batches });
   }
 
   _notify() { try { this.onChange(this.snapshot()); } catch { /* Views cannot interrupt persistence or jobs. */ } }
@@ -279,21 +324,31 @@ class BatchCoordinator {
     if (this.disposed) throw new Error("The batch coordinator is closed.");
     const next = copy(this.batches);
     const result = action(next);
-    atomicWrite(this.filename, { version: 1, batches: next });
+    atomicWrite(this.filename, { version: 2, batches: next });
     this.batches = next;
     this.persistenceWarning = "";
     this._notify();
     return result;
   }
   _batch(batches, id) { const batch = batches.find((item) => item.id === String(id)); if (!batch) throw new Error("This batch is unavailable."); return batch; }
-  _validateSelection(plan, selectedIds) {
+  _selectionConflicts(plan, selectedIds) {
+    const conflicts = [];
+    const selected = new Set(selectedIds);
+    for (const group of plan.groups) {
+      const chosen = group.options.filter((option) => selected.has(option.id));
+      if (chosen.some((option) => !option.eligible)) conflicts.push(`A selected chart for ${group.title} no longer matches the requirements.`);
+      if (chosen.length && !plan.preferences.requiredParts.every((part) => chosen.some((option) => option.parts.includes(part)))) conflicts.push(`The selected charts for ${group.title} do not cover every required arrangement.`);
+    }
+    return conflicts;
+  }
+  _validateSelection(plan, selectedIds, { allowConflicts = false } = {}) {
     if (!Array.isArray(selectedIds) || selectedIds.length > plan.charts.length) throw new Error("Choose charts from this batch preview.");
     const selected = [...new Set(selectedIds.map(String))];
     const options = new Map(plan.groups.flatMap((group) => group.options.map((option) => [option.id, option])));
-    for (const id of selected) if (!options.get(id)?.eligible) throw new Error("A selected chart does not match the batch preferences.");
+    for (const id of selected) if (!options.has(id) || (!allowConflicts && !options.get(id)?.eligible)) throw new Error("A selected chart does not match the batch preferences.");
     for (const group of plan.groups) {
       const chosen = group.options.filter((option) => selected.includes(option.id));
-      if (chosen.length && !plan.preferences.requiredParts.every((part) => chosen.some((option) => option.parts.includes(part)))) {
+      if (!allowConflicts && chosen.length && !plan.preferences.requiredParts.every((part) => chosen.some((option) => option.parts.includes(part)))) {
         throw new Error(`The selected charts for ${group.title} do not cover every required arrangement.`);
       }
     }
@@ -304,20 +359,31 @@ class BatchCoordinator {
     const matches = candidates.filter((candidate) => choice?.id ? candidate.id === String(choice.id)
       : candidate.label === choice?.label && candidate.platform === choice?.platform);
     if (matches.length !== 1) throw new Error("Choose a file from this song's saved options.");
-    return copy(matches[0]);
+    const selected = copy(matches[0]);
+    delete selected.id; // The durable descriptor is not a current-document chooser token.
+    return selected;
+  }
+  _savedChoice(candidates, choice) {
+    const descriptor = require('./file-selection.cjs').sanitizeFileCandidate(choice, { includeId: false });
+    if (!descriptor || !outcomeOf({ candidates }).candidates?.some((candidate) => candidate.label === descriptor.label && candidate.platform === descriptor.platform)) throw new Error('The saved file choice is invalid. Keep the batch for recovery.');
+    // Identical filenames may become ambiguous after restart. Keep the honest
+    // descriptor; the owned browser will require a fresh document-bound choice.
+    return descriptor;
   }
 
   snapshot() {
     return [...this.batches].reverse().map((batch) => ({ ...copy(batch),
-      counts: batch.items.reduce((counts, item) => { counts[item.state] = (counts[item.state] || 0) + 1; return counts; }, {}),
+      counts: batch.items.reduce((counts, item) => { counts[item.state] = (counts[item.state] || 0) + 1; if (item.state === 'skipped') { const key = item.outcome?.skipKind === 'user' ? 'userSkipped' : 'available'; counts[key] = (counts[key] || 0) + 1; } return counts; }, {}),
+      plannedCounts: batch.selectedIds.reduce((counts, chartId) => { const available = batch.availability?.[chartId]?.status === 'available' && !batch.forceReviewIds?.includes(chartId); counts[available ? 'available' : 'downloads']++; return counts; }, { available: 0, downloads: 0 }),
       ...(this.persistenceWarning ? { warning: this.persistenceWarning } : {}) }));
   }
   get(id) { return this.snapshot().find((batch) => batch.id === String(id)) || null; }
 
-  prepare({ charts, preferences, outputDir, query = "", complete = true } = {}) {
+  prepare({ charts, preferences, outputDir, query = "", complete = true, importDecisions = {}, recipe = this.recipe } = {}) {
     const plan = planBatch(charts, preferences);
     const batch = { id: crypto.randomUUID(), state: "draft", ...plan, items: [], outputDir: outputDirectory(outputDir),
-      query: cleanText(query, 4096), complete: complete === true, createdAt: this.now(), updatedAt: this.now(), pauseReason: "" };
+      query: cleanText(query, 4096), complete: complete === true, createdAt: this.now(), updatedAt: this.now(), pauseReason: "",
+      recipe: normalizeRecipe(recipe), availability: availabilityOf(importDecisions, plan.charts), forceReviewIds: [], manualOverrideIds: [], dismissedSuggestions: [], reviewConflicts: [] };
     this._change((batches) => {
       if (batches.length >= MAX_BATCHES || batches.reduce((sum, item) => sum + item.charts.length, plan.charts.length) > MAX_TOTAL_CHARTS) {
         throw new Error("The saved batch limit has been reached. Remove a finished batch before preparing another.");
@@ -327,13 +393,83 @@ class BatchCoordinator {
     return this.get(batch.id);
   }
 
-  choose(id, { selectedIds } = {}) {
+  choose(id, { selectedIds, forceReviewIds } = {}) {
     this._change((batches) => {
       const batch = this._batch(batches, id);
       if (batch.state !== "draft") throw new Error("Selections can only be changed in a batch preview.");
-      batch.selectedIds = this._validateSelection(batch, selectedIds);
+      const selected = this._validateSelection(batch, selectedIds);
+      batch.manualOverrideIds = [...new Set([...(batch.manualOverrideIds || []), ...batch.charts.filter((chart) => batch.selectedIds.includes(chart.id) !== selected.includes(chart.id)).map((chart) => chart.id)])];
+      batch.selectedIds = selected;
+      if (forceReviewIds !== undefined) {
+        if (!Array.isArray(forceReviewIds) || forceReviewIds.some((chartId) => !batch.charts.some((chart) => chart.id === chartId))) throw new Error('Choose a chart from this batch to review another file.');
+        batch.forceReviewIds = [...new Set(forceReviewIds)];
+      }
+      batch.reviewConflicts = [];
       batch.updatedAt = this.now();
     });
+    return this.get(id);
+  }
+
+  updatePreferences(id, { preferences, importDecisions } = {}) {
+    this._change((batches) => {
+      const batch = this._batch(batches, id);
+      if (batch.state !== 'draft') throw new Error('Preferences are frozen after a batch starts.');
+      const plan = planBatch(batch.charts, preferences);
+      const manuallyChosen = new Set(batch.manualOverrideIds || []);
+      const selectedIds = plan.charts.filter((chart) => manuallyChosen.has(chart.id) ? batch.selectedIds.includes(chart.id) : plan.selectedIds.includes(chart.id)).map((chart) => chart.id);
+      Object.assign(batch, plan, { selectedIds, reviewConflicts: this._selectionConflicts(plan, selectedIds), updatedAt: this.now() });
+      batch.availability = availabilityOf(importDecisions, plan.charts);
+    });
+    return this.get(id);
+  }
+
+  dismissSuggestion(id, suggestionId) {
+    this._change((batches) => {
+      const batch = this._batch(batches, id);
+      if (batch.state !== 'draft' || !batch.suggestions.some((suggestion) => suggestion.id === suggestionId)) throw new Error('Choose a possible duplicate from this batch preview.');
+      batch.dismissedSuggestions = [...new Set([...(batch.dismissedSuggestions || []), suggestionId])];
+      batch.updatedAt = this.now();
+    });
+    return this.get(id);
+  }
+
+  async setRecipe(id, recipe) {
+    recipe = normalizeRecipe(recipe);
+    const before = this._batch(this.batches, id);
+    if (JSON.stringify(before.recipe) === JSON.stringify(recipe)) return this.get(id);
+    if (before.state === 'running' || this.current?.batchId === before.id) throw new Error('Pause the batch before accepting changed conversion settings.');
+    const recovered = new Map();
+    // Reconcile the old immutable request before authorizing a different recipe.
+    // A publication receipt remains successful even after a converter upgrade.
+    if (typeof this.findCompleted === 'function') for (const item of before.items) {
+      if (['completed', 'skipped', 'cancelled'].includes(item.state)) continue;
+      const chart = before.charts.find((entry) => entry.id === item.chartId);
+      const selection = { ...copy(item.selection || before.preferences), ...(item.choice ? { choice: copy(item.choice) } : {}) };
+      const outcome = await this.findCompleted({ batchId: before.id, itemId: item.id, intentId: item.intentId,
+        legacyIntent: item.legacyIntent === true, jobId: item.outcome?.jobId, recipe: item.recipe || before.recipe, outputDir: before.outputDir, preferences: selection, selection,
+        reviewAnother: item.reviewAnother === true, chart: { ...copy(chart), selection, intentId: item.intentId } });
+      if (outcome && ['completed', 'skipped'].includes(outcome.status || outcome.state || 'completed')) recovered.set(item.id, outcomeOf({ ...outcome, status: outcome.status || outcome.state || 'completed' }));
+    }
+    try {
+    this._change((batches) => {
+      const batch = this._batch(batches, id);
+      if (batch.state === 'running' || this.current?.batchId === batch.id || JSON.stringify(batch) !== JSON.stringify(before)) throw new Error('The batch changed while recovering published songs. Try Resume again.');
+      batch.recipe = recipe ? copy(recipe) : null;
+      for (const item of batch.items) if (recovered.has(item.id)) { const outcome = recovered.get(item.id); item.state = outcome.status; item.outcome = outcome; }
+      else if (!['completed', 'skipped', 'cancelled'].includes(item.state)) { item.intentId = crypto.randomUUID(); item.legacyIntent = false; item.recipe = recipe ? copy(recipe) : null; }
+      batch.availability = availabilityOf({}, batch.charts);
+      batch.updatedAt = this.now();
+    });
+    } catch (error) {
+      // Receipts have proved these files exist; a failed ledger write must not
+      // hide them or permit additional external work in this process.
+      if (recovered.size) {
+        for (const item of before.items) if (recovered.has(item.id)) { item.state = recovered.get(item.id).status; item.outcome = recovered.get(item.id); }
+        this.persistenceWarning = `Recovered output could not be saved in the batch. No more songs will start. ${cleanText(error.message, 300)}`;
+        this._notify();
+      }
+      throw error;
+    }
     return this.get(id);
   }
 
@@ -346,6 +482,7 @@ class BatchCoordinator {
       }
       item.choice = this._choiceFrom(item.outcome, choice);
       item.choiceCandidates = copy(item.outcome.candidates);
+      item.intentId = crypto.randomUUID(); item.legacyIntent = false; item.reviewAnother = true;
       batch.updatedAt = this.now();
     });
     return this.get(id);
@@ -358,7 +495,7 @@ class BatchCoordinator {
       if (!batch.complete) throw new Error("This search snapshot is incomplete. Prepare a complete search before starting the batch.");
       if (!batch.selectedIds.length) throw new Error("Select at least one matching chart before starting.");
       this._validateSelection(batch, batch.selectedIds);
-      batch.items = batch.selectedIds.map((chartId) => ({ id: `${batch.id}:${chartId}`, chartId, state: "pending", attempts: 0, outcome: null }));
+      batch.items = batch.selectedIds.map((chartId) => ({ id: `${batch.id}:${chartId}`, chartId, intentId: crypto.randomUUID(), recipe: batch.recipe ? copy(batch.recipe) : null, reviewAnother: batch.forceReviewIds.includes(chartId), state: "pending", attempts: 0, outcome: null }));
       batch.state = "running"; batch.updatedAt = this.now(); batch.pauseReason = "";
     });
     this._schedule();
@@ -403,6 +540,54 @@ class BatchCoordinator {
       batch.interactiveItemId = item.id;
       batch.state = "paused";
       batch.pauseReason = "Resolving one song. Other songs stay paused until you resume the batch.";
+      batch.updatedAt = this.now();
+    });
+    this._schedule();
+    return this.get(id);
+  }
+
+  async skipItem(id, itemId) {
+    let active = null;
+    this._change((batches) => {
+      const batch = this._batch(batches, id);
+      const item = batch.items.find((entry) => entry.id === String(itemId));
+      if (!item || ['completed', 'skipped', 'cancelled'].includes(item.state)) throw new Error('Choose an unfinished song to skip.');
+      if (item.state === 'running') {
+        if (this.current?.itemId !== item.id) throw new Error('The active song is still being recovered.');
+        active = this.current;
+        item.skipRequested = true;
+      } else {
+        item.state = 'skipped'; item.outcome = { status: 'skipped', skipKind: 'user', message: 'Skipped by you.' };
+      }
+      if (batch.interactiveItemId === item.id) delete batch.interactiveItemId;
+      if (['running', 'paused'].includes(batch.state) && !batch.items.some((entry) => ['pending', 'running'].includes(entry.state))) {
+        const needsAttention = batch.items.some((entry) => entry.state === 'needs_attention');
+        batch.state = needsAttention ? 'paused' : 'completed';
+        batch.pauseReason = needsAttention ? 'Review or skip the songs that need attention.' : '';
+      } else if (batch.state === 'paused' && !active) batch.pauseReason = 'Paused. Resume when ready to continue the remaining songs.';
+      batch.updatedAt = this.now();
+    });
+    if (active) { active.skipRequested = true; active.controller.abort(); await active.done; }
+    this._schedule();
+    return this.get(id);
+  }
+
+  retryItem(id, itemId, { relaxRequirements = false } = {}) {
+    this._change((batches) => {
+      const batch = this._batch(batches, id);
+      const item = batch.items.find((entry) => entry.id === String(itemId));
+      if (!item || !['failed', 'needs_attention', 'interrupted', 'skipped', 'cancelled'].includes(item.state) || (item.state === 'skipped' && item.outcome?.skipKind !== 'user')) throw new Error('Choose a song that needs retrying or was skipped by you.');
+      if (relaxRequirements) {
+        item.selection = normalizePreferences({ ...batch.preferences, requiredParts: [], tuning: '', backingStrict: false, instrumentRequirements: [] });
+        item.intentId = crypto.randomUUID(); item.legacyIntent = false;
+      }
+      if (relaxRequirements || JSON.stringify(item.recipe) !== JSON.stringify(batch.recipe)) {
+        item.intentId = crypto.randomUUID(); item.legacyIntent = false;
+        item.recipe = batch.recipe ? copy(batch.recipe) : null;
+      }
+      delete item.skipRequested;
+      item.state = 'pending'; item.outcome = null;
+      if (batch.state !== 'running') { batch.state = 'paused'; batch.pauseReason = 'The song is ready to retry. Resume when ready.'; }
       batch.updatedAt = this.now();
     });
     this._schedule();
@@ -455,7 +640,7 @@ class BatchCoordinator {
       const chart = candidate.charts.find((entry) => entry.id === item.chartId);
       const controller = new AbortController();
       let release;
-      const current = { batchId: candidate.id, itemId: item.id, controller, interactive, done: new Promise((resolve) => { release = resolve; }) };
+      const current = { batchId: candidate.id, itemId: item.id, controller, interactive, skipRequested: item.skipRequested === true, done: new Promise((resolve) => { release = resolve; }) };
       this.current = current;
       let resolvedOutcome = null;
       try {
@@ -466,21 +651,24 @@ class BatchCoordinator {
           // Consume the one-attempt authorization before execution. Restart never opens an interactive host automatically.
           delete batch.interactiveItemId;
         });
-        const selection = { ...copy(candidate.preferences), ...(item.choice ? { choice: copy(item.choice) } : {}) };
+        const selection = { ...copy(item.selection || candidate.preferences), ...(item.choice ? { choice: copy(item.choice) } : {}) };
         const context = { signal: controller.signal, batchId: candidate.id, itemId: item.id, outputDir: candidate.outputDir,
-          preferences: copy(candidate.preferences), selection, chart: { ...copy(chart), selection }, interactive };
+          intentId: item.intentId, legacyIntent: item.legacyIntent === true, recipe: item.recipe ? copy(item.recipe) : null, reviewAnother: item.reviewAnother === true,
+          preferences: copy(item.selection || candidate.preferences), selection, chart: { ...copy(chart), selection, intentId: item.intentId }, interactive };
         let outcome;
         try {
+          if (current.skipRequested) controller.abort();
           const recovered = typeof this.findCompleted === "function" ? await this.findCompleted(context) : null;
           if (recovered) outcome = outcomeOf({ ...recovered, status: recovered.status || "completed" });
           else if (controller.signal.aborted) outcome = { status: "cancelled", message: "Cancelled." };
-          else outcome = outcomeOf(await this.execute({ ...copy(chart), selection }, context));
+          else outcome = outcomeOf(await this.execute({ ...copy(chart), selection, intentId: item.intentId, reviewAnother: item.reviewAnother === true }, context));
         } catch (error) {
           outcome = { status: controller.signal.aborted ? "cancelled" : "failed", message: cleanText(error?.message || error, 500) };
         }
         // Once publication succeeded, cancellation must preserve that successful result.
         if (controller.signal.aborted && !["completed", "skipped"].includes(outcome.status)) outcome.status = "cancelled";
         if (controller.signal.aborted && this.closing && outcome.status === "cancelled") outcome.status = "interrupted";
+        if (current.skipRequested && !['completed', 'skipped'].includes(outcome.status)) outcome = { status: 'skipped', skipKind: 'user', message: 'Skipped by you.' };
         resolvedOutcome = outcome;
         this._change((batches) => {
           const batch = this._batch(batches, candidate.id);

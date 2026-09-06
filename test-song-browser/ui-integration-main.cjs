@@ -122,6 +122,11 @@ function searchPage(query) {
     { id: '1112', title: 'Fixture Beneath', artist: 'Fixture Artist', host: 'dropbox', parts: 'Lead', tuning: 'Bb Standard' },
     { id: '1113', title: 'Fixture Other Artist', artist: 'Different Artist', host: 'dropbox', parts: 'Lead', tuning: 'E Standard' },
   );
+  if (query.toLowerCase() === 'completion') rows.push(
+    { id: '1121', title: 'Fixture Success!', artist: 'Fixture Artist', host: 'dropbox', creator: 'Preferred Creator' },
+    { id: '1122', title: 'Fixture Success', artist: 'Fixture Artist', host: 'dropbox', creator: 'Other Creator' },
+    { id: '1123', title: 'Fixture Success (Live)', artist: 'Fixture Artist', host: 'dropbox', creator: 'Preferred Creator' },
+  );
   const catalogue = rows.map((chart, index) => ({ album: 'Offline Fixture Album', tuning: 'E Standard', creator: 'Fixture Creator', parts: 'Lead', version: '1', added: '2026-01-01', updated: '2026-08-01', year: 2020, duration: '2:00', downloads: 100 - index * 10, ...chart, hostName: hostName(chart.host) }));
   // Ordinary buttons sort the full in-page catalogue before slicing a page.
   // Their handlers do not issue hidden requests, preserving the request counter
@@ -203,6 +208,17 @@ function ownedFile(filename) {
 function fixtureApi() {
   return Object.freeze({
     charts,
+    async captureScreenshot(name, selector) {
+      assert.match(name, /^[a-zA-Z0-9_-]{1,80}$/);
+      if (selector) await mainWindow.webContents.mainFrame.executeJavaScript(`document.querySelector(${JSON.stringify(selector)})?.scrollIntoView({block:'start'})`);
+      const directory = path.join(runtime, 'screenshots');
+      fs.mkdirSync(directory, { recursive: true });
+      await mainWindow.webContents.capturePage();
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      const screenshot = await mainWindow.webContents.capturePage();
+      fs.writeFileSync(path.join(directory, name + '.png'), screenshot.toPNG(), { flag: 'wx' });
+      return 'screenshots/' + name + '.png';
+    },
     counts: () => JSON.parse(JSON.stringify(counters)),
     holdNextSearch() {
       assert.ok(!searchGate || searchGate.released, 'A fixture search is already held.');
@@ -211,7 +227,7 @@ function fixtureApi() {
     waitForSearch: () => waitFor(() => searchGate?.entered === true, 'the held search request'),
     releaseSearch() { assert.ok(searchGate?.entered); searchGate.released = true; searchGate.release.resolve(); },
     waitForSearchSettled: () => { const target = searchGate?.targetCompleted; assert.ok(target); return waitFor(() => counters.searchCompleted >= target, 'search IPC completion'); },
-    waitForDownload: (id) => waitFor(() => (counters.downloads[String(id)] || 0) > 0, 'download ' + id),
+    waitForDownload: (id, count = 1) => waitFor(() => (counters.downloads[String(id)] || 0) >= count, 'download ' + id),
     failConversionOnce(id) { assert.ok(byId.has(String(id))); conversionFailures.set(String(id), 1); },
     chooseOutput(name) { assert.ok(['first', 'second'].includes(name)); currentOutput = name; },
     removeOutput(id) {
@@ -275,7 +291,7 @@ async function main() {
     });
   } };
   const { registerSongBrowser } = require('../electron/song-browser/index.cjs');
-  registration = registerSongBrowser({ app, BrowserWindow, session, ipcMain: observedIpc, getMainWindow: () => mainWindow, runConverter,
+  registration = registerSongBrowser({ getConverterRecipe: async () => require('./fixture-recipe.cjs'), app, BrowserWindow, session, ipcMain: observedIpc, getMainWindow: () => mainWindow, runConverter,
     dialog: {
       showOpenDialog: async () => ({ canceled: false, filePaths: [path.join(runtime, 'outputs', currentOutput)] }),
       showSaveDialog: async (_window, options) => {
@@ -291,8 +307,8 @@ async function main() {
   assert.deepEqual(unexpected, [], 'The offline renderer attempted an unaccounted request.');
   assert.deepEqual(rendererErrors, [], 'Production renderer reported an error.');
   assert.ok(BrowserWindow.getAllWindows().every((win) => !win.isVisible()), 'A fixture window became visible.');
-  assert.deepEqual(transfers.filter((item) => item.id === charts.slow.id).map((item) => item.state), ['cancelled']);
-  assert.deepEqual(transfers.filter((item) => item.id === charts.fast.id).map((item) => item.state), ['completed']);
+  assert.deepEqual(transfers.filter((item) => item.id === charts.slow.id).map((item) => item.state), ['cancelled', 'cancelled']);
+  assert.deepEqual(transfers.filter((item) => item.id === charts.fast.id).map((item) => item.state), ['completed', 'completed']);
   assert.deepEqual(transfers.filter((item) => item.id === charts.retry.id).map((item) => item.state), ['completed', 'completed']);
 }
 async function finish(error) {

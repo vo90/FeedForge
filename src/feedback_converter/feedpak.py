@@ -19,6 +19,7 @@ from .converter import (
     _zip_dir,
 )
 from .feedpak_validator import FeedpakValidationResult, require_valid_feedpak, validate_feedpak
+from .instrument_evidence import backing_evidence, feedpak_instrument_evidence
 
 
 @dataclass
@@ -59,6 +60,7 @@ def inspect_feedpak(input_path: Path, *, cover_dir: Path | None = None) -> dict[
         if not tones:
             tones = _rig_previews(rigs)
         result = {
+            **backing_evidence(manifest),
             "source_type": "feedpak",
             "title": str(manifest.get("title") or input_path.stem),
             "artist": str(manifest.get("artist") or "Unknown Artist"),
@@ -91,6 +93,7 @@ def _inspect_feedpak_zip(input_path: Path, *, cover_dir: Path | None) -> dict[st
         if not tones:
             tones = _rig_previews(rigs)
         return {
+            **backing_evidence(manifest),
             "source_type": "feedpak",
             "title": str(manifest.get("title") or input_path.stem),
             "artist": str(manifest.get("artist") or "Unknown Artist"),
@@ -378,6 +381,7 @@ def _arrangement_previews(payloads: list[tuple[dict[str, Any], Any]]) -> list[di
                 "note_count": entry.get("note_count") or _event_count(data),
                 "event_count": entry.get("event_count") or _event_count(data),
                 "file": entry.get("file") or "",
+                **feedpak_instrument_evidence(entry, data),
             }
         )
     return rows

@@ -5,6 +5,7 @@ const fsp = fs.promises;
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { execFile } = require("node:child_process");
+const { normalizeRecipe, recipesCompatible, sanitizeChoice, sanitizeFileEvidence, reuseDecision } = require('./provenance.cjs');
 
 const ACTIVE = new Set(["queued", "downloading", "needs_attention", "inspecting", "converting", "validating"]);
 const TERMINAL = new Set(["completed", "failed", "cancelled", "parked"]);
@@ -97,7 +98,7 @@ function selectionForChart(chart, selection = {}) {
 
 /** A serial, local queue. The downloader owns the browser session, never this class. */
 class SongJobs {
-  constructor({ root, outputDir, download, runConverter, emit = () => {}, onCompleted = () => {} }) {
+  constructor({ root, outputDir, download, runConverter, recipe = null, findReusable = null, emit = () => {}, onCompleted = () => {} }) {
     if (!root || !outputDir || typeof download !== "function" || typeof runConverter !== "function") {
       throw new TypeError("SongJobs needs root, outputDir, download, and runConverter.");
     }
@@ -108,6 +109,8 @@ class SongJobs {
     this.outputDir = path.resolve(outputDir);
     this.download = download;
     this.runConverter = runConverter;
+    this.recipe = normalizeRecipe(recipe);
+    this.findReusable = findReusable;
     this.emit = emit;
     this.onCompleted = onCompleted;
     this.ledger = path.join(this.root, "jobs.json");
@@ -124,13 +127,14 @@ class SongJobs {
 
   _public(job) {
     const result = {};
-    for (const key of ["id", "chartId", "title", "artist", "creator", "host", "state", "progress", "message", "error", "outputPath", "createdAt", "updatedAt", "sourceHash", "outputHash", "duplicateOf", "version", "chartUpdated", "parts", "tuning", "selection", "coverage", "batchId", "itemId", "fileCandidates", "sessionWide"]) {
+    for (const key of ["id", "chartId", "title", "artist", "creator", "host", "state", "progress", "message", "error", "outputPath", "createdAt", "updatedAt", "sourceHash", "outputHash", "duplicateOf", "version", "chartUpdated", "parts", "tuning", "selection", "coverage", "batchId", "itemId", "intentId", "recipe", "resolvedFile", "requestedChoice", "fileCandidates", "sessionWide"]) {
       if (job[key] !== undefined) result[key] = job[key];
     }
     result.hasCachedInput = Boolean(job.cacheHash && job.cacheAt > Date.now() - CACHE_LIFETIME_MS);
     result.canRetry = ["failed", "cancelled", "parked"].includes(job.state) && !job.batchId && (result.hasCachedInput || job.supported === true);
     result.outputAvailable = false;
     result.inOutputDir = false;
+    result.reuseCompatible = recipesCompatible(job.recipe, this.recipe);
     if (job.state === "completed" && job.outputPath) {
       try {
         const stat = fs.lstatSync(job.outputPath);
@@ -150,7 +154,7 @@ class SongJobs {
     const target = this._receiptPath(job);
     const temporary = path.join(this.root, `.receipt-${crypto.randomUUID()}.tmp`);
     try {
-      fs.writeFileSync(temporary, JSON.stringify({ version: 1, job: {
+      fs.writeFileSync(temporary, JSON.stringify({ version: 2, job: {
         ...this._public(job), outputPath, state: "completed", progress: 100,
         supported: job.supported === true,
       } }), { flag: "wx", mode: 0o600 });
@@ -171,13 +175,14 @@ class SongJobs {
         if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 16384) continue;
         const receipt = JSON.parse(fs.readFileSync(filename, "utf8"));
         const row = receipt.job;
-        if (receipt.version !== 1 || !row || !UUID.test(row.id) || name !== `${row.id}.receipt.json` || !HASH.test(row.outputHash || "") || !HASH.test(row.sourceHash || "")) continue;
+        if (![1, 2].includes(receipt.version) || !row || !UUID.test(row.id) || name !== `${row.id}.receipt.json` || !HASH.test(row.outputHash || "") || !HASH.test(row.sourceHash || "")) continue;
         const id = chartId(row);
         if (typeof row.outputPath !== "string" || row.outputPath.length > 4096 || !path.isAbsolute(row.outputPath)) continue;
         let job = this.jobs.find((item) => item.id === row.id);
         if (job?.state === "completed" && job.outputPath === row.outputPath && job.outputHash === row.outputHash) continue;
         const output = fs.lstatSync(row.outputPath);
         if (!output.isFile() || output.isSymbolicLink() || !output.size || output.size > 2 * 1024 * 1024 * 1024 || hashFileSync(row.outputPath) !== row.outputHash) continue;
+        if (receipt.version === 1) this._backupLegacy(filename);
         if (!job) {
           job = { id: row.id, chartId: id, title: text(row.title), artist: text(row.artist), creator: text(row.creator),
             host: SUPPORTED_HOSTS.has(row.host) ? row.host : "unknown", supported: row.supported === true && SUPPORTED_HOSTS.has(row.host),
@@ -185,7 +190,7 @@ class SongJobs {
           this.jobs.push(job);
         }
         Object.assign(job, { state: "completed", progress: 100, outputPath: row.outputPath,
-          ...this._metadata(row),
+          ...this._metadata(receipt.version === 1 ? { ...row, recipe: null, intentId: undefined, resolvedFile: null, requestedChoice: null } : row),
           outputHash: row.outputHash, sourceHash: row.sourceHash, message: "Saved FeedPak recovered after restart.", error: "", updatedAt: Date.now() });
         this._deleteCache(job);
       } catch { /* Missing, unrelated or modified outputs must never be marked completed. */ }
@@ -271,13 +276,16 @@ class SongJobs {
     return this._public(job);
   }
 
-  retry(id) {
+  retry(id, { selection: replacement } = {}) {
     const job = this.jobs.find((item) => item.id === id);
     if (!job || !this._public(job).canRetry) throw new Error("This job cannot be retried. Search for the chart again.");
     const existing = this.jobs.find((item) => item.chartId === job.chartId && ACTIVE.has(item.state));
     if (existing) return this._public(existing);
     const retryOf = job.cacheHash && job.cacheAt > Date.now() - CACHE_LIFETIME_MS ? id : undefined;
-    return this._enqueue({ ...this._public(job), id: job.chartId, supported: job.supported }, retryOf);
+    return this._enqueue({ ...this._public(job), id: job.chartId, supported: job.supported,
+      selection: replacement ? { ...require('./file-selection.cjs').normalizeRequirements(replacement), choice: job.selection?.choice } : job.selection,
+      recipe: this.recipe, intentId: replacement || !recipesCompatible(job.recipe, this.recipe) ? crypto.randomUUID() : job.intentId,
+    }, retryOf);
   }
 
   validateOutputDir(directory = this.outputDir) {
@@ -309,7 +317,7 @@ class SongJobs {
     let data;
     try { data = JSON.parse(fs.readFileSync(this.ledger, "utf8")); }
     catch { throw new Error("Song job history could not be read. Preserve jobs.json before repairing it."); }
-    if (data.version !== 1 || !Array.isArray(data.jobs) || data.jobs.length > MAX_HISTORY) {
+    if (![1, 2].includes(data.version) || !Array.isArray(data.jobs) || data.jobs.length > MAX_HISTORY) {
       throw new Error("Song job history has an unsupported format.");
     }
     const seen = new Set();
@@ -327,7 +335,7 @@ class SongJobs {
         message: interrupted ? "Interrupted when the app closed." : text(row.message, 300),
         error: interrupted ? "The previous job was interrupted. Retry this job or choose the chart again." : text(row.error, 500),
         createdAt: Number(row.createdAt) || Date.now(), updatedAt: interrupted ? Date.now() : Number(row.updatedAt) || Date.now(),
-        ...this._metadata(row),
+        ...this._metadata(data.version === 1 ? { ...row, recipe: null, intentId: undefined, resolvedFile: null, requestedChoice: null } : row),
       };
       if (HASH.test(row.sourceHash || "")) job.sourceHash = row.sourceHash;
       if (HASH.test(row.outputHash || "")) job.outputHash = row.outputHash;
@@ -339,19 +347,31 @@ class SongJobs {
       this.jobs.push(job);
     }
     // Interrupted jobs are recorded as failed, never resumed or deleted automatically.
+    if (data.version === 1) this._backupLegacy(this.ledger);
+  }
+
+  _backupLegacy(filename) {
+    const backup = filename + '.v1.bak';
+    try { fs.copyFileSync(filename, backup, fs.constants.COPYFILE_EXCL); }
+    catch (error) {
+      if (error.code !== 'EEXIST' || !fs.lstatSync(backup).isFile() || fs.lstatSync(backup).isSymbolicLink()
+        || !fs.readFileSync(backup).equals(fs.readFileSync(filename))) throw new Error('The original song records could not be preserved for migration.');
+    }
   }
 
   _persist() {
     while (this.jobs.length > MAX_HISTORY) {
-      const index = this.jobs.findIndex((job) => TERMINAL.has(job.state) && !this.jobs.some((item) => ACTIVE.has(item.state) && item.retryOf === job.id));
-      if (index < 0) break;
+      const index = this.jobs.findIndex((job) => TERMINAL.has(job.state)
+        && !(job.state === 'completed' && fs.existsSync(this._receiptPath(job)))
+        && !this.jobs.some((item) => ACTIVE.has(item.state) && item.retryOf === job.id));
+      if (index < 0) { this.persistenceWarning = 'Saved songs still need their import records recovered. No more jobs can be added safely.'; return false; }
       this._deleteCache(this.jobs[index]);
       try { fs.unlinkSync(this._receiptPath(this.jobs[index])); } catch { /* Pruned history no longer needs its receipt. */ }
       this.jobs.splice(index, 1);
     }
     const temporary = path.join(this.root, `.jobs-${crypto.randomUUID()}.tmp`);
     try {
-      fs.writeFileSync(temporary, JSON.stringify({ version: 1, jobs: this.jobs.map((job) => ({ ...this._public(job),
+      fs.writeFileSync(temporary, JSON.stringify({ version: 2, jobs: this.jobs.map((job) => ({ ...this._public(job),
         supported: job.supported === true, cacheHash: job.cacheHash, cacheBytes: job.cacheBytes, cacheAt: job.cacheAt,
       })) }), { flag: "wx", mode: 0o600 });
       fs.renameSync(temporary, this.ledger);
@@ -386,18 +406,19 @@ class SongJobs {
   _metadata(chart) {
     const { normalizeRequirements } = require('./file-selection.cjs');
     const selection = chart.selection ? normalizeRequirements(chart.selection) : undefined;
-    if (selection && chart.selection.choice && typeof chart.selection.choice.label === 'string') {
-      selection.choice = { label: text(chart.selection.choice.label, 240), platform: ['pc', 'mac', 'unknown'].includes(chart.selection.choice.platform) ? chart.selection.choice.platform : 'unknown' };
-    }
+    if (selection && sanitizeChoice(chart.selection.choice)) selection.choice = sanitizeChoice(chart.selection.choice);
     const metadata = { version: text(chart.version), chartUpdated: text(chart.chartUpdated ?? chart.updated),
       tuning: text(chart.tuning), parts: Array.isArray(chart.parts) ? chart.parts.slice(0, 8).map((part) => text(part, 32)) : text(chart.parts),
       selection, batchId: UUID.test(chart.batchId || '') ? chart.batchId : undefined,
+      intentId: UUID.test(chart.intentId || '') ? chart.intentId : undefined,
+      recipe: normalizeRecipe(chart.recipe), resolvedFile: sanitizeFileEvidence(chart.resolvedFile),
+      requestedChoice: sanitizeChoice(chart.requestedChoice || chart.selection?.choice),
       itemId: typeof chart.itemId === 'string' && /^[a-f0-9-]{36}:[1-9][0-9]{0,11}$/.test(chart.itemId) ? chart.itemId : undefined,
       coverage: chart.coverage && Array.isArray(chart.coverage.arrangements) ? require('./imports.cjs').coverageOf(chart.coverage) : undefined };
     return Object.fromEntries(Object.entries(metadata).filter(([, value]) => value !== undefined && value !== '' && (!Array.isArray(value) || value.length)));
   }
 
-  async run(chart, { signal, batchId, itemId, outputDir, selection, interactive = false } = {}) {
+  async run(chart, { signal, batchId, itemId, intentId, recipe = this.recipe, reviewAnother = false, outputDir, selection, interactive = false } = {}) {
     selection = selectionForChart(chart, selection);
     if (signal?.aborted) return { status: 'cancelled' };
     const duplicate = this.jobs.find((job) => job.chartId === String(chart.id) && ACTIVE.has(job.state));
@@ -410,8 +431,9 @@ class SongJobs {
     }
     if (signal?.aborted) return { status: 'cancelled' };
     const previous = itemId && [...this.jobs].reverse().find((job) => job.itemId === itemId && job.cacheHash && job.cacheAt > Date.now() - CACHE_LIFETIME_MS
+      && !reviewAnother && (!intentId || job.intentId === intentId)
       && (!selection.choice || (job.selection?.choice?.label === selection.choice.label && job.selection?.choice?.platform === selection.choice.platform)));
-    const created = this._enqueue({ ...chart, selection, batchId, itemId }, previous?.id, { outputDir, parkOnAttention: !interactive, interactive });
+    const created = this._enqueue({ ...chart, selection, batchId, itemId, intentId, recipe, reviewAnother }, previous?.id, { outputDir, parkOnAttention: !interactive, interactive });
     const job = this.jobs.find((row) => row.id === created.id);
     const cancel = () => { void this.cancel(job.id); };
     signal?.addEventListener('abort', cancel, { once: true });
@@ -436,12 +458,13 @@ class SongJobs {
       host: SUPPORTED_HOSTS.has(chart.host) ? chart.host : "unknown", supported: chart.supported === true && SUPPORTED_HOSTS.has(chart.host),
       state: "queued", progress: 0, message: "Waiting in queue.", error: "", createdAt: now, updatedAt: now,
       ...this._metadata(chart), outputDir: options.outputDir ? this.validateOutputDir(options.outputDir) : this.outputDir,
+      recipe: normalizeRecipe(chart.recipe) || this.recipe, intentId: UUID.test(chart.intentId || '') ? chart.intentId : crypto.randomUUID(),
       parkOnAttention: options.parkOnAttention === true,
       interactive: options.interactive === true,
       controller: new AbortController(), process: null,
       retryOf,
     };
-    job.chart = { id, title: job.title, artist: job.artist, creator: job.creator, host: job.host, supported: job.supported, ...this._metadata(chart) };
+    job.chart = { id, title: job.title, artist: job.artist, creator: job.creator, host: job.host, supported: job.supported, ...this._metadata(job), reviewAnother: chart.reviewAnother === true };
     job.done = new Promise((resolve) => { job.resolveDone = resolve; });
     this.jobs.push(job);
     if (!this._persist()) { this.jobs.pop(); throw new Error('The song queue could not be saved. No download was started.'); }
@@ -590,6 +613,8 @@ class SongJobs {
     if (job.retryOf) {
       this._set(job, "inspecting", { message: "Checking the retained PSARC.", progress: 0 });
       const cached = await this.getCachedInput(job.retryOf);
+      const previous = this.jobs.find((item) => item.id === job.retryOf);
+      job.resolvedFile = sanitizeFileEvidence(previous?.resolvedFile);
       check(job);
       input = path.join(directory, "source.psarc");
       // A synchronous exclusive copy closes the gap between lookup and eviction.
@@ -601,6 +626,11 @@ class SongJobs {
       jobId: job.id, directory, destination: path.join(directory, "source.psarc"), signal: job.controller.signal,
       parkOnAttention: job.parkOnAttention,
       interactive: job.interactive,
+      onResolvedFile: (file, choice) => {
+        if (!canUpdate()) return;
+        job.resolvedFile = sanitizeFileEvidence(file);
+        if (sanitizeChoice(choice)) { job.requestedChoice = sanitizeChoice(choice); job.selection = { ...job.selection, choice: job.requestedChoice }; }
+      },
       onProgress: (value, details = {}) => {
         if (!canUpdate() || !Number.isFinite(Number(value))) return;
         const progress = Math.floor(Math.max(0, Math.min(100, Number(value))));
@@ -610,7 +640,7 @@ class SongJobs {
       onAttention: (message) => {
         if (!canUpdate()) return;
         if (!message) delete job.fileCandidates;
-        if (Array.isArray(message?.candidates)) job.fileCandidates = message.candidates.slice(0, 100).map((item) => ({ id: text(item.id, 100), label: text(item.label, 240), platform: text(item.platform, 16) }));
+        if (Array.isArray(message?.candidates)) job.fileCandidates = message.candidates.slice(0, 100).map((item) => ({ ...sanitizeFileEvidence(item), id: text(item.id, 100), label: text(item.label, 240), platform: text(item.platform, 16) }));
         this._set(job, message ? "needs_attention" : "downloading", { message: message ? text(typeof message === "string" ? message : message.message, 300) || "Complete the step in the song browser to continue." : "Downloading selected chart." });
       },
     });
@@ -645,11 +675,12 @@ class SongJobs {
     }
     job.title = text(preview.title);
     job.artist = text(preview.artist);
-    if (job.selection) this._checkRequirements(preview, job.selection);
+    if (job.selection) this._checkRequirements(preview, job.selection, job);
     job.coverage = this._metadata({ coverage: preview }).coverage;
     const duplicate = await this._duplicate(job);
     if (duplicate) {
       check(job);
+      job.coverage = require('./imports.cjs').coverageOf({ ...duplicate.coverage, source_platforms: preview.source_platforms });
       job.outputHash = duplicate.outputHash;
       const currentRoot = await fsp.realpath(job.outputDir);
       const previousRoot = await fsp.realpath(path.dirname(duplicate.outputPath));
@@ -678,8 +709,8 @@ class SongJobs {
     }
     if (job.selection) {
       const converted = jsonResult(await this._converter(job, ['--inspect-json', staging]), 'Converted arrangement inspection');
-      this._checkRequirements(converted.preview, { ...job.selection, platform: 'any', strictPlatform: false });
-      job.coverage = this._metadata({ coverage: converted.preview }).coverage;
+      this._checkRequirements(converted.preview, { ...job.selection, platform: 'any', strictPlatform: false }, job);
+      job.coverage = this._metadata({ coverage: { ...converted.preview, source_platforms: preview.source_platforms } }).coverage;
     }
     job.outputHash = await hashFile(staging, job.controller.signal);
     const output = await this._publish(job, staging);
@@ -689,6 +720,11 @@ class SongJobs {
   }
 
   async _duplicate(job) {
+    if (this.findReusable) {
+      const saved = await this.findReusable({ chart: job.chart, sourceHash: job.sourceHash, recipe: job.recipe, requirements: { ...job.selection, platform: 'any' }, signal: job.controller.signal });
+      check(job);
+      if (saved) return saved;
+    }
     const currentRoot = await fsp.realpath(job.outputDir);
     const candidates = [...this.jobs].reverse();
     candidates.sort((a, b) => {
@@ -697,7 +733,7 @@ class SongJobs {
     });
     for (const previous of candidates) {
       if (previous === job || previous.state !== "completed" || previous.sourceHash !== job.sourceHash || !previous.outputPath || !HASH.test(previous.outputHash || "")) continue;
-      if (job.selection && (!previous.coverage || !require('./file-selection.cjs').validateRequirements(previous.coverage, { ...job.selection, platform: 'any' }).ok)) continue;
+      if (!reuseDecision(previous, { chart: job.chart, requirements: { ...job.selection, platform: 'any' }, requestedChoice: job.requestedChoice, recipe: job.recipe, sourceHash: job.sourceHash }).reusable) continue;
       try {
         const stat = await fsp.lstat(previous.outputPath);
         if (!stat.isFile() || stat.isSymbolicLink()) continue;
@@ -752,8 +788,9 @@ class SongJobs {
     if (this.draining) await this.draining;
   }
 
-  _checkRequirements(preview, selection) {
+  _checkRequirements(preview, selection, job) {
     const result = require('./file-selection.cjs').validateRequirements(preview, selection);
+    if (job && result.warnings?.length) job.warning = text(result.warnings.join(' '), 450);
     if (!result.ok) { const error = new Error(result.errors.join(' ')); error.code = 'SONG_ATTENTION'; throw error; }
   }
 }

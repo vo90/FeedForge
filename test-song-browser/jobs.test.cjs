@@ -60,7 +60,7 @@ async function fixture(t, options = {}) {
     await fsp.writeFile(args[2], FEEDPAK);
     return { code: 0, stdout: "Wrote and validated FeedPak", stderr: "" };
   };
-  const manager = new SongJobs({ root, outputDir,
+  const manager = new SongJobs({ recipe: require('./fixture-recipe.cjs'), root, outputDir,
     download: options.download ? (chart, args) => options.download(chart, args, normalDownload) : normalDownload,
     runConverter: (args, context) => {
       contexts.push(context);
@@ -348,7 +348,7 @@ test("recovery marks interrupted ledger rows failed without restarting or removi
     state: "converting", progress: 50, message: "https://host.test/private", createdAt: 123,
   }] }));
   let downloads = 0;
-  const recovered = new SongJobs({ root: f.root, outputDir: f.outputDir,
+  const recovered = new SongJobs({ recipe: require('./fixture-recipe.cjs'), root: f.root, outputDir: f.outputDir,
     download: async () => { downloads++; }, runConverter: async () => {},
   });
   t.after(() => recovered.dispose());
@@ -464,7 +464,7 @@ test("a committed FeedPak survives final ledger failure and a receipt reconciles
   assert.ok((await fsp.readdir(f.root)).includes(`${done.id}.receipt.json`));
   await f.manager.dispose();
   let downloads = 0;
-  const recovered = new SongJobs({ root: f.root, outputDir: f.outputDir,
+  const recovered = new SongJobs({ recipe: require('./fixture-recipe.cjs'), root: f.root, outputDir: f.outputDir,
     download: async () => { downloads++; }, runConverter: async () => {},
   });
   t.after(() => recovered.dispose());
@@ -483,7 +483,7 @@ test("restart receipt refuses a changed output and never removes it", async (t) 
   await fsp.writeFile(f.manager.ledger, JSON.stringify({ version: 1, jobs: [row] }));
   await fsp.writeFile(path.join(f.root, `${done.id}.receipt.json`), JSON.stringify({ version: 1, job: done }));
   await fsp.writeFile(done.outputPath, "a user changed this file");
-  const recovered = new SongJobs({ root: f.root, outputDir: f.outputDir, download: async () => {}, runConverter: async () => {} });
+  const recovered = new SongJobs({ recipe: require('./fixture-recipe.cjs'), root: f.root, outputDir: f.outputDir, download: async () => {}, runConverter: async () => {} });
   t.after(() => recovered.dispose());
   assert.equal(recovered.snapshot()[0].state, "failed");
   assert.equal(await fsp.readFile(done.outputPath, "utf8"), "a user changed this file");
@@ -521,7 +521,8 @@ test("bad host response retry fetches afresh with metadata only, while cancelled
       await fsp.writeFile(args.destination, "<html>A login page that is not a valid PSARC download</html>");
       return args.destination;
     }
-    assert.deepEqual(Object.keys(chart).sort(), ["artist", "creator", "host", "id", "supported", "title"]);
+    assert.ok(Object.keys(chart).every((key) => ['artist', 'creator', 'host', 'id', 'supported', 'title', 'intentId', 'recipe', 'resolvedFile', 'requestedChoice', 'reviewAnother'].includes(key)));
+    assert.doesNotMatch(JSON.stringify(chart), /secret|host\.test|signed/);
     return normal(chart, args);
   } });
   const failed = await f.result(f.manager.enqueue({ ...CHART, url: "https://host.test/private?secret=yes" }).id);
@@ -537,7 +538,7 @@ test("retained cache is available after restart, but changed files are rejected 
   const cached = await f.manager.getCachedInput(failed.id);
   await f.manager.dispose();
   let downloads = 0, conversions = 0;
-  const recovered = new SongJobs({ root: f.root, outputDir: f.outputDir,
+  const recovered = new SongJobs({ recipe: require('./fixture-recipe.cjs'), root: f.root, outputDir: f.outputDir,
     download: async () => { downloads++; }, runConverter: async () => { conversions++; },
   });
   t.after(() => recovered.dispose());
@@ -701,7 +702,7 @@ test("Windows native path identity survives redirected profiles without weakenin
 
   let failConversion = true, returnEscapedInput = false, downloads = 0;
   const calls = [];
-  manager = new SongJobs({ root: logicalRoot, outputDir,
+  manager = new SongJobs({ recipe: require('./fixture-recipe.cjs'), root: logicalRoot, outputDir,
     download: async (_chart, args) => {
       downloads++;
       if (returnEscapedInput) {

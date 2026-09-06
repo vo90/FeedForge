@@ -145,7 +145,7 @@ app.whenReady().then(() => {
   inspectCacheRoot = path.join(app.getPath("temp"), "feedforge-inspect-cache");
   createWindow();
   registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, shell,
-    getMainWindow: () => mainWindow, runConverter });
+    getMainWindow: () => mainWindow, runConverter, getConverterRecipe });
   mainWindow.once("closed", () => app.quit());
   setTimeout(() => {
     if (!songBrowserTest) cleanupStalePortableArtifacts();
@@ -1694,6 +1694,16 @@ function removeTemporaryDirectory(directory) {
   } catch (error) {
     logDebug("temporaryDirectory.cleanupFailed", { directory: resolved, error: errorToLog(error) });
   }
+}
+
+let songConverterRecipe;
+function getConverterRecipe() {
+  if (!songConverterRecipe) songConverterRecipe = (async () => {
+    const result = await runConverter(['--version']);
+    if (result.code !== 0 || !result.stdout.trim()) throw new Error('The converter version could not be checked.');
+    return require('./song-browser/converter-recipe.cjs').converterRecipe({ ...converterCommand(), version: result.stdout.trim().slice(0, 120) });
+  })().catch((error) => { songConverterRecipe = null; throw error; });
+  return songConverterRecipe;
 }
 
 function runConverter(args, options = {}) {

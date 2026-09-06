@@ -199,7 +199,9 @@ test("saved file choices reject injected options and survive resume and restart"
       { id: "opaque-file-1", label: "Beneath_p.psarc", platform: "pc", url: "https://secret" },
       { id: "opaque-file-2", label: "Beneath_m.psarc", platform: "mac" },
     ] };
-    assert.deepEqual(context.selection.choice, { id: "opaque-file-1", label: "Beneath_p.psarc", platform: "pc" });
+    assert.equal(context.selection.choice.label, 'Beneath_p.psarc');
+    assert.equal(context.selection.choice.platform, 'pc');
+    assert.equal(context.selection.choice.id, undefined, 'current-document IDs are not durable identity');
     return { status: "completed" };
   } });
   const batch = f.prepare([chart(1)]);
@@ -266,7 +268,8 @@ test("unknown chart flags remain unknown and unspecified backing-track variants 
   const plan = planBatch([chart(1)]);
   assert.equal(plan.charts[0].reported, null);
   assert.equal(plan.charts[0].abandoned, null);
-  assert.equal(plan.preferences.backingTrack, "any");
+  assert.equal(plan.preferences.backingTrack, "full");
+  assert.equal(plan.preferences.backingStrict, false);
 });
 
 test("interactive resolution retries only its selected item and leaves other pending songs paused", async (t) => {
@@ -312,4 +315,193 @@ test("interactive resolution is explicit, supports failed finished batches and i
   restarted.resume(batch.id); await restarted.waitForIdle();
   assert.equal(calls[0].interactive, false);
   await restarted.dispose();
+});
+
+
+test('preview distinguishes available outputs, new requests and explicit variant review', (t) => {
+  const f = fixture(t);
+  const batch = f.prepare([chart(1), chart(2), chart(3)], { importDecisions: {
+    1: { status: 'available', reason: 'Verified output exists.' }, 2: { status: 'new_conversion', reason: 'No saved output.' },
+    3: { status: 'choose_file', reason: 'A different variant was requested.' },
+  } });
+  assert.deepEqual(batch.plannedCounts, { available: 1, downloads: 2 });
+  const changed = f.coordinator.choose(batch.id, { selectedIds: batch.selectedIds, forceReviewIds: ['1'] });
+  assert.deepEqual(changed.plannedCounts, { available: 0, downloads: 3 });
+  assert.equal(changed.availability['3'].status, 'choose_file');
+  assert.equal(f.calls.length, 0);
+});
+
+test('draft preference changes preserve manual choices and expose conflicts', (t) => {
+  const f = fixture(t);
+  const batch = f.prepare([chart(1, { title: 'One', creator: 'First', tuning: 'E Standard' }), chart(2, { title: 'One', creator: 'Second', tuning: 'Eb Standard' })]);
+  f.coordinator.choose(batch.id, { selectedIds: ['2'] });
+  const updated = f.coordinator.updatePreferences(batch.id, { preferences: { preferredCreators: ['First'], tuning: 'E Standard' } });
+  assert.deepEqual(updated.selectedIds, ['2'], 'explicit override is not replaced by a new recommendation');
+  assert.equal(updated.reviewConflicts.length, 1);
+  assert.throws(() => f.coordinator.start(batch.id), /preferences/);
+  f.coordinator.choose(batch.id, { selectedIds: ['1'] });
+  assert.deepEqual(f.coordinator.get(batch.id).reviewConflicts, []);
+});
+
+test('known hard instrument incompatibility outranks creator and soft preferences remain usable', () => {
+  const source = [chart(1, { title: 'One', creator: 'Preferred', parts: 'Bass', arrangements: [{ id: 'bass', instrument_family: 'bass', string_count: 4 }] }),
+    chart(2, { title: 'One', parts: 'Bass', arrangements: [{ id: 'bass', instrument_family: 'bass', string_count: 5 }] })];
+  const requirements = [{ part: 'bass', family: 'bass', stringCount: 5 }];
+  assert.deepEqual(planBatch(source, { preferredCreators: ['Preferred'], instrumentRequirements: requirements }).selectedIds, ['2']);
+  assert.deepEqual(planBatch(source, { preferredCreators: ['Preferred'], instrumentRequirements: [{ ...requirements[0], strict: false }] }).selectedIds, ['1']);
+  const unknown = planBatch([chart(3)], { instrumentRequirements: requirements });
+  assert.equal(unknown.groups[0].options[0].verificationPending, true);
+});
+
+test('skip is durable, separate from import reuse and ordinary resume does not undo it', async (t) => {
+  const f = fixture(t, { execute: async (item) => item.id === '1' ? { status: 'needs_attention' } : { status: 'skipped', message: 'Already available.' } });
+  const batch = f.prepare([chart(1), chart(2)]);
+  f.coordinator.start(batch.id); await f.coordinator.waitForIdle();
+  await f.coordinator.skipItem(batch.id, batch.id + ':1');
+  let saved = f.coordinator.get(batch.id);
+  assert.equal(saved.counts.available, 1); assert.equal(saved.counts.userSkipped, 1);
+  const intent = saved.items[0].intentId;
+  assert.equal(saved.state, 'completed');
+  assert.throws(() => f.coordinator.resume(batch.id), /Only a paused batch/);
+  await f.coordinator.waitForIdle();
+  assert.equal(f.calls.length, 2);
+  const restarted = new BatchCoordinator({ root: f.root, execute: async () => ({ status: 'completed' }) });
+  assert.equal(restarted.get(batch.id).counts.userSkipped, 1);
+  restarted.retryItem(batch.id, batch.id + ':1');
+  assert.equal(restarted.get(batch.id).items[0].intentId, intent, 'same request retry retains its intent');
+  restarted.resume(batch.id); await restarted.waitForIdle();
+  assert.equal(restarted.get(batch.id).counts.completed, 1);
+  await restarted.dispose();
+});
+
+test('skip running waits for cleanup, advances the next song and committed publication wins', async (t) => {
+  for (const committed of [false, true]) {
+    let cleaned = false;
+    const f = fixture(t, { execute: async (item, context) => {
+      if (item.id === '1') { await new Promise((resolve) => context.signal.addEventListener('abort', resolve, { once: true })); await delay(4); cleaned = true; return { status: committed ? 'completed' : 'cancelled' }; }
+      assert.equal(cleaned, true); return { status: 'completed' };
+    } });
+    const batch = f.prepare([chart(1), chart(2)]);
+    f.coordinator.start(batch.id); await until(() => f.calls.length === 1);
+    await f.coordinator.skipItem(batch.id, batch.id + ':1');
+    await f.coordinator.waitForIdle();
+    const done = f.coordinator.get(batch.id);
+    assert.equal(cleaned, true); assert.equal(f.calls.length, 2);
+    assert.equal(done.items[0].state, committed ? 'completed' : 'skipped');
+    assert.equal(done.counts.completed, committed ? 2 : 1);
+  }
+});
+
+test('changing a parked choice or relaxed requirement starts a different immutable intent', async (t) => {
+  const f = fixture(t, { execute: async () => ({ status: 'needs_attention', candidates: [{ id: 'one', label: 'One_v1_p.psarc', platform: 'pc' }, { id: 'two', label: 'One_v2_p.psarc', platform: 'pc' }] }) });
+  const batch = f.prepare([chart(1)]);
+  f.coordinator.start(batch.id); await f.coordinator.waitForIdle();
+  const first = f.coordinator.get(batch.id).items[0].intentId;
+  f.coordinator.setItemChoice(batch.id, batch.id + ':1', { choice: { id: 'two' } });
+  const changed = f.coordinator.get(batch.id).items[0];
+  assert.notEqual(changed.intentId, first); assert.equal(changed.choice.id, undefined);
+  f.coordinator.retryItem(batch.id, changed.id, { relaxRequirements: true });
+  assert.notEqual(f.coordinator.get(batch.id).items[0].intentId, changed.intentId);
+});
+
+test('recipe upgrade recovers an old published intent before replacing unpublished intents', async (t) => {
+  const { normalizeRecipe } = require('../electron/song-browser/provenance.cjs');
+  const oldRecipe = normalizeRecipe({ version: '1', build: 'old', options: {} }), nextRecipe = normalizeRecipe({ version: '2', build: 'new', options: {} });
+  let receiptIntent = null;
+  const f = fixture(t, { execute: async () => ({ status: 'needs_attention', sessionWide: true }), findCompleted: async (context) => context.intentId === receiptIntent ? { status: 'completed' } : null });
+  const batch = f.prepare([chart(1), chart(2)], { recipe: oldRecipe });
+  f.coordinator.start(batch.id); await f.coordinator.waitForIdle();
+  const original = f.coordinator.get(batch.id).items;
+  receiptIntent = original[0].intentId;
+  await f.coordinator.setRecipe(batch.id, nextRecipe);
+  const changed = f.coordinator.get(batch.id);
+  assert.equal(changed.items[0].state, 'completed'); assert.equal(changed.items[0].intentId, receiptIntent);
+  assert.deepEqual(changed.items[0].recipe, oldRecipe);
+  assert.notEqual(changed.items[1].intentId, original[1].intentId); assert.deepEqual(changed.items[1].recipe, nextRecipe);
+});
+
+test('v1 batch migration keeps an original backup and unknown provenance without starting work', async (t) => {
+  const f = fixture(t); const batch = f.prepare([chart(1)]);
+  f.coordinator.start(batch.id); await f.coordinator.waitForIdle();
+  const filename = path.join(f.root, 'batches.json'), legacy = JSON.parse(fs.readFileSync(filename, 'utf8'));
+  legacy.version = 1; delete legacy.batches[0].recipe;
+  for (const item of legacy.batches[0].items) { delete item.intentId; delete item.recipe; }
+  fs.writeFileSync(filename, JSON.stringify(legacy));
+  const original = fs.readFileSync(filename, 'utf8');
+  const migrated = new BatchCoordinator({ root: f.root, execute: async () => { throw Error('Unexpected external work'); } });
+  assert.equal(migrated.get(batch.id).items[0].state, 'completed');
+  assert.equal(migrated.get(batch.id).items[0].recipe, null);
+  assert.equal(fs.readFileSync(filename + '.v1.backup', 'utf8'), original);
+  assert.equal(JSON.parse(fs.readFileSync(filename, 'utf8')).version, 2);
+  const again = new BatchCoordinator({ root: f.root, execute: async () => {} });
+  assert.equal(again.get(batch.id).items[0].intentId, migrated.get(batch.id).items[0].intentId);
+  await again.dispose(); await migrated.dispose();
+});
+
+test('possible duplicate suggestions preserve editions, numbers and selections and are bounded', (t) => {
+  const f = fixture(t);
+  const batch = f.prepare([chart(1, { title: 'Bleed!' }), chart(2, { title: 'Bleed' }), chart(3, { title: 'Bleed (Live)' }),
+    chart(4, { title: 'Obzen' }), chart(5, { title: 'Obzen Part I' }), chart(6, { title: 'Obzen Part II' }),
+    chart(7, { title: 'New Millennium Cyanide Christ' }), chart(8, { title: 'New Millenium Cyanide Christ' })]);
+  assert.equal(batch.suggestions.length, 2);
+  assert.equal(batch.selectedIds.length, 8, 'suggestions must never collapse groups');
+  f.coordinator.dismissSuggestion(batch.id, batch.suggestions[0].id);
+  assert.deepEqual(f.coordinator.get(batch.id).selectedIds, batch.selectedIds);
+  assert.equal(f.coordinator.get(batch.id).dismissedSuggestions.length, 1);
+  const { possibleDuplicates } = require('../electron/song-browser/duplicate-suggestions.cjs');
+  const large = possibleDuplicates(Array.from({ length: 5000 }, (_, index) => ({ key: String(index), artist: 'Same artist', title: 'Distinct Song ' + index })));
+  assert.ok(large.comparisons <= 40000); assert.ok(large.suggestions.length <= 200);
+});
+
+
+test('duplicate filenames remain reviewable after a saved explicit choice and restart', async (t) => {
+  const f = fixture(t, { execute: async () => ({ status: 'needs_attention', candidates: [{ id: 'a', label: 'Same_p.psarc', platform: 'pc' }, { id: 'b', label: 'Same_p.psarc', platform: 'pc' }] }) });
+  const batch = f.prepare([chart(1)]); f.coordinator.start(batch.id); await f.coordinator.waitForIdle();
+  f.coordinator.setItemChoice(batch.id, batch.id + ':1', { choice: { id: 'b' } });
+  const restarted = new BatchCoordinator({ root: f.root, execute: async () => ({ status: 'needs_attention' }) });
+  assert.equal(restarted.get(batch.id).items[0].choice.label, 'Same_p.psarc');
+  assert.equal(restarted.get(batch.id).items[0].choice.id, undefined);
+  await restarted.dispose();
+});
+
+test('failed v1 migration preserves original ledger and backup', async (t) => {
+  const f = fixture(t); f.prepare([chart(1)]);
+  const filename = path.join(f.root, 'batches.json'), legacy = JSON.parse(fs.readFileSync(filename, 'utf8')); legacy.version = 1;
+  fs.writeFileSync(filename, JSON.stringify(legacy)); const original = fs.readFileSync(filename, 'utf8');
+  const rename = fs.renameSync;
+  try {
+    fs.renameSync = (source, destination) => { if (destination === filename) throw new Error('Migration disk failure'); return rename(source, destination); };
+    assert.throws(() => new BatchCoordinator({ root: f.root, execute: async () => {} }), /Migration disk failure/);
+    assert.equal(fs.readFileSync(filename, 'utf8'), original); assert.equal(fs.readFileSync(filename + '.v1.backup', 'utf8'), original);
+  } finally { fs.renameSync = rename; }
+});
+
+
+test('explicit retry of a terminal skipped or cancelled item adopts the accepted new recipe', async (t) => {
+  const { normalizeRecipe } = require('../electron/song-browser/provenance.cjs');
+  const oldRecipe = normalizeRecipe({ version: '1', build: 'old', options: {} }), newRecipe = normalizeRecipe({ version: '2', build: 'new', options: {} });
+  for (const terminal of ['skipped', 'cancelled']) {
+    const f = fixture(t, { execute: async () => ({ status: 'needs_attention' }) });
+    const batch = f.prepare([chart(1)], { recipe: oldRecipe }); f.coordinator.start(batch.id); await f.coordinator.waitForIdle();
+    if (terminal === 'skipped') await f.coordinator.skipItem(batch.id, batch.id + ':1'); else await f.coordinator.cancel(batch.id);
+    const originalIntent = f.coordinator.get(batch.id).items[0].intentId;
+    await f.coordinator.setRecipe(batch.id, newRecipe);
+    assert.deepEqual(f.coordinator.get(batch.id).items[0].recipe, oldRecipe, 'terminal result remains attached to its old request');
+    f.coordinator.retryItem(batch.id, batch.id + ':1');
+    const retry = f.coordinator.get(batch.id).items[0];
+    assert.notEqual(retry.intentId, originalIntent); assert.deepEqual(retry.recipe, newRecipe); assert.equal(retry.legacyIntent, false);
+  }
+});
+
+test('skipping the last pending retry finishes a paused batch and clears its resume message', async (t) => {
+  const f = fixture(t, { execute: async () => ({ status: 'needs_attention' }) });
+  const batch = f.prepare([chart(1)]);
+  f.coordinator.start(batch.id); await f.coordinator.waitForIdle();
+  await f.coordinator.skipItem(batch.id, batch.id + ':1');
+  f.coordinator.retryItem(batch.id, batch.id + ':1');
+  assert.equal(f.coordinator.get(batch.id).state, 'paused');
+  await f.coordinator.skipItem(batch.id, batch.id + ':1');
+  const done = f.coordinator.get(batch.id);
+  assert.equal(done.state, 'completed'); assert.equal(done.pauseReason, '');
+  assert.equal(done.counts.userSkipped, 1); assert.equal(f.calls.length, 1);
 });

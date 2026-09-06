@@ -63,12 +63,45 @@ function hostDownloadAction(request = {}, selectCandidate, megaAction) {
   const clean = (value) => typeof value === 'string' ? value.replace(/[\x00-\x1f\x7f]/g, '').trim().slice(0, 240) : '';
   const filename = (element) => {
     const values = ['data-filename', 'data-name', 'title', 'aria-label'].map((key) => element.getAttribute(key));
-    values.push(...String(element.innerText || element.textContent || '').split(/\r?\n/));
+    values.push(...String(typeof element.innerText === 'string' ? element.innerText : element.textContent || '').split(/\r?\n/));
     for (const value of values) {
       const label = clean(value).replace(/^(?:file(?: name)?|name):\s*/i, '');
       if (/\.psarc$/i.test(label) && !/[\\/]/.test(label)) return label;
     }
     return '';
+  };
+  const metadata = (node) => {
+    const lines = String(typeof node?.innerText === 'string' ? node.innerText : node?.textContent || '').split(/\r?\n/).map((line) => line.trim());
+    const result = { sizeBytes: null, versionHint: null, editionHint: null, backingHint: null, evidence: {} };
+    for (const line of lines) {
+      const size = line.match(/^(?:file\s+)?(?:size:\s*)?(\d+(?:[.,]\d+)?)\s*(bytes?|[KMGT]i?B|B)$/i);
+      if (size) {
+        const unit = size[2].toUpperCase(), power = /^[KMGT]/.test(unit) ? 'KMGT'.indexOf(unit[0]) + 1 : 0;
+        const bytes = Math.ceil(Number(size[1].replace(',', '.')) * (unit.includes('I') ? 1024 : 1000) ** power);
+        if (bytes > 0 && bytes <= 512 * 1024 * 1024) result.sizeBytes = bytes;
+      }
+      const version = line.match(/^version:\s*(v?\d+(?:\.\d+){0,3}[a-z]?)$/i);
+      if (version) { result.versionHint = version[1]; result.evidence.version = 'observed'; }
+      const edition = line.match(/^edition:\s*(studio|live|acoustic|instrumental|remix|remaster|alternate)$/i);
+      if (edition) { result.editionHint = edition[1].toLowerCase(); result.evidence.edition = 'observed'; }
+      const backing = line.match(/^backing(?: track)?:\s*(full|no.guitar|no.bass)$/i);
+      if (backing) { result.backingHint = backing[1].toLowerCase().replace(/\s/g, '-'); result.evidence.backing = 'observed'; }
+    }
+    return result;
+  };
+  const identify = (label, node = document.body) => {
+    if (!label || typeof selectCandidate !== 'function') return null;
+    let id = node.getAttribute('data-feedforge-file-id');
+    if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id || '')) {
+      id = 'ff-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
+      node.setAttribute('data-feedforge-file-id', id);
+    }
+    return selectCandidate([{ id, label, ...metadata(node) }], request);
+  };
+  const clickIndividual = (button, label, node) => {
+    const selection = identify(label, node);
+    if (selection && selection.status !== 'selected') return selection;
+    return { ...click(button), ...(selection ? { selectedFile: selection.candidate } : {}) };
   };
   const chooseVisibleFile = () => {
     if (typeof selectCandidate !== 'function') return null;
@@ -92,14 +125,15 @@ function hostDownloadAction(request = {}, selectCandidate, megaAction) {
         id = 'ff-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12);
         node.setAttribute('data-feedforge-file-id', id);
       }
-      records.push({ id, label, node, action: target && ownFileTarget(target) ? link : node, double: !(target && ownFileTarget(target)) });
+      records.push({ id, label, ...metadata(node), node, action: target && ownFileTarget(target) ? link : node, double: !(target && ownFileTarget(target)) });
     }
     if (!records.length) return null;
-    const selection = selectCandidate(records.map(({ id, label }) => ({ id, label })), request);
+    const publicRecords = records.map(({ node, action, double, ...candidate }) => candidate);
+    const selection = selectCandidate(publicRecords, request);
     const totalRows = [...document.querySelectorAll('[aria-rowcount]')].filter(usable)
       .map((element) => Number(element.getAttribute('aria-rowcount'))).filter((count) => Number.isInteger(count) && count > 0);
     if (!request.choice && selection.status === 'selected' && (records.length > 500 || totalRows.some((count) => count > records.length))) {
-      return { status: 'choose_file', candidates: records.slice(0, 500).map(({ id, label }) => ({ id, label, platform: /_p\.psarc$/i.test(label) ? 'pc' : /_m\.psarc$/i.test(label) ? 'mac' : 'unknown' })),
+      return { status: 'choose_file', candidates: selectCandidate(publicRecords, {}, true).candidates,
         error: 'Only part of this folder is visible. Choose a displayed PSARC or open the browser to inspect the rest.' };
     }
     if (selection.status !== 'selected') return selection;
@@ -122,9 +156,11 @@ function hostDownloadAction(request = {}, selectCandidate, megaAction) {
     if (/_m\.psarc$/i.test(name) && request.allowMacFallback !== true) return { status: 'needs_attention', error: 'This link points to a Mac PSARC. Choose its PC version.' };
     // Only individual shared files; never turn an arbitrary/folder URL into a download.
     if (/^\/(?:s\/[\w-]+\/|scl\/fi\/)/.test(url.pathname) && url.searchParams.get('dl') !== '1') {
+      const selection = /\.psarc$/i.test(name) && !/[\\/]/.test(name) ? identify(name) : null;
+      if (selection && selection.status !== 'selected') return selection;
       url.searchParams.set('dl', '1');
       location.assign(url.href);
-      return { status: 'clicked' };
+      return { status: 'clicked', ...(selection ? { selectedFile: selection.candidate } : {}) };
     }
     return { status: 'needs_attention', error: 'Select the individual PSARC file in the Dropbox page.' };
   }
@@ -135,7 +171,10 @@ function hostDownloadAction(request = {}, selectCandidate, megaAction) {
         const target = new URL(link.href, location.href);
         if (/_m\.psarc$/i.test(target.pathname) && request.allowMacFallback !== true) return { status: 'needs_attention', error: 'This link points to a Mac PSARC. Choose its PC version.' };
         if (target.protocol === 'https:' && !target.username && !target.password && (!target.port || target.port === '443')
-          && /^download\d+\.mediafire\.com$/.test(target.hostname)) return click(link);
+          && /^download\d+\.mediafire\.com$/.test(target.hostname)) {
+          const label = decodeURIComponent(target.pathname.split('/').at(-1));
+          return clickIndividual(link, /\.psarc$/i.test(label) && !/[\\/]/.test(label) ? label : '', document.body);
+        }
       } catch { /* Let the user inspect an unfamiliar page. */ }
     }
     return { status: 'needs_attention', error: 'Use the file download button on MediaFire to continue.' };
@@ -148,7 +187,11 @@ function hostDownloadAction(request = {}, selectCandidate, megaAction) {
       const label = (el.getAttribute('aria-label') || el.getAttribute('data-tooltip') || el.innerText || el.value || '').trim();
       return /^(?:download|download anyway|ladda ned)$/i.test(label) && usable(el);
     });
-    if (download) return click(download);
+    if (download) {
+      const heading = [...document.querySelectorAll('h1, h2, [role="heading"], [data-filename]')].filter(usable).find((element) => filename(element));
+      const title = clean(document.title || '').replace(/\s+-\s+Google Drive$/i, '');
+      return clickIndividual(download, heading ? filename(heading) : /\.psarc$/i.test(title) && !/[\\/]/.test(title) ? title : '', heading || document.body);
+    }
     return { status: 'waiting' };
   }
   if (isOneDrive || isPcloud) {
@@ -161,7 +204,7 @@ function hostDownloadAction(request = {}, selectCandidate, megaAction) {
         const label = (element.getAttribute('aria-label') || element.getAttribute('data-tooltip') || element.innerText || element.value || '').trim();
         return /^(?:download|download anyway|ladda ned|hämta)$/i.test(label) && usable(element);
       });
-      if (download) return click(download);
+      if (download) return clickIndividual(download, names[0], document.body);
     }
     return { status: 'needs_attention', error: 'Open an individual PSARC file, then use its download button.' };
   }

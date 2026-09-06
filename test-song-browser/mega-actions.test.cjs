@@ -101,6 +101,8 @@ test('single file prepares before click, enforces expected filename, and never c
   assert.equal(prepared.status, 'prepared'); assert.equal(page.button.clicked, 0);
   assert.equal(prepared.selectedFile.label, 'Song_p.psarc'); assert.equal(prepared.selectedFile.platform, 'pc');
   assert.equal(prepared.sizeBytes, 12 * 1024 * 1024);
+  assert.equal(prepared.selectedFile.sizeBytes, 12 * 1024 * 1024);
+  assert.equal(prepared.selectedFile.evidence.size, 'observed');
   assert.doesNotMatch(JSON.stringify(prepared), /mega\.nz|never-return-key|raw-mega/);
   assert.equal(page.run().status, 'needs_attention'); assert.equal(page.button.clicked, 0);
   assert.equal(page.run({ expectedFile: { label: 'Other_p.psarc', platform: 'pc' } }).status, 'needs_attention');
@@ -165,6 +167,7 @@ test('observed transfer progress distinguishes decrypting and saving with stable
   const transfer = progress(), page = single('Song_p.psarc', '12 MB', [transfer.widget]);
   start(page);
   const initial = page.run(); assert.equal(initial.status, 'transferring'); assert.equal(initial.progress, 25); assert.equal(initial.phase, 'downloading');
+  assert.equal(initial.selectedFile.sizeBytes, 12 * 1024 * 1024);
   assert.equal(page.run().activity, initial.activity);
   transfer.status.ownText = 'Decrypting (40%)'; transfer.bar.style.width = '40%';
   const decrypting = page.run(); assert.equal(decrypting.phase, 'decrypting'); assert.equal(decrypting.progress, 40); assert.notEqual(decrypting.activity, initial.activity);

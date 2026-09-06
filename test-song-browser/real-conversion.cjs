@@ -92,7 +92,7 @@ async function main() {
     fs.mkdirSync(directory, { recursive: true });
     const childEnv = { ...env, TEMP: directory, TMP: directory, TMPDIR: directory };
     const index = String(calls.length + 1).padStart(3, '0');
-    const mode = cliArgs.includes('--inspect-json') ? 'inspect' : cliArgs.includes('--validate-feedpak') ? 'validate' : 'convert';
+    const mode = cliArgs.includes('--version') ? 'version' : cliArgs.includes('--inspect-json') ? 'inspect' : cliArgs.includes('--validate-feedpak') ? 'validate' : 'convert';
     const call = { mode, args: [...cliArgs], directory, startedAt: new Date().toISOString(), onSpawnCalled: false };
     calls.push(call);
     let stdout = '';
@@ -148,12 +148,16 @@ async function main() {
         platform: 'pc', strictPlatform: true,
       });
     }
-    jobs = new SongJobs({
+    const version = await runConverter(['--version'], { onSpawn: () => {} });
+    assert.equal(version.code, 0);
+    const recipe = await require('../electron/song-browser/converter-recipe.cjs').converterRecipe({ command: converter || python, prefix: converter ? [] : ['-m'], cwd: worktree, version: version.stdout.trim() });
+    jobs = new SongJobs({ recipe,
       root: jobRoot, outputDir, runConverter,
       download: async (_chart, options) => {
         if (options.signal.aborted) throw new Error('Copy cancelled.');
         downloadCount++;
         await fsp.copyFile(input, options.destination, fs.constants.COPYFILE_EXCL);
+        options.onResolvedFile?.({ filename: path.basename(input), platform: source.preview.source_platforms?.includes('pc') ? 'pc' : 'unknown', sizeBytes: (await fsp.stat(input)).size });
         options.onProgress(100);
         return options.destination;
       },

@@ -128,3 +128,21 @@
 .song-browser .sb-batch progress { width: 100%; margin: 8px 0; }
 .song-browser .sb-file-choices { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
 .song-browser .sb-chart-select { flex: none; }
+.song-browser .sb-requirements { border: 1px solid var(--border, #304457); border-radius: 10px; padding: 14px 18px; margin: 14px 0; min-width: 0; }
+.song-browser .sb-requirements legend { padding: 0 6px; font-weight: 600; }
+.song-browser .sb-requirements p, .song-browser .sb-availability { font-size: 13px; color: var(--text-secondary, #a9bbcb); }
+.song-browser .sb-requirements summary, .song-browser .sb-draft-preferences summary, .song-browser .sb-duplicate-suggestion summary { cursor: pointer; padding: 8px 0; }
+.song-browser .sb-instrument-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 10px 0; }
+.song-browser .sb-instrument-row > strong { min-width: 55px; text-transform: capitalize; }
+.song-browser .sb-instrument-row label { display: flex; gap: 8px; align-items: center; }
+.song-browser .sb-candidate-detail { display: flex; flex-direction: column; gap: 4px; text-align: left; white-space: normal; overflow-wrap: anywhere; }
+.song-browser .sb-candidate-detail small { font-weight: 400; }
+.song-browser .sb-file-choices { display: flex; flex-direction: column; gap: 8px; }
+.song-browser .sb-batch-option-wrap { padding: 6px 0 12px; }
+.song-browser .sb-comparison { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
+.song-browser .sb-comparison > div { padding: 10px; border: 1px solid var(--border, #304457); border-radius: 8px; }
+.song-browser .sb-comparison > div > div { display: flex; flex-direction: column; gap: 8px; margin: 10px 0; }
+.song-browser .sb-batch-prepare > label, .song-browser .sb-draft-preferences form > label { display: flex; flex-direction: column; gap: 7px; margin: 12px 0; font-size: 13px; }
+.song-browser .sb-batch-prepare > label > input, .song-browser .sb-draft-preferences form > label > input, .song-browser .sb-instrument-row select { padding: 9px; border: 1px solid #364b63; border-radius: 7px; color: #eef5ff; background: #0c1624; font: inherit; }
+.song-browser .sb-requirements .sb-auto-refresh input { width: 15px; flex: none; }
+.song-browser .sb-batch-option-wrap .sb-auto-refresh { white-space: normal; align-items: flex-start; }

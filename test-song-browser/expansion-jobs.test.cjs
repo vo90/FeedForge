@@ -35,7 +35,7 @@ async function fixture(t, options = {}) {
     return { code: 0, stdout: '', stderr: '' };
   };
   const create = () => {
-    const manager = new SongJobs({ root, outputDir, download, runConverter, onCompleted: (job) => completed.push(job) });
+    const manager = new SongJobs({ recipe: require('./fixture-recipe.cjs'), root, outputDir, download, runConverter, onCompleted: (job) => completed.push(job) });
     managers.push(manager); return manager;
   };
   const manager = create();
@@ -67,7 +67,7 @@ test('parked batch file choice releases the serial worker so another chart compl
   ]);
   assert.equal(parked.status, 'needs_attention'); assert.equal(parked.state, 'parked');
   assert.equal(parked.batchId, context.batchId); assert.equal(parked.itemId, context.itemId);
-  assert.deepEqual(parked.candidates, [{ id: 'opaque-one', label: 'One_v2_p.psarc', platform: 'pc' }]);
+  assert.deepEqual(parked.candidates.map(({ id, label, platform }) => ({ id, label, platform })), [{ id: 'opaque-one', label: 'One_v2_p.psarc', platform: 'pc' }]);
   assert.equal(completed.status, 'completed'); assert.ok(fs.existsSync(completed.outputPath));
   assert.deepEqual(f.transfers.map((entry) => entry.chart.id), ['42', '43']);
   assert.ok(f.transfers.every((entry) => entry.parkOnAttention));
