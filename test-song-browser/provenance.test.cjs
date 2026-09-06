@@ -73,8 +73,9 @@ test('exact source reuse can cross filename/chart revisions but never incompatib
   assert.equal(reuseDecision({ ...record, recipe: null }, after).code, 'unknown_recipe');
 });
 
-test('filename backing hints cannot satisfy a strict content requirement', () => {
+test('retired backing requirements cannot block reuse and arrangement checks remain active', () => {
   const hinted = { ...record, resolvedFile: sanitizeFileEvidence({ ...choice, backingHint: 'no-guitar', evidence: { filename: 'observed' } }) };
-  assert.equal(reuseDecision(hinted, { ...request, requirements: { backingTrack: 'no-guitar', backingStrict: true } }).code, 'different_requirements');
+  assert.equal(reuseDecision(hinted, { ...request, requirements: { backingTrack: 'no-guitar', backingStrict: true } }).reusable, true);
   assert.equal(reuseDecision(hinted, { ...request, requirements: { backingTrack: 'no-guitar', backingStrict: false } }).reusable, true);
+  assert.equal(reuseDecision(hinted, { ...request, requirements: { parts: ['bass'], backingTrack: 'no-guitar', backingStrict: true } }).code, 'different_requirements');
 });

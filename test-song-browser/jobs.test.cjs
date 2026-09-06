@@ -346,6 +346,8 @@ test("recovery marks interrupted ledger rows failed without restarting or removi
   await fsp.writeFile(path.join(f.root, "jobs.json"), JSON.stringify({ version: 1, jobs: [{
     id, chartId: "42", title: "One", artist: "Metallica", creator: "Creator",
     state: "converting", progress: 50, message: "https://host.test/private", createdAt: 123,
+    selection: { parts: ['lead'], tuning: 'E Standard', platform: 'pc', strictPlatform: true,
+      backingTrack: 'no-guitar', backingStrict: true, instrumentRequirements: [{ part: 'lead', family: 'bass', stringCount: 5 }] },
   }] }));
   let downloads = 0;
   const recovered = new SongJobs({ recipe: require('./fixture-recipe.cjs'), root: f.root, outputDir: f.outputDir,
@@ -354,6 +356,8 @@ test("recovery marks interrupted ledger rows failed without restarting or removi
   t.after(() => recovered.dispose());
   assert.equal(recovered.snapshot()[0].state, "failed");
   assert.match(recovered.snapshot()[0].error, /interrupted/);
+  assert.deepEqual(recovered.snapshot()[0].selection, { parts: ['lead'], tuning: 'E Standard', platform: 'pc', strictPlatform: true,
+    allowMacFallback: false, backingTrack: 'any', backingStrict: false, instrumentRequirements: [] });
   await delay(15);
   assert.equal(downloads, 0);
   assert.deepEqual(await fsp.readFile(path.join(cached, "source.psarc")), PSARC);

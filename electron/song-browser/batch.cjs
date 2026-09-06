@@ -96,23 +96,17 @@ function normalizePreferences(input = {}) {
     excludeAbandoned: input.excludeAbandoned === true,
     allowUnsupported: input.allowUnsupported === true,
     platform: ["mac", "any"].includes(input.platform) ? input.platform : "pc",
-    backingTrack: ["full", "no-guitar", "no-bass", "any"].includes(input.backingTrack) ? input.backingTrack : "full",
-    backingStrict: input.backingStrict === true,
-    instrumentRequirements: require('./file-selection.cjs').normalizeRequirements({ instrumentRequirements: input.instrumentRequirements || [] }).instrumentRequirements || [],
+    // Retain neutral compatibility keys when restoring an older draft or retry.
+    backingTrack: "any",
+    backingStrict: false,
+    instrumentRequirements: [],
     macFallback: input.macFallback === true || input.allowMacFallback === true,
     allowMacFallback: input.macFallback === true || input.allowMacFallback === true,
   };
 }
 
 function eligibleParts(chart, preferences) {
-  const compatible = chart.parts.filter((part) => {
-    const requirement = preferences.instrumentRequirements.find((entry) => entry.part === part && entry.strict !== false);
-    if (!requirement) return true;
-    // Unknown catalogue evidence stays reviewable, with mandatory inspection later.
-    const arrangements = chart.arrangements.filter((entry) => entry.id === part);
-    return !arrangements.length || arrangements.some((entry) => (!requirement.family || !entry.instrument_family || entry.instrument_family === requirement.family)
-      && (!requirement.stringCount || !entry.string_count || entry.string_count === requirement.stringCount));
-  });
+  const compatible = chart.parts;
   if (!preferences.tuning) return compatible;
   if (chart.arrangements.length) {
     return compatible.filter((part) => chart.arrangements.some((item) => item.type === part && tuningMatches(item, preferences.tuning)));
@@ -131,11 +125,7 @@ function optionFor(chart, preferences) {
   if (preferences.requiredParts.length && !parts.some((part) => preferences.requiredParts.includes(part))) {
     reasons.push("Does not contain a required arrangement.");
   }
-  if (preferences.instrumentRequirements.some((requirement) => requirement.strict !== false && chart.parts.includes(requirement.part) && !parts.includes(requirement.part))) reasons.push('The reported instrument is incompatible with the required arrangement.');
-  if (preferences.instrumentRequirements.some((requirement) => requirement.strict !== false && chart.parts.length && !chart.parts.includes(requirement.part) && requirement.part !== 'guitar')) reasons.push('The chart does not advertise an arrangement needed for the instrument requirement.');
-  const verificationPending = preferences.instrumentRequirements.some((requirement) => requirement.strict !== false && !chart.arrangements.some((arrangement) => arrangement.id === requirement.part
-    && (!requirement.family || arrangement.instrument_family === requirement.family) && (!requirement.stringCount || arrangement.string_count === requirement.stringCount)));
-  return { id: chart.id, eligible: reasons.length === 0, parts, reasons, verificationPending };
+  return { id: chart.id, eligible: reasons.length === 0, parts, reasons, verificationPending: false };
 }
 
 function rankCharts(a, b, preferences) {

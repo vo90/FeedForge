@@ -268,7 +268,7 @@ test("unknown chart flags remain unknown and unspecified backing-track variants 
   const plan = planBatch([chart(1)]);
   assert.equal(plan.charts[0].reported, null);
   assert.equal(plan.charts[0].abandoned, null);
-  assert.equal(plan.preferences.backingTrack, "full");
+  assert.equal(plan.preferences.backingTrack, "any");
   assert.equal(plan.preferences.backingStrict, false);
 });
 
@@ -343,14 +343,40 @@ test('draft preference changes preserve manual choices and expose conflicts', (t
   assert.deepEqual(f.coordinator.get(batch.id).reviewConflicts, []);
 });
 
-test('known hard instrument incompatibility outranks creator and soft preferences remain usable', () => {
+test('retired instrument requirements do not override creator preferences or require verification', () => {
   const source = [chart(1, { title: 'One', creator: 'Preferred', parts: 'Bass', arrangements: [{ id: 'bass', instrument_family: 'bass', string_count: 4 }] }),
     chart(2, { title: 'One', parts: 'Bass', arrangements: [{ id: 'bass', instrument_family: 'bass', string_count: 5 }] })];
   const requirements = [{ part: 'bass', family: 'bass', stringCount: 5 }];
-  assert.deepEqual(planBatch(source, { preferredCreators: ['Preferred'], instrumentRequirements: requirements }).selectedIds, ['2']);
+  assert.deepEqual(planBatch(source, { preferredCreators: ['Preferred'], instrumentRequirements: requirements }).selectedIds, ['1']);
   assert.deepEqual(planBatch(source, { preferredCreators: ['Preferred'], instrumentRequirements: [{ ...requirements[0], strict: false }] }).selectedIds, ['1']);
   const unknown = planBatch([chart(3)], { instrumentRequirements: requirements });
-  assert.equal(unknown.groups[0].options[0].verificationPending, true);
+  assert.equal(unknown.groups[0].options[0].verificationPending, false);
+  assert.deepEqual(unknown.preferences.instrumentRequirements, []);
+});
+
+test('restored batches and per-song retries clear retired preferences while preserving arrangements and tuning', async (t) => {
+  const f = fixture(t, { execute: async () => ({ status: 'needs_attention' }) });
+  const batch = f.prepare([chart(1)], { preferences: { requiredParts: ['lead'], tuning: 'Bb Standard', preferredCreators: ['Griorb'], ranking: 'updated' } });
+  f.coordinator.start(batch.id); await f.coordinator.waitForIdle(); await f.coordinator.dispose();
+  const filename = path.join(f.root, 'batches.json'), legacy = JSON.parse(fs.readFileSync(filename, 'utf8'));
+  Object.assign(legacy.batches[0].preferences, { backingTrack: 'no-guitar', backingStrict: true,
+    instrumentRequirements: [{ part: 'lead', family: 'bass', stringCount: 5, strict: true }] });
+  legacy.batches[0].items[0].selection = { ...legacy.batches[0].preferences };
+  fs.writeFileSync(filename, JSON.stringify(legacy));
+  const calls = [];
+  const restored = new BatchCoordinator({ root: f.root, execute: async (_chart, context) => { calls.push(context); return { status: 'completed' }; } });
+  try {
+    const saved = restored.get(batch.id);
+    for (const selection of [saved.preferences, saved.items[0].selection]) {
+      assert.equal(selection.backingTrack, 'any'); assert.equal(selection.backingStrict, false); assert.deepEqual(selection.instrumentRequirements, []);
+      assert.deepEqual(selection.requiredParts, ['lead']); assert.equal(selection.tuning, 'Bb Standard');
+      assert.deepEqual(selection.preferredCreators, ['Griorb']); assert.equal(selection.ranking, 'updated');
+    }
+    assert.equal(calls.length, 0, 'restoring an older batch does not start it');
+    restored.resume(batch.id); await restored.waitForIdle();
+    assert.equal(calls.length, 1); assert.deepEqual(calls[0].preferences, saved.items[0].selection);
+    assert.equal(restored.get(batch.id).counts.completed, 1);
+  } finally { await restored.dispose(); }
 });
 
 test('skip is durable, separate from import reuse and ordinary resume does not undo it', async (t) => {

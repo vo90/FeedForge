@@ -10,7 +10,9 @@ const crypto = require('node:crypto');
 const assert = require('node:assert/strict');
 
 const charts = Object.freeze({
-  fast: Object.freeze({ id: '1101', title: 'Fixture Success', artist: 'Fixture Artist', host: 'dropbox' }),
+  // The catalogue advertises Rhythm as well; the inspected fixture contains
+  // only Lead, exercising verified arrangement coverage rather than metadata.
+  fast: Object.freeze({ id: '1101', title: 'Fixture Success', artist: 'Fixture Artist', host: 'dropbox', parts: 'Lead, Rhythm' }),
   retry: Object.freeze({ id: '1102', title: 'Fixture Recovery', artist: 'Fixture Artist', host: 'google-drive' }),
   slow: Object.freeze({ id: '1103', title: 'Fixture Cancel', artist: 'Fixture Artist', host: 'mediafire' }),
 });
@@ -288,6 +290,14 @@ async function main() {
     ipcMain.handle(name, async (...args) => {
       if (name === 'song-browser:signIn') counters.browserActions.signIn++;
       if (name === 'song-browser:showBrowser') counters.browserActions.showBrowser++;
+      const requirementKey = ['song-browser:enqueue', 'song-browser:assessResult'].includes(name) ? 'selection'
+        : ['song-browser:prepareBatch', 'song-browser:updateBatchPreferences'].includes(name) ? 'preferences' : null;
+      if (requirementKey) {
+        const request = args[1]?.[requirementKey];
+        assert.equal(request?.backingTrack, 'any', name + ' must use the original audio without a backing preference.');
+        assert.equal(request.backingStrict, false, name + ' must not require backing verification.');
+        assert.deepEqual(request.instrumentRequirements, [], name + ' must not retain removed instrument/string constraints.');
+      }
       try { return await action(...args); }
       finally { if (name === 'song-browser:search') { counters.searchCompleted++; signalWaiters(); } }
     });

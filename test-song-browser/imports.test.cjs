@@ -61,11 +61,11 @@ test("same artist and title do not skip another creator's chart or a new revisio
   assert.ok(await f.index.find({ ...CHART, version: "", updated: "" }, { recipe: RECIPE, sourceHash: "a".repeat(64) }));
 });
 
-test("a known chart is not reused for missing arrangements, another tuning or backing track", async (t) => {
+test("a known chart is not reused for missing arrangements or another tuning", async (t) => {
   const f = fixture(t); f.index.record(f.entry());
   assert.equal(await f.index.find(CHART, { recipe: RECIPE, preferences: { requiredParts: ["bass"] } }), null);
   assert.equal(await f.index.find(CHART, { recipe: RECIPE, preferences: { requiredParts: ["lead"], tuning: "Eb Standard" } }), null);
-  assert.equal(await f.index.find(CHART, { recipe: RECIPE, preferences: { backingTrack: "no-guitar", backingStrict: true } }), null);
+  assert.ok(await f.index.find(CHART, { recipe: RECIPE, preferences: { backingTrack: "no-guitar", backingStrict: true } }));
   assert.equal(await f.index.find(CHART, { recipe: RECIPE, preferences: { platform: "mac", strictPlatform: true } }), null);
   assert.ok(await f.index.find(CHART, { recipe: RECIPE, preferences: { requiredParts: ["lead"], tuning: "Bb Standard" } }));
 });
@@ -199,18 +199,25 @@ test("preview decisions distinguish availability, changed output and unknown pro
   await assert.rejects(f.index.assess({ ...CHART, id: "111" }, { ...options, signal: controller.signal }), /cancelled/);
 });
 
-test("explicit instrument and backing evidence survives storage without promoting unknown fields", async (t) => {
+test("stored file evidence remains available while retired request settings are neutralized", async (t) => {
   const f = fixture(t);
   f.index.record(f.entry({ coverage: { arrangements: [{ id: "lead", type: "guitar", instrument_family: "guitar",
     instrument_family_evidence: "explicit", string_count: 6, string_count_evidence: "explicit", minimum_used_strings: 4 }],
     source_platforms: ["pc"], backing_track: "full", backing_track_evidence: "explicit" },
     selection: { instrumentRequirements: [{ part: "lead", family: "guitar", stringCount: 6, strict: true }], backingTrack: "full", backingStrict: true } }));
+  const filename = path.join(f.root, 'imports.json'), legacy = JSON.parse(fs.readFileSync(filename, 'utf8'));
+  Object.assign(legacy.records[0].selection, { backingTrack: 'no-guitar', backingStrict: true,
+    instrumentRequirements: [{ part: 'lead', family: 'bass', stringCount: 5, strict: true }] });
+  fs.writeFileSync(filename, JSON.stringify(legacy));
   const restored = new ImportIndex({ root: f.root }), saved = restored.snapshot()[0];
   assert.equal(saved.coverage.arrangements[0].string_count_evidence, "explicit");
   assert.equal(saved.coverage.arrangements[0].minimum_used_strings, 4);
-  assert.equal(saved.selection.instrumentRequirements[0].stringCount, 6);
+  assert.deepEqual(saved.selection.instrumentRequirements, []);
+  assert.equal(saved.selection.backingTrack, "any"); assert.equal(saved.selection.backingStrict, false);
   assert.ok(await restored.find(CHART, { recipe: RECIPE, preferences: saved.selection }));
-  const incompatible = { ...saved.selection, instrumentRequirements: [{ part: "lead", family: "guitar", stringCount: 5, strict: true }] };
+  const retired = { ...saved.selection, instrumentRequirements: [{ part: "lead", family: "guitar", stringCount: 5, strict: true }] };
+  assert.ok(await restored.find(CHART, { recipe: RECIPE, preferences: retired }));
+  const incompatible = { ...retired, requiredParts: ["bass"], parts: ["bass"] };
   assert.equal(await restored.find(CHART, { recipe: RECIPE, preferences: incompatible }), null);
 });
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { RequirementsControls, FileCandidateDetails } from './RequirementsControls.jsx';
+import { FileCandidateDetails } from './FileCandidateDetails.jsx';
 
 const labels = { draft: 'Review selections', running: 'Running', paused: 'Paused', completed: 'Finished', cancelled: 'Cancelled' };
 const availabilityLabels = { available: 'Already available', new_conversion: 'New conversion', choose_file: 'Another file choice needed', insufficient_evidence: 'Needs verification' };
@@ -10,12 +10,11 @@ function DraftPreferences({ batch, run, working }) {
   const preferenceKey = JSON.stringify(batch.preferences);
   useEffect(() => { setDraft(batch.preferences); setCreators((batch.preferences.preferredCreators || []).join(', ')); }, [preferenceKey]);
   return <details className="sb-draft-preferences"><summary>Change draft preferences</summary>
-    <form onSubmit={(event) => { event.preventDefault(); run('updateBatchPreferences', { preferences: { ...draft, preferredCreators: creators.split(/[,\n]/).map((value) => value.trim()).filter(Boolean) } }); }}>
+    <form onSubmit={(event) => { event.preventDefault(); run('updateBatchPreferences', { preferences: { ...draft, preferredCreators: creators.split(/[,\n]/).map((value) => value.trim()).filter(Boolean), backingTrack: 'any', backingStrict: false, instrumentRequirements: [] } }); }}>
       <label>Preferred creators, in order<input aria-label="Draft preferred creators" value={creators} onChange={(event) => setCreators(event.target.value)} /></label>
       <div className="sb-filter-checks">{['lead','rhythm','bass'].map((part) => <label key={part}><input type="checkbox" checked={draft.requiredParts.includes(part)} onChange={(event) => setDraft({ ...draft, requiredParts: event.target.checked ? [...draft.requiredParts,part] : draft.requiredParts.filter((value) => value !== part) })} />Require {part}</label>)}</div>
       <div className="sb-filter-grid"><label>Required tuning<input aria-label="Draft required tuning" value={Array.isArray(draft.tuning) ? draft.tuning.join(', ') : draft.tuning} onChange={(event) => setDraft({ ...draft, tuning: event.target.value })} /></label>
         <label>Preference<select aria-label="Draft ranking" value={draft.ranking} onChange={(event) => setDraft({ ...draft, ranking: event.target.value })}><option value="downloads">Most downloads</option><option value="updated">Recently updated</option><option value="none">No popularity preference</option></select></label></div>
-      <RequirementsControls value={draft} onChange={setDraft} prefix="Draft batch" disabled={working} />
       <p>Changing recommendations preserves your manual selections. Any new conflicts must be reviewed before Start.</p>
       <button className="sb-button" type="submit" disabled={working}>Update recommendations</button>
     </form>
@@ -40,7 +39,7 @@ export function BatchPanel({ batches = [], action, busy = new Set() }) {
         <p className="sb-folder-path">Output: {batch.outputDir}</p>
         {batch.warning || batch.pauseReason ? <p role="status">{batch.warning || batch.pauseReason}</p> : null}
         {batch.state === 'draft' ? <>
-          <p>Review alternative charts below. Recommendations apply required arrangements, tuning and known instrument compatibility before creator preferences and ranking. Unknown requirements need file inspection.</p>
+          <p>Review alternative charts below. Recommendations apply required arrangements and tuning before creator preferences and ranking. Arrangements and tuning are checked again in the downloaded file.</p>
           <p role="status">{planned.downloads || 0} planned downloads · {planned.available || 0} already available · {batch.unresolvedCount} unresolved groups</p>
           <p>Availability is checked again when running. File choices may appear after the host is opened.</p>
           <DraftPreferences batch={batch} run={run} working={working} />
@@ -54,7 +53,7 @@ export function BatchPanel({ batches = [], action, busy = new Set() }) {
                 const reviewAnother = batch.forceReviewIds?.includes(option.id);
                 return <div className="sb-batch-option-wrap" key={option.id}><label className="sb-batch-option">
                   <input type="checkbox" aria-label={'Select ' + group.title + ' chart ' + option.id} checked={selected.has(option.id)} disabled={working || (!option.eligible && !selected.has(option.id))} onChange={(event) => select(option.id, event.target.checked)} />
-                  <span>{chartInfo(chart, option)}<small>{group.recommendedIds.includes(option.id) ? 'Recommended. ' : ''}{option.reasons.join(' ')}{option.verificationPending ? ' Required instrument evidence must be checked in the downloaded file.' : ''}</small></span>
+                  <span>{chartInfo(chart, option)}<small>{group.recommendedIds.includes(option.id) ? 'Recommended. ' : ''}{option.reasons.join(' ')}{option.verificationPending ? ' Requirements must be checked in the downloaded file.' : ''}</small></span>
                 </label>
                   <p className="sb-availability">{reviewAnother ? 'Review another file/version' : availabilityLabels[availability?.status] || 'Needs verification'}{availability?.reason ? ': ' + availability.reason : ''}</p>
                   {option.eligible && (availability?.status === 'available' || reviewAnother) ? <label className="sb-auto-refresh"><input type="checkbox" checked={reviewAnother === true} disabled={working} onChange={(event) => { const ids = new Set(batch.forceReviewIds || []); event.target.checked ? ids.add(option.id) : ids.delete(option.id); run('chooseBatch', { selectedIds: [...selected], forceReviewIds: [...ids] }); }} />Review another file/version instead of keeping the available output</label> : null}

@@ -40,7 +40,7 @@ function rendererSnapshot() {
     pagination: clean(document.querySelector('.sb-pagination span')?.textContent),
     resultCount: clean(document.querySelector('.sb-results .sb-section-heading [role="status"]')?.textContent),
     selectionCount: clean(document.querySelector('.sb-batch-prepare p')?.textContent),
-    requirements: { backing: document.querySelector('[aria-label="Single song backing track"]')?.value, strings: document.querySelector('[aria-label="Single song lead strings"]')?.value },
+    advancedPreferencesPresent: Boolean(document.querySelector('.sb-requirements, .sb-instrument-requirements, [aria-label*="backing" i], [aria-label*=" strings" i], [aria-label*=" instrument" i]')),
     searchProgress: [...document.querySelectorAll('.sb-search-form [role="status"]')].map((element) => clean(element.textContent)),
     batches: [...document.querySelectorAll('.sb-batch')].map((batch) => ({ summary: clean(batch.querySelector('summary')?.textContent), text: clean(batch.textContent), status: [...batch.querySelectorAll('[role="status"]')].map((element) => clean(element.textContent)), buttons: [...batch.querySelectorAll('button')].map(button),
       selected: [...batch.querySelectorAll('.sb-batch-option input:checked')].map((input) => input.getAttribute('aria-label')),
@@ -175,6 +175,7 @@ async function runUiScenarios({ win, fixture, test }) {
     const initial = await until((state) => state.connection === 'Connection not checked', 'Unchecked CustomsForge connection');
     assert.equal(initial.accountButton?.label, 'Open browser');
     assert.equal(initial.accountButton?.disabled, false);
+    assert.equal(initial.advancedPreferencesPresent, false, 'Find songs must expose the straightforward arrangement and tuning filters without the removed advanced preferences.');
     assert.equal((await fixture.counts()).search, 0, 'Checking the UI must not request a website page.');
     evidence.initialConnection = { label: initial.connection, action: initial.accountButton.label };
   });
@@ -366,28 +367,35 @@ async function runUiScenarios({ win, fixture, test }) {
     evidence.batch = { selectedCharts: 2, converted: 1, alreadyAvailable: 1, sourceDownloadsDuringPreparation: 0 };
   });
 
-  await test('production requirements reassess saved outputs and explicit relaxation retries cached bytes', async () => {
+  await test('production arrangement and tuning filters reassess saved outputs and relaxation retries cached bytes', async () => {
     await until((state) => buttonWith(resultFor(state, fast), 'FeedPak ready'), 'Verified ready result before changing requirements');
-    await action({ kind: 'expand', scope: '.sb-requirements', label: 'Instrument and string requirements' });
-    await action({ kind: 'control', label: 'Single song lead strings', value: '5' });
-    const incompatible = await until((state) => buttonWith(resultFor(state, fast), 'Download & convert')?.disabled === false && buttonWith(resultFor(state, fast), 'Show saved FeedPak'), 'Shared strict-string suitability decision');
-    assert.match(resultFor(incompatible, fast).text, /string|instrument|coverage|requirement/i);
-    await action({ kind: 'expand', scope: '.sb-requirements' });
-    evidence.requirementsScreenshot = await fixture.captureScreenshot('completion-requirements', '.sb-requirements');
+    await action({ kind: 'checkbox', scope: '.sb-search-form', label: 'lead' });
+    await action({ kind: 'control', label: 'Tuning filter', value: 'E Standard' });
+    await action({ kind: 'search' });
+    const compatible = await until((state) => !state.pending && state.resultCount === '4 charts' && buttonWith(resultFor(state, fast), 'FeedPak ready'), 'Lead and E Standard reuse the verified compatible output');
+    assert.equal(compatible.advancedPreferencesPresent, false);
+    await action({ kind: 'checkbox', scope: '.sb-search-form', label: 'rhythm' });
+    await action({ kind: 'search' });
+    const incompatible = await until((state) => !state.pending && state.resultCount === '1 chart' && buttonWith(resultFor(state, fast), 'Download & convert')?.disabled === false && buttonWith(resultFor(state, fast), 'Show saved FeedPak'), 'Rhythm coverage is checked against the saved file');
+    assert.match(resultFor(incompatible, fast).text, /rhythm|arrangement|coverage|requirement/i);
+    evidence.requirementsScreenshot = await fixture.captureScreenshot('completion-arrangement-filters', '.sb-search-form');
     const before = await fixture.counts();
     await action({ kind: 'result', title: fast.title, label: 'Review another file/version' });
-    await until((state) => state.jobs.some((job) => job.title === fast.title && buttonWith(job, 'Relax requirements and retry cached file')), 'Strict requirement attention with cached source');
+    await until((state) => state.jobs.some((job) => job.title === fast.title && buttonWith(job, 'Relax requirements and retry cached file')), 'Missing Rhythm arrangement needs attention with cached source');
     const parked = await fixture.counts();
     const parkedJobCount = (await read()).jobs.length;
     assert.equal(countFor(parked, 'downloads', fast), countFor(before, 'downloads', fast) + 1);
-    assert.equal(countFor(parked, 'conversions', fast), countFor(before, 'conversions', fast), 'Hard source requirements must stop before conversion.');
+    assert.equal(countFor(parked, 'conversions', fast), countFor(before, 'conversions', fast), 'An absent requested arrangement must stop before conversion.');
     await action({ kind: 'job', title: fast.title, status: 'Needs attention', label: 'Relax requirements and retry cached file' });
     await until((state) => state.jobs.length > parkedJobCount && state.jobs[0]?.title === fast.title && state.jobs[0]?.status === 'FeedPak ready', 'Relaxed cached retry completes');
     const retried = await fixture.counts();
     assert.equal(countFor(retried, 'downloads', fast), countFor(parked, 'downloads', fast), 'Relaxing requirements must use the existing cached source.');
-    await action({ kind: 'control', label: 'Single song lead strings', value: '' });
-    await until((state) => buttonWith(resultFor(state, fast), 'FeedPak ready'), 'Cleared requirements reassess the completed result');
-    evidence.requirements = { strictUnknownBlocked: true, explicitRelaxation: true, cachedRetryExtraDownloads: 0 };
+    await action({ kind: 'checkbox', scope: '.sb-search-form', label: 'lead' });
+    await action({ kind: 'checkbox', scope: '.sb-search-form', label: 'rhythm' });
+    await action({ kind: 'control', label: 'Tuning filter', value: '' });
+    await action({ kind: 'search' });
+    await until((state) => !state.pending && state.resultCount === '4 charts' && buttonWith(resultFor(state, fast), 'FeedPak ready'), 'Cleared arrangement and tuning filters reassess the completed result');
+    evidence.requirements = { compatibleLeadAndTuningReused: true, missingRhythmBlocked: true, explicitRelaxation: true, cachedRetryExtraDownloads: 0 };
   });
 
   await test('production batch Skip is individual and explicit retry requeues a user-skipped song', async () => {
@@ -434,6 +442,7 @@ async function runUiScenarios({ win, fixture, test }) {
     await action({ kind: 'batchSelect', label: 'Select Fixture Success chart ' + fast.id, checked: true });
     await until((state) => state.batches[0].selected.includes('Select Fixture Success chart ' + fast.id), 'Manual chart override');
     await action({ kind: 'expand', scope: '.sb-batch', label: 'Change draft preferences' });
+    assert.equal((await read()).advancedPreferencesPresent, false, 'Batch draft editing must not reintroduce removed advanced preferences.');
     await action({ kind: 'control', label: 'Draft ranking', value: 'updated' });
     await action({ kind: 'batch', label: 'Update recommendations' });
     const changed = await until((state) => !state.batches[0].buttons.some((button) => button.label === 'Update recommendations' && button.disabled), 'Updated draft recommendations');

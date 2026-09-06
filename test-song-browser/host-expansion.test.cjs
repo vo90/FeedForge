@@ -83,7 +83,7 @@ test('requirements bind tuning to the requested arrangement and validate source 
   assert.equal(validateRequirements({ arrangements: preview.arrangements }, { strictPlatform: true }).ok, false);
   assert.equal(validateRequirements(preview, { parts: ['bass'], tuning: 'Mystery tuning' }).ok, false);
   assert.equal(validateRequirements(preview, { parts: ['lead'], tuning: [-1, -1, -1, -1, -1, -1] }).ok, true);
-  assert.equal(validateRequirements(preview, { backingTrack: 'no-guitar', backingStrict: true }).ok, false);
+  assert.equal(validateRequirements(preview, { backingTrack: 'no-guitar', backingStrict: true }).ok, true);
   assert.deepEqual(normalizeRequirements({ parts: ['bass', 'lead', 'bass'] }).parts, ['bass', 'lead']);
   assert.throws(() => normalizeRequirements({ parts: ['vocals'] }));
   assert.throws(() => normalizeRequirements({ tuning: [0, '0', 0, 0] }));

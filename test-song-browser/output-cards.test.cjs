@@ -54,11 +54,11 @@ test('completed output access remains while another file can be explicitly revie
 test('file choices display unknown evidence and identify unverified hints honestly', () => {
   const result = render(JobCard, { job: { ...song, state: 'needs_attention', fileCandidates: [{ id: 'a', label: 'One_live_no_guitar_v2_p.psarc', platform: 'pc', versionHint: 'v2', editionHint: 'live', backingHint: 'no-guitar', sizeBytes: null }] }, busy: false });
   assert.match(result, /PC/); assert.match(result, /Size unknown/); assert.match(result, /Version hint v2/);
-  assert.match(result, /Edition hint: live/); assert.match(result, /no-guitar \(unverified\)/);
+  assert.match(result, /Edition hint: live/); assert.doesNotMatch(result, /Backing hint|Backing unknown|no-guitar \(unverified\)/);
 });
 
 test('cached attention offers an explicit requirement relaxation without weakening normal retry', () => {
-  const result = render(JobCard, { job: { ...song, state: 'parked', hasCachedInput: true, canRetry: true, selection: { backingStrict: true } }, busy: false, onRelax: () => {} });
+  const result = render(JobCard, { job: { ...song, state: 'parked', hasCachedInput: true, canRetry: true, selection: { parts: ['bass'] } }, busy: false, onRelax: () => {} });
   assert.match(result, /Retry conversion/); assert.match(result, /Relax requirements and retry cached file/);
 });
 
@@ -73,12 +73,14 @@ const batchFilename = path.join(__dirname, '../ui/src/song-browser/BatchPanel.js
 const batchBuilt = esbuild.buildSync({ entryPoints: [batchFilename], bundle: true, platform: 'node', format: 'cjs', write: false, external: ['react'] });
 const batchCompiled = new Module(batchFilename, module); batchCompiled.filename = batchFilename; batchCompiled.paths = Module._nodeModulePaths(path.dirname(batchFilename)); batchCompiled._compile(batchBuilt.outputFiles[0].text, batchFilename);
 const { BatchPanel } = batchCompiled.exports;
-const baseBatch = { id: 'batch-1', state: 'draft', selectedIds: ['1'], charts: [{ id: '1', title: 'One', creator: 'Creator', tuning: 'E Standard' }], outputDir: '/isolated-output', preferences: { requiredParts: [], tuning: '', backingTrack: 'full', backingStrict: false, instrumentRequirements: [], ranking: 'downloads', preferredCreators: ['Creator'] }, groups: [{ key: 'one', title: 'One', artist: 'Metallica', options: [{ id: '1', parts: ['lead'], eligible: true, reasons: [] }], recommendedIds: ['1'] }], suggestions: [], unresolvedCount: 0, complete: true, items: [], availability: { 1: { status: 'available', reason: 'Verified saved output.' } }, plannedCounts: { available: 1, downloads: 0 } };
+const baseBatch = { id: 'batch-1', state: 'draft', selectedIds: ['1'], charts: [{ id: '1', title: 'One', creator: 'Creator', tuning: 'E Standard' }], outputDir: '/isolated-output', preferences: { requiredParts: [], tuning: '', backingTrack: 'any', backingStrict: false, instrumentRequirements: [], ranking: 'downloads', preferredCreators: ['Creator'] }, groups: [{ key: 'one', title: 'One', artist: 'Metallica', options: [{ id: '1', parts: ['lead'], eligible: true, reasons: [] }], recommendedIds: ['1'] }], suggestions: [], unresolvedCount: 0, complete: true, items: [], availability: { 1: { status: 'available', reason: 'Verified saved output.' } }, plannedCounts: { available: 1, downloads: 0 } };
 
 test('batch review renders imported decisions, creator ordering and explicit variant review', () => {
   const result = render(BatchPanel, { batches: [baseBatch], action: () => {} });
   assert.match(result, /0 planned downloads/); assert.match(result, /1 already available/); assert.match(result, /Verified saved output/);
-  assert.match(result, /Draft preferred creators/); assert.match(result, /Review another file\/version instead of keeping/); assert.match(result, /Prefer full backing/);
+  assert.match(result, /Draft preferred creators/); assert.match(result, /Review another file\/version instead of keeping/);
+  assert.match(result, /Require lead/); assert.match(result, /Require rhythm/); assert.match(result, /Require bass/); assert.match(result, /Draft required tuning/);
+  assert.doesNotMatch(result, /Prefer full backing|Backing track|Instrument and string requirements|sb-requirements/);
 });
 
 test('batch activity distinguishes user skip from availability and exposes per-item controls', () => {
@@ -105,9 +107,9 @@ test('late completed-result assessments cannot override newer requirements or in
   let finishOld;
   const old = new Promise((resolve) => { finishOld = resolve; });
   const calls = [];
-  const session = createResultAssessmentSession({ assessResult: async (request) => { calls.push(request); return request.selection.backingStrict ? { reusable: false, reason: 'Unknown strict backing.' } : old; } }, { delayMs: 0 });
-  const first = session.assess([{ id: '1' }, { id: '2' }], { backingStrict: false }, 'old');
-  const latest = session.assess([{ id: '1' }], { backingStrict: true }, 'new');
+  const session = createResultAssessmentSession({ assessResult: async (request) => { calls.push(request); return request.selection.parts.includes('bass') ? { reusable: false, reason: 'Missing bass arrangement.' } : old; } }, { delayMs: 0 });
+  const first = session.assess([{ id: '1' }, { id: '2' }], { parts: [] }, 'old');
+  const latest = session.assess([{ id: '1' }], { parts: ['bass'] }, 'new');
   await latest; finishOld({ reusable: true }); await first;
   assert.equal(session.getSnapshot().scope, 'new');
   assert.equal(session.getSnapshot().results['1'].reusable, false);

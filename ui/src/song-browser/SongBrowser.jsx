@@ -3,7 +3,7 @@ import { AlertTriangle, Check, ChevronLeft, ChevronRight, Download, ExternalLink
 import "./song-browser.css";
 import { getSearchSession } from "./search-session.mjs";
 import { BatchPanel } from './BatchPanel.jsx';
-import { defaultRequirements, RequirementsControls, FileCandidateDetails } from './RequirementsControls.jsx';
+import { FileCandidateDetails } from './FileCandidateDetails.jsx';
 import { createResultAssessmentSession } from './result-assessment-session.mjs';
 
 const FINISHED = new Set(["completed", "done", "failed", "error", "cancelled", "canceled", "parked"]);
@@ -144,8 +144,6 @@ export default function SongBrowser({ api: providedApi, onReview }) {
   const [batchTuning, setBatchTuning] = useState('');
   const [ranking, setRanking] = useState('downloads');
   const [preferredCreators, setPreferredCreators] = useState('');
-  const [songRequirements, setSongRequirements] = useState(defaultRequirements);
-  const [batchRequirements, setBatchRequirements] = useState(defaultRequirements);
   const selectionScope = useRef(selectionSessions.get(api)?.scope || '');
   useEffect(() => {
     if (searchState.selectionScope && searchState.selectionScope !== selectionScope.current) {
@@ -177,7 +175,7 @@ export default function SongBrowser({ api: providedApi, onReview }) {
     const current = latestJobs.get(key);
     if (!current || Number(new Date(job.updatedAt || job.createdAt || 0)) >= Number(new Date(current.updatedAt || current.createdAt || 0))) latestJobs.set(key, job);
   }
-  const currentSelection = { ...songRequirements, parts: searchState.searchedRequest?.filters.parts || [], tuning: searchState.searchedRequest?.filters.tuning || null, platform: 'pc', strictPlatform: true };
+  const currentSelection = { backingTrack: 'any', backingStrict: false, instrumentRequirements: [], parts: searchState.searchedRequest?.filters.parts || [], tuning: searchState.searchedRequest?.filters.tuning || null, platform: 'pc', strictPlatform: true };
   const assessmentEntries = results.filter((song) => COMPLETE.has(stateOf(latestJobs.get(String(song.id)) || {}))).map((song) => {
     const job = latestJobs.get(String(song.id));
     return { id: String(song.id), version: song.version, updated: song.updated, jobId: job.id, outputHash: job.outputHash, outputAvailable: job.outputAvailable, recipe: job.recipe, reuseCompatible: job.reuseCompatible };
@@ -244,7 +242,7 @@ export default function SongBrowser({ api: providedApi, onReview }) {
 
   const prepareBatch = (scope) => action('prepare-batch', 'prepareBatch', {
     scope, ids: [...selected], request: searchState.searchedRequest,
-    preferences: { requiredParts: batchParts, tuning: batchTuning, ranking, preferredCreators: preferredCreators.split(/[,\n]/).map((creator) => creator.trim()).filter(Boolean), ...batchRequirements },
+    preferences: { requiredParts: batchParts, tuning: batchTuning, ranking, preferredCreators: preferredCreators.split(/[,\n]/).map((creator) => creator.trim()).filter(Boolean), backingTrack: 'any', backingStrict: false, instrumentRequirements: [] },
   });
 
   const downloadSong = (id, reviewAnother = false) => action(`enqueue:${id}`, 'enqueue', { id, reviewAnother, selection: currentSelection });
@@ -319,8 +317,6 @@ export default function SongBrowser({ api: providedApi, onReview }) {
           <p>CustomsForge’s download action also adds the chart to your collection.</p>
         </form>
 
-        <RequirementsControls value={songRequirements} onChange={setSongRequirements} prefix="Single song" />
-
         {searchResult?.status === 'ready' ? <section className="sb-batch-prepare" aria-label="Prepare song batch">
           <h2>Download several songs</h2>
           <p>{selected.size} charts selected across pages. Prepare all results to compare versions before starting.</p>
@@ -328,7 +324,6 @@ export default function SongBrowser({ api: providedApi, onReview }) {
           <div className="sb-filter-grid"><label>Required tuning<input aria-label="Batch required tuning" value={batchTuning} onChange={(event) => setBatchTuning(event.target.value)} placeholder="Any tuning" /></label><label>Prefer between compatible charts<select aria-label="Batch preference" value={ranking} onChange={(event) => setRanking(event.target.value)}><option value="downloads">Most downloads</option><option value="updated">Recently updated</option><option value="none">Review without popularity preference</option></select></label></div>
           <label>Preferred creators, in order<input aria-label="Preferred creators" value={preferredCreators} onChange={(event) => setPreferredCreators(event.target.value)} placeholder="Creator one, Creator two" /></label>
           <p>Listed creators are preferred after required arrangements and tuning. Other creators remain eligible.</p>
-          <RequirementsControls value={batchRequirements} onChange={setBatchRequirements} prefix="Batch" />
           <div className="sb-job-controls"><button type="button" className="sb-button" disabled={!selected.size || searching || busy.has('prepare-batch') || snapshot.preparation?.pending} onClick={() => prepareBatch('selected')}>Prepare selected</button><button type="button" className="sb-button sb-primary" disabled={searching || busy.has('prepare-batch') || snapshot.preparation?.pending || !results.length} onClick={() => prepareBatch('all')}>Prepare all results</button></div>
         </section> : null}
         {snapshot.preparation?.pending ? <div className="sb-notice" role="status"><span>Preparing results: {snapshot.preparation.collected}{snapshot.preparation.total != null ? ` of ${snapshot.preparation.total}` : ''}</span><button type="button" className="sb-button" onClick={() => action('cancel-preparation','cancelPreparation')}>Cancel preparation</button></div> : null}
