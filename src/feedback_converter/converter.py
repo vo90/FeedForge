@@ -1818,7 +1818,7 @@ def _song_to_arrangement(
     arrangement_id: str | None = None,
 ) -> dict[str, Any]:
     tuning = [int(x) for x in list(song.metadata.tuning or [])]
-    templates = [_template_to_feedpak(t) for t in song.chordTemplates]
+    templates = _templates_to_feedpak(song)
     chart = _song_chart_data(song, templates)
     normalized_cent_offset = (
         _num(cent_offset)
@@ -2408,7 +2408,10 @@ def _notes_and_chords(
 
 
 def _note_to_feedpak(note: Any) -> dict[str, Any]:
-    out: dict[str, Any] = {"t": _num(note.time), "s": int(note.string), "f": int(note.fret)}
+    out: dict[str, Any] = {
+        "t": _num(note.time), "s": int(note.string),
+        "f": _muted_source_fret(int(note.fret), int(note.mask)),
+    }
     sustain = float(note.sustain or 0.0)
     if sustain > 0:
         out["sus"] = _num(sustain)
@@ -2436,8 +2439,10 @@ def _chord_notes(song: Any, note: Any, chord_id: int) -> list[dict[str, Any]]:
         for string, fret in enumerate(song.chordTemplates[chord_id].frets):
             if int(fret) < 0:
                 continue
-            entry: dict[str, Any] = {"s": string, "f": int(fret)}
             string_mask = int(chord_note.mask[string])
+            entry: dict[str, Any] = {
+                "s": string, "f": _muted_source_fret(int(fret), string_mask | int(note.mask)),
+            }
             if sustain > 0 and string_mask & NOTE_MASK_SUSTAIN:
                 entry["sus"] = _num(sustain)
             if int(chord_note.slideTo[string]) >= 0:
@@ -2461,7 +2466,7 @@ def _chord_notes(song: Any, note: Any, chord_id: int) -> list[dict[str, Any]]:
     for string, fret in enumerate(template.frets):
         if int(fret) < 0:
             continue
-        entry: dict[str, Any] = {"s": string, "f": int(fret)}
+        entry: dict[str, Any] = {"s": string, "f": _muted_source_fret(int(fret), int(note.mask))}
         if sustain > 0:
             entry["sus"] = _num(sustain)
         _apply_note_mask(entry, int(note.mask), include_note_only=False)
@@ -2533,6 +2538,44 @@ def _bend_curve(note_time: float, bends: Any) -> list[dict[str, float]] | None:
     if not any(abs(float(point["v"])) > 0 for point in points):
         return None
     return points
+
+
+def _muted_source_fret(fret: int, mask: int) -> int:
+    """Normalize SNG's pitchless mute sentinel, never arbitrary high frets.
+
+    Fret-hand mute alone is not enough: it may still carry a scored pitch.
+    Keep the MUTE flag on the emitted event so zero is not an open-string note.
+    """
+    return 0 if fret == 127 and mask & NOTE_MASK_MUTE else fret
+
+
+def _templates_to_feedpak(song: Any) -> list[dict[str, Any]]:
+    templates = [_template_to_feedpak(t) for t in song.chordTemplates]
+    candidates = {
+        cid: {s: True for s, fret in enumerate(t["frets"]) if fret == 127}
+        for cid, t in enumerate(templates) if 127 in t["frets"]
+    }
+    if not candidates:
+        return templates
+    seen = set()
+    # Templates are shared by flattened and difficulty-level charts. A single
+    # unmuted use, even in a lower difficulty, makes normalization ambiguous.
+    for level in song.levels:
+        for note in level.notes:
+            cid = int(note.chordId)
+            if cid not in candidates:
+                continue
+            seen.add(cid)
+            chord_note_id = int(note.chordNoteId)
+            masks = song.chordNotes[chord_note_id].mask if 0 <= chord_note_id < len(song.chordNotes) else []
+            for string in candidates[cid]:
+                mask = int(note.mask) | (int(masks[string]) if string < len(masks) else 0)
+                candidates[cid][string] &= bool(mask & NOTE_MASK_MUTE)
+    for cid in seen:
+        for string, corroborated in candidates[cid].items():
+            if corroborated:
+                templates[cid]["frets"][string] = 0
+    return templates
 
 
 def _template_to_feedpak(template: Any) -> dict[str, Any]:
