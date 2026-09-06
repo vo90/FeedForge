@@ -79,3 +79,12 @@ test('retired backing requirements cannot block reuse and arrangement checks rem
   assert.equal(reuseDecision(hinted, { ...request, requirements: { backingTrack: 'no-guitar', backingStrict: false } }).reusable, true);
   assert.equal(reuseDecision(hinted, { ...request, requirements: { parts: ['bass'], backingTrack: 'no-guitar', backingStrict: true } }).code, 'different_requirements');
 });
+
+test('single-path imports satisfy OR reuse only when a selected path has the requested tuning', () => {
+  const requirements = { parts: ['lead', 'rhythm'], partsMatch: 'any', tuning: 'E Standard', strictPlatform: true };
+  assert.equal(reuseDecision(record, { ...request, requirements }).reusable, true);
+  assert.equal(reuseDecision(record, { ...request, requirements: { ...requirements, partsMatch: 'all' } }).code, 'different_requirements');
+  assert.equal(reuseDecision(record, { ...request, requirements: { ...requirements, parts: ['rhythm', 'bass'] } }).code, 'different_requirements');
+  assert.equal(reuseDecision(record, { ...request, requirements: { ...requirements, tuning: 'D Standard' } }).code, 'different_requirements');
+  assert.equal(reuseDecision(record, { ...request, requirements: { ...requirements, partsMatch: 'invalid' } }).code, 'different_requirements');
+});

@@ -225,11 +225,11 @@ class CustomsForgeBrowser {
   }
 
   async search(request, options = {}) {
-    const { normalizeSearchRequest, searchIdentity, filterCharts, sortCharts } = require('./catalogue.cjs');
+    const { normalizeSearchRequest, searchIdentity, hasLocalFilters, filterCharts, sortCharts } = require('./catalogue.cjs');
     const normalized = normalizeSearchRequest(request);
     const explicit = { ...normalized, sort: request.sort ? normalized.sort : undefined };
     return this.catalogueOperation(() => this.withCatalogueSignal(options.signal, async () => {
-      const filtered = Object.values(normalized.filters).some((value) => Array.isArray(value) ? value.length : Boolean(value));
+      const filtered = hasLocalFilters(normalized.filters);
       if (!filtered) return this._searchPage(explicit);
       const key = searchIdentity({ ...normalized, page: 1 });
       if (normalized.filters.hideConverted || this.filteredSnapshot?.key !== key) {

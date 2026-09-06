@@ -16,9 +16,10 @@ const charts = Object.freeze({
   retry: Object.freeze({ id: '1102', title: 'Fixture Recovery', artist: 'Fixture Artist', host: 'google-drive' }),
   slow: Object.freeze({ id: '1103', title: 'Fixture Cancel', artist: 'Fixture Artist', host: 'mediafire' }),
 });
-// Catalogue-only rows reproduce Ignition's adjacent one-letter arrangement
+// Compact rows reproduce Ignition's adjacent one-letter arrangement
 // badges, including absent badges retained as hidden DOM content. Keep these
-// separate from the download fixtures and their counts.
+// separate from the original catalogue and transfer counts. Lead-only also
+// has a controlled download to verify OR requirements through conversion.
 const compactCharts = Object.freeze({
   all: Object.freeze({ id: '1140', title: 'Leaders Of The Blind', artist: 'Green Lung', host: 'dropbox', parts: 'LRB', compactParts: true }),
   lead: Object.freeze({ id: '1141', title: 'Fixture Lead Only', artist: 'Green Lung', host: 'dropbox', parts: 'L', compactParts: true }),
@@ -30,7 +31,7 @@ const officialCharts = Object.freeze({
   custom: Object.freeze({ id: '1151', title: 'ODLC Custom Tribute', artist: 'Fixture Artist', host: 'dropbox' }),
   unknown: Object.freeze({ id: '1152', title: 'Fixture Unidentified Host', artist: 'Fixture Artist', host: 'unknown' }),
 });
-const byId = new Map(Object.values(charts).map((chart) => [chart.id, chart]));
+const byId = new Map([...Object.values(charts), compactCharts.lead].map((chart) => [chart.id, chart]));
 const counters = { search: 0, searchCompleted: 0, downloads: {}, conversions: {}, plans: [], outputSettings: null, outputPicks: [], songBrowserFolderPicks: 0, reveals: 0, browserActions: { signIn: 0, showBrowser: 0 } };
 const tests = [], rendererErrors = [], unexpected = [], transfers = [], savedReports = [];
 const conversionFailures = new Map();
@@ -106,6 +107,8 @@ function previewFrom(filename) {
   if (!feedpak) assert.equal(bytes.subarray(0, 4).toString(), 'PSAR');
   const data = JSON.parse(bytes.subarray(feedpak ? 19 : 4).toString());
   const chart = byId.get(data.id); assert.ok(chart); assert.equal(data.title, chart.title); assert.equal(data.artist, chart.artist);
+  // These controlled source files contain only Lead. That is deliberately
+  // insufficient for AND Lead + Rhythm, and sufficient for the OR regression.
   return { chart, preview: { title: chart.title, artist: chart.artist, album: 'Offline Fixture Album', song_count: 1, is_multi_song: false,
     source_platforms: feedpak ? [] : ['pc'], arrangements: [{ id: 'lead', type: 'guitar', name: 'Lead', tuning: [0, 0, 0, 0, 0, 0] }], warnings: [], duration: 120 } };
 }
@@ -245,6 +248,9 @@ async function hostResponse(request) {
   if (url.hostname === 'www.dropbox.com' && url.pathname === '/scl/fi/fixture/1101.psarc') {
     return url.searchParams.get('dl') === '1' ? downloadResponse(charts.fast) : html('<p>Controlled Dropbox shared file</p>');
   }
+  if (url.hostname === 'www.dropbox.com' && url.pathname === '/scl/fi/fixture/1141.psarc') {
+    return url.searchParams.get('dl') === '1' ? downloadResponse(compactCharts.lead) : html('<p>Controlled Lead-only Dropbox shared file</p>');
+  }
   if (url.hostname === 'drive.google.com' && url.pathname === '/file/d/1102/view') return html('<a href="https://drive.usercontent.google.com/download?id=1102">Download</a>');
   if (url.hostname === 'drive.usercontent.google.com' && url.pathname === '/download' && url.searchParams.get('id') === '1102') return downloadResponse(charts.retry);
   if (url.hostname === 'www.mediafire.com' && url.pathname === '/file/1103/fixture.psarc') return html('<a id="downloadButton" href="https://download1.mediafire.com/offline/1103.psarc">Download</a>');
@@ -288,7 +294,7 @@ function fixtureApi() {
       if (job.outputPath && fs.existsSync(job.outputPath)) ownedFile(job.outputPath);
       const outputRoot = job.outputPath ? ['first', 'second'].map((name) => path.join(runtime, 'outputs', name)).find((directory) => inside(directory, job.outputPath)) : null;
       if (job.outputPath) assert.ok(outputRoot, 'Published output must stay in a folder explicitly selected in Settings.');
-      return { state: job.state, outputSettings: job.outputSettings, outputFolder: outputRoot ? path.basename(outputRoot) : null, relativePath: job.outputPath ? path.relative(outputRoot, job.outputPath).replace(/\\/g, '/') : null };
+      return { state: job.state, selection: job.selection, outputSettings: job.outputSettings, outputFolder: outputRoot ? path.basename(outputRoot) : null, relativePath: job.outputPath ? path.relative(outputRoot, job.outputPath).replace(/\\/g, '/') : null };
     },
     holdNextSearch() {
       assert.ok(!searchGate || searchGate.released, 'A fixture search is already held.');
@@ -399,6 +405,7 @@ async function main() {
   assert.deepEqual(transfers.filter((item) => item.id === charts.slow.id).map((item) => item.state), ['cancelled', 'cancelled']);
   assert.deepEqual(transfers.filter((item) => item.id === charts.fast.id).map((item) => item.state), ['completed', 'completed']);
   assert.deepEqual(transfers.filter((item) => item.id === charts.retry.id).map((item) => item.state), ['completed', 'completed']);
+  assert.deepEqual(transfers.filter((item) => item.id === compactCharts.lead.id).map((item) => item.state), ['completed']);
 }
 async function finish(error) {
   closing = true; searchGate?.release.resolve();

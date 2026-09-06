@@ -144,6 +144,71 @@ test('object requests carry validated search settings and identical pending requ
   assert.match(session.getSnapshot().error, /search order/);
 });
 
+test('arrangement matching persists and paging keeps the applied mode until Search is pressed', async () => {
+  const { getSearchSession } = await moduleReady;
+  const calls = [];
+  const api = { search: async (request) => { calls.push(request); return { status: 'ready', results: [], page: request.page, hasNext: true }; } };
+  const session = getSearchSession(api);
+  assert.equal(session.getSnapshot().filters.partsMatch, 'all', 'existing searches require every checked arrangement');
+  session.setFilters({ parts: ['rhythm', 'lead'], partsMatch: 'any' });
+  await session.search('Green Lung');
+  const anyScope = session.getSnapshot().selectionScope;
+  assert.deepEqual(calls[0].filters.parts, ['lead', 'rhythm']);
+  assert.equal(calls[0].filters.partsMatch, 'any');
+  assert.equal(getSearchSession(api).getSnapshot().filters.partsMatch, 'any');
+
+  session.setFilters({ partsMatch: 'all' });
+  session.setSort({ field: 'downloads', direction: 'desc' });
+  await session.changePage(2);
+  const paged = session.getSnapshot();
+  assert.equal(calls[1].page, 2);
+  assert.equal(calls[1].filters.partsMatch, 'any', 'paging uses the applied search rather than draft controls');
+  assert.deepEqual(calls[1].sort, { field: 'title', direction: 'asc' });
+  assert.equal(paged.searchedRequest.filters.partsMatch, 'any', 'downloads still use the mode that produced the results');
+  assert.equal(paged.filters.partsMatch, 'all', 'draft controls remain editable until submission');
+  assert.deepEqual(paged.sort, { field: 'downloads', direction: 'desc' });
+  assert.equal(paged.selectionScope, anyScope);
+
+  await session.search('Green Lung', 2);
+  assert.equal(calls[2].page, 1, 'submitting a different match mode starts at page one');
+  assert.equal(calls[2].filters.partsMatch, 'all');
+  assert.notEqual(session.getSnapshot().selectionScope, anyScope, 'AND selections cannot leak into an OR result set');
+});
+
+test('any and all arrangement searches are distinct pending requests and obsolete results cannot replace the mode', async () => {
+  const { getSearchSession } = await moduleReady;
+  const responses = { all: deferred(), any: deferred() }, calls = [];
+  const session = getSearchSession({ search: (request) => { calls.push(request); return responses[request.filters.partsMatch].promise; } });
+  const base = { query: 'Green Lung', filters: { parts: ['lead', 'rhythm'], partsMatch: 'all' } };
+  const first = session.search(base);
+  const second = session.search({ ...base, filters: { ...base.filters, partsMatch: 'any' } });
+  assert.notEqual(first, second);
+  assert.equal(session.search({ ...base, filters: { ...base.filters, partsMatch: 'any' } }), second);
+  await Promise.resolve();
+  assert.deepEqual(calls.map((request) => request.filters.partsMatch), ['all', 'any']);
+  responses.any.resolve({ status: 'ready', results: [{ id: 'lead-only' }] });
+  await second;
+  responses.all.resolve({ status: 'ready', results: [{ id: 'both' }] });
+  await first;
+  assert.equal(session.getSnapshot().result.results[0].id, 'lead-only');
+  assert.equal(session.getSnapshot().searchedRequest.filters.partsMatch, 'any');
+});
+
+test('arrangement match validation rejects invalid modes and leaves an empty parts filter unrestricted', async () => {
+  const { getSearchSession } = await moduleReady;
+  const calls = [];
+  const session = getSearchSession({ search: async (request) => { calls.push(request); return { status: 'ready', results: [] }; } });
+  for (const partsMatch of ['or', '', true, 1, []]) {
+    await session.search({ query: 'Green Lung', filters: { partsMatch } });
+    assert.match(session.getSnapshot().error, /any or all selected arrangements/);
+  }
+  assert.equal(calls.length, 0);
+  session.setFilters({ partsMatch: 'any' });
+  await session.search('Green Lung');
+  assert.deepEqual(calls[0].filters.parts, []);
+  assert.equal(calls[0].filters.partsMatch, 'any');
+});
+
 test('failed requests settle across navigation and can be retried', async () => {
   const { getSearchSession } = await moduleReady;
   let attempt = 0;

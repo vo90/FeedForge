@@ -86,6 +86,18 @@ test("a known chart is not reused for missing arrangements or another tuning", a
   assert.ok(await f.index.find(CHART, { recipe: RECIPE, preferences: { requiredParts: ["lead"], tuning: "Bb Standard" } }));
 });
 
+test('OR import requirements survive restart and reuse a matching single arrangement', async (t) => {
+  const f = fixture(t);
+  const selection = { parts: ['lead', 'rhythm'], partsMatch: 'any', tuning: 'Bb Standard' };
+  f.index.record(f.entry({ selection }));
+  const restored = new ImportIndex({ root: f.root });
+  assert.equal(restored.snapshot()[0].selection.partsMatch, 'any');
+  assert.deepEqual(restored.snapshot()[0].selection.parts, ['lead', 'rhythm']);
+  assert.ok(await restored.find(CHART, { recipe: RECIPE, requirements: selection }));
+  assert.equal(await restored.find(CHART, { recipe: RECIPE, requirements: { ...selection, partsMatch: 'all' } }), null);
+  assert.equal(await restored.find(CHART, { recipe: RECIPE, requirements: { ...selection, tuning: 'E Standard' } }), null);
+});
+
 test("reuse in another output folder requires an explicit copy path", async (t) => {
   const f = fixture(t); f.index.record(f.entry());
   const other = path.join(f.directory, "other"); fs.mkdirSync(other);

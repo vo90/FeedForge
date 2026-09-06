@@ -90,3 +90,26 @@ test('requirement normalization clears legacy advanced values while preserving s
   }
   for (const request of [{ parts: ['vocals'] }, { tuning: [0, '0', 0, 0] }, { platform: 'console' }]) assert.throws(() => normalizeRequirements(request));
 });
+
+test('any selected arrangement accepts either guitar path and keeps tuning on a selected path', () => {
+  const lead = { id: 'lead', type: 'guitar', tuning: [0, 0, 0, 0, 0, 0] };
+  const rhythm = { id: 'rhythm', type: 'guitar', tuning: [-2, -2, -2, -2, -2, -2] };
+  const request = { parts: ['lead', 'rhythm'], partsMatch: 'any', strictPlatform: true };
+  for (const arrangements of [[lead], [rhythm], [lead, rhythm]]) assert.equal(validateRequirements(preview(arrangements), request).ok, true);
+  assert.equal(validateRequirements(preview([bass()]), request).ok, false);
+  assert.equal(validateRequirements(preview([]), request).ok, false);
+  assert.equal(validateRequirements(preview([lead, rhythm]), { ...request, tuning: 'D Standard' }).ok, true);
+  assert.equal(validateRequirements(preview([rhythm, bass()]), { ...request, tuning: 'E Standard' }).ok, false, 'A matching bass tuning cannot satisfy Lead OR Rhythm.');
+  assert.equal(validateRequirements(preview([lead, rhythm]), { ...request, partsMatch: 'all', tuning: 'D Standard' }).ok, false);
+  assert.equal(validateRequirements(preview([lead]), { parts: request.parts }).ok, false, 'Legacy requirements continue to require every selected part.');
+  assert.equal(validateRequirements(preview([lead]), { ...request, parts: [], tuning: 'E Standard' }).ok, true);
+  assert.equal(validateRequirements(preview([], {}), { ...request, parts: [] }).ok, false);
+});
+
+test('arrangement match mode defaults to all, round-trips any, and rejects invalid values', () => {
+  assert.equal(normalizeRequirements({}).partsMatch, 'all');
+  const request = normalizeRequirements({ parts: ['rhythm', 'lead'], partsMatch: 'any', tuning: 'E Standard' });
+  assert.equal(request.partsMatch, 'any');
+  assert.deepEqual(normalizeRequirements(JSON.parse(JSON.stringify(request))), request);
+  for (const partsMatch of [null, '', 'or', 'ANY', true, 1, [], {}]) assert.throws(() => normalizeRequirements({ partsMatch }), /all or any/);
+});

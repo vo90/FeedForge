@@ -33,6 +33,34 @@ test('search contracts validate bounds and normalize equivalent search definitio
   assert.equal(hasLocalFilters(normalizeSearchRequest({ query: 'Song', filters: { hideConverted: true } }).filters), true);
 });
 
+test('any selected arrangements finds either path while all still requires every path', () => {
+  const charts = [{ id: 'lead', parts: 'L', artist: 'Green Lung' }, { id: 'rhythm', arrangements: ['rhythm'], artist: 'Green Lung' },
+    { id: 'both', parts: 'LRB', artist: 'Green Lung' }, { id: 'bass', parts: 'B', artist: 'Green Lung' },
+    { id: 'unknown', parts: 'Unknown', artist: 'Green Lung' }, { id: 'other', parts: 'L', artist: 'Another Artist' }];
+  const filters = { parts: ['lead', 'rhythm'], partsMatch: 'any', exactArtist: 'Green Lung' };
+  assert.deepEqual(filterCharts(charts, filters).map((chart) => chart.id), ['lead', 'rhythm', 'both']);
+  assert.deepEqual(filterCharts(charts, { ...filters, partsMatch: 'all' }).map((chart) => chart.id), ['both']);
+  assert.deepEqual(chartFilterDecision(charts[4], filters), { matches: false, unknown: ['parts'], excluded: [] });
+  for (const partsMatch of ['any', 'all']) {
+    assert.deepEqual(filterCharts(charts, { parts: ['lead'], partsMatch }).map((chart) => chart.id), ['lead', 'both', 'other']);
+    assert.deepEqual(filterCharts(charts, { parts: [], partsMatch }), charts, 'No checked arrangements is unrestricted.');
+  }
+});
+
+test('arrangement match mode is validated and separates cached search identities', () => {
+  const all = { query: 'Green Lung', filters: { parts: ['lead', 'rhythm'] } };
+  const any = { ...all, filters: { ...all.filters, partsMatch: 'any' } };
+  assert.equal(normalizeSearchRequest(all).filters.partsMatch, 'all');
+  assert.equal(normalizeSearchRequest(any).filters.partsMatch, 'any');
+  assert.equal(searchIdentity(all), searchIdentity({ ...all, filters: { ...all.filters, partsMatch: 'all' } }));
+  assert.notEqual(searchIdentity(all), searchIdentity(any));
+  assert.notEqual(searchIdentity(all, { includeSort: false }), searchIdentity(any, { includeSort: false }));
+  for (const partsMatch of ['or', 'AND', '', true, [], {}]) {
+    assert.throws(() => normalizeSearchRequest({ ...all, filters: { ...all.filters, partsMatch } }), TypeError);
+  }
+  assert.equal(hasLocalFilters(normalizeSearchRequest({ query: 'Song', filters: { partsMatch: 'any' } }).filters), false);
+});
+
 test('exact artist, path and tuning requirements cannot be overridden by popularity', () => {
   const charts = [
     { id: '1', artist: 'Meshuggah', title: 'Beneath', parts: 'Lead', tuning: 'Bb Standard', downloads: 261 },

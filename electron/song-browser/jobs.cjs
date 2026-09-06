@@ -99,9 +99,12 @@ function jsonResult(result, label) {
 function selectionForChart(chart, selection = {}) {
   const { parseParts } = require('./catalogue.cjs');
   const requested = selection.requiredParts || selection.parts || [];
+  const requirements = require('./file-selection.cjs').normalizeRequirements({ ...selection, parts: requested });
   const available = parseParts(chart.parts).length ? parseParts(chart.parts) : (chart.arrangements || []).map((arr) => require('./file-selection.cjs').arrangementPart(arr));
-  const parts = available.length ? requested.filter((part) => available.includes(part)) : requested;
-  return { ...selection, requiredParts: parts, parts, strictPlatform: true };
+  // Batch plans can cover all required parts across multiple charts. An explicit
+  // OR search instead retains every alternative for verification against the file.
+  const parts = requirements.partsMatch === 'any' || !available.length ? requirements.parts : requirements.parts.filter((part) => available.includes(part));
+  return { ...selection, requiredParts: parts, parts, partsMatch: requirements.partsMatch, strictPlatform: true };
 }
 
 /** A serial, local queue. The downloader owns the browser session, never this class. */

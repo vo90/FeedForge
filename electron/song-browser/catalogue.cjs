@@ -4,7 +4,7 @@
 // download authority and never accept or generate provider download URLs.
 const SORT_FIELDS = Object.freeze(['title', 'artist', 'album', 'tuning', 'creator', 'added', 'updated', 'year', 'duration', 'downloads']);
 const PARTS = Object.freeze(['lead', 'rhythm', 'bass']);
-const EMPTY_FILTERS = Object.freeze({ exactArtist: '', parts: Object.freeze([]), tuning: '', creator: '', hideReported: false, hideAbandoned: false, availableOnly: false, hideConverted: false });
+const EMPTY_FILTERS = Object.freeze({ exactArtist: '', parts: Object.freeze([]), partsMatch: 'all', tuning: '', creator: '', hideReported: false, hideAbandoned: false, availableOnly: false, hideConverted: false });
 const compact = (value) => String(value ?? '').replace(/\s+/g, ' ').trim();
 const comparable = (value) => compact(value).toLocaleLowerCase('en-US');
 
@@ -30,6 +30,8 @@ function normalizeSearchRequest(input) {
   if (!filterValue || typeof filterValue !== 'object' || Array.isArray(filterValue)) throw new TypeError('Choose valid search filters.');
   const parts = filterValue.parts ?? [];
   if (!Array.isArray(parts) || parts.length > 3 || parts.some((part) => !PARTS.includes(part))) throw new TypeError('Choose lead, rhythm or bass arrangements.');
+  const partsMatch = filterValue.partsMatch ?? 'all';
+  if (!['all', 'any'].includes(partsMatch)) throw new TypeError('Choose any or all selected arrangements.');
   const flags = {};
   for (const name of ['hideReported', 'hideAbandoned', 'availableOnly', 'hideConverted']) {
     if (filterValue[name] !== undefined && typeof filterValue[name] !== 'boolean') throw new TypeError('Choose valid search filters.');
@@ -39,6 +41,7 @@ function normalizeSearchRequest(input) {
     query, page, sort: { field, direction }, filters: {
       exactArtist: boundedText(filterValue.exactArtist, 'artist filter'),
       parts: PARTS.filter((part) => parts.includes(part)),
+      partsMatch,
       tuning: boundedText(filterValue.tuning, 'tuning filter'),
       creator: boundedText(filterValue.creator, 'creator filter'),
       ...flags,
@@ -92,7 +95,9 @@ function chartFilterDecision(chart, filters = EMPTY_FILTERS) {
   if (filters.parts?.length) {
     const parts = parseParts(chart?.arrangements?.length ? chart.arrangements : chart?.parts);
     if (!parts.length) unknown.push('parts');
-    else if (!filters.parts.every((part) => parts.includes(part))) excluded.push('parts');
+    else if (!(filters.partsMatch === 'any'
+      ? filters.parts.some((part) => parts.includes(part))
+      : filters.parts.every((part) => parts.includes(part)))) excluded.push('parts');
   }
   if (filters.tuning) {
     // A label saying "Multiple tunings" cannot establish arrangement-specific

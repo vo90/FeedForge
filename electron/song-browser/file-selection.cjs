@@ -72,6 +72,8 @@ function normalizeRequirements(value = {}) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid song requirements.');
   const parts = value.parts === undefined ? [] : value.parts;
   if (!Array.isArray(parts) || parts.length > 4 || parts.some((part) => !PARTS.has(part))) throw new Error('Choose valid lead, rhythm, bass or guitar arrangements.');
+  const partsMatch = value.partsMatch === undefined ? 'all' : value.partsMatch;
+  if (!['all', 'any'].includes(partsMatch)) throw new Error('Choose whether to match all or any selected arrangements.');
   let tuning = value.tuning ?? null;
   if (Array.isArray(tuning)) {
     if (tuning.length < 4 || tuning.length > 8 || tuning.some((note) => !Number.isInteger(note) || note < -24 || note > 24)) throw new Error('Invalid tuning offsets.');
@@ -83,7 +85,7 @@ function normalizeRequirements(value = {}) {
   if (!['pc', 'mac', 'any'].includes(platform)) throw new Error('Invalid PSARC platform.');
   // Keep the compatibility keys neutral so old job, receipt and import records
   // cannot retain requirements that are no longer available in the importer.
-  return { parts: [...new Set(parts)].sort(), tuning, platform, allowMacFallback: value.allowMacFallback === true, backingTrack: 'any',
+  return { parts: [...new Set(parts)].sort(), partsMatch, tuning, platform, allowMacFallback: value.allowMacFallback === true, backingTrack: 'any',
     backingStrict: false, instrumentRequirements: [], strictPlatform: value.strictPlatform === true };
 }
 function arrangementPart(arrangement) {
@@ -123,8 +125,13 @@ function validateRequirements(input, requested = {}) {
   const arrangements = Array.isArray(preview.arrangements) ? preview.arrangements.filter((arr) => arr && typeof arr === 'object') : [];
   const errors = [], warnings = [];
   const requestedParts = requirements.parts.length ? requirements.parts : ['any'];
-  for (const part of requestedParts) {
-    const matches = arrangements.filter((arr) => part === 'any' || arrangementPart(arr) === part || (part === 'guitar' && ['guitar', 'lead', 'rhythm'].includes(arrangementPart(arr))));
+  const matchesPart = (arr, part) => part === 'any' || arrangementPart(arr) === part || (part === 'guitar' && ['guitar', 'lead', 'rhythm'].includes(arrangementPart(arr)));
+  if (requirements.partsMatch === 'any' && requirements.parts.length) {
+    const matches = arrangements.filter((arr) => requestedParts.some((part) => matchesPart(arr, part)));
+    if (!matches.length) errors.push(`The file is missing all selected arrangements (${requestedParts.join(' or ')}).`);
+    else if (requirements.tuning !== null && !matches.some((arr) => tuningMatches(arr, requirements.tuning))) errors.push('The requested tuning could not be verified for any selected arrangement.');
+  } else for (const part of requestedParts) {
+    const matches = arrangements.filter((arr) => matchesPart(arr, part));
     if (!matches.length) errors.push(part === 'any' ? 'The file has no readable arrangements.' : `The file is missing the requested ${part} arrangement.`);
     else if (requirements.tuning !== null && !matches.some((arr) => tuningMatches(arr, requirements.tuning))) errors.push(`The requested tuning could not be verified for ${part === 'any' ? 'any arrangement' : 'the ' + part + ' arrangement'}.`);
   }

@@ -148,6 +148,29 @@ test('filtered search forwards collection progress and publishes only the comple
   assert.equal(fixture.requests.length, calls, 'same successful filtered snapshot is retained');
 });
 
+test('arrangement match mode alone does not collect the whole catalogue query', async () => {
+  for (const partsMatch of [undefined, 'all', 'any']) {
+    const fixture = harness(({ page }) => ready(page, [page], { total: 3, hasNext: true }));
+    const result = await fixture.browser.search({ query: 'Meshuggah', filters: { partsMatch } });
+    assert.deepEqual(fixture.requests.map((request) => request.page), [1]);
+    assert.equal(result.hasNext, true);
+    assert.equal(fixture.browser.filteredSnapshot, undefined);
+  }
+});
+
+test('changing from all to any collects a separate complete arrangement result set', async () => {
+  const fixture = harness(({ page }) => ({ ...ready(page, [page], { total: 3, hasNext: page < 3 }),
+    results: [{ id: String(page), parts: ['L', 'R', 'LR'][page - 1] }] }));
+  const request = { query: 'Song', filters: { parts: ['lead', 'rhythm'], partsMatch: 'all' } };
+  assert.deepEqual(Array.from((await fixture.browser.search(request)).results, (row) => row.id), ['3']);
+  assert.deepEqual(fixture.requests.map((request) => request.page), [1, 2, 3]);
+  const any = { ...request, filters: { ...request.filters, partsMatch: 'any' } };
+  assert.deepEqual(Array.from((await fixture.browser.search(any)).results, (row) => row.id), ['1', '2', '3']);
+  assert.deepEqual(fixture.requests.map((request) => request.page), [1, 2, 3, 1, 2, 3]);
+  await fixture.browser.search(any);
+  assert.equal(fixture.requests.length, 6, 'Same mode reuses the complete snapshot.');
+});
+
 test('collector rejects an observed page or sort identity that disagrees with the requested page', async (t) => {
   for (const mismatch of ['page', 'sort']) {
     await t.test(mismatch, async () => {

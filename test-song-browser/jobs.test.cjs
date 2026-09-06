@@ -9,7 +9,7 @@ const os = require("node:os");
 const crypto = require("node:crypto");
 const { EventEmitter } = require("node:events");
 const { setTimeout: delay } = require("node:timers/promises");
-const { SongJobs } = require("../electron/song-browser/jobs.cjs");
+const { SongJobs, selectionForChart } = require("../electron/song-browser/jobs.cjs");
 
 const CHART = { id: "42", title: "One", artist: "Metallica", creator: "A creator", host: "mediafire", supported: true };
 const PSARC = Buffer.concat([Buffer.from("PSAR"), Buffer.alloc(100, 7)]);
@@ -85,6 +85,49 @@ async function fixture(t, options = {}) {
   });
   return { manager, root, outputDir, directory, calls, contexts, downloads, events, result, imports };
 }
+
+test('per-chart OR selections retain alternatives while default batch coverage remains all', () => {
+  const selected = { requiredParts: ['lead', 'rhythm'], partsMatch: 'any', tuning: 'E Standard' };
+  const any = selectionForChart({ ...CHART, parts: 'L' }, selected);
+  assert.deepEqual(any.parts, ['lead', 'rhythm']); assert.equal(any.partsMatch, 'any');
+  assert.deepEqual(selectionForChart({ ...CHART, parts: 'B' }, selected).parts, ['lead', 'rhythm'], 'Incomplete metadata must never erase the selected OR requirement.');
+  const legacy = selectionForChart({ ...CHART, parts: 'L' }, { requiredParts: ['lead', 'rhythm'] });
+  assert.deepEqual(legacy.parts, ['lead']); assert.equal(legacy.partsMatch, 'all');
+  assert.throws(() => selectionForChart(CHART, { partsMatch: 'invalid' }), /all or any/);
+});
+
+test('OR conversion requirements survive cached retry, publication, reuse and job recovery', async (t) => {
+  let failOnce = true;
+  const f = await fixture(t, { preview: { source_platforms: ['pc'], arrangements: [{ id: 'lead', type: 'guitar', tuning: [0, 0, 0, 0, 0, 0] }] },
+    runConverter: async (args, _context, normal) => {
+      if (args[1] === '-o' && failOnce) { failOnce = false; return { code: 1, stderr: 'Temporary conversion failure' }; }
+      return normal(args);
+    } });
+  const chart = { ...CHART, parts: 'LR' };
+  const selection = { parts: ['lead', 'rhythm'], partsMatch: 'any', tuning: 'E Standard' };
+  const failed = await f.manager.run(chart, { selection });
+  assert.equal(failed.status, 'failed'); assert.equal(failed.hasCachedInput, true);
+  assert.equal(failed.selection.partsMatch, 'any'); assert.deepEqual(failed.selection.parts, ['lead', 'rhythm']);
+  const done = await f.result(f.manager.retry(failed.id).id);
+  assert.equal(done.state, 'completed'); assert.equal(done.selection.partsMatch, 'any');
+  assert.deepEqual(f.downloads, ['42'], 'Retry validates the retained PSARC with the saved OR requirement.');
+  const reused = await f.manager.run(chart, { selection });
+  assert.equal(reused.status, 'completed'); assert.equal(reused.duplicateOf, done.id);
+  assert.equal(f.calls.filter((args) => args[1] === '-o').length, 1);
+  await f.manager.dispose();
+  const restored = new SongJobs({ root: f.root, outputDir: f.outputDir, recipe: require('./fixture-recipe.cjs'), download: async () => {}, runConverter: async () => {} });
+  t.after(() => restored.dispose());
+  for (const job of restored.snapshot()) { assert.equal(job.selection.partsMatch, 'any'); assert.deepEqual(job.selection.parts, ['lead', 'rhythm']); }
+});
+
+test('OR requirements reject a converted file that lost both selected guitar paths', async (t) => {
+  const f = await fixture(t, { preview: { source_platforms: ['pc'], arrangements: [{ id: 'rhythm', type: 'guitar' }] },
+    runConverter: async (args, _context, normal) => args[0] === '--inspect-json' && args[1].endsWith('.feedpak')
+      ? inspect({ arrangements: [{ id: 'bass', type: 'bass' }] }) : normal(args) });
+  const result = await f.manager.run({ ...CHART, parts: 'R' }, { selection: { parts: ['lead', 'rhythm'], partsMatch: 'any' } });
+  assert.equal(result.status, 'needs_attention'); assert.match(result.message, /missing all selected arrangements/);
+  assert.equal(result.outputPath, undefined);
+});
 
 test('output settings are captured per job, artist folders are available, and reusable bytes get the new name', async (t) => {
   const original = { outputLayout: 'flat', nameTemplate: '{source}' };
@@ -422,7 +465,7 @@ test("recovery marks interrupted ledger rows failed without restarting or removi
   t.after(() => recovered.dispose());
   assert.equal(recovered.snapshot()[0].state, "failed");
   assert.match(recovered.snapshot()[0].error, /interrupted/);
-  assert.deepEqual(recovered.snapshot()[0].selection, { parts: ['lead'], tuning: 'E Standard', platform: 'pc', strictPlatform: true,
+  assert.deepEqual(recovered.snapshot()[0].selection, { parts: ['lead'], partsMatch: 'all', tuning: 'E Standard', platform: 'pc', strictPlatform: true,
     allowMacFallback: false, backingTrack: 'any', backingStrict: false, instrumentRequirements: [] });
   await delay(15);
   assert.equal(downloads, 0);

@@ -4,7 +4,7 @@
 const sessions = new WeakMap();
 const sortFields = ['title', 'artist', 'album', 'tuning', 'creator', 'added', 'updated', 'year', 'duration', 'downloads'];
 const allParts = ['lead', 'rhythm', 'bass'];
-const defaultFilters = () => ({ exactArtist: '', parts: [], tuning: '', creator: '', hideReported: false, hideAbandoned: false, availableOnly: false, hideConverted: false });
+const defaultFilters = () => ({ exactArtist: '', parts: [], partsMatch: 'all', tuning: '', creator: '', hideReported: false, hideAbandoned: false, availableOnly: false, hideConverted: false });
 
 function message(error) {
   const value = error?.message || error?.error || error;
@@ -27,6 +27,8 @@ function normalizeFilters(value) {
   const parts = value.parts ?? [];
   if (!Array.isArray(parts) || parts.length > 3 || parts.some((part) => !allParts.includes(part))) throw new Error('Choose lead, rhythm or bass arrangements.');
   filters.parts = allParts.filter((part) => parts.includes(part));
+  filters.partsMatch = value.partsMatch ?? 'all';
+  if (!['all', 'any'].includes(filters.partsMatch)) throw new Error('Choose any or all selected arrangements.');
   for (const key of ['hideReported', 'hideAbandoned', 'availableOnly', 'hideConverted']) {
     if (value[key] !== undefined && typeof value[key] !== 'boolean') throw new Error('Choose valid search filters.');
     filters[key] = value[key] ?? false;
@@ -51,7 +53,7 @@ function createSession(api) {
       try { listener(); } catch { /* A departing view cannot interrupt a search. */ }
     }
   };
-  return {
+  const session = {
     getSnapshot: () => state,
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     setProgress(progress) {
@@ -82,6 +84,15 @@ function createSession(api) {
         controlsChosen = true; update({ filters: normalized, error: '' });
       }
       catch (error) { update({ error: message(error) }); }
+    },
+    changePage(page) {
+      if (!state.searchedRequest) return Promise.resolve(null);
+      const { sort, filters } = state;
+      const pending = session.search({ ...state.searchedRequest, page });
+      // Paging belongs to the applied search. Leave unsubmitted controls alone
+      // so they only take effect when the user presses Search.
+      update({ sort, filters });
+      return pending;
     },
     search(input, page = 1) {
       let request, legacy;
@@ -134,6 +145,7 @@ function createSession(api) {
       return promise;
     },
   };
+  return session;
 }
 
 export function getSearchSession(api) {

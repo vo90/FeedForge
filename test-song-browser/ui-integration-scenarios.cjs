@@ -43,6 +43,7 @@ function rendererSnapshot() {
     sort: document.querySelector('select[aria-label="Sort results"]')?.value,
     direction: document.querySelector('select[aria-label="Sort direction"]')?.value,
     exactArtist: document.querySelector('input[aria-label="Exact artist"]')?.value,
+    partsMatch: document.querySelector('select[aria-label="Arrangement match"]')?.value,
     searchParts: [...document.querySelectorAll('.sb-search-form .sb-filter-checks label')].filter((label) => label.querySelector('input:checked')).map((label) => clean(label.textContent)),
     pagination: clean(document.querySelector('.sb-pagination span')?.textContent),
     resultCount: clean(document.querySelector('.sb-results .sb-section-heading [role="status"]')?.textContent),
@@ -579,6 +580,50 @@ async function runUiScenarios({ win, fixture, test }) {
     await until((state) => !state.batches.some((batch) => batch.options.some((option) => option.label === `Select ${compact.all.title} chart ${compact.all.id}`)), 'Remove compact arrangement draft');
     await action({ kind: 'checkbox', scope: '.sb-batch-prepare', label: 'lead', checked: false });
     evidence.compactArrangements = { sourceBadge: 'LRB', allRowsContainRawLrbText: true, hiddenBadgeVariants: ['inline display:none ancestor', 'stylesheet display:none ancestor', 'visibility:hidden ancestor', 'aria-hidden ancestor', 'hidden descendant with visible tooltip ancestor'], matches, batchLeadRecommendations: [compact.all.title, compact.lead.title], sourceDownloads: 0 };
+  });
+
+  await test('production OR arrangement matching persists and converts a chart with only one selected arrangement', async () => {
+    const compact = fixture.compactCharts;
+    const initial = await read();
+    assert.equal(initial.partsMatch, 'all', 'Existing searches must keep the default AND behavior.');
+    for (const part of ['lead', 'rhythm']) await action({ kind: 'checkbox', scope: '.sb-search-form', label: part, checked: true });
+    await action({ kind: 'control', label: 'Arrangement match', value: 'any' });
+    await action({ kind: 'search' });
+    const expected = [compact.all.title, compact.lead.title, compact.rhythm.title].sort();
+    const either = await until((state) => !state.pending && state.partsMatch === 'any' && JSON.stringify(state.results.map((row) => row.title).sort()) === JSON.stringify(expected), 'Lead OR Rhythm includes each matching chart and excludes Bass-only');
+    assert.deepEqual(either.alerts, []);
+    const beforeNavigation = await fixture.counts();
+    await navigate('Convert'); await navigate('Find songs');
+    const retained = await read();
+    assert.equal(retained.partsMatch, 'any');
+    assert.deepEqual(retained.searchParts, ['lead', 'rhythm']);
+    assert.deepEqual(retained.results.map((row) => row.title).sort(), expected);
+    assert.equal((await fixture.counts()).search, beforeNavigation.search, 'Restoring OR mode cannot submit an extra search.');
+
+    const beforeDownload = await fixture.counts();
+    await action({ kind: 'result', title: compact.lead.title, label: 'Download & convert' });
+    await until((state) => jobFor(state, compact.lead, 'FeedPak ready'), 'OR requirements accept the inspected Lead-only file');
+    const output = await fixture.outputFor(compact.lead.id);
+    assert.equal(output.state, 'completed');
+    assert.deepEqual(output.selection.parts, ['lead', 'rhythm']);
+    assert.equal(output.selection.partsMatch, 'any', 'The chosen match mode must reach the persisted download requirements.');
+    const afterDownload = await fixture.counts();
+    assert.equal(countFor(afterDownload, 'downloads', compact.lead), countFor(beforeDownload, 'downloads', compact.lead) + 1);
+    assert.equal(countFor(afterDownload, 'conversions', compact.lead), countFor(beforeDownload, 'conversions', compact.lead) + 1);
+
+    await action({ kind: 'control', label: 'Arrangement match', value: 'all' });
+    await action({ kind: 'search' });
+    const both = await until((state) => !state.pending && state.partsMatch === 'all' && state.results.length === 1 && state.results[0].title === compact.all.title, 'Lead AND Rhythm requires both arrangements');
+    assert.deepEqual(both.alerts, []);
+    await action({ kind: 'control', label: 'Arrangement match', value: 'any' });
+    await action({ kind: 'search' });
+    await until((state) => !state.pending && state.results.length === 3 && buttonWith(resultFor(state, compact.lead), 'FeedPak ready'), 'Returning to OR reuses the compatible saved Lead-only output');
+    assert.deepEqual((await fixture.counts()).downloads, afterDownload.downloads);
+    for (const part of ['lead', 'rhythm']) await action({ kind: 'checkbox', scope: '.sb-search-form', label: part, checked: false });
+    await action({ kind: 'control', label: 'Arrangement match', value: 'all' });
+    await action({ kind: 'search' });
+    await until((state) => !state.pending && state.resultCount === '4 charts', 'Reset arrangement mode after OR regression');
+    evidence.arrangementMatch = { defaultMode: 'all', anySelectedTitles: expected, allSelectedTitles: [compact.all.title], retainedAcrossNavigation: true, inspectedLeadOnlyConvertedWith: output.selection, compatibleSavedOutputReused: true, sourceDownloads: 1 };
   });
 
   await test('production results identify ODLC and exclude official releases from batch downloads', async () => {
