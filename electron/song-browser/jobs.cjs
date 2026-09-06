@@ -601,10 +601,11 @@ class SongJobs {
       jobId: job.id, directory, destination: path.join(directory, "source.psarc"), signal: job.controller.signal,
       parkOnAttention: job.parkOnAttention,
       interactive: job.interactive,
-      onProgress: (value) => {
+      onProgress: (value, details = {}) => {
         if (!canUpdate() || !Number.isFinite(Number(value))) return;
         const progress = Math.floor(Math.max(0, Math.min(100, Number(value))));
-        if (job.progress !== progress || job.state === "needs_attention") this._set(job, "downloading", { progress, message: "Downloading selected chart." });
+        const message = job.chart.host === 'mega' ? ({ downloading: 'Downloading from MEGA.', decrypting: 'Decrypting the MEGA download.', saving: 'Saving the downloaded PSARC.' }[details?.phase] || 'Downloading from MEGA.') : 'Downloading selected chart.';
+        if (job.progress !== progress || job.state === "needs_attention" || job.message !== message) this._set(job, "downloading", { progress, message });
       },
       onAttention: (message) => {
         if (!canUpdate()) return;

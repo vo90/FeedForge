@@ -107,6 +107,20 @@ test("converts, validates, saves without stems and persists only bounded public 
   assert.deepEqual(await fsp.readdir(f.outputDir), [path.basename(done.outputPath)]);
 });
 
+test('MEGA pre-save progress and phase messages reach the existing conversion queue', async (t) => {
+  const f = await fixture(t, { download: async (chart, args, normal) => {
+    args.onProgress(47, { phase: 'downloading' });
+    args.onProgress(94, { phase: 'decrypting' });
+    args.onProgress(95, { phase: 'saving' });
+    return normal(chart, args);
+  } });
+  const job = f.manager.enqueue({ ...CHART, host: 'mega' });
+  assert.equal((await f.result(job.id)).state, 'completed');
+  for (const message of ['Downloading from MEGA.', 'Decrypting the MEGA download.', 'Saving the downloaded PSARC.']) {
+    assert.ok(f.events.some(event => event.state === 'downloading' && event.message === message), message);
+  }
+});
+
 test("rejects invalid record IDs and returns the same active job for repeat clicks", async (t) => {
   const f = await fixture(t);
   for (const id of ["../escape", "0", "1.5", "https://host.test/42", 1.5, "1234567890123"]) {

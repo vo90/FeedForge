@@ -33,6 +33,7 @@ class CustomsForgeBrowser {
     this.connection = { status: 'unknown', message: '' };
     this.searchWindow = null;
     this.windows = new Set();
+    this.documentVersions = new WeakMap();
     this.active = null;
     this.searching = false;
     this.lastSearch = null;
@@ -80,6 +81,12 @@ class CustomsForgeBrowser {
     };
     wc.on('will-navigate', guard);
     wc.on('will-redirect', guard);
+    if (job) wc.on('did-start-navigation', (details, _url, inPlace, mainFrame) => {
+      if ((details.isMainFrame ?? mainFrame) && !(details.isSameDocument ?? inPlace)) {
+        this.documentVersions.set(wc, (this.documentVersions.get(wc) || 0) + 1);
+        if (job?.megaPrepared?.contents === wc) job.megaPrepared = null;
+      }
+    });
     wc.on('will-attach-webview', (event) => event.preventDefault());
     const inspectConnection = () => {
       if (!job && win === this.searchWindow) void this.readConnection(win);
@@ -351,7 +358,13 @@ class CustomsForgeBrowser {
     const job = this.active;
     const candidate = job?.candidates?.find((item) => item.id === id);
     if (!candidate || job.finished) throw new Error('This file choice has expired. Retry the song to read its files again.');
-    job.choice = { id: candidate.id };
+    if (job.host === 'mega') {
+      const document = job.candidateDocument;
+      if (!document || document.contents.isDestroyed?.() || document.contents.getURL() !== document.url
+        || document.version !== (this.documentVersions.get(document.contents) || 0)) throw new Error('This file list has changed. Wait for its current choices.');
+      job.choice = { id: candidate.targetId, label: candidate.label, platform: candidate.platform };
+    } else job.choice = { id: candidate.id };
+    job.megaPrepared = null;
     job.attention = null;
     job.onAttention('');
     return { ok: true };
@@ -368,11 +381,59 @@ class CustomsForgeBrowser {
     });
   }
 
+  async cancelProvider(job) {
+    if (job.host !== 'mega' || job.providerCancelStarted) return;
+    job.providerCancelStarted = true;
+    this.diagnostic({ code: 'mega_cancel_requested', stage: 'download', host: 'mega', outcome: 'cancelled' });
+    let timer;
+    const attempts = [...job.windows].filter((win) => !win.isDestroyed()
+      && require('./hosts.cjs').hostFromUrl(win.webContents.getURL()) === 'mega').map(async (win) => {
+      try { await win.webContents.mainFrame.executeJavaScript(require('./host-actions.cjs').hostCancelScript(), true); }
+      catch { /* Window teardown below also stops a replaced/unresponsive page. */ }
+    });
+    try { await Promise.race([Promise.allSettled(attempts), new Promise((resolve) => { timer = setTimeout(resolve, 2000); })]); }
+    finally { clearTimeout(timer); }
+  }
+
+  providerProgress(job, result) {
+    if (job.host !== 'mega' || job.finished) return false;
+    const phase = ['downloading', 'decrypting', 'saving'].includes(result.phase) ? result.phase : 'downloading';
+    const observed = Number.isFinite(result.progress) ? Math.min(100, Math.max(0, result.progress)) : null;
+    const advanced = (observed !== null && observed > (job.providerPercent ?? -1)) || !job.providerPhases.has(phase);
+    if (advanced) job.lastActivity = Date.now();
+    job.providerPhases.add(phase);
+    if (observed !== null) job.providerPercent = Math.max(job.providerPercent ?? 0, observed);
+    const progress = Math.max(job.reportedProgress || 0, phase === 'saving' ? 95 : phase === 'decrypting' ? 94 : Math.min(94, (observed || 0) * 0.94));
+    if (progress !== job.reportedProgress || phase !== job.providerPhase) {
+      if (phase !== job.providerPhase) this.diagnostic({ code: 'mega_' + phase, stage: 'download', host: 'mega', outcome: 'started' });
+      if (phase !== job.providerPhase) job.providerSavingAt = phase === 'saving' ? Date.now() : null;
+      job.reportedProgress = progress; job.providerPhase = phase;
+      job.onProgress(progress, { phase });
+    }
+    return advanced;
+  }
+
+  checkDownloadDeadline(job, started, now = Date.now()) {
+    if (job.finished) return;
+    if (now - (job.host === 'mega' ? job.lastActivity : started) >= 10 * 60 * 1000
+      || now - started >= (job.host === 'mega' ? 60 : 10) * 60 * 1000) {
+      job.reject(new Error('Download timed out. Retry when you are ready.'), 'timeout');
+    } else if (job.host === 'mega' && !job.item && job.providerSavingAt != null && now - job.providerSavingAt >= 60000) {
+      this.attention(job, 'MEGA has prepared the download, but FeedForge has not received the file. Open the browser to review its download choice.');
+    }
+  }
+
   acceptDownload(event, item, contents) {
     const job = this.active;
     const ownsWindow = job && [...job.windows].some((win) => !win.isDestroyed() && win.webContents === contents);
+    const prepared = job?.megaPrepared;
+    const ownedMegaDocument = job?.host === 'mega' && ownsWindow && prepared?.contents === contents
+      && prepared.documentUrl === contents.getURL() && prepared.documentVersion === (this.documentVersions.get(contents) || 0);
+    const context = { host: job?.host, allowMacFallback: job?.allowMacFallback === true,
+      enableMegaBlob: ownedMegaDocument, ownedWindow: ownedMegaDocument, documentUrl: ownedMegaDocument ? prepared.documentUrl : '' };
     if (!job || job.finished || !ownsWindow || job.item ||
-        !allowedDownload(item.getURL(), item.getFilename(), item.getTotalBytes(), { host: job?.host })) {
+        !allowedDownload(item.getURL(), item.getFilename(), item.getTotalBytes(), context)
+        || (job.host === 'mega' && (!ownedMegaDocument || item.getFilename() !== prepared.candidate.label))) {
       event.preventDefault();
       if (job && ownsWindow && !job.item) job.reject(new Error('The host did not return a supported PSARC file.'), 'unsupported');
       return;
@@ -385,7 +446,9 @@ class CustomsForgeBrowser {
     job.item = item;
     job.transferSettled = new Promise((resolve) => { job.onTransferSettled = resolve; });
     item.setSavePath(job.destination);
-    job.onProgress(0);
+    if (job.host === 'mega') this.providerProgress(job, { phase: 'saving' });
+    else job.onProgress(0);
+    job.lastActivity = Date.now();
     item.on('updated', (_event, state) => {
       if (job.finished) return;
       if (item.getReceivedBytes() > MAX_BYTES || item.getTotalBytes() > MAX_BYTES) {
@@ -395,14 +458,18 @@ class CustomsForgeBrowser {
         job.reject(new Error('The download was interrupted. Retry when the connection is available.'), 'interrupted'); this.cancelTransfer(job); return;
       }
       const total = item.getTotalBytes();
-      job.onProgress(total > 0 ? Math.min(99, item.getReceivedBytes() * 100 / total) : 0);
+      const received = item.getReceivedBytes();
+      if (received > (job.receivedBytes || 0)) job.lastActivity = Date.now();
+      job.receivedBytes = received;
+      const progress = total > 0 ? Math.min(99, received * 100 / total) : 0;
+      job.onProgress(job.host === 'mega' ? 95 + progress * 0.04 : progress, job.host === 'mega' ? { phase: 'saving' } : undefined);
     });
     item.once('done', (_event, state) => {
       job.transferFinished = true;
       job.onTransferSettled();
       if (job.finished) return;
       if (state === 'completed' && item.getReceivedBytes() > 0 && item.getReceivedBytes() <= MAX_BYTES && item.getTotalBytes() <= MAX_BYTES) {
-        job.onProgress(100); job.resolve(job.destination);
+        job.onProgress(100, job.host === 'mega' ? { phase: 'saving' } : undefined); job.resolve(job.destination);
       } else if (state === 'completed') job.reject(new Error('The downloaded file is empty or exceeds the 512 MB limit.'));
       else job.reject(new Error(state === 'cancelled' ? 'Download cancelled.' : 'The download did not complete.'), state === 'cancelled' ? 'cancelled' : 'interrupted');
     });
@@ -416,7 +483,7 @@ class CustomsForgeBrowser {
     this.diagnostic({ code: 'download_started', stage: 'download', host: chart.host, outcome: 'started' });
     const job = { windows: new Set(), destination, onProgress, onAttention, clicked: false, host: chart.host,
       finished: false, item: null, attention: null, parkOnAttention, interactive, choice: chart.selection?.choice,
-      allowMacFallback: chart.selection?.allowMacFallback === true };
+      allowMacFallback: chart.selection?.allowMacFallback === true, lastActivity: started, providerPhases: new Set() };
     this.active = job;
     const completion = new Promise((resolve, reject) => {
       job.resolve = (value) => { if (!job.finished) { job.finished = true; resolve(value); } };
@@ -429,7 +496,11 @@ class CustomsForgeBrowser {
       this.cancelTransfer(job);
     };
     signal?.addEventListener('abort', abort, { once: true });
-    const deadline = setTimeout(() => job.reject(new Error('Download timed out. Retry when you are ready.'), 'timeout'), 10 * 60 * 1000);
+    const deadline = setInterval(() => {
+      // MEGA fetches/decrypts before DownloadItem exists. Advancing progress
+      // extends the stall deadline, with a bounded total lifetime for each job.
+      this.checkDownloadDeadline(job, started);
+    }, 1000);
     try {
       if (signal?.aborted) abort();
       if (!job.finished) {
@@ -447,10 +518,11 @@ class CustomsForgeBrowser {
         outcome: signal?.aborted ? 'cancelled' : (job.failure || 'failed'), durationMs: Date.now() - started });
       throw error;
     } finally {
-      clearTimeout(deadline);
+      clearInterval(deadline);
       signal?.removeEventListener('abort', abort);
       if (!job.finished) job.reject(new Error('Download stopped.'));
       if (job.item && !job.transferFinished) this.cancelTransfer(job);
+      if (job.failure || signal?.aborted) await this.cancelProvider(job);
       // Electron cancellation completes asynchronously. Do not release the job's files yet.
       if (job.transferSettled) await job.transferSettled;
       for (const win of job.windows) if (!win.isDestroyed()) win.destroy();
@@ -468,6 +540,7 @@ class CustomsForgeBrowser {
         if (!canAct()) return;
         if (win.isDestroyed()) continue;
         const url = win.webContents.getURL();
+        const documentVersion = this.documentVersions.get(win.webContents) || 0;
         if (url !== lastLocations.get(win)) { lastLocations.set(win, url); idleTicks = 0; }
         if (!allowedNavigation(url)) continue;
         const host = new URL(url).hostname;
@@ -490,16 +563,53 @@ class CustomsForgeBrowser {
               job.reject(new Error(result.error || 'This chart cannot be downloaded by this version.'), result.status === 'unsupported' ? 'unsupported' : 'failed');
             }
           } else {
-            result = await win.webContents.mainFrame.executeJavaScript(require('./host-actions.cjs').hostActionScript({ choice: job.choice, allowMacFallback: job.allowMacFallback }), true);
+            const prepared = job.megaPrepared;
+            const matches = prepared?.contents === win.webContents && prepared.documentUrl === url && prepared.documentVersion === documentVersion;
+            result = await win.webContents.mainFrame.executeJavaScript(require('./host-actions.cjs').hostActionScript({
+              choice: matches ? { ...prepared.candidate } : job.choice,
+              allowMacFallback: job.allowMacFallback, prepareOnly: job.host === 'mega' && !matches,
+              expectedFile: matches ? prepared.candidate : undefined,
+            }), true);
           }
         } catch { continue; } // A document may be replaced while its ordinary navigation completes.
         if (!canAct()) return;
+        if (job.host === 'mega' && documentVersion !== (this.documentVersions.get(win.webContents) || 0)) continue;
         if (result?.selectedFile && result.status === 'clicked') { job.selectedFile = result.selectedFile; job.choice = undefined; job.candidates = []; job.onAttention(''); }
         if (result?.status === 'clicked') idleTicks = 0;
         if (win.isDestroyed() || win.webContents.getURL() !== url) continue;
+        if (job.host === 'mega' && require('./hosts.cjs').hostFromUrl(url) === 'mega') {
+          if (result?.status === 'prepared') {
+            const selection = require('./file-selection.cjs').selectFileCandidate([result.selectedFile], { allowMacFallback: job.allowMacFallback });
+            if (selection.status === 'selected') {
+              job.selectedFile = selection.candidate;
+              job.megaPrepared = { contents: win.webContents, documentUrl: url, documentVersion, candidate: selection.candidate };
+              this.diagnostic({ code: 'mega_file_prepared', stage: 'download', host: 'mega', outcome: 'ready' });
+              job.candidates = []; job.choice = undefined; job.attention = null; job.onAttention('');
+              job.lastActivity = Date.now(); idleTicks = 0;
+            } else this.attention(job, 'Choose a PC PSARC file before starting the MEGA download.');
+          }
+          if (result?.status === 'transferring') {
+            this.providerProgress(job, result);
+            // Active transfers use the progress-based stall deadline above.
+            idleTicks = 0;
+          }
+        }
         if (result?.status === 'choose_file') {
-          job.candidates = (result.candidates || []).slice(0, 100);
-          this.attention(job, result.error || 'Choose the PSARC file in FeedForge.', { candidates: job.candidates });
+          job.megaPrepared = null;
+          let candidates = (result.candidates || []).slice(0, 100);
+          if (job.host === 'mega') {
+            candidates = candidates.filter((candidate) => candidate && /^[a-zA-Z0-9_-]{1,100}$/.test(candidate.id || '')
+              && typeof candidate.label === 'string' && candidate.label.length <= 240 && /\.psarc$/i.test(candidate.label) && !/[\\/\x00-\x1f\x7f]/.test(candidate.label))
+              .map(({ id, label }) => ({ id, label, platform: /_p\.psarc$/i.test(label) ? 'pc' : /_m\.psarc$/i.test(label) ? 'mac' : 'unknown' }));
+            const signature = JSON.stringify(candidates);
+            const previous = job.candidateDocument;
+            if (!previous || previous.contents !== win.webContents || previous.url !== url || previous.version !== documentVersion || previous.signature !== signature) {
+              job.candidates = candidates.map((candidate) => ({ ...candidate, targetId: candidate.id, id: require('node:crypto').randomUUID() }));
+              job.candidateDocument = { contents: win.webContents, url, version: documentVersion, signature };
+              job.attention = null;
+            }
+          } else job.candidates = candidates;
+          this.attention(job, result.error || 'Choose the PSARC file in FeedForge.', { candidates: job.candidates.map(({ id, label, platform }) => ({ id, label, platform })) });
         }
         if (result?.status === 'login_required' || result?.status === 'challenge' || result?.status === 'needs_attention') {
           this.attention(job, result.error || 'Select Open browser to finish this download.', { sessionWide: ['customsforge.com', 'ignition4.customsforge.com'].includes(host) });

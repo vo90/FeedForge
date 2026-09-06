@@ -116,7 +116,7 @@ function searchPage(query) {
   if (query.toLowerCase() === 'network failure') return Response.error();
   if (query.toLowerCase() === 'login') return html('<h1>Custom songs for Rocksmith 2014</h1><a href="/">Login to CustomsForge</a><button>Sign in</button>');
   if (query.toLowerCase() === 'challenge') return html('<p>Verify you are human</p>', 'Just a moment...');
-  const rows = query.toLowerCase() === 'empty' ? [] : [...Object.values(charts), { id: '1110', title: 'Fixture Unsupported', artist: 'Fixture Artist', host: 'mega' }];
+  const rows = query.toLowerCase() === 'empty' ? [] : [...Object.values(charts), { id: '1110', title: 'Fixture Unsupported', artist: 'Fixture Artist', host: 'unknown' }];
   if (query.toLowerCase() === 'catalogue') rows.push(
     { id: '1111', title: 'Fixture Beneath', artist: 'Fixture Artist', host: 'dropbox', parts: 'Bass', tuning: 'Bb Standard' },
     { id: '1112', title: 'Fixture Beneath', artist: 'Fixture Artist', host: 'dropbox', parts: 'Lead', tuning: 'Bb Standard' },

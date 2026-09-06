@@ -34,7 +34,7 @@ function hostInfo(value) {
   if (host.includes("mediafire")) return { label: "MediaFire", available: true };
   if (host === 'onedrive') return { label: 'OneDrive · experimental', available: true };
   if (host === 'pcloud') return { label: 'pCloud · experimental', available: true };
-  if (host === 'mega') return { label: 'MEGA · verification pending', available: false };
+  if (host === 'mega') return { label: 'MEGA · experimental', available: true };
   return { label: text(value, "Unknown host"), available: false };
 }
 
@@ -285,7 +285,7 @@ export default function SongBrowser({ api: providedApi, onReview }) {
             <label><input type="checkbox" checked={searchState.filters.hideAbandoned} onChange={(event) => searchSession.setFilters({ hideAbandoned: event.target.checked })} />Hide abandoned</label>
           </div>
           <p>Press Search to apply sorting and filters to all matching results. Filtering may take longer while all pages are collected.</p>
-          <p>Dropbox, Google Drive and MediaFire are supported. OneDrive and pCloud are experimental; MEGA verification is pending.</p>
+          <p>Dropbox, Google Drive and MediaFire are supported. OneDrive, pCloud and MEGA are experimental.</p>
           <p>CustomsForge’s download action also adds the chart to your collection.</p>
         </form>
 

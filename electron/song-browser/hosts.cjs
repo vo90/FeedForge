@@ -9,7 +9,7 @@ const HOSTS = Object.freeze({
   mediafire: Object.freeze({ id: 'mediafire', label: 'MediaFire', supported: true, status: 'verified' }),
   onedrive: Object.freeze({ id: 'onedrive', label: 'OneDrive', supported: true, status: 'experimental' }),
   pcloud: Object.freeze({ id: 'pcloud', label: 'pCloud', supported: true, status: 'experimental' }),
-  mega: Object.freeze({ id: 'mega', label: 'MEGA', supported: false, status: 'unverified' }),
+  mega: Object.freeze({ id: 'mega', label: 'MEGA', supported: true, status: 'experimental' }),
 });
 const UNKNOWN = Object.freeze({ id: 'unknown', label: 'Other host', supported: false, status: 'unsupported' });
 const SUBDOMAIN = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/;
@@ -40,14 +40,14 @@ function allowedNavigation(value, context = {}) {
   if (!url) return false;
   if (['customsforge.com', 'ignition4.customsforge.com', 'accounts.google.com', 'login.live.com', 'login.microsoftonline.com'].includes(url.hostname)) return true;
   const host = hostFromUrl(value);
-  return host === 'mega' ? context.enableMega === true : getHostCapabilities(host).supported;
+  return getHostCapabilities(host).supported;
 }
 function allowedDownload(value, filename, bytes, context = {}) {
   if (typeof filename !== 'string' || /[\\/\x00-\x1f\x7f]/.test(filename) || !/\.psarc$/i.test(filename)
       || !Number.isFinite(bytes) || bytes < 0 || bytes > MAX_BYTES) return false;
   if (/_m\.psarc$/i.test(filename) && context.allowMacFallback !== true) return false;
   if (typeof value === 'string' && value.startsWith('blob:')) {
-    // Future MEGA support must explicitly attest an owned, active main-frame
+    // MEGA support must explicitly attest an owned, active main-frame
     // document. Merely allowing blob: would accept downloads from any origin.
     if (context.enableMegaBlob !== true || context.ownedWindow !== true || context.host !== 'mega') return false;
     const origin = secureUrl(context.documentUrl || context.origin);

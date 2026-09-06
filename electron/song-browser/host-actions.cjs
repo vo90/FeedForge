@@ -1,10 +1,15 @@
 'use strict';
 const { selectFileCandidate } = require('./file-selection.cjs');
+const { megaDownloadAction, megaCancelAction } = require('./mega-actions.cjs');
 
 // Runs in the sandboxed host document: visible DOM and ordinary page controls
 // only. No network APIs, credentials, or host application runtime are inspected.
-function hostDownloadAction(request = {}, selectCandidate) {
+function hostDownloadAction(request = {}, selectCandidate, megaAction) {
   const host = location.hostname;
+  // MEGA embeds hidden error/dialog templates; its adapter checks rendered UI.
+  if (['mega.nz', 'www.mega.nz', 'mega.co.nz', 'www.mega.co.nz'].includes(host)) {
+    return typeof megaAction === 'function' ? megaAction(request, selectCandidate) : { status: 'waiting' };
+  }
   const text = (document.body?.innerText || '').slice(0, 30000);
   if (/verify you are human|checking your browser|captcha/i.test(document.title + '\n' + text)) {
     return { status: 'challenge', error: 'Complete the host check in the browser.' };
@@ -14,7 +19,6 @@ function hostDownloadAction(request = {}, selectCandidate) {
   }
   if (host === 'accounts.google.com') return { status: 'login_required', error: 'This file needs a Google sign-in. Continue in the browser.' };
   if (host === 'login.live.com' || host === 'login.microsoftonline.com') return { status: 'login_required', error: 'This file needs a Microsoft sign-in. Continue in the browser.' };
-  if (['mega.nz', 'www.mega.nz', 'mega.co.nz', 'www.mega.co.nz'].includes(host)) return { status: 'unsupported', error: 'MEGA downloads have not been verified yet.' };
   const usable = (element) => {
     if (!element || element.disabled || element.hasAttribute('disabled') || !element.getClientRects().length) return false;
     for (let node = element; node; node = node.parentElement) {
@@ -164,6 +168,7 @@ function hostDownloadAction(request = {}, selectCandidate) {
   return { status: 'waiting' };
 }
 function hostActionScript(request = {}) {
-  return `(${hostDownloadAction.toString()})(${JSON.stringify(request)}, ${selectFileCandidate.toString()})`;
+  return `(${hostDownloadAction.toString()})(${JSON.stringify(request)}, ${selectFileCandidate.toString()}, ${megaDownloadAction.toString()})`;
 }
-module.exports = { hostDownloadAction, hostActionScript };
+function hostCancelScript() { return `(${megaCancelAction.toString()})()`; }
+module.exports = { hostDownloadAction, hostActionScript, hostCancelScript };

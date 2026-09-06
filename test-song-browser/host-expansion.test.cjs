@@ -17,7 +17,7 @@ test('host registry recognizes approved aliases without accepting lookalikes', (
     assert.equal(hostFromUrl(url), 'unknown'); assert.equal(allowedNavigation(url), false);
   }
   assert.equal(HOSTS.onedrive.status, 'experimental'); assert.equal(HOSTS.pcloud.status, 'experimental');
-  assert.equal(HOSTS.mega.supported, false); assert.equal(allowedNavigation('https://mega.nz/file/example'), false);
+  assert.equal(HOSTS.mega.supported, true); assert.equal(HOSTS.mega.status, 'experimental'); assert.equal(allowedNavigation('https://mega.nz/file/example'), true);
 });
 
 test('new transfer policies check host family, filenames, byte limits and platform', () => {
@@ -60,6 +60,8 @@ test('file selection prefers matching PC counterpart without choosing among song
 test('saved file choices require one exact surviving descriptor and never silently fall back', () => {
   const rows = candidates('Song_v1_p.psarc', 'Song_v2_p.psarc');
   assert.equal(selectFileCandidate(rows, { choice: { id: 'candidate-1' } }).candidate.label, 'Song_v2_p.psarc');
+  assert.equal(selectFileCandidate(rows, { choice: { id: 'candidate-0', label: 'Song_v2_p.psarc', platform: 'pc' } }).status, 'choose_file');
+  assert.equal(selectFileCandidate(candidates('Song_p.psarc', 'Song_p.psarc'), { choice: { id: 'candidate-1', label: 'Song_p.psarc', platform: 'pc' } }).candidate.id, 'candidate-1');
   assert.equal(selectFileCandidate(rows, { choice: { label: 'Song_v2_p.psarc', platform: 'pc' } }).candidate.id, 'candidate-1');
   assert.equal(selectFileCandidate(rows, { choice: { id: 'stale' } }).status, 'choose_file');
   assert.equal(selectFileCandidate(rows, { choice: { label: 'Song_v3_p.psarc', platform: 'pc' } }).status, 'choose_file');
@@ -185,10 +187,9 @@ test('host candidates ignore hidden files, external links and disabled downloads
   assert.equal(disabled.clicked, 0);
 });
 
-test('Mac files, expired links, login and unverified MEGA remain attention states', () => {
+test('Mac files, expired links and login remain attention states', () => {
   assert.equal(page('https://www.dropbox.com/scl/fi/file/Song_m.psarc', []).run().status, 'needs_attention');
   assert.equal(page('https://login.live.com/', []).run().status, 'login_required');
-  assert.equal(page('https://mega.nz/file/example#key', []).run().status, 'unsupported');
   const button = element('button', {}, 'Download');
   assert.equal(page('https://onedrive.live.com/?id=file', [element('h1', {}, 'Song_p.psarc'), button], 'This link has expired').run().status, 'needs_attention');
   assert.equal(button.clicked, 0);

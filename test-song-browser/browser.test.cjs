@@ -91,20 +91,127 @@ function begin(browser, overrides = {}) {
   return { controller, progress, attention, destination, outcome, job: browser.active };
 }
 
+function prepareMega(job, win, browser, name = 'Song_p.psarc') {
+  job.host = 'mega';
+  win.webContents.url = 'https://mega.nz/file/fixture#fixture-key';
+  job.megaPrepared = { contents: win.webContents, documentUrl: win.webContents.url,
+    documentVersion: browser.documentVersions.get(win.webContents) || 0,
+    candidate: { id: 'fixture', label: name, platform: 'pc' } };
+}
+
+test('MEGA saves only the prepared file from its owned unchanged document', async (t) => {
+  const { browser, session } = fixture(t); const run = begin(browser);
+  const win = [...run.job.windows][0]; prepareMega(run.job, win, browser);
+  const item = new FakeDownload({ url: 'blob:https://mega.nz/fixture-blob', filename: 'Song_p.psarc' });
+  const started = event(); session.emit('will-download', started, item, win.webContents);
+  assert.equal(started.prevented, false); assert.equal(item.savePath, run.destination);
+  assert.equal(run.progress.at(-1), 95);
+  item.received = 200; item.finish();
+  assert.equal((await run.outcome).value, run.destination); assert.equal(win.destroyed, true);
+});
+
+test('MEGA rejects an unprepared Blob, a different filename, changed document and oversized file', async (t) => {
+  for (const problem of ['unprepared', 'filename', 'document', 'size', 'reload']) {
+    const { browser, session } = fixture(t); const run = begin(browser);
+    const win = [...run.job.windows][0]; prepareMega(run.job, win, browser);
+    if (problem === 'unprepared') run.job.megaPrepared = null;
+    if (problem === 'document') win.webContents.url = 'https://mega.nz/file/other#key';
+    if (problem === 'reload') win.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false });
+    const item = new FakeDownload({ url: 'blob:https://mega.nz/fixture-blob', filename: problem === 'filename' ? 'Other_p.psarc' : 'Song_p.psarc', total: problem === 'size' ? MAX_BYTES + 1 : 200 });
+    const started = event(); session.emit('will-download', started, item, win.webContents);
+    assert.equal(started.prevented, true, problem); assert.equal(item.savePath, undefined);
+    assert.ok((await run.outcome).error, problem);
+  }
+});
+
+test('another job-owned window cannot use a MEGA file preparation', async (t) => {
+  const { browser, session } = fixture(t); const run = begin(browser);
+  const win = [...run.job.windows][0]; prepareMega(run.job, win, browser);
+  const popup = browser.createWindow(run.job); popup.webContents.url = win.webContents.url;
+  const started = event(); const item = new FakeDownload({ url: 'blob:https://mega.nz/fixture-blob', filename: 'Song_p.psarc' });
+  session.emit('will-download', started, item, popup.webContents);
+  assert.equal(started.prevented, true); assert.ok((await run.outcome).error);
+});
+
+test('MEGA progress keeps percentages monotonic and repeated status does not extend a stall', async (t) => {
+  const { browser } = fixture(t); const run = begin(browser); run.job.host = 'mega';
+  const updates = []; run.job.onProgress = (percent, details) => updates.push({ percent, details });
+  browser.providerProgress(run.job, { progress: 50, phase: 'downloading' });
+  assert.equal(updates[0].percent, 47);
+  run.job.lastActivity = 123;
+  assert.equal(browser.providerProgress(run.job, { progress: 50, phase: 'downloading' }), false);
+  assert.equal(run.job.lastActivity, 123);
+  browser.providerProgress(run.job, { progress: 10, phase: 'downloading' });
+  assert.equal(updates.length, 1);
+  browser.providerProgress(run.job, { phase: 'decrypting' });
+  assert.equal(updates.at(-1).percent, 94); assert.ok(run.job.lastActivity > 123);
+  browser.providerProgress(run.job, { phase: 'saving' }); assert.equal(updates.at(-1).percent, 95);
+  run.controller.abort(); await run.outcome;
+});
+
+test('cancelling before a MEGA Blob requests provider cancellation before closing its page', async (t) => {
+  const { browser } = fixture(t); const run = begin(browser);
+  const win = [...run.job.windows][0]; prepareMega(run.job, win, browser);
+  let cancelled = 0;
+  win.webContents.executeJavaScript = async (script) => {
+    assert.match(script, /megaCancelAction/); assert.equal(win.destroyed, false); cancelled++;
+    return { status: 'clicked' };
+  };
+  run.controller.abort(); assert.ok((await run.outcome).error);
+  assert.equal(cancelled, 1); assert.equal(win.destroyed, true); assert.equal(browser.active, null);
+});
+
+test('MEGA deadlines distinguish an active transfer, a stall and a missing final save', async (t) => {
+  const { browser } = fixture(t); const run = begin(browser); const job = run.job;
+  job.host = 'mega'; job.lastActivity = 650000;
+  browser.checkDownloadDeadline(job, 0, 650001); assert.equal(job.finished, false, 'advancing MEGA transfers can outlast ten minutes');
+  job.providerSavingAt = 600000;
+  browser.checkDownloadDeadline(job, 0, 660001); assert.match(run.attention.at(-1), /not received the file/);
+  job.item = {}; job.attention = null;
+  browser.checkDownloadDeadline(job, 0, 660002); assert.equal(job.attention, null, 'saving grace never interrupts an actual DownloadItem');
+  job.item = null;
+  browser.checkDownloadDeadline(job, 0, 1250001); assert.equal(job.failure, 'timeout');
+  assert.ok((await run.outcome).error);
+});
+
+test('a stale MEGA prepare reply after a same-URL reload cannot authorize a Blob', async (t) => {
+  const { browser, session } = fixture(t);
+  browser.driveDownload = CustomsForgeBrowser.prototype.driveDownload;
+  let release, readStarted;
+  const reading = new Promise(resolve => { readStarted = resolve; });
+  browser.navigate = async (win) => {
+    win.webContents.url = 'https://mega.nz/file/fixture#key';
+    win.webContents.executeJavaScript = (script) => {
+      if (script.includes('megaCancelAction')) return Promise.resolve({ status: 'clicked' });
+      readStarted(); return new Promise(resolve => { release = resolve; });
+    };
+  };
+  const run = begin(browser); run.job.host = 'mega';
+  await reading;
+  const win = [...run.job.windows][0];
+  win.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false });
+  release({ status: 'prepared', selectedFile: { id: 'old', label: 'Song_p.psarc', platform: 'pc' } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(run.job.megaPrepared, undefined);
+  const started = event();
+  session.emit('will-download', started, new FakeDownload({ url: 'blob:https://mega.nz/fixture', filename: 'Song_p.psarc' }), win.webContents);
+  assert.equal(started.prevented, true); assert.ok((await run.outcome).error);
+});
+
 async function settlesSoon(promise) {
   let timer;
   try { return await Promise.race([promise, new Promise((resolve) => { timer = setTimeout(() => resolve({ stalled: true }), 100); })]); }
   finally { clearTimeout(timer); }
 }
 
-test('navigation permits supported HTTPS hosts and rejects lookalikes, credentials, custom schemes and MEGA', () => {
+test('navigation permits supported HTTPS hosts and rejects lookalikes, credentials and custom schemes', () => {
   for (const url of ['https://ignition4.customsforge.com/cdlc/123', 'https://drive.google.com/file/d/test/view',
     'https://drive.usercontent.google.com/download', 'https://accounts.google.com/',
     'https://www.dropbox.com/scl/fi/test/chart.psarc', 'https://dl.dropboxusercontent.com/s/test/chart.psarc',
-    'https://www.mediafire.com/file/test/chart.psarc', 'https://download1520.mediafire.com/test/chart.psarc']) {
+    'https://www.mediafire.com/file/test/chart.psarc', 'https://download1520.mediafire.com/test/chart.psarc', 'https://mega.nz/file/test']) {
     assert.equal(allowedNavigation(url), true, url);
   }
-  for (const url of ['https://mega.nz/file/test', 'https://www.dropbox.com.evil.test/file',
+  for (const url of ['https://mega.nz.evil.test/file/test', 'https://www.dropbox.com.evil.test/file',
     'https://evildropboxusercontent.com/file', 'https://download1.mediafire.com.evil.test/file',
     'https://drive.google.com@evil.test/file', 'https://name:secret@drive.google.com/file',
     'https://drive.google.com:444/file', 'http://www.dropbox.com/file', 'file:///C:/private.psarc',
@@ -287,7 +394,7 @@ test('browser profile windows deny native permissions, retain sandbox and block 
   session.permissionRequest({}, 'media', (value) => { granted = value; });
   assert.equal(granted, false);
   const navigation = event();
-  win.webContents.emit('will-navigate', navigation, 'https://mega.nz/file/test');
+  win.webContents.emit('will-navigate', navigation, 'https://mega.nz.evil.test/file/test');
   assert.equal(navigation.prevented, true);
   const redirect = event();
   win.webContents.emit('will-redirect', redirect, 'https://www.dropbox.com.evil.test/');
@@ -332,7 +439,7 @@ test('download popups inherit sandbox and are attributed to their active job', a
   assert.equal(popup.overrideBrowserWindowOptions.webPreferences.nodeIntegration, false);
   assert.equal(popup.overrideBrowserWindowOptions.webPreferences.sandbox, true);
   assert.equal(popup.overrideBrowserWindowOptions.webPreferences.session, session);
-  assert.equal(win.webContents.openHandler({ url: 'https://mega.nz/file/test' }).action, 'deny');
+  assert.equal(win.webContents.openHandler({ url: 'https://mega.nz.evil.test/file/test' }).action, 'deny');
   const child = new FakeWindow(popup.overrideBrowserWindowOptions);
   win.webContents.emit('did-create-window', child);
   assert.ok(transfer.job.windows.has(child));

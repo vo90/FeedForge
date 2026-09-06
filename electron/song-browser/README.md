@@ -5,7 +5,11 @@ Development branch: `feat/customsforge-browser-expansion`, based on the existing
 
 Expansion adds whole-search sorting, complete-result filtering, chart selection across pages, persistent batch previews with duplicate/arrangement review, a durable import index, explicit restart resume, and file choices inside FeedForge. The original browser profile path is preserved.
 
-Host status: Google Drive, Dropbox and MediaFire retain the previously verified individual-file paths. Folder choices, OneDrive and pCloud are implemented and tested against local fixtures, with live host verification pending. MEGA is recognized but disabled until its transfer mechanism can be verified. PC files are preferred and internal playable-platform evidence is checked; Mac fallback remains disabled in the product UI.
+Host status: Google Drive, Dropbox and MediaFire retain the previously verified individual-file paths. Folder choices, OneDrive, pCloud and MEGA are experimental and tested against local fixtures, with live host verification pending. PC files are preferred and internal playable-platform evidence is checked; Mac fallback remains disabled in the product UI.
+
+MEGA downloads run in hidden, sandboxed pages and show downloading/decrypting/saving progress in Song activity. The selected PSARC is prepared before the ordinary download click; its final Blob must match the owned document and exact filename. Folder lists that may be incomplete require an explicit file choice. Missing keys/passwords, unavailable files, transfer limits and unfamiliar controls need attention. MEGAsync launches, whole-folder ZIPs and filesystem-URL fallbacks are not accepted. The 512 MiB limit applies before and after saving; advancing transfers have a ten-minute stall limit and a one-hour overall limit. A completed provider stage without a received file reports attention after one minute.
+
+MEGA's current evidence is offline only: serialized DOM fixtures plus real hidden Chromium with generated `.test` pages and blocked external requests. Run `npm run test:song-browser:mega -- --electron ABSOLUTE_ELECTRON_PATH --runtime FRESH_ABSOLUTE_DIRECTORY` for the lifecycle suite. Its test-only loader maps fixture origins through production policy and injects a synthetic location into DOM functions; production has no fixture-origin override. Real MEGA compatibility, quota/key flows and FeedBack playback remain manual release checks.
 
 Use Search to apply the sort and filter controls. Filters collect the matching query across pages (up to 5,000 charts/100 pages) and then filter the complete snapshot. Unknown required metadata is not treated as a match. Prepare selected or Prepare all results creates a reviewable local batch without downloading. Required batch arrangements can be covered by complementary charts; variants are not merged into one FeedPak. Confirm the checked charts with Start batch.
 
@@ -20,6 +24,7 @@ Additional feature modules: `hosts.cjs` (capability/policy registry), `file-sele
 - `dom.cjs`: rendered CustomsForge search, pagination and Windows download controls. Self-contained functions run in the site document; signed URLs never leave that document.
 - `browser.cjs`: app-owned persistent browser session, restricted remote windows, host navigation, progress and download lifetime.
 - `host-actions.cjs`: ordinary public-page actions for Dropbox, Google Drive and MediaFire. No website API or cookie extraction.
+- `mega-actions.cjs`: rendered MEGA file/folder selection, browser-download controls, visible progress and cancellation. The main process prepares an exact file/document before allowing its Blob save; only then does the existing converter pipeline run.
 - `jobs.cjs`: sequential queue, inspection, conversion, validation, duplicate detection, publication and cancellation. Uses an injected `runConverter` function.
 - `index.cjs`: narrow IPC registration, settings and trusted-main-frame checks.
 - `diagnostics.cjs`: bounded reports with fixed codes, stages, host categories and timing.
@@ -41,7 +46,7 @@ The Python converter is unchanged. Existing FeedForge files have small integrati
 
 ## Scope and behavior
 
-- Established automatic paths: public individual PSARC links on Dropbox, Google Drive and MediaFire. Only the Windows chart button is chosen. OneDrive, pCloud and folder-selection capabilities are experimental; archives and MEGA automatic transfers remain unavailable.
+- Established automatic paths: public individual PSARC links on Dropbox, Google Drive and MediaFire. Only the Windows chart button is chosen. OneDrive, pCloud, MEGA and folder-selection capabilities are experimental; archive downloads remain unavailable.
 - Maximum input: 512 MiB. HTML, empty files, wrong song identities, multi-song packages and invalid packages are rejected. Download/host titles can differ from archive metadata; ambiguous identities require manual review.
 - No background catalog crawl. Search runs on explicit submission; pagination uses visible website controls. Download uses a fresh record page and current signed button. A collection click is never blindly retried after an ambiguous response.
 - Switching between Find songs and other FeedForge sections preserves the draft query, results, page and any pending search. Returning to the section does not start another website request. Search state lasts only for the current app window; it is not saved to disk.

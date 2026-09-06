@@ -7,7 +7,8 @@ const CODES = new Set(['search_started', 'search_finished', 'search_failed',
   'browser_attention', 'navigation_blocked', 'job_state', 'job_failed',
   'retry_requested', 'cache_cleared', 'output_checked', 'output_failed',
   'library_refresh_started', 'library_refresh_finished', 'library_refresh_failed',
-  'report_exported', 'settings_failed']);
+  'report_exported', 'settings_failed', 'mega_file_prepared', 'mega_downloading',
+  'mega_decrypting', 'mega_saving', 'mega_cancel_requested']);
 const STAGES = new Set(['search', 'browser', 'download', 'queued', 'downloading',
   'needs_attention', 'inspecting', 'converting', 'validating', 'publishing',
   'completed', 'failed', 'cancelled', 'recovery', 'output', 'library', 'diagnostics']);
@@ -40,7 +41,7 @@ function createDiagnostics({ appVersion = 'unknown', maxEvents = 200 } = {}) {
       return true;
     },
     report() {
-      return { schemaVersion: 1, adapterVersion: 4, appVersion: version, omittedEvents, events: events.map((event) => ({ ...event })) };
+      return { schemaVersion: 1, adapterVersion: 5, appVersion: version, omittedEvents, events: events.map((event) => ({ ...event })) };
     }
   });
 }

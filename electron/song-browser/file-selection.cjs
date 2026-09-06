@@ -15,7 +15,8 @@ function selectFileCandidate(candidates, request = {}) {
     let matches = [];
     if (typeof choice === 'object' && typeof choice.id === 'string' && !choice.label) matches = list.filter((row) => row.id === choice.id);
     else if (typeof choice === 'object' && typeof choice.label === 'string' && ['pc', 'mac', 'unknown'].includes(choice.platform)) {
-      matches = list.filter((row) => row.label === clean(choice.label) && row.platform === choice.platform);
+      matches = list.filter((row) => row.label === clean(choice.label) && row.platform === choice.platform
+        && (typeof choice.id !== 'string' || row.id === choice.id));
     }
     if (matches.length !== 1) return { status: 'choose_file', candidates: list, error: 'The selected file is missing or ambiguous. Choose from the current file list.' };
     if (matches[0].platform === 'mac' && request.allowMacFallback !== true) return { status: 'choose_file', candidates: list, error: 'This is a Mac file. PC files are required until Mac fallback has been verified.' };
