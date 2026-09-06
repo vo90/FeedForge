@@ -46,6 +46,46 @@ function readSearchPage() {
   const attributes = ['title', 'aria-label', 'data-bs-original-title', 'data-original-title', 'data-tippy-content'];
   const hints = (root) => [root, ...all(root, '[title], [aria-label], [data-bs-original-title], [data-original-title], [data-tippy-content]')]
     .flatMap((node) => attributes.map((name) => node.getAttribute?.(name) || ''));
+  const readParts = (root) => {
+    if (!root) return { parts: '', arrangements: [] };
+    const shown = (node) => {
+      for (let ancestor = node; ancestor; ancestor = ancestor.parentElement) {
+        if (ancestor.hidden || ancestor.getAttribute?.('aria-hidden') === 'true') return false;
+        const style = typeof globalThis.getComputedStyle === 'function' ? globalThis.getComputedStyle(ancestor) : ancestor.style;
+        if (style?.display === 'none' || ['hidden', 'collapse'].includes(style?.visibility)
+          || style?.contentVisibility === 'hidden' || style?.opacity === '0') return false;
+      }
+      // display:contents has no own rectangle, although its children render.
+      const style = typeof globalThis.getComputedStyle === 'function' ? globalThis.getComputedStyle(node) : node.style;
+      return !node.getClientRects || node.getClientRects().length > 0 || style?.display === 'contents';
+    };
+    const labels = [];
+    const visit = (node) => {
+      if (!shown(node) || ['SCRIPT', 'STYLE', 'TEMPLATE'].includes(node.tagName)) return;
+      for (const child of Array.from(node.childNodes || [])) {
+        if (child.nodeType === 3) labels.push(String(child.textContent || ''));
+        else if (child.nodeType === 1) visit(child);
+      }
+      // Ignition keeps absent path badges in hidden DOM branches. Hints on
+      // a containing cell must not restore those paths after visibility checks.
+      const badge = /(?:^|[\s_-])badge(?:[\s_-]|$)/i.test(String(node.getAttribute?.('class') || ''));
+      if (node !== root && (!node.children?.length || badge)) {
+        labels.push(...attributes.map((name) => node.getAttribute?.(name) || ''));
+      }
+    };
+    visit(root);
+    const found = new Set();
+    for (const label of labels) {
+      for (const token of label.toLowerCase().match(/[a-z]+/g) || []) {
+        if (['lead', 'rhythm', 'bass', 'vocals'].includes(token)) found.add(token);
+        else if (/^[lrb]{1,3}$/.test(token) && new Set(token).size === token.length) {
+          for (const code of token) found.add({ l: 'lead', r: 'rhythm', b: 'bass' }[code]);
+        }
+      }
+    }
+    const arrangements = ['lead', 'rhythm', 'bass'].filter((part) => found.has(part));
+    return { parts: [...arrangements, ...(found.has('vocals') ? ['vocals'] : [])].map((part) => part[0].toUpperCase() + part.slice(1)).join(', '), arrangements };
+  };
   const officialDlc = (root) => {
     const label = /^(?:ODLC|official\s+DLC)(?:\s*\((?:ODLC|official\s+DLC)\))?[.!]?$/i;
     // This is a catalogue type badge, not a file host. Read only explicit
@@ -137,7 +177,7 @@ function readSearchPage() {
     seen.add(record.id);
     const field = (key) => indexes[key] === undefined ? '' : text(cells[indexes[key]]);
     const partCell = cells[indexes.parts];
-    const parts = field('parts') || (partCell ? [...new Set(hints(partCell).filter(Boolean))].join(', ') : '');
+    const { parts, arrangements } = readParts(partCell);
     const host = hostFrom(row);
     const number = (value) => /^(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(value) && Number.isSafeInteger(Number(value.replace(/,/g, ''))) ? Number(value.replace(/,/g, '')) : null;
     const date = (key) => {
@@ -156,7 +196,7 @@ function readSearchPage() {
     const rowHints = hints(row);
     const flag = (name) => rowHints.some((hint) => new RegExp('^(?:this (?:cdlc|chart) (?:is|has been) )?' + name + '(?:[. :]|$)', 'i').test(hint.trim())) ? true : null;
     results.push({ id: record.id, title: songTitle, artist, album: field('album'), tuning: field('tuning'), creator: field('creator'), version: field('version'), parts,
-      arrangements: ['lead', 'rhythm', 'bass'].filter((part) => new RegExp('\\b' + part + '\\b', 'i').test(parts)),
+      arrangements,
       downloads: number(field('downloads')), added: date('added'), updated: date('updated'), year, durationSeconds,
       reported: flag('reported'), abandoned: flag('abandoned'),
       host, supported: ['dropbox', 'google-drive', 'mediafire'].includes(host), recordUrl: record.url });

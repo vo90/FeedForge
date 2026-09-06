@@ -537,7 +537,7 @@ async function runUiScenarios({ win, fixture, test }) {
     evidence.duplicateReview = { suggestedPunctuationOnly: true, livePreserved: true, manualOverrideRetained: true, dismissalRetained: true };
   });
 
-  await test('production arrangement filters and batch review recognize compact LRB catalogue badges', async () => {
+  await test('production arrangement filters and batch review read rendered badges without hidden LRB content', async () => {
     const compact = fixture.compactCharts;
     for (const name of ['all', 'lead', 'rhythm', 'bass']) assert.ok(compact?.[name]?.id && compact[name].title);
     await action({ kind: 'control', label: 'Exact artist', value: '' });
@@ -578,7 +578,7 @@ async function runUiScenarios({ win, fixture, test }) {
     await action({ kind: 'batch', label: 'Remove batch record' });
     await until((state) => !state.batches.some((batch) => batch.options.some((option) => option.label === `Select ${compact.all.title} chart ${compact.all.id}`)), 'Remove compact arrangement draft');
     await action({ kind: 'checkbox', scope: '.sb-batch-prepare', label: 'lead', checked: false });
-    evidence.compactArrangements = { sourceBadge: 'LRB', matches, batchLeadRecommendations: [compact.all.title, compact.lead.title], sourceDownloads: 0 };
+    evidence.compactArrangements = { sourceBadge: 'LRB', allRowsContainRawLrbText: true, hiddenBadgeVariants: ['inline display:none ancestor', 'stylesheet display:none ancestor', 'visibility:hidden ancestor', 'aria-hidden ancestor', 'hidden descendant with visible tooltip ancestor'], matches, batchLeadRecommendations: [compact.all.title, compact.lead.title], sourceDownloads: 0 };
   });
 
   await test('production results identify ODLC and exclude official releases from batch downloads', async () => {

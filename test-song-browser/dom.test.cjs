@@ -9,12 +9,13 @@ const { readSearchPage, requestChartDownload, requestSearchPage, requestSearchSo
 // the browser primitives the page functions need; there is no network access.
 class Element {
   constructor(tag, attrs = {}, children = [], ownText = '') {
-    this.tagName = tag.toUpperCase(); this.attrs = attrs; this.children = children;
+    this.nodeType = 1; this.tagName = tag.toUpperCase(); this.attrs = attrs; this.children = children;
     this.ownText = ownText; this.style = {}; this.hidden = !!attrs.hidden;
     this.className = attrs.class || ''; this.clicked = 0;
     for (const child of children) child.parentElement = this;
   }
   get textContent() { return [this.ownText, ...this.children.map((child) => child.textContent)].join(' '); }
+  get childNodes() { return [...(this.ownText ? [{ nodeType: 3, textContent: this.ownText }] : []), ...this.children]; }
   getAttribute(name) { return Object.hasOwn(this.attrs, name) ? this.attrs[name] : null; }
   hasAttribute(name) { return Object.hasOwn(this.attrs, name); }
   getClientRects() { return this.hidden || this.style.display === 'none' ? [] : [{}]; }
@@ -109,6 +110,61 @@ test('reads observed table metadata, icon parts and pagination without exporting
   assert.equal(result.status, 'ready'); assert.equal(result.page, 2); assert.equal(result.total, 288); assert.equal(result.hasNext, true);
   assert.deepEqual(result.results[0], { id: '6420', title: 'One', artist: 'Metallica', album: '...And Justice for All', tuning: 'E STANDARD', creator: 'Nacholede', version: '1', parts: 'Lead, Bass', arrangements: ['lead', 'bass'], downloads: 100001, added: '2020-01-01', updated: '2026-08-01', year: 1988, durationSeconds: 447, reported: null, abandoned: null, host: 'google-drive', supported: true, recordUrl: origin + '/cdlc/6420' });
   assert.doesNotMatch(JSON.stringify(result), /expires|signature|toggle/);
+});
+
+test('only rendered arrangement badges count, even when every row contains hidden LRB text and hints', () => {
+  const codes = { lead: 'L', rhythm: 'R', bass: 'B' };
+  const make = (wanted) => {
+    const fixture = row();
+    const cell = fixture.children[8]; cell.children = []; cell.attrs.title = 'Lead Rhythm Bass';
+    for (const [part, code] of Object.entries(codes)) {
+      const badge = el('span', { class: 'badge', title: part }, [], code);
+      const wrapper = el('span', { title: part }, [badge]);
+      if (!wanted.includes(part)) {
+        if (part === 'lead') wrapper.style.visibility = 'hidden';
+        else if (part === 'rhythm') wrapper.attrs.class = 'fixture-hidden';
+        else badge.attrs['aria-hidden'] = 'true';
+      }
+      cell.children.push(wrapper); wrapper.parentElement = cell;
+    }
+    return fixture;
+  };
+  const getComputedStyle = (node) => node.attrs.class === 'fixture-hidden' ? { display: 'none' } : node.style;
+  for (const wanted of [['lead'], ['rhythm'], ['bass'], ['lead', 'bass'], []]) {
+    const fixture = make(wanted);
+    assert.match(fixture.children[8].textContent, /L\s+R\s+B/);
+    const result = run(readSearchPage, page([fixture]), undefined, { getComputedStyle }).results[0];
+    assert.deepEqual(result.arrangements, wanted);
+    assert.equal(result.parts, wanted.map((part) => part[0].toUpperCase() + part.slice(1)).join(', '));
+  }
+});
+
+test('visible parent tooltips cannot reintroduce hidden arrangement descendants', () => {
+  const fixture = row(); const cell = fixture.children[8];
+  cell.children = [
+    el('span', { title: 'Lead' }, [el('span', { hidden: true, title: 'Lead' }, [], 'L')]),
+    el('span', { title: 'Rhythm' }, [el('span', { class: 'fixture-hidden', title: 'Rhythm' }, [], 'R')]),
+    el('span', { title: 'Bass' }, [], 'B'),
+  ];
+  for (const child of cell.children) child.parentElement = cell;
+  const result = run(readSearchPage, page([fixture]), undefined, {
+    getComputedStyle: (node) => node.attrs.class === 'fixture-hidden' ? { display: 'none' } : node.style,
+  }).results[0];
+  assert.deepEqual(result.arrangements, ['bass']); assert.equal(result.parts, 'Bass');
+});
+
+test('rendered plain arrangement text and compact labels normalize without raw hidden fallback', () => {
+  for (const [label, expected] of [['Lead, Rhythm, Bass, Vocals', ['lead', 'rhythm', 'bass']], ['LRB', ['lead', 'rhythm', 'bass']], ['B', ['bass']], ['Drums', []]]) {
+    const fixture = row(); const cell = fixture.children[8]; cell.children = []; cell.ownText = label;
+    assert.deepEqual(run(readSearchPage, page([fixture])).results[0].arrangements, expected);
+  }
+  for (const hiddenBy of ['hidden', 'display', 'visibility', 'contentVisibility', 'opacity']) {
+    const fixture = row(); const cell = fixture.children[8]; cell.ownText = 'Lead Rhythm Bass';
+    if (hiddenBy === 'hidden') cell.hidden = true;
+    else cell.style[hiddenBy] = hiddenBy === 'display' ? 'none' : hiddenBy === 'opacity' ? '0' : 'hidden';
+    const result = run(readSearchPage, page([fixture])).results[0];
+    assert.deepEqual(result.arrangements, []); assert.equal(result.parts, '');
+  }
 });
 
 test('semantic columns survive reordering and added unknown columns', () => {

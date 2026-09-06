@@ -17,7 +17,8 @@ const charts = Object.freeze({
   slow: Object.freeze({ id: '1103', title: 'Fixture Cancel', artist: 'Fixture Artist', host: 'mediafire' }),
 });
 // Catalogue-only rows reproduce Ignition's adjacent one-letter arrangement
-// badges. Keep these separate from the download fixtures and their counts.
+// badges, including absent badges retained as hidden DOM content. Keep these
+// separate from the download fixtures and their counts.
 const compactCharts = Object.freeze({
   all: Object.freeze({ id: '1140', title: 'Leaders Of The Blind', artist: 'Green Lung', host: 'dropbox', parts: 'LRB', compactParts: true }),
   lead: Object.freeze({ id: '1141', title: 'Fixture Lead Only', artist: 'Green Lung', host: 'dropbox', parts: 'L', compactParts: true }),
@@ -146,7 +147,7 @@ async function runConverter(args) {
   fs.writeFileSync(args[2], 'PK fixture FeedPak ' + JSON.stringify(chart), { flag: 'wx' });
   return { code: 0, stdout: 'Synthetic conversion complete.', stderr: '' };
 }
-const html = (body, title = 'Offline Song Browser fixture') => new Response(`<!doctype html><html><head><meta charset="UTF-8"><title>${title}</title></head><body>${body}</body></html>`, { headers: { 'Content-Type': 'text/html' } });
+const html = (body, title = 'Offline Song Browser fixture') => new Response(`<!doctype html><html><head><meta charset="UTF-8"><title>${title}</title><style>.fixture-absent-part { display: none; }</style></head><body>${body}</body></html>`, { headers: { 'Content-Type': 'text/html' } });
 const hostName = (host) => ({ dropbox: 'Dropbox', 'google-drive': 'Google Drive', mediafire: 'MediaFire', mega: 'MEGA' }[host]);
 function searchPage(query) {
   if (query.toLowerCase() === 'network failure') return Response.error();
@@ -180,7 +181,21 @@ function searchPage(query) {
       const offset = (page - 1) * perPage;
       const shown = ordered.slice(offset, offset + perPage);
       const tableRows = shown.map((chart) => {
-        const parts = chart.compactParts ? [...chart.parts].map((part) => `<span class="instrument-badge">${escape(part)}</span>`).join('') : escape(chart.parts);
+        // Raw textContent is always LRB here. Only rendered/accessible badges
+        // establish an arrangement; an absent badge must not leak back through
+        // either its letter or its tooltip. Vary the hidden representation so
+        // checking only inline styles or only the badge itself cannot pass.
+        const parts = chart.compactParts ? ['L', 'R', 'B'].map((part) => {
+          const label = { L: 'Lead', R: 'Rhythm', B: 'Bass' }[part];
+          const badge = `<span class="instrument-badge" title="${label}">${part}</span>`;
+          if (chart.parts.includes(part)) return badge;
+          if (chart.id === '1141' && part === 'R') return `<span style="display:none">${badge}</span>`;
+          if (chart.id === '1141' && part === 'B') return `<span class="fixture-absent-part">${badge}</span>`;
+          if (chart.id === '1142' && part === 'L') return `<span style="visibility:hidden">${badge}</span>`;
+          if (chart.id === '1142' && part === 'B') return `<span aria-hidden="true">${badge}</span>`;
+          if (chart.id === '1143' && part === 'L') return `<span title="Lead"><span hidden>${badge}</span></span>`;
+          return `<span title="Rhythm"><span class="fixture-absent-part">${badge}</span></span>`;
+        }).join('') : escape(chart.parts);
         const album = escape(chart.album) + (chart.official ? ' <span class="badge">OFFICIAL DLC</span>' : '');
         return `<tr><td><span title="Hosted on ${escape(chart.hostName)}">File</span></td><td>${escape(chart.artist)}</td><td><a href="/cdlc/${chart.id}">${escape(chart.title)}</a></td><td>${album}</td><td>${escape(chart.tuning)}</td><td>${escape(chart.creator)}</td><td>${chart.added}</td><td>${chart.updated}</td><td>${parts}</td><td>${chart.version}</td><td>${chart.year}</td><td>${chart.duration}</td><td>${chart.downloads}</td></tr>`;
       }).join('') || '<tr><td colspan="13">No matching records found</td></tr>';
