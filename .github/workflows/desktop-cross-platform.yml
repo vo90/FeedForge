@@ -108,6 +108,21 @@ jobs:
           echo "Bundled decoder status: $status" | tee decoder-diagnostics/bundled-status.txt
           test "$status" -lt 126
           grep -qi vgmstream decoder-diagnostics/bundled-help.txt
+          python - <<'PY'
+          import struct, wave
+          with wave.open('decoder-diagnostics/synthetic-input.wav', 'wb') as output:
+              output.setparams((1, 2, 8000, 800, 'NONE', 'not compressed'))
+              output.writeframes(b''.join(struct.pack('<h', 1000 if i % 16 < 8 else -1000) for i in range(800)))
+          PY
+          env -u DYLD_LIBRARY_PATH -u DYLD_FALLBACK_LIBRARY_PATH "$decoder" -o decoder-diagnostics/synthetic-decoded.wav decoder-diagnostics/synthetic-input.wav | tee decoder-diagnostics/decode-result.txt
+          python - <<'PY'
+          import wave
+          with wave.open('decoder-diagnostics/synthetic-decoded.wav', 'rb') as decoded:
+              assert decoded.getnchannels() == 1
+              assert decoded.getframerate() == 8000
+              assert decoded.getnframes() == 800
+          print('Bundled decoder converted the synthetic audio successfully.')
+          PY
           converter="$(find release -type f -path '*/bin/psarc2feedpak/psarc2feedpak' -print -quit)"
           test -n "$converter"
           expected="$(node -p "require('./package.json').version")"
