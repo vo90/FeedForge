@@ -1,47 +1,20 @@
-name: Desktop builds
+name: macOS decoder ABI diagnosis
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-2025
-            platform: win
-            vgmstream: vgmstream-win.zip
-            sha256: 4fa8f0f567a3636e45931b8462a04898fbceca17290a1458b80063b9558b323b
-            executable: vgmstream-cli.exe
-            artifact: FeedForge-Windows-x64
-            files: release/*.exe
-          - os: macos-15
-            platform: mac
-            vgmstream: vgmstream-mac.zip
-            sha256: cdabf633231a4556feb0048a71990c768e862f3695dd9458ae28e4d94aa50a99
-            executable: vgmstream-cli
-            artifact: FeedForge-macOS-Apple-Silicon
-            files: |
-              release/*.dmg
-              release/*.zip
-          - os: ubuntu-24.04
-            platform: linux
-            vgmstream: vgmstream-linux.zip
-            sha256: 2f98c77f756079f63fbd119939067f1ed461d77e70993bc4cc372736d859c84a
-            executable: vgmstream-cli
-            artifact: FeedForge-Linux-x64
-            files: release/*.AppImage
-    runs-on: ${{ matrix.os }}
-
+  diagnose:
+    runs-on: macos-15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: 23bfe8625ea91e1e23bccca5cf9bdf31697fd54c
+          persist-credentials: false
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -50,107 +23,98 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-
-      - name: Install build dependencies
+      - name: Install original build dependencies
         run: |
           npm ci
           python -m pip install ".[dev]"
-
-      - name: Install macOS decoder libraries
-        if: runner.os == 'macOS'
-        run: brew install ffmpeg libogg libvorbis mpg123
-
-      - name: Bundle native WEM decoder
+          brew install ffmpeg libogg libvorbis mpg123
+      - name: Reproduce pinned decoder against current Homebrew
         shell: bash
-        env:
-          VGMSTREAM_ARCHIVE: ${{ matrix.vgmstream }}
-          VGMSTREAM_SHA256: ${{ matrix.sha256 }}
-          VGMSTREAM_EXECUTABLE: ${{ matrix.executable }}
         run: |
+          mkdir -p decoder-diagnostics
+          git rev-parse HEAD | tee decoder-diagnostics/source-sha.txt
+          brew list --versions ffmpeg libogg libvorbis mpg123 | tee decoder-diagnostics/brew-before.txt
           python - <<'PY'
-          import hashlib, os, shutil, stat, urllib.request, zipfile
+          import hashlib, shutil, stat, urllib.request, zipfile
           from pathlib import Path
-
-          archive = Path(os.environ["RUNNER_TEMP"]) / "vgmstream.zip"
-          url = f"https://github.com/vgmstream/vgmstream/releases/download/r2117/{os.environ['VGMSTREAM_ARCHIVE']}"
-          urllib.request.urlretrieve(url, archive)
-          assert hashlib.sha256(archive.read_bytes()).hexdigest() == os.environ["VGMSTREAM_SHA256"]
-          destination = Path("src/feedback_converter/tools")
-          destination.mkdir(parents=True, exist_ok=True)
-          executable = os.environ["VGMSTREAM_EXECUTABLE"].lower()
+          archive = Path('decoder-diagnostics/vgmstream-mac.zip')
+          urllib.request.urlretrieve('https://github.com/vgmstream/vgmstream/releases/download/r2117/vgmstream-mac.zip', archive)
+          assert hashlib.sha256(archive.read_bytes()).hexdigest() == 'cdabf633231a4556feb0048a71990c768e862f3695dd9458ae28e4d94aa50a99'
+          tool = Path('src/feedback_converter/tools/vgmstream-cli')
           with zipfile.ZipFile(archive) as bundle:
-              for member in bundle.infolist():
-                  name = Path(member.filename).name
-                  if name.lower() == executable or (os.name == "nt" and name.lower().endswith(".dll")):
-                      with bundle.open(member) as source, (destination / name).open("wb") as target:
-                          shutil.copyfileobj(source, target)
-          tool = destination / os.environ["VGMSTREAM_EXECUTABLE"]
-          assert tool.is_file()
-          if os.name != "nt":
-              tool.chmod(tool.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+              member = next(m for m in bundle.infolist() if Path(m.filename).name == 'vgmstream-cli')
+              with bundle.open(member) as source, tool.open('wb') as target:
+                  shutil.copyfileobj(source, target)
+          tool.chmod(tool.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
           PY
-
-      - name: Test
+          decoder=src/feedback_converter/tools/vgmstream-cli
+          otool -L "$decoder" | tee decoder-diagnostics/dependencies-before.txt
+          status=0
+          "$decoder" -h >decoder-diagnostics/help-before.txt 2>&1 || status=$?
+          cat decoder-diagnostics/help-before.txt
+          echo "Decoder status before repair: $status" | tee decoder-diagnostics/status-before.txt
+          test "$status" -ge 126
+      - name: Test compatible FFmpeg ABI without changing decoder version
+        shell: bash
         run: |
-          node --check electron/main.cjs
-          python -m compileall -q src tools/start-demucs-server.py
-          npm run build
-
-      - name: Build desktop app
-        run: npm run release:${{ matrix.platform }}
+          brew install ffmpeg@8
+          export FEEDFORGE_FFMPEG8_PREFIX="$(brew --prefix ffmpeg@8)"
+          python - <<'PY'
+          import os, subprocess
+          from pathlib import Path
+          tool = Path('src/feedback_converter/tools/vgmstream-cli')
+          prefix = Path(os.environ['FEEDFORGE_FFMPEG8_PREFIX'])
+          dependencies = subprocess.check_output(['otool', '-L', str(tool)], text=True)
+          replaced = 0
+          for line in dependencies.splitlines()[1:]:
+              old = line.strip().split(' (', 1)[0]
+              if not old.startswith('/opt/homebrew/opt/ffmpeg/lib/'):
+                  continue
+              new = prefix / 'lib' / Path(old).name
+              assert new.is_file(), f'Required decoder ABI is missing: {new.name}'
+              subprocess.run(['install_name_tool', '-change', old, str(new), str(tool)], check=True)
+              replaced += 1
+          assert replaced == 4, f'Expected four pinned FFmpeg dependencies, saw {replaced}'
+          subprocess.run(['codesign', '--force', '--sign', '-', str(tool)], check=True)
+          PY
+          decoder=src/feedback_converter/tools/vgmstream-cli
+          otool -L "$decoder" | tee decoder-diagnostics/dependencies-after.txt
+          status=0
+          "$decoder" -h >decoder-diagnostics/help-after.txt 2>&1 || status=$?
+          cat decoder-diagnostics/help-after.txt
+          echo "Decoder status after repair: $status" | tee decoder-diagnostics/status-after.txt
+          test "$status" -lt 126
+          grep -qi vgmstream decoder-diagnostics/help-after.txt
+      - name: Build active development version with compatible decoder libraries
+        run: npm run release:mac
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-
-      - name: Smoke-test bundled converter
-        if: runner.os != 'Windows'
+      - name: Verify signature and standalone bundled decoder
         shell: bash
         run: |
+          app=release/mac-arm64/FeedForge.app
+          codesign --verify --deep --strict --verbose=2 "$app"
+          find "$app" -name 'vgmstream-cli' -ls | tee decoder-diagnostics/bundled-decoder-paths.txt
+          decoder="$(find "$app" -type f -path '*/feedback_converter/tools/vgmstream-cli' -print -quit)"
+          test -n "$decoder"
+          otool -L "$decoder" | tee decoder-diagnostics/bundled-dependencies.txt
+          if grep -q /opt/homebrew decoder-diagnostics/bundled-dependencies.txt; then
+            echo 'Bundled decoder still refers to Homebrew instead of bundled libraries.'
+            exit 1
+          fi
+          status=0
+          env -u DYLD_LIBRARY_PATH -u DYLD_FALLBACK_LIBRARY_PATH "$decoder" -h >decoder-diagnostics/bundled-help.txt 2>&1 || status=$?
+          cat decoder-diagnostics/bundled-help.txt
+          echo "Bundled decoder status: $status" | tee decoder-diagnostics/bundled-status.txt
+          test "$status" -lt 126
+          grep -qi vgmstream decoder-diagnostics/bundled-help.txt
           converter="$(find release -type f -path '*/bin/psarc2feedpak/psarc2feedpak' -print -quit)"
           test -n "$converter"
-          chmod +x "$converter"
           expected="$(node -p "require('./package.json').version")"
           test "$("$converter" --version)" = "psarc2feedpak $expected"
-
-      - name: Verify macOS application signature
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          codesign --verify --deep --strict --verbose=2 release/mac-arm64/FeedForge.app
-          decoder="$(find release/mac-arm64/FeedForge.app -type f -path '*/feedback_converter/tools/vgmstream-cli' -print -quit)"
-          test -n "$decoder"
-          status=0
-          output="$("$decoder" -h 2>&1)" || status=$?
-          test "$status" -lt 126
-          grep -qi vgmstream <<<"$output"
-
-      - name: Smoke-test bundled converter
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $converter = Get-ChildItem release -Recurse -Filter psarc2feedpak.exe |
-            Where-Object FullName -Match '[\\/]bin[\\/]psarc2feedpak[\\/]' |
-            Select-Object -First 1 -ExpandProperty FullName
-          if (-not $converter) { throw 'Bundled converter was not found.' }
-          $expected = node -p "require('./package.json').version"
-          if ((& $converter --version) -ne "psarc2feedpak $expected") { throw 'Bundled converter version mismatch.' }
-
       - uses: actions/upload-artifact@v7
+        if: always()
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.files }}
+          name: macos-decoder-diagnostics
+          path: decoder-diagnostics/*.txt
           if-no-files-found: error
-
-  publish:
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: build
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          path: artifacts
-          merge-multiple: true
-      - uses: softprops/action-gh-release@v3
-        with:
-          name: FeedForge ${{ github.ref_name }}
-          generate_release_notes: true
-          files: artifacts/*
