@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && electron .\"",
     "build": "vite build",
+    "test:workers": "node --test tests/js/performance-profile.test.cjs tests/js/concurrency-limiter.test.cjs tests/js/audio-dependency.test.cjs ui/src/audio-dependency.test.mjs ui/src/worker-policy.test.mjs ui/src/memory-launch-gate.test.mjs ui/src/conversion-scheduler.test.mjs ui/src/conversion-policy.test.mjs",
     "converter:pack": "python -m PyInstaller --noconfirm --clean psarc2feedpak.spec",
     "electron:pack": "npm run build && electron-builder --win --publish never",
     "electron:pack:mac": "npm run build && electron-builder --mac dmg zip --publish never",

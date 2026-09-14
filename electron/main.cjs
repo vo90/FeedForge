@@ -4,6 +4,16 @@ const fs = require("fs");
 const http = require("http");
 const https = require("https");
 const path = require("path");
+const {
+  clampRequestedWorkers,
+  detectMemoryStatus,
+  detectPerformanceProfile
+} = require("./performance-profile.cjs");
+const { createConcurrencyLimiter } = require("./concurrency-limiter.cjs");
+const {
+  converterEnvironment,
+  createAudioDecoderStatusCache
+} = require("./audio-dependency.cjs");
 
 let mainWindow;
 let inspectCacheRoot;
@@ -14,8 +24,15 @@ let stemServerStarting = false;
 let stemServerLog = [];
 let toneAssetCatalog = null;
 let activePlanningJob = null;
+const activeConversionJobs = new Map();
+const activeConverterChildren = new Set();
+let appQuitCleanupStarted = false;
+let appQuitCleanupFinished = false;
 const DEBUG_LOG_MAX_BYTES = 2 * 1024 * 1024;
 const PLAN_PROGRESS_PREFIX = "FEEDFORGE_PROGRESS ";
+const CONVERSION_PROGRESS_PREFIX = "FEEDFORGE_CONVERSION_PROGRESS ";
+const SONG_ERROR_PREFIX = "FEEDFORGE_SONG_ERROR ";
+const CONVERSION_RESULT_PREFIX = "FEEDFORGE_CONVERSION_RESULT ";
 const LOCAL_STEM_SERVER_URL = "http://127.0.0.1:7865";
 const GITHUB_REPO = "balki97/FeedForge";
 const GITHUB_RELEASES_URL = `https://github.com/${GITHUB_REPO}/releases/latest`;
@@ -73,6 +90,8 @@ const DEMUCS_MODELS = [
     remoteOnly: true
   }
 ];
+const converterProcessLimiter = createConcurrencyLimiter(detectPerformanceProfile().manualMaxWorkers);
+const audioDecoderStatusCache = createAudioDecoderStatusCache();
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -129,11 +148,20 @@ app.whenReady().then(() => {
   }, 2500);
 });
 app.whenReady().then(() => Menu.setApplicationMenu(null));
-app.on("before-quit", () => {
+app.on("before-quit", (event) => {
+  if (appQuitCleanupFinished) return;
+  event.preventDefault();
+  if (appQuitCleanupStarted) return;
+  appQuitCleanupStarted = true;
   logDebug("app.beforeQuit");
-  cancelActivePlanning();
-  stopStemServer();
-  if (inspectCacheRoot) removeDirectory(inspectCacheRoot);
+  void Promise.allSettled([
+    shutdownConverterProcesses(),
+    stopStemServer()
+  ]).finally(() => {
+    if (inspectCacheRoot) removeDirectory(inspectCacheRoot);
+    appQuitCleanupFinished = true;
+    app.quit();
+  });
 });
 app.on("render-process-gone", (_event, webContents, details) => {
   logDebug("app.renderProcessGone", {
@@ -141,6 +169,8 @@ app.on("render-process-gone", (_event, webContents, details) => {
     exitCode: details.exitCode,
     url: webContents?.getURL?.() || ""
   });
+  void cancelConversionJobsForSender(webContents?.id);
+  void cancelPlanningForSender(webContents?.id);
 });
 process.on("uncaughtException", (error) => {
   logDebug("process.uncaughtException", errorToLog(error));
@@ -296,7 +326,7 @@ ipcMain.handle("converter:inspect", async (_event, inputPath, options = {}) => {
   return parsed;
 });
 
-ipcMain.handle("feedpak:update", async (_event, payload) => {
+ipcMain.handle("feedpak:update", async (event, payload = {}) => {
   logDebug("feedpak.update.start", {
     inputPath: payload.inputPath,
     outputPath: payload.outputPath || "",
@@ -330,7 +360,9 @@ ipcMain.handle("feedpak:update", async (_event, payload) => {
   if (Array.isArray(payload.demucsStems) && payload.demucsStems.length) {
     args.push("--demucs-stems", payload.demucsStems.join(","));
   }
-  const result = await runConverter(args);
+  const { result, job, jobId } = await runTrackedConverter(event, payload, args, {
+    admissionWeight: 1
+  });
   const outputPath = [...result.stdout.matchAll(/^wrote\s+(.+)$/gim)].map((match) => match[1].trim()).filter(Boolean)[0] || payload.outputPath || payload.inputPath;
   const validatedPaths = [...result.stdout.matchAll(/^validated\s+(.+)$/gim)].map((match) => match[1].trim()).filter(Boolean);
   const warnings = [...`${result.stdout}\n${result.stderr}`.matchAll(/^warning:\s+(.+)$/gim)].map((match) => match[1].trim()).filter(Boolean);
@@ -346,13 +378,19 @@ ipcMain.handle("feedpak:update", async (_event, payload) => {
   });
   return {
     ok: result.code === 0,
+    cancelled: job.cancelled || result.diagnostics?.cancelled === true,
+    jobId,
     outputPath,
     validation: { ok: result.code === 0 && validatedPaths.length > 0 },
     warnings,
     stdout: result.stdout,
     stderr: result.stderr,
     diagnostics: result.diagnostics,
-    error: result.code === 0 ? null : result.stderr || result.stdout || "FeedPak update failed"
+    error: result.code === 0
+      ? null
+      : job.cancelled
+        ? "Conversion was stopped."
+        : result.stderr || result.stdout || "FeedPak update failed"
   };
 });
 
@@ -413,7 +451,11 @@ ipcMain.handle("audit:feedpakLibrary", async (_event, payload = {}) => {
   const startedAt = Date.now();
   const files = await findFeedpakFiles(root);
   const rows = [];
-  const workerCount = Math.min(3, Math.max(1, Number(payload.workers || 2) || 2));
+  const auditWorkerMaximum = Math.max(1, Math.min(
+    8,
+    Math.ceil(detectPerformanceProfile().manualMaxWorkers / 2)
+  ));
+  const workerCount = Math.min(auditWorkerMaximum, Math.max(1, Number(payload.workers || 2) || 2));
   let index = 0;
 
   async function next() {
@@ -518,6 +560,7 @@ ipcMain.handle("converter:planConversions", async (event, payload = {}) => {
   if (!items.length) return { ok: false, error: "No PSARC files were provided for output planning." };
   if (activePlanningJob) return { ok: false, error: "Another output planning job is already running." };
 
+  const performanceProfile = detectPerformanceProfile();
   const request = {
     items,
     outputDir: String(payload.outputDir || ""),
@@ -525,7 +568,7 @@ ipcMain.handle("converter:planConversions", async (event, payload = {}) => {
     nameTemplate: String(payload.nameTemplate || "{source}"),
     overwrite: payload.overwrite === true,
     rs1SongsPsarc: String(payload.rs1SongsPsarc || ""),
-    workers: Math.max(1, Math.min(8, Number(payload.workers) || 4)),
+    workers: clampRequestedWorkers(payload.workers, performanceProfile),
     cachePath: path.join(app.getPath("userData"), "cache", "psarc-output-metadata-v1.sqlite3")
   };
   logDebug("converter.planConversions.start", {
@@ -538,24 +581,40 @@ ipcMain.handle("converter:planConversions", async (event, payload = {}) => {
   });
 
   const temporary = createTemporaryJsonFile("feedforge-output-plan-", "request.json", request);
-  const planningJob = { child: null, cancelled: false };
+  const planningJob = {
+    child: null,
+    cancelled: false,
+    admissionController: new AbortController(),
+    sender: event.sender,
+    senderId: event.sender.id,
+    onSenderDestroyed: null
+  };
+  planningJob.onSenderDestroyed = () => {
+    if (activePlanningJob === planningJob) void cancelActivePlanning();
+  };
+  event.sender.once("destroyed", planningJob.onSenderDestroyed);
   activePlanningJob = planningJob;
   let result;
   try {
     result = await runConverter(["--plan-conversion-file", temporary.filePath], {
+      admissionWeight: request.workers,
+      admissionSignal: planningJob.admissionController.signal,
+      processGroup: true,
       onSpawn: (child) => {
         planningJob.child = child;
         if (planningJob.cancelled) terminateChildProcessTree(child);
       },
       onStderrLine: (line) => {
         if (!line.startsWith(PLAN_PROGRESS_PREFIX)) return;
-        const progress = parseJson(line.slice(PLAN_PROGRESS_PREFIX.length));
-        if (!progress || event.sender.isDestroyed()) return;
-        event.sender.send("converter:planProgress", progress);
+        const progress = parseProtocolJson(line.slice(PLAN_PROGRESS_PREFIX.length));
+        if (progress) safeSend(event.sender, "converter:planProgress", progress);
       }
     });
   } finally {
     if (activePlanningJob === planningJob) activePlanningJob = null;
+    if (!event.sender.isDestroyed()) {
+      event.sender.removeListener("destroyed", planningJob.onSenderDestroyed);
+    }
     removeTemporaryDirectory(temporary.directory);
   }
   if (planningJob.cancelled) {
@@ -581,8 +640,34 @@ ipcMain.handle("converter:planConversions", async (event, payload = {}) => {
 
 ipcMain.handle("converter:cancelPlanning", async () => cancelActivePlanning());
 
-ipcMain.handle("converter:convert", async (_event, payload) => {
+ipcMain.handle("converter:convert", async (event, payload = {}) => {
+  const performanceProfile = detectPerformanceProfile();
+  const songWorkers = clampRequestedWorkers(payload.songWorkers || 1, performanceProfile);
+  const validationPolicy = normalizeValidationPolicy(payload.validationPolicy);
+  const requestedJobId = conversionJobId(payload);
+  const audioDependency = blockingAudioDecoderStatus(payload.inputPath);
+  if (audioDependency) {
+    return {
+      ...blockedAudioDependencyResult(payload.inputPath, audioDependency, "convert", requestedJobId),
+      partial: false,
+      validationPolicy,
+      validation: {
+        ok: false,
+        publishable: false,
+        convertedWithChartWarnings: false,
+        chartWarningCount: 0,
+        chartWarnings: []
+      },
+      convertedWithChartWarnings: false,
+      chartWarningCount: 0,
+      outputsWithChartWarnings: 0,
+      chartWarnings: [],
+      conversionResults: [],
+      songErrors: []
+    };
+  }
   logDebug("converter.convert.start", {
+    jobId: requestedJobId,
     inputPath: payload.inputPath,
     outputPath: payload.outputPath || "",
     overwrite: Boolean(payload.overwrite),
@@ -591,7 +676,9 @@ ipcMain.handle("converter:convert", async (_event, payload) => {
     hasDemucsUrl: Boolean(payload.demucsUrl),
     demucsModel: payload.demucsModel || "",
     demucsStems: Array.isArray(payload.demucsStems) ? payload.demucsStems : [],
-    hasRs1SongsPsarc: Boolean(payload.rs1SongsPsarc)
+    hasRs1SongsPsarc: Boolean(payload.rs1SongsPsarc),
+    songWorkers,
+    validationPolicy
   });
   const args = [payload.inputPath];
   if (payload.outputPath) args.push("-o", payload.outputPath);
@@ -602,6 +689,8 @@ ipcMain.handle("converter:convert", async (_event, payload) => {
   if (payload.demucsApiKey) args.push("--demucs-api-key", payload.demucsApiKey);
   if (payload.demucsModel) args.push("--demucs-model", payload.demucsModel);
   if (payload.rs1SongsPsarc) args.push("--rs1-songs-psarc", payload.rs1SongsPsarc);
+  args.push("--song-workers", String(songWorkers));
+  args.push("--validation-policy", validationPolicy);
   if (Array.isArray(payload.demucsStems) && payload.demucsStems.length) {
     args.push("--demucs-stems", payload.demucsStems.join(","));
   }
@@ -610,40 +699,150 @@ ipcMain.handle("converter:convert", async (_event, payload) => {
     temporaryPlan = createTemporaryJsonFile("feedforge-item-plan-", "plan.json", payload.outputPlan);
     args.push("--output-plan-file", temporaryPlan.filePath);
   }
-  let result;
+  const songErrors = [];
+  const conversionResults = [];
+  const streamedOutputPaths = [];
+  let tracked;
   try {
-    result = await runConverter(args);
+    tracked = await runTrackedConverter(event, { ...payload, jobId: requestedJobId }, args, {
+      admissionWeight: songWorkers,
+      onStderrLine: (line) => {
+        if (line.startsWith(CONVERSION_PROGRESS_PREFIX)) {
+          const progress = parseProtocolJson(line.slice(CONVERSION_PROGRESS_PREFIX.length));
+          if (progress) {
+            if (["succeeded", "succeeded_with_warnings"].includes(progress.status) && progress.outputPath) {
+              streamedOutputPaths.push(progress.outputPath);
+            }
+            safeSend(event.sender, "converter:conversionProgress", {
+              ...progress,
+              jobId: requestedJobId,
+              inputPath: String(payload.inputPath || "")
+            });
+          }
+          return;
+        }
+        if (line.startsWith(SONG_ERROR_PREFIX)) {
+          const failure = parseProtocolJson(line.slice(SONG_ERROR_PREFIX.length));
+          if (failure) songErrors.push(failure);
+          return;
+        }
+        if (line.startsWith(CONVERSION_RESULT_PREFIX)) {
+          const conversionResult = parseProtocolJson(line.slice(CONVERSION_RESULT_PREFIX.length));
+          if (conversionResult) conversionResults.push(conversionResult);
+        }
+      }
+    });
   } finally {
     if (temporaryPlan) removeTemporaryDirectory(temporaryPlan.directory);
   }
-  const outputPaths = [...result.stdout.matchAll(/^wrote\s+(.+)$/gim)].map((match) => match[1].trim()).filter(Boolean);
+  const { result, job: conversionJob, jobId } = tracked;
+  const outputPaths = uniqueStrings([
+    ...streamedOutputPaths,
+    ...conversionResults.map((entry) => entry.outputPath),
+    ...[...result.stdout.matchAll(/^wrote\s+(.+)$/gim)].map((match) => match[1])
+  ]);
+  const sanitizedConversionResults = conversionResults.map(sanitizeConversionResult);
+  const isMultiOutputConversion = outputPaths.length > 1;
   const validatedPaths = [...result.stdout.matchAll(/^validated\s+(.+)$/gim)].map((match) => match[1].trim()).filter(Boolean);
-  const warnings = [...`${result.stdout}\n${result.stderr}`.matchAll(/^warning:\s+(.+)$/gim)].map((match) => match[1].trim()).filter(Boolean);
+  const fallbackWarnings = [...`${result.stdout}\n${result.stderr}`.matchAll(/^warning:\s+(.+)$/gim)]
+    .map((match) => match[1]);
+  const structuredWarningMessages = uniqueStrings(
+    sanitizedConversionResults.flatMap((entry) => entry.warnings)
+  );
+  const structuredWarningSet = new Set(structuredWarningMessages);
+  const warnings = uniqueStrings([
+    ...(sanitizedConversionResults.length
+      ? sanitizedConversionResults.flatMap((entry) => entry.warnings.map(
+        (warning) => qualifyConversionDetail(entry.outputPath, warning, isMultiOutputConversion)
+      ))
+      : []),
+    ...fallbackWarnings.filter((warning) => !structuredWarningSet.has(String(warning || "").trim()))
+  ]);
+  const chartWarnings = uniqueStrings(
+    sanitizedConversionResults.flatMap((entry) => entry.chartWarnings.map(
+      (warning) => qualifyConversionDetail(entry.outputPath, warning, isMultiOutputConversion)
+    ))
+  );
+  const chartWarningCount = sanitizedConversionResults.reduce(
+    (total, entry) => total + Math.max(0, Number(entry.chartWarningCount) || 0),
+    0
+  );
+  const outputsWithChartWarnings = sanitizedConversionResults.filter(
+    (entry) => entry.convertedWithChartWarnings === true || Number(entry.chartWarningCount) > 0
+  ).length;
+  const convertedWithChartWarnings = outputsWithChartWarnings > 0 || chartWarnings.length > 0;
+  const strictValidationOk = sanitizedConversionResults.length
+    ? sanitizedConversionResults.every((entry) => entry.validationOk === true)
+    : result.code === 0 && validatedPaths.length === outputPaths.length && outputPaths.length > 0;
+  const publishable = sanitizedConversionResults.length
+    ? sanitizedConversionResults.every((entry) => entry.publishable !== false)
+    : result.code === 0;
   const outputMatch = outputPaths[0] || null;
   logDebug(result.code === 0 ? "converter.convert.ok" : "converter.convert.failed", {
+    jobId,
     inputPath: payload.inputPath,
     outputPath: outputMatch || payload.outputPath || "",
     outputCount: outputPaths.length,
     code: result.code,
+    validationPolicy,
+    strictValidationOk,
+    publishable,
+    convertedWithChartWarnings,
+    chartWarningCount,
+    outputsWithChartWarnings,
+    chartWarnings,
     warnings,
+    conversionResults: sanitizedConversionResults,
+    songErrors,
     stdoutTail: tail(result.stdout),
     stderrTail: tail(result.stderr),
     diagnostics: result.diagnostics
   });
   return {
     ok: result.code === 0,
+    partial: result.code !== 0 && outputPaths.length > 0,
+    cancelled: conversionJob.cancelled || result.diagnostics?.cancelled === true,
+    jobId,
     outputPath: outputMatch,
     outputPaths,
-    validation: { ok: result.code === 0 && validatedPaths.length === outputPaths.length && outputPaths.length > 0 },
+    validationPolicy,
+    validation: {
+      ok: strictValidationOk,
+      publishable,
+      convertedWithChartWarnings,
+      chartWarningCount,
+      chartWarnings
+    },
+    convertedWithChartWarnings,
+    chartWarningCount,
+    outputsWithChartWarnings,
+    chartWarnings,
     warnings,
+    conversionResults: sanitizedConversionResults,
+    songErrors,
     stdout: result.stdout,
     stderr: result.stderr,
     diagnostics: result.diagnostics,
-    error: result.code === 0 ? null : result.stderr || result.stdout || "Conversion failed"
+    error: result.code === 0
+      ? null
+      : conversionJob.cancelled
+        ? "Conversion was stopped."
+        : result.stderr || result.stdout || "Conversion failed"
   };
 });
 
-ipcMain.handle("converter:exportAudio", async (_event, payload) => {
+ipcMain.handle("converter:cancelConversions", async () => cancelActiveConversions());
+
+ipcMain.handle("converter:exportAudio", async (event, payload = {}) => {
+  const audioDependency = blockingAudioDecoderStatus(payload.inputPath);
+  if (audioDependency) {
+    return blockedAudioDependencyResult(
+      payload.inputPath,
+      audioDependency,
+      "exportAudio",
+      conversionJobId(payload)
+    );
+  }
   logDebug("converter.exportAudio.start", {
     inputPath: payload.inputPath,
     outputPath: payload.outputPath || "",
@@ -658,7 +857,9 @@ ipcMain.handle("converter:exportAudio", async (_event, payload) => {
   if (payload.outputLayout) args.push("--output-layout", payload.outputLayout);
   if (payload.sourceRoot) args.push("--source-root", payload.sourceRoot);
   if (payload.nameTemplate) args.push("--name-template", payload.nameTemplate);
-  const result = await runConverter(args);
+  const { result, job, jobId } = await runTrackedConverter(event, payload, args, {
+    admissionWeight: 1
+  });
   const outputPaths = [...result.stdout.matchAll(/^wrote\s+(.+)$/gim)].map((match) => match[1].trim()).filter(Boolean);
   const warnings = [...`${result.stdout}\n${result.stderr}`.matchAll(/^warning:\s+(.+)$/gim)].map((match) => match[1].trim()).filter(Boolean);
   const outputMatch = outputPaths[0] || null;
@@ -674,13 +875,19 @@ ipcMain.handle("converter:exportAudio", async (_event, payload) => {
   });
   return {
     ok: result.code === 0,
+    cancelled: job.cancelled || result.diagnostics?.cancelled === true,
+    jobId,
     outputPath: outputMatch,
     outputPaths,
     warnings,
     stdout: result.stdout,
     stderr: result.stderr,
     diagnostics: result.diagnostics,
-    error: result.code === 0 ? null : result.stderr || result.stdout || "Audio export failed"
+    error: result.code === 0
+      ? null
+      : job.cancelled
+        ? "Conversion was stopped."
+        : result.stderr || result.stdout || "Audio export failed"
   };
 });
 
@@ -744,6 +951,16 @@ ipcMain.handle("stemServer:freePort", async () => {
 });
 
 ipcMain.handle("app:version", async () => app.getVersion());
+
+ipcMain.handle("app:performanceProfile", async () => detectPerformanceProfile());
+
+ipcMain.handle("app:memoryStatus", async () => detectMemoryStatus());
+
+ipcMain.handle("app:audioDecoderStatus", async (_event, options = {}) => {
+  const status = getAudioDecoderStatus({ refresh: options.refresh === true });
+  logDebug("audioDecoder.status", audioDecoderLogDetails(status));
+  return status;
+});
 
 ipcMain.handle("app:debugLogInfo", async () => {
   return debugLogInfo();
@@ -1611,6 +1828,61 @@ function requestJson(url, timeoutMs) {
   });
 }
 
+function getAudioDecoderStatus({ refresh = false } = {}) {
+  return audioDecoderStatusCache.get({
+    appPath: app.getAppPath(),
+    resourcesPath: process.resourcesPath || "",
+    isPackaged: app.isPackaged,
+    platform: process.platform,
+    environment: process.env
+  }, { refresh });
+}
+
+function audioDecoderLogDetails(status) {
+  return {
+    ready: status?.ready === true,
+    available: status?.available === true,
+    source: status?.source || "",
+    version: status?.version || "",
+    executablePath: status?.executablePath || "",
+    toolsDirectory: status?.toolsDirectory || "",
+    error: status?.error || ""
+  };
+}
+
+function inputRequiresAudioDecoder(inputPath) {
+  return String(inputPath || "").trim().toLowerCase().endsWith(".psarc");
+}
+
+function blockingAudioDecoderStatus(inputPath) {
+  if (!inputRequiresAudioDecoder(inputPath)) return null;
+  const status = getAudioDecoderStatus();
+  return status.ready ? null : status;
+}
+
+function blockedAudioDependencyResult(inputPath, status, operation, jobId = "") {
+  const error = status?.message || "FeedForge could not verify its WEM audio decoder.";
+  logDebug(`converter.${operation}.audioPreflightBlocked`, {
+    jobId,
+    inputPath: String(inputPath || ""),
+    error,
+    audioDecoder: audioDecoderLogDetails(status)
+  });
+  return {
+    ok: false,
+    cancelled: false,
+    preflightFailed: true,
+    jobId,
+    outputPath: null,
+    outputPaths: [],
+    warnings: [],
+    stdout: "",
+    stderr: "",
+    diagnostics: { audioDecoder: audioDecoderLogDetails(status) },
+    error
+  };
+}
+
 function converterCommand() {
   const executable = process.platform === "win32" ? "psarc2feedpak.exe" : "psarc2feedpak";
   const packaged = path.join(process.resourcesPath || "", "bin", "psarc2feedpak", executable);
@@ -1669,15 +1941,248 @@ function removeTemporaryDirectory(directory) {
   }
 }
 
+function conversionJobId(payload = {}) {
+  const supplied = String(payload?.jobId || "").trim().slice(0, 200);
+  return supplied || `conversion-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function registerConversionJob(event, payload = {}) {
+  const jobId = conversionJobId(payload);
+  const sender = event?.sender;
+  const senderId = Number(sender?.id) || 0;
+  const registryKey = `${senderId}:${jobId}`;
+  if (!sender || sender.isDestroyed?.()) {
+    return { ok: false, jobId, error: "The FeedForge window is no longer available." };
+  }
+  if (activeConversionJobs.has(registryKey)) {
+    return { ok: false, jobId, error: `Conversion job ${jobId} is already running.` };
+  }
+
+  const job = {
+    registryKey,
+    jobId,
+    sender,
+    senderId,
+    child: null,
+    cancelled: false,
+    admissionController: new AbortController(),
+    inputPath: String(payload?.inputPath || ""),
+    cleanupTargets: conversionCleanupTargets(payload),
+    usesLocalStemServer: payload?.separateStems === true && isLocalStemUrl(payload?.demucsUrl)
+  };
+  job.onSenderDestroyed = () => {
+    job.cancelled = true;
+    job.admissionController.abort();
+    void terminateChildProcessTree(job.child)
+      .then(() => cleanupCancelledConversionArtifacts(job))
+      .then(() => stopOwnedStemServerForCancelledJobs([job]));
+  };
+  activeConversionJobs.set(registryKey, job);
+  sender.once("destroyed", job.onSenderDestroyed);
+  return { ok: true, jobId, job };
+}
+
+function conversionCleanupTargets(payload = {}) {
+  const values = [];
+  if (payload.outputPath) values.push(payload.outputPath);
+  const outputs = payload.outputPlan?.outputs;
+  if (Array.isArray(outputs)) {
+    for (const output of outputs) {
+      if (output?.path) values.push(output.path);
+    }
+  }
+  return uniqueStrings(values).filter((value) => path.extname(value).toLowerCase() === ".feedpak");
+}
+
+function isLocalStemUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return true;
+  try {
+    const parsed = new URL(raw);
+    return ["127.0.0.1", "localhost", "::1"].includes(parsed.hostname)
+      && Number(parsed.port || (parsed.protocol === "https:" ? 443 : 80)) === 7865;
+  } catch {
+    return false;
+  }
+}
+
+async function stopOwnedStemServerForCancelledJobs(jobs) {
+  if (!stemServerProcess || !(jobs || []).some((job) => job.usesLocalStemServer)) return;
+  const anotherStemJobIsRunning = [...activeConversionJobs.values()].some(
+    (job) => !job.cancelled && job.usesLocalStemServer
+  );
+  if (!anotherStemJobIsRunning) await stopStemServer();
+}
+
+function cleanupCancelledConversionArtifacts(job) {
+  let removed = 0;
+  for (const outputPath of job?.cleanupTargets || []) {
+    const normalizedOutput = path.resolve(outputPath);
+    const ownedByAnotherActiveJob = [...activeConversionJobs.values()].some(
+      (other) => other !== job
+        && !other.cancelled
+        && (other.cleanupTargets || []).some((target) => path.resolve(target) === normalizedOutput)
+    );
+    if (ownedByAnotherActiveJob) continue;
+    const parent = path.resolve(path.dirname(outputPath));
+    const outputName = path.basename(outputPath);
+    const workPrefix = `.${outputName}.work-`;
+    const partialPrefix = `.${outputName}.partial-`;
+    let entries;
+    try {
+      entries = fs.readdirSync(parent, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.name.startsWith(workPrefix) && !entry.name.startsWith(partialPrefix)) continue;
+      const candidate = path.resolve(parent, entry.name);
+      if (path.dirname(candidate) !== parent) continue;
+      try {
+        fs.rmSync(candidate, { recursive: entry.isDirectory(), force: true });
+        removed += 1;
+      } catch (error) {
+        logDebug("converter.cancelArtifactCleanupFailed", {
+          path: candidate,
+          error: errorToLog(error)
+        });
+      }
+    }
+  }
+  if (removed) {
+    logDebug("converter.cancelArtifactsRemoved", {
+      jobId: job?.jobId || "",
+      removed
+    });
+  }
+  return removed;
+}
+
+function releaseConversionJob(job) {
+  if (!job) return;
+  if (activeConversionJobs.get(job.registryKey) === job) {
+    activeConversionJobs.delete(job.registryKey);
+  }
+  if (!job.sender?.isDestroyed?.()) {
+    job.sender.removeListener("destroyed", job.onSenderDestroyed);
+  }
+}
+
+async function runTrackedConverter(event, payload, args, options = {}) {
+  const registration = registerConversionJob(event, payload);
+  if (!registration.ok) {
+    return {
+      jobId: registration.jobId,
+      job: { cancelled: false },
+      result: {
+        code: 1,
+        stdout: "",
+        stderr: registration.error,
+        diagnostics: { registrationFailed: true }
+      }
+    };
+  }
+
+  const { job, jobId } = registration;
+  const callerOnSpawn = options.onSpawn;
+  try {
+    const result = await runConverter(args, {
+      ...options,
+      processGroup: true,
+      admissionSignal: job.admissionController.signal,
+      onSpawn: (child) => {
+        job.child = child;
+        if (typeof callerOnSpawn === "function") callerOnSpawn(child);
+        if (job.cancelled) void terminateChildProcessTree(child);
+      }
+    });
+    return { jobId, job, result };
+  } finally {
+    releaseConversionJob(job);
+  }
+}
+
+function safeSend(webContents, channel, payload) {
+  try {
+    if (!webContents || webContents.isDestroyed()) return false;
+    webContents.send(channel, payload);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function uniqueStrings(values) {
+  return [...new Set((values || []).map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function sanitizeConversionResult(value) {
+  const entry = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const chartWarnings = uniqueStrings(Array.isArray(entry.chartWarnings) ? entry.chartWarnings : []);
+  const chartWarningCount = Math.max(0, Number(entry.chartWarningCount) || 0);
+  return {
+    outputPath: String(entry.outputPath || "").trim(),
+    validationOk: entry.validationOk === true ? true : entry.validationOk === false ? false : null,
+    publishable: entry.publishable !== false,
+    convertedWithChartWarnings: entry.convertedWithChartWarnings === true
+      || chartWarningCount > 0
+      || chartWarnings.length > 0,
+    chartWarningCount,
+    chartWarnings,
+    warnings: uniqueStrings(Array.isArray(entry.warnings) ? entry.warnings : [])
+  };
+}
+
+function qualifyConversionDetail(outputPath, detail, includeOutputPath) {
+  const message = String(detail || "").trim();
+  if (!message || !includeOutputPath) return message;
+  const outputLabel = String(outputPath || "").trim();
+  return outputLabel ? `${outputLabel}: ${message}` : message;
+}
+
+function normalizeValidationPolicy(value) {
+  return String(value || "").trim().toLowerCase() === "strict" ? "strict" : "safe";
+}
+
 function runConverter(args, options = {}) {
+  const {
+    admissionWeight = 1,
+    admissionSignal = null,
+    ...processOptions
+  } = options;
+  return converterProcessLimiter.run(
+    () => appQuitCleanupStarted
+      ? Promise.resolve({
+        code: 1,
+        stdout: "",
+        stderr: "FeedForge is shutting down.",
+        diagnostics: { cancelled: true, shuttingDown: true }
+      })
+      : runConverterProcess(args, processOptions),
+    { weight: admissionWeight, signal: admissionSignal }
+  ).catch((error) => {
+    if (error?.name !== "AbortError") throw error;
+    return {
+      code: 1,
+      stdout: "",
+      stderr: error.message,
+      diagnostics: { cancelled: true }
+    };
+  });
+}
+
+function runConverterProcess(args, options = {}) {
   const { command, prefix, cwd } = converterCommand();
+  const audioDecoder = getAudioDecoderStatus();
+  const childEnvironment = converterEnvironment(process.env, audioDecoder, process.platform);
   const diagnostics = {
     command,
     cwd,
     exists: fs.existsSync(command),
     packaged: app.isPackaged,
     resourcesPath: process.resourcesPath,
-    appPath: app.getAppPath()
+    appPath: app.getAppPath(),
+    audioDecoder: audioDecoderLogDetails(audioDecoder)
   };
   logDebug("converter.process.start", {
     command,
@@ -1687,27 +2192,34 @@ function runConverter(args, options = {}) {
   });
   return new Promise((resolve) => {
     const startedAt = Date.now();
+    const useProcessGroup = options.processGroup === true && process.platform !== "win32";
     const child = spawn(command, [...prefix, ...args], {
       cwd,
-      windowsHide: true
+      env: childEnvironment,
+      windowsHide: true,
+      detached: useProcessGroup
     });
+    child.feedforgeProcessGroup = useProcessGroup;
+    activeConverterChildren.add(child);
     if (typeof options.onSpawn === "function") options.onSpawn(child);
     let stdout = "";
     let stderr = "";
     let stderrLineBuffer = "";
     child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
     child.stderr.on("data", (chunk) => {
-      const text = chunk.toString();
-      stderr += text;
-      if (typeof options.onStderrLine !== "function") return;
-      stderrLineBuffer += text;
+      stderrLineBuffer += chunk.toString();
       const lines = stderrLineBuffer.split(/\r?\n/);
       stderrLineBuffer = lines.pop() || "";
-      for (const line of lines) options.onStderrLine(line);
+      for (const line of lines) {
+        if (typeof options.onStderrLine === "function") options.onStderrLine(line);
+        if (!isConverterProtocolLine(line)) stderr += `${line}\n`;
+      }
     });
     child.on("close", (code) => {
-      if (stderrLineBuffer && typeof options.onStderrLine === "function") {
-        options.onStderrLine(stderrLineBuffer);
+      activeConverterChildren.delete(child);
+      if (stderrLineBuffer) {
+        if (typeof options.onStderrLine === "function") options.onStderrLine(stderrLineBuffer);
+        if (!isConverterProtocolLine(stderrLineBuffer)) stderr += stderrLineBuffer;
         stderrLineBuffer = "";
       }
       logDebug("converter.process.close", {
@@ -1720,6 +2232,7 @@ function runConverter(args, options = {}) {
       resolve({ code, stdout, stderr, diagnostics });
     });
     child.on("error", (error) => {
+      activeConverterChildren.delete(child);
       logDebug("converter.process.error", {
         error: errorToLog(error),
         diagnostics
@@ -1738,19 +2251,123 @@ async function cancelActivePlanning() {
   const job = activePlanningJob;
   if (!job) return { ok: true, cancelled: false };
   job.cancelled = true;
+  job.admissionController?.abort();
   logDebug("converter.planConversions.cancelRequested", { pid: job.child?.pid || null });
   const stopped = await terminateChildProcessTree(job.child);
   return { ok: true, cancelled: true, stopped };
 }
 
+async function cancelPlanningForSender(senderId) {
+  const job = activePlanningJob;
+  if (!job || job.senderId !== Number(senderId)) {
+    return { ok: true, cancelled: false };
+  }
+  return cancelActivePlanning();
+}
+
+async function shutdownConverterProcesses() {
+  await Promise.allSettled([
+    cancelActivePlanning(),
+    cancelActiveConversions()
+  ]);
+  const remaining = [...activeConverterChildren];
+  if (remaining.length) {
+    await Promise.allSettled(remaining.map((child) => terminateChildProcessTree(child)));
+  }
+}
+
+async function cancelActiveConversions() {
+  const jobs = [...activeConversionJobs.values()];
+  if (!jobs.length) return { ok: true, cancelled: 0, stopped: 0 };
+  for (const job of jobs) {
+    job.cancelled = true;
+    job.admissionController?.abort();
+  }
+  const stopped = await Promise.all(
+    jobs.map((job) => terminateChildProcessTree(job.child))
+  );
+  for (const job of jobs) cleanupCancelledConversionArtifacts(job);
+  await stopOwnedStemServerForCancelledJobs(jobs);
+  logDebug("converter.cancelConversions", {
+    cancelled: jobs.length,
+    stopped: stopped.filter(Boolean).length
+  });
+  return {
+    ok: true,
+    cancelled: jobs.length,
+    stopped: stopped.filter(Boolean).length
+  };
+}
+
+async function cancelConversionJobsForSender(senderId) {
+  const normalizedSenderId = Number(senderId);
+  if (!normalizedSenderId) return { ok: true, cancelled: 0, stopped: 0 };
+  const jobs = [...activeConversionJobs.values()].filter(
+    (job) => job.senderId === normalizedSenderId
+  );
+  if (!jobs.length) return { ok: true, cancelled: 0, stopped: 0 };
+  for (const job of jobs) {
+    job.cancelled = true;
+    job.admissionController.abort();
+  }
+  const stopped = await Promise.all(jobs.map((job) => terminateChildProcessTree(job.child)));
+  for (const job of jobs) cleanupCancelledConversionArtifacts(job);
+  await stopOwnedStemServerForCancelledJobs(jobs);
+  logDebug("converter.senderGone", {
+    senderId: normalizedSenderId,
+    cancelled: jobs.length,
+    stopped: stopped.filter(Boolean).length
+  });
+  return {
+    ok: true,
+    cancelled: jobs.length,
+    stopped: stopped.filter(Boolean).length
+  };
+}
+
 function terminateChildProcessTree(child) {
   if (!child || child.exitCode !== null || child.killed) return Promise.resolve(false);
   if (process.platform !== "win32") {
-    try {
-      return Promise.resolve(child.kill("SIGTERM"));
-    } catch {
-      return Promise.resolve(false);
-    }
+    return new Promise((resolve) => {
+      let settled = false;
+      let forceTimer = null;
+      let finishTimer = null;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        if (forceTimer) clearTimeout(forceTimer);
+        if (finishTimer) clearTimeout(finishTimer);
+        child.removeListener("close", onClose);
+        resolve(value);
+      };
+      const onClose = () => finish(true);
+      child.once("close", onClose);
+
+      const signal = (name) => {
+        if (child.feedforgeProcessGroup) {
+          try {
+            process.kill(-child.pid, name);
+            return true;
+          } catch {
+            // Fall through to the direct child.
+          }
+        }
+        try {
+          return child.kill(name);
+        } catch {
+          return false;
+        }
+      };
+
+      if (!signal("SIGTERM")) {
+        finish(false);
+        return;
+      }
+      forceTimer = setTimeout(() => {
+        signal("SIGKILL");
+        finishTimer = setTimeout(() => finish(false), 1000);
+      }, 2500);
+    });
   }
   return new Promise((resolve) => {
     const killer = spawn("taskkill.exe", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true });
@@ -2180,8 +2797,29 @@ function parseJson(value) {
     return JSON.parse(value);
   } catch {
     const line = value.split(/\r?\n/).find((item) => item.trim().startsWith("{"));
-    return line ? JSON.parse(line) : null;
+    if (!line) return null;
+    try {
+      return JSON.parse(line);
+    } catch {
+      return null;
+    }
   }
+}
+
+function parseProtocolJson(value) {
+  try {
+    const parsed = JSON.parse(String(value || ""));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function isConverterProtocolLine(line) {
+  return line.startsWith(PLAN_PROGRESS_PREFIX)
+    || line.startsWith(CONVERSION_PROGRESS_PREFIX)
+    || line.startsWith(SONG_ERROR_PREFIX)
+    || line.startsWith(CONVERSION_RESULT_PREFIX);
 }
 
 function createInspectionFolder(inputPath) {

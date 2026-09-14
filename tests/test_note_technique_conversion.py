@@ -102,8 +102,101 @@ def test_sng_note_core_fields_and_bend_shape_map_without_losing_precision():
     }
 
 
+def test_sng_bend_points_are_emitted_in_chronological_order():
+    converted = converter._note_to_feedpak(
+        _note(
+            time=12.5,
+            bends=[
+                _bend(13.0, 2.0),
+                _bend(12.75, 1.5),
+                _bend(12.5, 0.0),
+                _bend(12.75, 0.5),
+            ],
+        )
+    )
+
+    assert converted["bnv"] == [
+        {"t": 0.0, "v": 0.0},
+        {"t": 0.25, "v": 1.5},
+        {"t": 0.25, "v": 0.5},
+        {"t": 0.5, "v": 2.0},
+    ]
+
+
+def test_sng_relative_bend_times_keep_their_relative_time_basis():
+    converted = converter._note_to_feedpak(
+        _note(
+            time=12.5,
+            bends=[
+                _bend(0.0, 0.0),
+                _bend(0.25, 1.0),
+            ],
+        )
+    )
+
+    assert converted["bnv"] == [
+        {"t": 0.0, "v": 0.0},
+        {"t": 0.25, "v": 1.0},
+    ]
+
+
+def test_early_note_relative_bend_curve_is_not_misread_as_absolute_time():
+    converted = converter._note_to_feedpak(
+        _note(
+            time=1.0,
+            bends=[
+                _bend(0.0, 0.0),
+                _bend(0.5, 1.0),
+                _bend(1.0, 2.0),
+            ],
+        )
+    )
+
+    assert converted["bnv"] == [
+        {"t": 0.0, "v": 0.0},
+        {"t": 0.5, "v": 1.0},
+        {"t": 1.0, "v": 2.0},
+    ]
+
+
 def _empty_chord_bends():
     return [_ns(bendValues=[], count=0) for _ in range(6)]
+
+
+def test_chord_bend_points_near_note_onset_use_one_absolute_time_basis():
+    bends = _empty_chord_bends()
+    bends[3] = _ns(
+        bendValues=[
+            _bend(315.4989929199219, 2.0),
+            _bend(315.54998779296875, 3.0),
+        ],
+        count=2,
+    )
+    chord_note = _ns(
+        mask=[0, 0, 0, 0, 0, 0],
+        slideTo=[-1, -1, -1, -1, -1, -1],
+        slideUnpitchTo=[-1, -1, -1, -1, -1, -1],
+        bends=bends,
+    )
+    song = _ns(
+        chordTemplates=[_ns(frets=[-1, -1, -1, 7, -1, -1])],
+        chordNotes=[chord_note],
+    )
+    chord = _ns(time=315.5, sustain=0.0, mask=0, chordNoteId=0)
+
+    converted = converter._chord_notes(song, chord, chord_id=0)
+
+    assert converted == [
+        {
+            "s": 3,
+            "f": 7,
+            "bn": 3.0,
+            "bnv": [
+                {"t": 0.0, "v": 2.0},
+                {"t": 0.049988, "v": 3.0},
+            ],
+        }
+    ]
 
 
 def test_explicit_chord_constituents_keep_per_string_fields_and_techniques():

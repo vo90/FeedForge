@@ -239,7 +239,7 @@ def test_conversion_keeps_unique_manifest_and_chart_names_in_sync(tmp_path, monk
             for stem in ("song_lead", "song_lead2", "song_lead3", "song_lead_bonus")
         }
     )
-    content["audio/windows/song.wem"] = b"wem-data"
+    content["audio/windows/song.ogg"] = b"OggS-test-audio"
 
     converter.convert_psarc(
         input_path,
@@ -287,7 +287,7 @@ def test_seven_string_name_transform_remains_manifest_consistent(tmp_path, monke
             }
         ).encode(),
         "songs/bin/generic/song_lead.sng": b"sng",
-        "audio/windows/song.wem": b"wem-data",
+        "audio/windows/song.ogg": b"OggS-test-audio",
     }
 
     converter.convert_psarc(

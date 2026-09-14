@@ -14,6 +14,7 @@ from .converter import (
     _extract_metadata,
     _find_sng_entries,
     _is_vocal_sidecar_for_key,
+    _parse_sng_with_xml_fallback,
     _playable_song_groups,
     _arrangement_event_count,
     _arrangement_note_count,
@@ -24,7 +25,6 @@ from .converter import (
     _template_to_feedpak,
 )
 from .psarc_format.psarc import PSARC
-from .psarc_format.sng import Song
 
 
 @dataclass(frozen=True)
@@ -111,15 +111,14 @@ def inspect_psarc(input_psarc: Path, *, cover_dir: Path | None = None) -> PsarcP
     used_ids: set[str] = set()
 
     for source_path, data in _find_sng_entries(content):
-        if not data:
-            warnings.append(
-                f"Skipped empty SNG entry {source_path}; the source archive contains no chart data for this arrangement."
-            )
-            continue
-        try:
-            song = Song.parse(data)
-        except Exception as exc:  # noqa: BLE001
-            warnings.append(f"Skipped unreadable SNG {source_path}: {exc}")
+        song, xml_recovery, skip_warning = _parse_sng_with_xml_fallback(
+            content,
+            source_path,
+            data,
+            metadata,
+        )
+        if song is None:
+            warnings.append(skip_warning or f"Skipped unreadable SNG {source_path}.")
             continue
 
         if getattr(song, "vocals", None):
@@ -151,6 +150,25 @@ def inspect_psarc(input_psarc: Path, *, cover_dir: Path | None = None) -> PsarcP
                 note_count=_arrangement_note_count(chart_counts),
             )
         )
+        if xml_recovery is not None:
+            warnings.append(
+                f"Recovered {_display_name(arr_id)} from embedded Rocksmith XML "
+                f"{xml_recovery.xml_path} because compiled SNG {source_path} "
+                f"{xml_recovery.reason}."
+            )
+            approximate_ids = tuple(
+                int(value)
+                for value in getattr(song, "approximate_chord_template_ids", ())
+            )
+            if approximate_ids:
+                ids = ", ".join(str(value) for value in approximate_ids)
+                warnings.append(
+                    f"Recovered {_display_name(arr_id)} includes "
+                    f"{len(approximate_ids)} conservative chord shape"
+                    f"{'s' if len(approximate_ids) != 1 else ''} "
+                    f"(source IDs {ids}). No extra notes were invented; these chords "
+                    "may contain fewer notes than the original and should be reviewed."
+                )
         tone_preview = _tone_preview(song, source_path, arr_id, _display_name(arr_id), metadata)
         if tone_preview is not None:
             tones.append(tone_preview)
