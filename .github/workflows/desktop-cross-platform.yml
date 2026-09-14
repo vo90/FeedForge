@@ -58,7 +58,8 @@ jobs:
 
       - name: Install macOS decoder libraries
         if: runner.os == 'macOS'
-        run: brew install ffmpeg libogg libvorbis mpg123
+        # The checksum-pinned r2117 decoder links the FFmpeg 8 library ABI.
+        run: brew install ffmpeg@8 libogg libvorbis mpg123
 
       - name: Bundle native WEM decoder
         shell: bash
@@ -90,6 +91,10 @@ jobs:
               tool.chmod(tool.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
           PY
 
+      - name: Prepare macOS decoder library paths
+        if: runner.os == 'macOS'
+        run: python tools/prepare_macos_decoder.py src/feedback_converter/tools/vgmstream-cli "$(brew --prefix ffmpeg@8)"
+
       - name: Test
         run: |
           node --check electron/main.cjs
@@ -120,6 +125,8 @@ jobs:
           test -n "$decoder"
           status=0
           output="$("$decoder" -h 2>&1)" || status=$?
+          printf '%s\n' "$output"
+          echo "Bundled decoder exit status: $status"
           test "$status" -lt 126
           grep -qi vgmstream <<<"$output"
 
