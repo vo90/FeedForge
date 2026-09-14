@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
+import multiprocessing
 import sys
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
@@ -11,14 +11,27 @@ from typing import Any
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+# A frozen Windows worker must be dispatched before importing the converter's
+# heavier modules or parsing normal CLI arguments.
+if __name__ == "__main__":
+    multiprocessing.freeze_support()
+
 from feedback_converter import __version__
 from feedback_converter.batch import _batch_output_path, convert_many, plan_conversion_request
-from feedback_converter.converter import convert_psarc, convert_psarc_songs, export_psarc_audio
+from feedback_converter.converter import (
+    MultiSongConversionError,
+    convert_psarc,
+    convert_psarc_songs,
+    export_psarc_audio,
+)
 from feedback_converter.feedpak import export_feedpak_audio, inspect_feedpak, update_feedpak
 from feedback_converter.feedpak_validator import validate_feedpak
 from feedback_converter.inspector import inspect_psarc
 
 PLAN_PROGRESS_PREFIX = "FEEDFORGE_PROGRESS "
+CONVERSION_PROGRESS_PREFIX = "FEEDFORGE_CONVERSION_PROGRESS "
+SONG_ERROR_PREFIX = "FEEDFORGE_SONG_ERROR "
+CONVERSION_RESULT_PREFIX = "FEEDFORGE_CONVERSION_RESULT "
 
 
 def _configure_stdio() -> None:
@@ -54,6 +67,14 @@ def _emit_planning_progress(payload: dict[str, object]) -> None:
     )
 
 
+def _emit_conversion_progress(payload: dict[str, object]) -> None:
+    _print(
+        f"{CONVERSION_PROGRESS_PREFIX}{json.dumps(payload, ensure_ascii=False, separators=(',', ':'))}",
+        stream=sys.stderr,
+        flush=True,
+    )
+
+
 def _jsonable(value: Any) -> Any:
     if is_dataclass(value):
         return _jsonable(asdict(value))
@@ -66,14 +87,72 @@ def _jsonable(value: Any) -> Any:
     return value
 
 
-def _cleanup_failed_workdir(input_path: Path, output_path: Path | None, *, archive: bool) -> None:
-    if not archive:
-        return
+def _print_conversion_results(results: list[Any]) -> None:
+    for result in results:
+        _print(f"wrote {result.output_path}")
+        if result.validation and result.validation.ok:
+            _print(f"validated {result.output_path}")
+        for warning in result.warnings:
+            _print(f"warning: {warning.message}", stream=sys.stderr)
+        _print(
+            f"{CONVERSION_RESULT_PREFIX}{json.dumps(_conversion_result_payload(result), ensure_ascii=False, separators=(',', ':'))}",
+            stream=sys.stderr,
+            flush=True,
+        )
 
-    target = output_path or input_path.with_suffix(".feedpak")
-    workdir = target.with_suffix(target.suffix + ".work")
-    if workdir.is_dir():
-        shutil.rmtree(workdir, ignore_errors=True)
+
+def _warning_messages(values: Any) -> list[str]:
+    if not isinstance(values, (list, tuple)):
+        return []
+    messages: list[str] = []
+    for value in values:
+        message = getattr(value, "message", value)
+        text = _safe_text(message).strip()
+        if text and text not in messages:
+            messages.append(text)
+    return messages
+
+
+def _conversion_result_payload(result: Any) -> dict[str, Any]:
+    validation = getattr(result, "validation", None)
+    warnings = _warning_messages(getattr(result, "warnings", []))
+    chart_warnings = _warning_messages(
+        getattr(result, "chart_warnings", None)
+        or getattr(validation, "chart_warnings", None)
+        or []
+    )
+    converted_with_chart_warnings = bool(
+        getattr(result, "converted_with_chart_warnings", False)
+        or getattr(validation, "converted_with_chart_warnings", False)
+        or chart_warnings
+    )
+    raw_chart_warning_count = (
+        getattr(result, "chart_warning_count", None)
+        if getattr(result, "chart_warning_count", None) is not None
+        else getattr(validation, "chart_warning_count", None)
+    )
+    try:
+        chart_warning_count = max(0, int(raw_chart_warning_count))
+    except (TypeError, ValueError):
+        chart_warning_count = len(chart_warnings)
+    if converted_with_chart_warnings:
+        chart_warning_count = max(1, chart_warning_count, len(chart_warnings))
+
+    return {
+        "outputPath": str(result.output_path),
+        "validationOk": bool(getattr(validation, "ok", False)) if validation is not None else None,
+        "publishable": bool(
+            getattr(
+                result,
+                "publishable",
+                getattr(validation, "publishable", True) if validation is not None else True,
+            )
+        ),
+        "convertedWithChartWarnings": converted_with_chart_warnings,
+        "chartWarningCount": chart_warning_count,
+        "chartWarnings": chart_warnings,
+        "warnings": warnings,
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -162,6 +241,21 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Optional songs.psarc path used to resolve audio for RS1 compatibility packs. "
             "By default FeedForge checks beside the compatibility archive, then its parent folder."
+        ),
+    )
+    parser.add_argument(
+        "--song-workers",
+        type=int,
+        default=1,
+        help="Internal workers used when one PSARC contains multiple songs.",
+    )
+    parser.add_argument(
+        "--validation-policy",
+        choices=("safe", "strict"),
+        default="strict",
+        help=(
+            "FeedPak publication policy. 'safe' publishes package-safe charts with compatibility warnings; "
+            "'strict' rejects any FeedPak validation error (default for command-line compatibility)."
         ),
     )
     parser.add_argument(
@@ -364,17 +458,25 @@ def main(argv: list[str] | None = None) -> int:
                 source_root=Path(args.source_root) if args.source_root else None,
                 name_template=args.name_template,
                 output_plan=output_plan,
+                workers=args.song_workers,
+                validation_policy=args.validation_policy,
+                progress_callback=_emit_conversion_progress,
             )
+        except MultiSongConversionError as exc:
+            _print_conversion_results(exc.results)
+            for failure in exc.failures:
+                _print(
+                    f"{SONG_ERROR_PREFIX}{json.dumps({'key': failure.key, 'outputPath': str(failure.output_path), 'error': failure.error}, ensure_ascii=False, separators=(',', ':'))}",
+                    stream=sys.stderr,
+                    flush=True,
+                )
+            _print(f"error: {exc}", stream=sys.stderr)
+            return 1
         except Exception as exc:  # noqa: BLE001
             _print(f"error: {exc}", stream=sys.stderr)
             return 1
 
-        for result in results:
-            _print(f"wrote {result.output_path}")
-            if result.validation and result.validation.ok:
-                _print(f"validated {result.output_path}")
-            for warning in result.warnings:
-                _print(f"warning: {warning.message}", stream=sys.stderr)
+        _print_conversion_results(results)
         return 0
 
     batch = convert_many(
@@ -394,16 +496,20 @@ def main(argv: list[str] | None = None) -> int:
         demucs_model=args.demucs_model,
         demucs_stems=_split_csv(args.demucs_stems),
         rs1_songs_psarc=Path(args.rs1_songs_psarc) if args.rs1_songs_psarc else None,
+        workers=args.song_workers,
+        validation_policy=args.validation_policy,
     )
     for item in batch.items:
-        if item.succeeded:
-            for result in item.results or ([item.result] if item.result is not None else []):
-                _print(f"wrote {result.output_path}")
-                if result.validation and result.validation.ok:
-                    _print(f"validated {result.output_path}")
-                for warning in result.warnings:
-                    _print(f"warning: {warning.message}", stream=sys.stderr)
-        else:
+        _print_conversion_results(
+            item.results or ([item.result] if item.result is not None else [])
+        )
+        for failure in item.song_failures:
+            _print(
+                f"{SONG_ERROR_PREFIX}{json.dumps({'key': failure.key, 'outputPath': str(failure.output_path), 'error': failure.error}, ensure_ascii=False, separators=(',', ':'))}",
+                stream=sys.stderr,
+                flush=True,
+            )
+        if item.error:
             _print(f"error converting {item.input_path}: {item.error}", stream=sys.stderr)
     return 0 if batch.ok else 1
 

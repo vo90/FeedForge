@@ -9,22 +9,28 @@ import shutil
 import struct
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
 import zipfile
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from PIL import Image
 import soundfile as sf
 import yaml
 
-from .feedpak_validator import FeedpakValidationResult, require_valid_feedpak
 from .bend_curves import normalize_sng_bend_curve
+from .feedpak_validator import (
+    FeedpakValidationError,
+    FeedpakValidationResult,
+    validate_feedpak,
+)
 from .output_naming import (
     arrangement_parts_code as naming_arrangement_parts_code,
     output_path as build_output_path,
@@ -35,10 +41,21 @@ from .output_naming import (
 )
 from .psarc_format.psarc import PSARC
 from .psarc_format.sng import Song
+from .psarc_content_index import PsarcContentIndex
+from .rocksmith_xml import (
+    RocksmithChordTemplateHint,
+    RocksmithXmlError,
+    parse_rocksmith_arrangement_xml,
+)
+from .validation_pipeline import FeedpakValidationPipeline
 
 FEEDPAK_VERSION = "1.14.0"
 PREVIEW_DURATION_SECONDS = 30.0
 PREVIEW_FADE_SECONDS = 1.0
+# Official RS1 manifest/XML pairs currently agree exactly to the millisecond.
+# Keep a small allowance for decimal/float serialization without accepting a
+# meaningfully different chart at a coincidentally matching archive path.
+XML_MANIFEST_DURATION_TOLERANCE_SECONDS = 0.01
 AUDIO_SUFFIXES = (".wem", ".ogg", ".wav", ".mp3", ".flac", ".opus")
 UINT32_NONE = 0xFFFFFFFF
 CHORD_MASK_ARPEGGIO = 0x1
@@ -77,10 +94,26 @@ GENERIC_AUTHOR_NAMES = {
     "unknown creator",
 }
 
+VALIDATION_POLICY_SAFE = "safe"
+VALIDATION_POLICY_STRICT = "strict"
+VALIDATION_POLICIES = frozenset({VALIDATION_POLICY_SAFE, VALIDATION_POLICY_STRICT})
+FEEDFORGE_TOOLS_DIR_ENV = "FEEDFORGE_TOOLS_DIR"
+FEEDFORGE_VGMSTREAM_VERIFIED_ENV = "FEEDFORGE_VGMSTREAM_VERIFIED"
+VGMSTREAM_TOOL_NAME = "vgmstream-cli"
+VGMSTREAM_VERIFY_TIMEOUT_SECONDS = 10
+
 
 @dataclass
 class ConversionWarning:
     message: str
+
+
+@dataclass(frozen=True)
+class XmlArrangementRecovery:
+    """Successful exact-sidecar recovery for one unusable compiled SNG."""
+
+    xml_path: str
+    reason: str
 
 
 @dataclass
@@ -90,6 +123,52 @@ class ConversionResult:
     manifest: dict[str, Any]
     warnings: list[ConversionWarning] = field(default_factory=list)
     validation: FeedpakValidationResult | None = None
+
+    @property
+    def chart_warnings(self) -> list[str]:
+        """Reviewed chart findings preserved in a safely published FeedPak."""
+
+        if self.validation is None:
+            return []
+        return list(self.validation.nonblocking_errors)
+
+    @property
+    def chart_warning_count(self) -> int:
+        return len(self.chart_warnings)
+
+    @property
+    def converted_with_chart_warnings(self) -> bool:
+        return self.chart_warning_count > 0
+
+
+@dataclass(frozen=True)
+class SongConversionFailure:
+    key: str
+    output_path: Path
+    error: str
+
+
+class MultiSongConversionError(RuntimeError):
+    """Report per-song failures without hiding FeedPaks that completed safely."""
+
+    def __init__(
+        self,
+        failures: list[SongConversionFailure],
+        results: list[ConversionResult],
+    ) -> None:
+        self.failures = failures
+        self.results = results
+        sample = "; ".join(f"{item.key}: {item.error}" for item in failures[:3])
+        if len(failures) > 3:
+            sample += f" (+{len(failures) - 3} more)"
+        super().__init__(
+            f"{len(failures)} song conversion{'' if len(failures) == 1 else 's'} failed"
+            + (f": {sample}" if sample else ".")
+        )
+
+
+class WemAudioConversionError(RuntimeError):
+    """Prevent publication when Rocksmith audio is not playable by FeedBack."""
 
 
 @dataclass
@@ -157,7 +236,7 @@ class PsarcPlanningData:
         }
 
 
-PSARC_PLANNING_CACHE_VERSION = 2
+PSARC_PLANNING_CACHE_VERSION = 4
 
 
 def psarc_planning_data_from_cache(
@@ -293,8 +372,13 @@ def convert_psarc_songs(
     source_root: Path | None = None,
     name_template: str = "{source}",
     output_plan: dict[str, Any] | None = None,
+    workers: int = 1,
+    validation_policy: str = VALIDATION_POLICY_SAFE,
+    progress_callback: Callable[[dict[str, object]], None] | None = None,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> list[ConversionResult]:
     """Convert a PSARC, splitting multi-song containers into one FeedPak per song."""
+    validation_policy = normalize_validation_policy(validation_policy)
     input_psarc = Path(input_psarc)
     if not input_psarc.is_file():
         raise FileNotFoundError(f"PSARC file not found: {input_psarc}")
@@ -317,10 +401,36 @@ def convert_psarc_songs(
         output_plan=output_plan,
         source_stat=final_stat,
     )
-    results: list[ConversionResult] = []
-    for (_key, song_content), target in zip(entries, targets, strict=True):
+
+    total = len(entries)
+    worker_count = _conversion_song_worker_count(
+        workers,
+        total=total,
+        separate_stems=separate_stems,
+    )
+    _report_song_progress(
+        progress_callback,
+        stage="converting",
+        completed=0,
+        failed=0,
+        total=total,
+        workers=worker_count,
+    )
+    use_validation_pipeline = worker_count > 1 and total > 1
+
+    def convert_entry(index: int) -> ConversionResult:
+        key, song_content = entries[index]
+        target = targets[index]
+        package_dir = (
+            _unique_archive_workdir(
+                target,
+                keep_workdir=keep_workdir if archive else False,
+            )
+        )
+        if cancel_check is not None and cancel_check():
+            raise RuntimeError("Conversion cancelled.")
         try:
-            result = convert_psarc(
+            return convert_psarc(
                 input_psarc,
                 target,
                 archive=archive,
@@ -334,12 +444,240 @@ def convert_psarc_songs(
                 demucs_model=demucs_model,
                 demucs_stems=demucs_stems,
                 _content=song_content,
+                _package_dir=package_dir,
+                _defer_finalization=use_validation_pipeline,
+                validation_policy=validation_policy,
             )
         except Exception:
-            _cleanup_output(target, archive=archive, keep_workdir=keep_workdir)
+            if not keep_workdir and package_dir.is_dir():
+                shutil.rmtree(package_dir, ignore_errors=True)
             raise
-        results.append(result)
+
+    ordered_results: list[ConversionResult | None] = [None] * total
+    failures: list[SongConversionFailure] = []
+    completed = 0
+    validation_pipeline = (
+        FeedpakValidationPipeline(
+            workers=min(2, worker_count),
+            cancel_check=cancel_check,
+        )
+        if use_validation_pipeline
+        else None
+    )
+    validation_song_indices: list[int] = []
+
+    def record_built_result(index: int, result: ConversionResult) -> None:
+        nonlocal completed
+        ordered_results[index] = result
+        if validation_pipeline is not None:
+            validation_song_indices.append(index)
+            _report_song_progress(
+                progress_callback,
+                stage="validating",
+                completed=completed,
+                failed=len(failures),
+                total=total,
+                workers=worker_count,
+                key=entries[index][0],
+                output_path=targets[index],
+                status="prepared",
+            )
+            return
+        completed += 1
+        _report_song_progress(
+            progress_callback,
+            stage="converting",
+            completed=completed,
+            failed=len(failures),
+            total=total,
+            workers=worker_count,
+            key=entries[index][0],
+            output_path=targets[index],
+            status=(
+                "succeeded_with_warnings"
+                if result.converted_with_chart_warnings
+                else "succeeded"
+            ),
+        )
+
+    def record_failure(index: int, exc: BaseException) -> None:
+        nonlocal completed
+        key = entries[index][0]
+        target = targets[index]
+        staged = ordered_results[index]
+        if staged is not None and not keep_workdir and staged.package_dir.is_dir():
+            shutil.rmtree(staged.package_dir, ignore_errors=True)
+        failures.append(
+            SongConversionFailure(key=key, output_path=target, error=str(exc))
+        )
+        ordered_results[index] = None
+        completed += 1
+        _report_song_progress(
+            progress_callback,
+            stage="converting",
+            completed=completed,
+            failed=len(failures),
+            total=total,
+            workers=worker_count,
+            key=key,
+            output_path=target,
+            status="failed",
+        )
+
+    try:
+        if worker_count == 1:
+            for index in range(total):
+                try:
+                    record_built_result(index, convert_entry(index))
+                except Exception as exc:  # noqa: BLE001
+                    if total == 1:
+                        raise
+                    record_failure(index, exc)
+        else:
+            with ThreadPoolExecutor(
+                max_workers=worker_count,
+                thread_name_prefix="feedforge-song",
+            ) as executor:
+                futures: dict[Future[ConversionResult], int] = {
+                    executor.submit(convert_entry, index): index
+                    for index in range(total)
+                }
+                for future in as_completed(futures):
+                    index = futures[future]
+                    try:
+                        record_built_result(index, future.result())
+                    except Exception as exc:  # noqa: BLE001
+                        record_failure(index, exc)
+
+        if validation_pipeline is not None:
+            # Conversion/audio workers have all left their executor before
+            # validators launch. This keeps build threads and validator
+            # processes inside the same granted global worker share.
+            for index in validation_song_indices:
+                staged = ordered_results[index]
+                if staged is not None:
+                    validation_pipeline.submit(staged.package_dir)
+            validation_results = validation_pipeline.finish()
+            for validation, index in zip(
+                validation_results,
+                validation_song_indices,
+                strict=True,
+            ):
+                staged = ordered_results[index]
+                if staged is None:
+                    continue
+                try:
+                    finalized = _finalize_staged_conversion(
+                        staged,
+                        validation.as_feedpak_result(),
+                        archive=archive,
+                        keep_workdir=keep_workdir,
+                        validation_policy=validation_policy,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    if not keep_workdir and staged.package_dir.is_dir():
+                        shutil.rmtree(staged.package_dir, ignore_errors=True)
+                    record_failure(index, exc)
+                else:
+                    ordered_results[index] = finalized
+                    completed += 1
+                    _report_song_progress(
+                        progress_callback,
+                        stage="validating",
+                        completed=completed,
+                        failed=len(failures),
+                        total=total,
+                        workers=worker_count,
+                        key=entries[index][0],
+                        output_path=targets[index],
+                        status=(
+                            "succeeded_with_warnings"
+                            if finalized.converted_with_chart_warnings
+                            else "succeeded"
+                        ),
+                    )
+    except BaseException:
+        if not keep_workdir:
+            for staged in ordered_results:
+                if staged is not None and staged.package_dir.is_dir():
+                    shutil.rmtree(staged.package_dir, ignore_errors=True)
+        raise
+    finally:
+        if validation_pipeline is not None:
+            validation_pipeline.close(cancel=True)
+
+    results = [result for result in ordered_results if result is not None]
+    _report_song_progress(
+        progress_callback,
+        stage="complete",
+        completed=completed,
+        failed=len(failures),
+        total=total,
+        workers=worker_count,
+    )
+    if failures:
+        target_order = {path: index for index, path in enumerate(targets)}
+        failures.sort(key=lambda item: target_order[item.output_path])
+        raise MultiSongConversionError(failures, results)
     return results
+
+
+def _conversion_song_worker_count(
+    value: object,
+    *,
+    total: int,
+    separate_stems: bool,
+) -> int:
+    try:
+        requested = int(value or 1)
+    except (TypeError, ValueError):
+        requested = 1
+    if separate_stems:
+        return 1
+    return min(max(1, requested), 32, max(1, total))
+
+
+def normalize_validation_policy(value: object) -> str:
+    """Normalize the public conversion policy or reject an unknown value."""
+
+    policy = str(value or VALIDATION_POLICY_SAFE).strip().lower()
+    if policy not in VALIDATION_POLICIES:
+        expected = ", ".join(sorted(VALIDATION_POLICIES))
+        raise ValueError(f"validation policy must be one of: {expected}")
+    return policy
+
+
+def _report_song_progress(
+    callback: Callable[[dict[str, object]], None] | None,
+    *,
+    stage: str,
+    completed: int,
+    failed: int,
+    total: int,
+    workers: int,
+    key: str = "",
+    output_path: Path | None = None,
+    status: str = "",
+) -> None:
+    if callback is None:
+        return
+    payload: dict[str, object] = {
+        "stage": stage,
+        "completed": completed,
+        "failed": failed,
+        "total": total,
+        "workers": workers,
+    }
+    if key:
+        payload["key"] = key
+    if output_path is not None:
+        payload["outputPath"] = str(output_path)
+    if status:
+        payload["status"] = status
+    try:
+        callback(payload)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _read_psarc_song_entries(
@@ -352,9 +690,6 @@ def _read_psarc_song_entries(
     with input_psarc.open("rb") as fh:
         parser = PSARC(crypto=True)
         content = parser.parse_metadata_stream(fh) if metadata_only else parser.parse_stream(fh)
-    # Output names only depend on the source package metadata. The potentially
-    # very large RS1 songs.psarc is loaded only for the actual conversion.
-    rs1_songs_content = _load_rs1_songs_content(input_psarc, content, rs1_songs_psarc) if include_rs1_audio else None
     playable_groups = _playable_song_groups(_song_groups(content))
     if metadata_only:
         if not playable_groups:
@@ -367,26 +702,156 @@ def _read_psarc_song_entries(
         return [
             (
                 key,
-                {
-                    path: data
-                    for path, data in _content_for_song_group(content, key, paths).items()
-                    if path.lower().endswith((".json", ".hsan"))
-                },
+                _metadata_content_for_song_group(content, key, paths),
             )
             for key, paths in sorted(playable_groups.items())
         ]
+
+    # Build the archive index once. Reusing it for every song avoids repeatedly
+    # walking hundreds of banks and, unlike the old byte scan, never mistakes
+    # compressed bank payload bytes for WEM references.
+    content_index = PsarcContentIndex(content)
+    # Output names only depend on the source package metadata. The potentially
+    # very large RS1 songs.psarc is loaded only for the actual conversion.
+    rs1_songs_content = (
+        _load_rs1_songs_content(
+            input_psarc,
+            content,
+            rs1_songs_psarc,
+            content_index=content_index,
+        )
+        if include_rs1_audio
+        else None
+    )
+    rs1_songs_index = PsarcContentIndex(rs1_songs_content) if rs1_songs_content else None
     if len(playable_groups) <= 1:
         if playable_groups:
             key, paths = next(iter(playable_groups.items()))
-            song_content = _content_for_song_group(content, key, paths, rs1_songs_content=rs1_songs_content)
+            song_content = _content_for_song_group(
+                content,
+                key,
+                paths,
+                content_index=content_index,
+                rs1_songs_content=rs1_songs_content,
+                rs1_songs_index=rs1_songs_index,
+            )
         else:
             key = input_psarc.stem
-            song_content = _content_with_rs1_audio(content, key, rs1_songs_content)
+            song_content = _content_with_rs1_audio(
+                content,
+                key,
+                rs1_songs_content,
+                content_index=content_index,
+                rs1_songs_index=rs1_songs_index,
+            )
         return [(key, song_content)]
     return [
-        (key, _content_for_song_group(content, key, paths, rs1_songs_content=rs1_songs_content))
+        (
+            key,
+            _content_for_song_group(
+                content,
+                key,
+                paths,
+                content_index=content_index,
+                rs1_songs_content=rs1_songs_content,
+                rs1_songs_index=rs1_songs_index,
+            ),
+        )
         for key, paths in sorted(playable_groups.items())
     ]
+
+
+def _metadata_content_for_song_group(
+    content: dict[str, bytes],
+    key: str,
+    paths: set[str],
+) -> dict[str, bytes]:
+    """Select metadata scoped to one song without scanning any audio index.
+
+    Multi-song HSAN/JSON files are aggregate indexes, not authoritative
+    manifests for whichever ``SongKey`` happens to occur first. Prefer the
+    archive's per-song manifests and use a key-filtered aggregate only when no
+    song-specific metadata exists.
+    """
+
+    normalized_key = _slug(key)
+    selected: dict[str, bytes] = {}
+
+    # ``paths`` already contains metadata that _song_groups proved belongs to
+    # this song. Check those files (and path-named sidecars) first so ordinary
+    # one-song/custom DLC packages do not repeatedly parse every manifest in a
+    # large archive.
+    for path, data in content.items():
+        if not path.lower().endswith((".json", ".hsan")):
+            continue
+        stem_key = _song_group_key_from_path(path)
+        if not (
+            path in paths
+            or stem_key == normalized_key
+            or _is_vocal_sidecar_for_key(stem_key, normalized_key)
+        ):
+            continue
+        manifest_keys = _song_keys_from_manifest(data)
+        if len(manifest_keys) > 1:
+            continue
+        if manifest_keys and manifest_keys[0] != normalized_key:
+            continue
+        if manifest_keys:
+            scoped = _scope_manifest_to_song_key(data, normalized_key)
+            if scoped is None:
+                raise ValueError(
+                    f"Metadata file {path} could not be safely scoped to song "
+                    f"{normalized_key}."
+                )
+            if not _manifest_json_semantically_equal(data, scoped):
+                data = scoped
+        selected[path] = data
+    if selected:
+        return selected
+
+    # Some archives provide no per-song JSON at all. Only in that fallback
+    # case, locate aggregate manifests and materialize a filtered view for the
+    # requested key. Never attach the unfiltered aggregate to a song group.
+    aggregate_paths: list[str] = []
+    aggregate_identity: dict[str, tuple[str, str]] = {}
+    for path, data in content.items():
+        if not path.lower().endswith((".json", ".hsan")):
+            continue
+        manifest_keys = _song_keys_from_manifest(data)
+        if len(manifest_keys) <= 1:
+            continue
+        aggregate_paths.append(path)
+        if normalized_key not in manifest_keys:
+            continue
+        scoped = _scope_manifest_to_song_key(data, normalized_key)
+        if scoped is None:
+            raise ValueError(
+                f"Shared metadata file {path} could not be scoped to song {normalized_key}."
+            )
+        scoped_identity = _extract_output_metadata({path: scoped})
+        for field in ("title", "artist", "album", "year"):
+            value = scoped_identity.get(field)
+            normalized_value = _normalized_metadata_identity_value(value)
+            if normalized_value is None:
+                continue
+            previous = aggregate_identity.get(field)
+            if previous is not None and previous[0] != normalized_value:
+                raise ValueError(
+                    f"Shared metadata files {previous[1]} and {path} conflict on "
+                    f"{field} for song {normalized_key}; refusing an ambiguous "
+                    "metadata fallback."
+                )
+            aggregate_identity[field] = (normalized_value, path)
+        selected[path] = scoped
+    if not selected and aggregate_paths:
+        names = ", ".join(aggregate_paths[:3])
+        if len(aggregate_paths) > 3:
+            names += f" (+{len(aggregate_paths) - 3} more)"
+        raise ValueError(
+            f"Shared metadata ({names}) has no exact SongKey match for song "
+            f"{normalized_key}; refusing an ambiguous metadata fallback."
+        )
+    return selected
 
 
 def _plan_loaded_song_outputs(
@@ -533,7 +998,10 @@ def _validated_planned_targets(
     for (key, song_content), planned in zip(entries, planned_outputs, strict=True):
         if not isinstance(planned, dict) or str(planned.get("key") or "") != key:
             raise ValueError(f"Song contents changed after output names were planned: {input_psarc}. Restart the conversion.")
-        metadata = _extract_metadata(song_content)
+        # The desktop plan contains only fields that can affect the output
+        # path. Re-running full conversion metadata extraction here needlessly
+        # walks tone/author payloads for every song in a large RS1 archive.
+        metadata = _extract_output_metadata(song_content)
         expected = {
             "artist": str(metadata.get("artist") or "Unknown Artist"),
             "title": str(metadata.get("title") or key or input_psarc.stem),
@@ -583,16 +1051,42 @@ def export_psarc_audio(
         raise FileNotFoundError(f"PSARC file not found: {input_psarc}")
     with input_psarc.open("rb") as fh:
         content = PSARC(crypto=True).parse_stream(fh)
-    rs1_songs_content = _load_rs1_songs_content(input_psarc, content, rs1_songs_psarc)
+    content_index = PsarcContentIndex(content)
+    rs1_songs_content = _load_rs1_songs_content(
+        input_psarc,
+        content,
+        rs1_songs_psarc,
+        content_index=content_index,
+    )
+    rs1_songs_index = PsarcContentIndex(rs1_songs_content) if rs1_songs_content else None
 
     groups = _playable_song_groups(_song_groups(content))
     if len(groups) <= 1:
         song_entries = [
-            (input_psarc.stem, _content_with_rs1_audio(content, input_psarc.stem, rs1_songs_content))
+            (
+                input_psarc.stem,
+                _content_with_rs1_audio(
+                    content,
+                    input_psarc.stem,
+                    rs1_songs_content,
+                    content_index=content_index,
+                    rs1_songs_index=rs1_songs_index,
+                ),
+            )
         ]
     else:
         song_entries = [
-            (key, _content_for_song_group(content, key, paths, rs1_songs_content=rs1_songs_content))
+            (
+                key,
+                _content_for_song_group(
+                    content,
+                    key,
+                    paths,
+                    content_index=content_index,
+                    rs1_songs_content=rs1_songs_content,
+                    rs1_songs_index=rs1_songs_index,
+                ),
+            )
             for key, paths in sorted(groups.items())
         ]
 
@@ -628,12 +1122,12 @@ def _unique_output_path(path: Path, reserved: set[Path], *, overwrite: bool) -> 
     return unique_output_path(path, reserved, overwrite=overwrite)
 
 
-def _cleanup_output(output: Path, *, archive: bool, keep_workdir: bool) -> None:
+def _unique_archive_workdir(output: Path, *, keep_workdir: bool) -> Path:
+    """Return a private staging path that cannot block a retry after a crash."""
+
     if keep_workdir:
-        return
-    target = output.with_suffix(output.suffix + ".work") if archive else output
-    if target.is_dir():
-        shutil.rmtree(target, ignore_errors=True)
+        return output.with_suffix(output.suffix + ".work")
+    return output.with_name(f".{output.name}.work-{uuid.uuid4().hex}")
 
 
 def convert_psarc(
@@ -650,8 +1144,12 @@ def convert_psarc(
     demucs_api_key: str | None = None,
     demucs_model: str | None = None,
     demucs_stems: list[str] | None = None,
+    validation_policy: str = VALIDATION_POLICY_SAFE,
     _content: dict[str, bytes] | None = None,
+    _package_dir: Path | None = None,
+    _defer_finalization: bool = False,
 ) -> ConversionResult:
+    validation_policy = normalize_validation_policy(validation_policy)
     input_psarc = Path(input_psarc)
     if not input_psarc.is_file():
         raise FileNotFoundError(f"PSARC file not found: {input_psarc}")
@@ -662,7 +1160,14 @@ def convert_psarc(
     if archive is None:
         archive = output.suffix.lower() == ".feedpak"
 
-    package_dir = output if not archive else output.with_suffix(output.suffix + ".work")
+    package_dir = (
+        Path(_package_dir)
+        if _package_dir is not None
+        else _unique_archive_workdir(
+            output,
+            keep_workdir=keep_workdir if archive else False,
+        )
+    )
     if package_dir.exists():
         if not overwrite:
             raise FileExistsError(f"Output already exists: {package_dir}")
@@ -670,10 +1175,13 @@ def convert_psarc(
             shutil.rmtree(package_dir)
         else:
             package_dir.unlink()
-    if archive and output.exists():
+    if output.exists():
         if not overwrite:
             raise FileExistsError(f"Output already exists: {output}")
-        output.unlink()
+        if archive and not output.is_file():
+            raise IsADirectoryError(f"FeedPak output path is not a file: {output}")
+        if not archive and not output.is_dir():
+            raise NotADirectoryError(f"FeedPak directory output path is not a directory: {output}")
 
     package_dir.mkdir(parents=True, exist_ok=True)
     (package_dir / "arrangements").mkdir()
@@ -692,16 +1200,22 @@ def convert_psarc(
         raise ValueError("No decrypted SNG arrangements found in PSARC.")
 
     arrangements: list[dict[str, Any]] = []
-    arrangement_timelines: list[tuple[str, dict[str, Any]]] = []
+    arrangement_timelines: list[tuple[str, str, str, dict[str, Any]]] = []
     rig_entries: dict[str, dict[str, Any]] = {}
     first_song: Any | None = None
     lyric_song: Any | None = None
     used_ids: set[str] = set()
     for path, data in sng_items:
-        try:
-            song = Song.parse(data)
-        except Exception as exc:  # noqa: BLE001
-            warnings.append(ConversionWarning(f"Skipped unreadable SNG {path}: {exc}"))
+        song, xml_recovery, skip_warning = _parse_sng_with_xml_fallback(
+            content,
+            path,
+            data,
+            metadata,
+        )
+        if song is None:
+            warnings.append(
+                ConversionWarning(skip_warning or f"Skipped unreadable SNG {path}.")
+            )
             continue
 
         if getattr(song, "vocals", None):
@@ -722,6 +1236,25 @@ def convert_psarc(
         cent_offset, cent_offset_warning = _cent_offset_for_arrangement(path, metadata)
         if cent_offset_warning:
             warnings.append(ConversionWarning(cent_offset_warning))
+        if xml_recovery is not None:
+            source_stem = Path(path.replace("\\", "/")).stem.lower()
+            manifest_offsets = (metadata.get("arrangement_cent_offsets") or {}).get(
+                source_stem,
+                [],
+            )
+            has_explicit_manifest_offset = any(
+                isinstance(item, (list, tuple))
+                and len(item) >= 1
+                and item[0] is True
+                for item in manifest_offsets
+            )
+            xml_cent_offset = getattr(song, "cent_offset", 0.0)
+            if (
+                not has_explicit_manifest_offset
+                and not isinstance(xml_cent_offset, bool)
+                and _finite_number(xml_cent_offset)
+            ):
+                cent_offset = _num(xml_cent_offset)
         try:
             arrangement = _song_to_arrangement(
                 song,
@@ -735,6 +1268,30 @@ def convert_psarc(
         except ValueError as exc:
             warnings.append(ConversionWarning(f"Skipped SNG {path}: {exc}"))
             continue
+        if xml_recovery is not None:
+            warnings.append(
+                ConversionWarning(
+                    f"Recovered {arrangement['name']} from embedded Rocksmith XML "
+                    f"{xml_recovery.xml_path} because compiled SNG {path} "
+                    f"{xml_recovery.reason}."
+                )
+            )
+            approximate_ids = tuple(
+                int(value)
+                for value in getattr(song, "approximate_chord_template_ids", ())
+            )
+            if approximate_ids:
+                ids = ", ".join(str(value) for value in approximate_ids)
+                warnings.append(
+                    ConversionWarning(
+                        f"Recovered {arrangement['name']} includes "
+                        f"{len(approximate_ids)} conservative chord shape"
+                        f"{'s' if len(approximate_ids) != 1 else ''} "
+                        f"(source IDs {ids}) because their exact generated templates "
+                        "were unavailable. No extra notes were invented; these chords "
+                        "may contain fewer notes than the original and should be reviewed."
+                    )
+                )
         if b_standard_to_7_string and _is_b_standard_six_string(arrangement.get("tuning")):
             arrangement = _b_standard_arrangement_to_seven_string(arrangement)
             warnings.append(
@@ -744,7 +1301,9 @@ def convert_psarc(
             )
         for rig in arrangement.pop("_rigs", []):
             rig_entries.setdefault(str(rig["id"]), rig)
-        arrangement_timelines.append((path, _song_to_timeline(song)))
+        arrangement_timelines.append(
+            (arr_id, str(arrangement["name"]), path, _song_to_timeline(song))
+        )
         arr_file = f"arrangements/{arr_id}.json"
         _write_json(package_dir / arr_file, arrangement)
         arrangements.append(
@@ -766,21 +1325,31 @@ def convert_psarc(
 
     timeline_path = None
     if first_song is not None:
-        timeline = arrangement_timelines[0][1]
-        mismatched_timelines = [
-            path
-            for path, candidate in arrangement_timelines[1:]
-            if candidate != timeline
+        _baseline_id, baseline_name, _baseline_path, timeline = arrangement_timelines[0]
+        mismatched_beats = [
+            item
+            for item in arrangement_timelines[1:]
+            if item[3]["beats"] != timeline["beats"]
         ]
-        if mismatched_timelines:
-            source_paths = [arrangement_timelines[0][0], *mismatched_timelines]
+        timelines_match = all(
+            candidate == timeline
+            for _arrangement_id_value, _name, _path, candidate in arrangement_timelines[1:]
+        )
+        if mismatched_beats:
             warnings.append(
                 ConversionWarning(
-                    "Omitted shared song timeline because playable arrangements "
-                    "disagree on beats or sections: " + ", ".join(source_paths)
+                    _beat_map_warning(
+                        baseline_name,
+                        timeline["beats"],
+                        mismatched_beats,
+                    )
                 )
             )
-        elif timeline["beats"] or timeline["sections"]:
+        # Sections are arrangement-authored in Rocksmith and commonly differ
+        # even when the song-wide beat grid is identical. The current FeedBack
+        # loader expects beats and sections together, so omit the optional
+        # sidecar silently until both streams agree.
+        if timelines_match and (timeline["beats"] or timeline["sections"]):
             timeline_path = "song_timeline.json"
             _write_json(package_dir / timeline_path, timeline)
 
@@ -889,23 +1458,78 @@ def convert_psarc(
 
     _write_manifest(package_dir / "manifest.yaml", manifest)
 
-    try:
-        validation = require_valid_feedpak(package_dir)
-    except Exception:
+    staged = ConversionResult(
+        output,
+        package_dir,
+        manifest,
+        warnings,
+        None,
+    )
+    if _defer_finalization:
+        return staged
+
+    validation = validate_feedpak(package_dir)
+    return _finalize_staged_conversion(
+        staged,
+        validation,
+        archive=archive,
+        keep_workdir=keep_workdir,
+        validation_policy=validation_policy,
+    )
+
+
+def _finalize_staged_conversion(
+    staged: ConversionResult,
+    validation: FeedpakValidationResult,
+    *,
+    archive: bool,
+    keep_workdir: bool,
+    validation_policy: str = VALIDATION_POLICY_SAFE,
+) -> ConversionResult:
+    """Attach validation and atomically publish one fully staged FeedPak."""
+
+    validation_policy = normalize_validation_policy(validation_policy)
+    can_publish = (
+        validation.ok
+        if validation_policy == VALIDATION_POLICY_STRICT
+        else validation.publishable
+    )
+    if not can_publish:
         if not keep_workdir:
-            shutil.rmtree(package_dir, ignore_errors=True)
-        raise
+            shutil.rmtree(staged.package_dir, ignore_errors=True)
+        raise FeedpakValidationError(validation)
+    for issue in validation.nonblocking_errors:
+        staged.warnings.append(
+            ConversionWarning(f"Chart compatibility warning (data preserved): {issue}")
+        )
     for warning in validation.warnings:
-        warnings.append(ConversionWarning(f"FeedPak spec validation warning: {warning}"))
-
-    final_output = package_dir
+        staged.warnings.append(
+            ConversionWarning(f"FeedPak spec validation warning: {warning}")
+        )
+    staged.validation = validation
     if archive:
-        _zip_dir(package_dir, output)
-        final_output = output
+        _commit_zip_dir(staged.package_dir, staged.output_path)
         if not keep_workdir:
-            shutil.rmtree(package_dir)
-
-    return ConversionResult(final_output, package_dir, manifest, warnings, validation)
+            try:
+                shutil.rmtree(staged.package_dir)
+            except OSError as exc:
+                staged.warnings.append(
+                    ConversionWarning(
+                        "FeedPak was created, but its temporary work folder could not be removed: "
+                        f"{exc}"
+                    )
+                )
+    else:
+        retained_backup = _commit_directory(staged.package_dir, staged.output_path)
+        staged.package_dir = staged.output_path
+        if retained_backup is not None:
+            staged.warnings.append(
+                ConversionWarning(
+                    "FeedPak directory was created, but the previous output backup "
+                    f"could not be removed: {retained_backup}"
+                )
+            )
+    return staged
 
 
 def _find_sng_entries(content: dict[str, bytes]) -> list[tuple[str, bytes]]:
@@ -921,6 +1545,10 @@ ARRANGEMENT_SUFFIX_RE = re.compile(
     r"_(?:lead|lead\d+|rhythm|rhythm\d+|combo|combo\d+|bass|bass\d+|vocals?|showlights)$",
     re.IGNORECASE,
 )
+PLAYABLE_ARRANGEMENT_SUFFIX_RE = re.compile(
+    r"_(lead|rhythm|combo|bass)(?:\d+)?$",
+    re.IGNORECASE,
+)
 
 
 def _song_groups(content: dict[str, bytes]) -> dict[str, set[str]]:
@@ -928,7 +1556,13 @@ def _song_groups(content: dict[str, bytes]) -> dict[str, set[str]]:
     for path, data in content.items():
         key = ""
         if path.lower().endswith((".json", ".hsan")):
-            key = _song_key_from_manifest(data) or _song_group_key_from_path(path)
+            manifest_keys = _song_keys_from_manifest(data)
+            if len(manifest_keys) > 1:
+                # This is an archive-wide aggregate. Per-song selection may
+                # use a filtered view as a fallback, but the whole file must
+                # never be owned by the first key it contains.
+                continue
+            key = (manifest_keys[0] if manifest_keys else "") or _song_group_key_from_path(path)
         elif path.lower().endswith(".sng"):
             key = _song_group_key_from_path(path)
         if key:
@@ -946,15 +1580,206 @@ def _playable_song_groups(groups: dict[str, set[str]]) -> dict[str, set[str]]:
 
 
 def _song_key_from_manifest(data: bytes) -> str:
+    keys = _song_keys_from_manifest(data)
+    return keys[0] if len(keys) == 1 else ""
+
+
+def _song_keys_from_manifest(data: bytes) -> tuple[str, ...]:
     try:
         obj = json.loads(_decode_package_text(data))
     except Exception:  # noqa: BLE001
-        return ""
+        return ()
+    return _song_keys_from_manifest_object(obj)
+
+
+def _song_keys_from_manifest_object(obj: Any) -> tuple[str, ...]:
+    keys: list[str] = []
+    seen: set[str] = set()
     for item in _walk_dicts(obj):
-        value = item.get("SongKey") or item.get("DLCKey")
-        if value not in (None, ""):
-            return _slug(str(value))
-    return ""
+        key = _manifest_node_key(item).identity
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        keys.append(key)
+    return tuple(keys)
+
+
+@dataclass(frozen=True)
+class _ManifestNodeKey:
+    identity: str = ""
+    package_scope: str = ""
+
+
+def _manifest_node_key(item: dict[str, Any]) -> _ManifestNodeKey:
+    """Resolve one record's song identity using Rocksmith's key semantics.
+
+    When both fields exist, ``SongKey`` names the song while ``DLCKey`` names
+    the containing package (for example ``RisingSun`` versus
+    ``RS1CompatibilityDisc``). A DLCKey is a song fallback only on a record
+    that has no SongKey. This keeps the distinct co-located values explicit
+    while ensuring a package key can never own or scope that song record.
+    """
+
+    song_key = _normalized_manifest_key(item.get("SongKey"))
+    dlc_key = _normalized_manifest_key(item.get("DLCKey"))
+    if song_key:
+        return _ManifestNodeKey(
+            identity=song_key,
+            package_scope=dlc_key if dlc_key != song_key else "",
+        )
+    return _ManifestNodeKey(identity=dlc_key)
+
+
+def _normalized_manifest_key(value: Any) -> str:
+    return "" if value in (None, "") else _slug(str(value))
+
+
+SONG_IDENTITY_METADATA_KEYS = frozenset(
+    {
+        "songname",
+        "songtitle",
+        "title",
+        "artistname",
+        "songartist",
+        "artist",
+        "albumname",
+        "album",
+        "songyear",
+        "year",
+        "songlength",
+        "songlengthseconds",
+        "duration",
+        "arrangementname",
+        "arrangementtype",
+        "songxml",
+        "persistentid",
+        "masterid",
+        "masterid_rdv",
+    }
+)
+
+
+def _has_unkeyed_song_identity(item: dict[str, Any]) -> bool:
+    return any(
+        str(field).lower() in SONG_IDENTITY_METADATA_KEYS and value not in (None, "")
+        for field, value in item.items()
+    )
+
+
+def _normalized_metadata_identity_value(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    return " ".join(str(value).split()).casefold()
+
+
+def _manifest_json_semantically_equal(left: bytes, right: bytes) -> bool:
+    try:
+        return json.loads(_decode_package_text(left)) == json.loads(
+            _decode_package_text(right)
+        )
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _scope_manifest_to_song_key(data: bytes, key: str) -> bytes | None:
+    """Return a JSON payload containing only records for ``key``.
+
+    The recursive filter supports the Rocksmith HSAN ``Entries`` map while
+    remaining safe for other JSON container shapes. Branches with an explicit
+    foreign song key are removed; unkeyed container metadata is preserved.
+    """
+
+    try:
+        obj = json.loads(_decode_package_text(data))
+    except Exception:  # noqa: BLE001
+        return None
+    keys = _song_keys_from_manifest_object(obj)
+    normalized_key = _slug(key)
+    if normalized_key not in keys:
+        return None
+
+    scoped, contained_keys, matched, included = _scope_manifest_value(
+        obj,
+        normalized_key,
+    )
+    if not included or not contained_keys or not matched:
+        return None
+    return json.dumps(
+        scoped,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _scope_manifest_value(
+    value: Any,
+    key: str,
+    *,
+    inside_matched_branch: bool = False,
+) -> tuple[Any, bool, bool, bool]:
+    """Filter one parsed manifest node.
+
+    Returns ``(value, contained_explicit_keys, matched_requested_key, include)``.
+    """
+
+    if isinstance(value, dict):
+        direct_key = _manifest_node_key(value).identity
+        if direct_key and direct_key != key:
+            return None, True, False, False
+
+        matched_here = direct_key == key
+        inside_match = inside_matched_branch or matched_here
+        if not direct_key and not inside_match and _has_unkeyed_song_identity(value):
+            # This is record-like metadata with no safe owner. Keeping it would
+            # let its title/artist override the exact-key record by JSON order.
+            return None, False, False, False
+
+        output: dict[str, Any] = {}
+        contained_keys = bool(direct_key)
+        matched = matched_here
+        for child_key, child in value.items():
+            (
+                scoped_child,
+                child_contains_keys,
+                child_matched,
+                child_included,
+            ) = _scope_manifest_value(
+                child,
+                key,
+                inside_matched_branch=inside_match,
+            )
+            contained_keys = contained_keys or child_contains_keys
+            matched = matched or child_matched
+            if child_included and (not child_contains_keys or child_matched):
+                output[child_key] = scoped_child
+        if contained_keys and not matched:
+            return None, True, False, False
+        return output, contained_keys, matched, True
+
+    if isinstance(value, list):
+        output_list: list[Any] = []
+        contained_keys = False
+        matched = False
+        for child in value:
+            (
+                scoped_child,
+                child_contains_keys,
+                child_matched,
+                child_included,
+            ) = _scope_manifest_value(
+                child,
+                key,
+                inside_matched_branch=inside_matched_branch,
+            )
+            contained_keys = contained_keys or child_contains_keys
+            matched = matched or child_matched
+            if child_included and (not child_contains_keys or child_matched):
+                output_list.append(scoped_child)
+        if contained_keys and not matched:
+            return None, True, False, False
+        return output_list, contained_keys, matched, True
+
+    return value, False, False, True
 
 
 def _song_group_key_from_path(path: str) -> str:
@@ -967,38 +1792,335 @@ def _is_playable_sng_path(path: str) -> bool:
     return bool(re.search(r"_(?:lead\d*|rhythm\d*|combo\d*|bass\d*)$", stem))
 
 
+def _parse_sng_with_xml_fallback(
+    content: dict[str, bytes],
+    source_path: str,
+    data: bytes,
+    metadata: dict[str, Any],
+) -> tuple[Any | None, XmlArrangementRecovery | None, str | None]:
+    """Parse an SNG, recovering only from its exact embedded XML sidecar.
+
+    The compiled SNG always wins when it is playable.  XML recovery is limited
+    to playable guitar/bass paths whose SNG is empty, unreadable, or contains
+    no difficulty levels.  The third return value is a complete skip warning.
+    """
+
+    playable_path = _is_playable_sng_path(source_path)
+    if not data:
+        problem = f"empty SNG {source_path}"
+        recovery_reason = "was empty"
+    else:
+        try:
+            song = Song.parse(data)
+        except Exception as exc:  # noqa: BLE001
+            problem = f"unreadable SNG {source_path}: {exc}"
+            recovery_reason = "was unreadable"
+        else:
+            if not playable_path or bool(getattr(song, "levels", None)):
+                return song, None, None
+            problem = f"playable SNG with no difficulty levels: {source_path}"
+            recovery_reason = "had no difficulty levels"
+
+    if not playable_path:
+        return None, None, f"Skipped {problem}."
+
+    try:
+        xml_path, xml_data = _exact_xml_sidecar_for_sng(content, source_path)
+        arrangement_kind = _source_arrangement_kind(source_path)
+        manifest_identity = _manifest_identity_for_xml_fallback(
+            source_path,
+            metadata,
+        )
+        chord_hints = _compiled_chord_template_hints_for_arrangement(
+            source_path,
+            metadata,
+        )
+        song = parse_rocksmith_arrangement_xml(
+            xml_data,
+            source_path=xml_path,
+            expected_song_key=manifest_identity["song_key"],
+            expected_arrangement=arrangement_kind,
+            allowed_xml_arrangements=_allowed_xml_arrangement_kinds(
+                manifest_identity
+            ),
+            compiled_chord_templates=chord_hints,
+        )
+        _validate_xml_fallback_manifest_identity(
+            song,
+            source_path=source_path,
+            manifest_identity=manifest_identity,
+        )
+    except (RocksmithXmlError, ValueError) as exc:
+        return (
+            None,
+            None,
+            f"Skipped {problem}. Exact embedded Rocksmith XML recovery failed: {exc}",
+        )
+
+    return (
+        song,
+        XmlArrangementRecovery(xml_path=xml_path, reason=recovery_reason),
+        None,
+    )
+
+
+def _exact_xml_sidecar_for_sng(
+    content: dict[str, bytes],
+    source_path: str,
+) -> tuple[str, bytes]:
+    normalized_source = source_path.replace("\\", "/").lower()
+    marker = "/bin/"
+    if marker not in normalized_source:
+        raise RocksmithXmlError(
+            f"SNG path {source_path!r} does not have a Rocksmith /bin/ location."
+        )
+    songs_root = normalized_source.split(marker, 1)[0]
+    stem = Path(normalized_source).stem
+    expected = f"{songs_root}/arr/{stem}.xml"
+    matches = [
+        (path, data)
+        for path, data in content.items()
+        if path.replace("\\", "/").lower() == expected
+    ]
+    if not matches:
+        raise RocksmithXmlError(f"No exact XML sidecar {expected!r} exists.")
+    if len(matches) != 1:
+        raise RocksmithXmlError(
+            f"More than one archive entry matches exact XML sidecar {expected!r}."
+        )
+    path, data = matches[0]
+    if not data:
+        raise RocksmithXmlError(f"Exact XML sidecar {path!r} is empty.")
+    return path, data
+
+
+def _source_arrangement_kind(source_path: str) -> str:
+    stem = Path(source_path.replace("\\", "/")).stem
+    match = PLAYABLE_ARRANGEMENT_SUFFIX_RE.search(stem)
+    if match is None:
+        raise RocksmithXmlError(
+            f"SNG path {source_path!r} does not identify a playable arrangement."
+        )
+    return match.group(1).lower()
+
+
+def _manifest_identity_for_xml_fallback(
+    source_path: str,
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    """Select one unambiguous manifest identity for an exact SongXml stem."""
+
+    source_stem = Path(source_path.replace("\\", "/")).stem.lower()
+    raw_records = (metadata.get("arrangement_identity_records") or {}).get(
+        source_stem,
+        [],
+    )
+    if not isinstance(raw_records, list) or not raw_records:
+        raise RocksmithXmlError(
+            f"No exact SongXml manifest record exists for {source_path}."
+        )
+
+    candidates: list[dict[str, Any]] = []
+    for raw_record in raw_records:
+        if not isinstance(raw_record, dict):
+            raise RocksmithXmlError(
+                f"Exact SongXml manifest record for {source_path} is not an object."
+            )
+        candidate = _normalize_xml_fallback_manifest_identity(
+            raw_record,
+            source_path=source_path,
+        )
+        if candidate not in candidates:
+            candidates.append(candidate)
+
+    if len(candidates) != 1:
+        raise RocksmithXmlError(
+            f"Manifest contains ambiguous exact SongXml identities for {source_path}."
+        )
+
+    candidate = candidates[0]
+    source_song_key = _song_group_key_from_path(source_path)
+    if candidate["song_key_id"] != _xml_identity_token(source_song_key):
+        raise RocksmithXmlError(
+            "SongKey mismatch: exact SongXml manifest record for "
+            f"{source_path} contains {candidate['song_key']!r}."
+        )
+    source_arrangement = _source_arrangement_kind(source_path)
+    if candidate["arrangement_kind"] != source_arrangement:
+        raise RocksmithXmlError(
+            "Arrangement mismatch: exact SongXml manifest record for "
+            f"{source_path} contains {candidate['arrangement_kind']!r}."
+        )
+    return candidate
+
+
+def _normalize_xml_fallback_manifest_identity(
+    record: dict[str, Any],
+    *,
+    source_path: str,
+) -> dict[str, Any]:
+    song_key = str(record.get("song_key") or "").strip()
+    title = str(record.get("title") or "").strip()
+    artist = str(record.get("artist") or "").strip()
+    arrangement_kind = str(record.get("arrangement_kind") or "").strip().lower()
+    route_kind = str(record.get("route_kind") or "").strip().lower()
+    duration_raw = record.get("duration")
+    duration = float(duration_raw) if _finite_number(duration_raw) else 0.0
+
+    missing = []
+    if not _xml_identity_token(song_key):
+        missing.append("SongKey")
+    if not _xml_identity_token(title):
+        missing.append("title")
+    if not _xml_identity_token(artist):
+        missing.append("artist")
+    if arrangement_kind not in {"lead", "rhythm", "combo", "bass"}:
+        missing.append("arrangement kind")
+    if duration <= 0:
+        missing.append("positive duration")
+    if missing:
+        raise RocksmithXmlError(
+            f"Exact SongXml manifest record for {source_path} is missing a valid "
+            + ", ".join(missing)
+            + "."
+        )
+
+    return {
+        "song_key": song_key,
+        "song_key_id": _xml_identity_token(song_key),
+        "title": title,
+        "title_id": _xml_identity_token(title),
+        "artist": artist,
+        "artist_id": _xml_identity_token(artist),
+        "arrangement_kind": arrangement_kind,
+        "route_kind": (
+            route_kind if route_kind in {"lead", "rhythm", "bass"} else ""
+        ),
+        "duration": duration,
+    }
+
+
+def _validate_xml_fallback_manifest_identity(
+    song: Any,
+    *,
+    source_path: str,
+    manifest_identity: dict[str, Any],
+) -> None:
+    xml_title = str(getattr(song, "title", "") or "").strip()
+    if _xml_identity_token(xml_title) != manifest_identity["title_id"]:
+        raise RocksmithXmlError(
+            f"Title mismatch for {source_path}: manifest contains "
+            f"{manifest_identity['title']!r}, XML contains {xml_title!r}."
+        )
+
+    xml_artist = str(getattr(song, "artist", "") or "").strip()
+    if _xml_identity_token(xml_artist) != manifest_identity["artist_id"]:
+        raise RocksmithXmlError(
+            f"Artist mismatch for {source_path}: manifest contains "
+            f"{manifest_identity['artist']!r}, XML contains {xml_artist!r}."
+        )
+
+    xml_arrangement = _canonical_manifest_arrangement_kind(
+        getattr(song, "arrangement", "")
+    )
+    allowed_arrangements = _allowed_xml_arrangement_kinds(manifest_identity)
+    if xml_arrangement not in allowed_arrangements:
+        raise RocksmithXmlError(
+            f"Arrangement mismatch for {source_path}: exact manifest identity "
+            f"allows {sorted(allowed_arrangements)!r}, XML contains "
+            f"{getattr(song, 'arrangement', '')!r}."
+        )
+
+    xml_duration = getattr(getattr(song, "metadata", None), "songLength", None)
+    if not _finite_number(xml_duration) or float(xml_duration) <= 0:
+        raise RocksmithXmlError(
+            f"Rocksmith XML for {source_path} has no valid positive duration."
+        )
+    delta = abs(float(xml_duration) - manifest_identity["duration"])
+    if delta > XML_MANIFEST_DURATION_TOLERANCE_SECONDS + 1e-9:
+        raise RocksmithXmlError(
+            f"Duration mismatch for {source_path}: manifest contains "
+            f"{manifest_identity['duration']:.6f}s, XML contains "
+            f"{float(xml_duration):.6f}s (allowed difference "
+            f"{XML_MANIFEST_DURATION_TOLERANCE_SECONDS:.3f}s)."
+        )
+
+
+def _xml_identity_token(value: Any) -> str:
+    """Normalize human/package identity while ignoring case and punctuation."""
+
+    return "".join(
+        character
+        for character in str(value or "").casefold()
+        if character.isalnum()
+    )
+
+
+def _allowed_xml_arrangement_kinds(
+    manifest_identity: dict[str, Any],
+) -> set[str]:
+    """Return narrowly scoped Rocksmith 1 XML label compatibility aliases."""
+
+    source_kind = str(manifest_identity.get("arrangement_kind") or "")
+    route_kind = str(manifest_identity.get("route_kind") or "")
+    allowed = {source_kind}
+    if source_kind in {"lead", "rhythm", "combo"} and route_kind in {
+        "lead",
+        "rhythm",
+    }:
+        # RS1 manifests identify the archive slot as Combo/Lead while some
+        # authored XML uses the actual playable route label instead.
+        allowed.add(route_kind)
+    if source_kind == "lead" and route_kind == "lead":
+        # Two official RS1 alternative Lead slots retain their original Combo
+        # XML label. Identity is still independently bound by SongKey, path,
+        # title, artist, and duration.
+        allowed.add("combo")
+    return {kind for kind in allowed if kind}
+
+
 def _content_for_song_group(
     content: dict[str, bytes],
     key: str,
     paths: set[str],
     *,
+    content_index: PsarcContentIndex | None = None,
     rs1_songs_content: dict[str, bytes] | None = None,
+    rs1_songs_index: PsarcContentIndex | None = None,
 ) -> dict[str, bytes]:
     key = key.lower()
+    content_index = content_index or PsarcContentIndex(content)
+    if rs1_songs_content is not None:
+        rs1_songs_index = rs1_songs_index or PsarcContentIndex(rs1_songs_content)
     # ``paths`` is a set. Iterating it made the order of manifests depend on
     # Python's per-process hash seed, which could make planning and conversion
     # choose different values when arrangements contain conflicting metadata.
     # Preserve the PSARC/archive order from ``content`` instead.
-    selected = {path: data for path, data in content.items() if path in paths}
+    selected = {
+        path: data
+        for path, data in content.items()
+        if path in paths and not path.lower().endswith((".json", ".hsan"))
+    }
+    selected.update(_metadata_content_for_song_group(content, key, paths))
 
     for path, data in content.items():
         low = path.replace("\\", "/").lower()
         stem_key = _song_group_key_from_path(path)
-        if low.endswith((".json", ".hsan", ".sng", ".xml", ".dds")) and (
+        if low.endswith((".sng", ".xml", ".dds")) and (
             stem_key == key or _is_vocal_sidecar_for_key(stem_key, key)
         ):
             selected[path] = data
         elif f"album_{key}_" in low or f"album_{key}." in low:
             selected[path] = data
 
-    bnk_paths = _bank_paths_for_song_key(content, key)
-    preview_bnk_paths = _preview_bank_paths_for_song_key(content, key)
+    bnk_paths = _bank_paths_for_song_key(content, key, content_index=content_index)
+    preview_bnk_paths = _preview_bank_paths_for_song_key(content, key, content_index=content_index)
     wem_paths = {
-        path for path in _wem_paths_for_banks(content, bnk_paths)
+        path for path in _wem_paths_for_banks(content, bnk_paths, content_index=content_index)
         if content.get(path)
     }
     preview_wem_paths = {
-        path for path in _wem_paths_for_banks(content, preview_bnk_paths)
+        path for path in _wem_paths_for_banks(content, preview_bnk_paths, content_index=content_index)
         if content.get(path)
     }
     for path in [*bnk_paths, *preview_bnk_paths]:
@@ -1011,9 +2133,18 @@ def _content_for_song_group(
         # available, never let the shared archive replace it merely because its
         # WEM happens to be larger. Fill only genuinely missing audio instead.
         if not wem_paths:
-            external_bnk_paths = _bank_paths_for_song_key(rs1_songs_content, key)
+            external_bnk_paths = _bank_paths_for_song_key(
+                rs1_songs_content,
+                key,
+                content_index=rs1_songs_index,
+            )
             external_wem_paths = {
-                path for path in _wem_paths_for_banks(rs1_songs_content, external_bnk_paths)
+                path
+                for path in _wem_paths_for_banks(
+                    rs1_songs_content,
+                    external_bnk_paths,
+                    content_index=rs1_songs_index,
+                )
                 if rs1_songs_content.get(path)
             }
             for path in external_bnk_paths:
@@ -1024,9 +2155,18 @@ def _content_for_song_group(
         # Preview availability is independent from the full mix: a package may
         # keep its local main audio while borrowing only an authored preview.
         if not preview_wem_paths:
-            external_preview_bnk_paths = _preview_bank_paths_for_song_key(rs1_songs_content, key)
+            external_preview_bnk_paths = _preview_bank_paths_for_song_key(
+                rs1_songs_content,
+                key,
+                content_index=rs1_songs_index,
+            )
             external_preview_wem_paths = {
-                path for path in _wem_paths_for_banks(rs1_songs_content, external_preview_bnk_paths)
+                path
+                for path in _wem_paths_for_banks(
+                    rs1_songs_content,
+                    external_preview_bnk_paths,
+                    content_index=rs1_songs_index,
+                )
                 if rs1_songs_content.get(path)
             }
             for path in external_preview_bnk_paths:
@@ -1044,10 +2184,12 @@ def _load_rs1_songs_content(
     input_psarc: Path,
     content: dict[str, bytes],
     rs1_songs_psarc: Path | None,
+    *,
+    content_index: PsarcContentIndex | None = None,
 ) -> dict[str, bytes] | None:
     # The selected songs.psarc is normally passed to every compatibility file
     # in a batch. Avoid parsing that large archive for a self-contained disc.
-    if _has_complete_local_audio_coverage(content):
+    if _has_complete_local_audio_coverage(content, content_index=content_index):
         return None
     source = Path(rs1_songs_psarc) if rs1_songs_psarc else _default_rs1_songs_psarc(input_psarc)
     if source is None:
@@ -1067,14 +2209,23 @@ def _default_rs1_songs_psarc(input_psarc: Path) -> Path | None:
     return None
 
 
-def _has_complete_local_audio_coverage(content: dict[str, bytes]) -> bool:
+def _has_complete_local_audio_coverage(
+    content: dict[str, bytes],
+    *,
+    content_index: PsarcContentIndex | None = None,
+) -> bool:
+    content_index = content_index or PsarcContentIndex(content)
     groups = _playable_song_groups(_song_groups(content))
     if not groups:
-        return _content_has_full_mix_audio(content)
+        return _content_has_full_mix_audio(content, content_index=content_index)
     return all(
         any(
             content.get(path)
-            for path in _wem_paths_for_banks(content, _bank_paths_for_song_key(content, key))
+            for path in _wem_paths_for_banks(
+                content,
+                _bank_paths_for_song_key(content, key, content_index=content_index),
+                content_index=content_index,
+            )
         )
         for key in groups
     )
@@ -1084,28 +2235,59 @@ def _content_with_rs1_audio(
     content: dict[str, bytes],
     key: str,
     rs1_songs_content: dict[str, bytes] | None,
+    *,
+    content_index: PsarcContentIndex | None = None,
+    rs1_songs_index: PsarcContentIndex | None = None,
 ) -> dict[str, bytes]:
     if not rs1_songs_content:
         return content
+    content_index = content_index or PsarcContentIndex(content)
+    rs1_songs_index = rs1_songs_index or PsarcContentIndex(rs1_songs_content)
     selected = dict(content)
     normalized_key = _slug(key)
-    if not _content_has_full_mix_audio(content):
-        bnk_paths = _bank_paths_for_song_key(rs1_songs_content, normalized_key)
+    if not _content_has_full_mix_audio(content, content_index=content_index):
+        bnk_paths = _bank_paths_for_song_key(
+            rs1_songs_content,
+            normalized_key,
+            content_index=rs1_songs_index,
+        )
         for bnk_path in bnk_paths:
             selected[bnk_path] = rs1_songs_content[bnk_path]
-        for wem_path in _wem_paths_for_banks(rs1_songs_content, bnk_paths):
+        for wem_path in _wem_paths_for_banks(
+            rs1_songs_content,
+            bnk_paths,
+            content_index=rs1_songs_index,
+        ):
             selected[wem_path] = rs1_songs_content[wem_path]
-    if not any(data for _path, data in _preview_audio_candidates(content)):
-        preview_bnk_paths = _preview_bank_paths_for_song_key(rs1_songs_content, normalized_key)
+    if not any(
+        data
+        for _path, data in _preview_audio_candidates(content, content_index=content_index)
+    ):
+        preview_bnk_paths = _preview_bank_paths_for_song_key(
+            rs1_songs_content,
+            normalized_key,
+            content_index=rs1_songs_index,
+        )
         for bnk_path in preview_bnk_paths:
             selected[bnk_path] = rs1_songs_content[bnk_path]
-        for wem_path in _wem_paths_for_banks(rs1_songs_content, preview_bnk_paths):
+        for wem_path in _wem_paths_for_banks(
+            rs1_songs_content,
+            preview_bnk_paths,
+            content_index=rs1_songs_index,
+        ):
             selected[wem_path] = rs1_songs_content[wem_path]
     return selected
 
 
-def _content_has_full_mix_audio(content: dict[str, bytes]) -> bool:
-    preview_paths = {path for path, _data in _preview_audio_candidates(content)}
+def _content_has_full_mix_audio(
+    content: dict[str, bytes],
+    *,
+    content_index: PsarcContentIndex | None = None,
+) -> bool:
+    preview_paths = {
+        path
+        for path, _data in _preview_audio_candidates(content, content_index=content_index)
+    }
     return any(
         path.lower().endswith(AUDIO_SUFFIXES) and path not in preview_paths and bool(data)
         for path, data in content.items()
@@ -1149,26 +2331,22 @@ def _validate_song_audio_entries(
     )
 
 
-def _bank_paths_for_song_key(content: dict[str, bytes], key: str) -> list[str]:
-    wanted = {f"song_{key}", key}
-    return [
-        path
-        for path in content
-        if path.replace("\\", "/").lower().endswith(".bnk")
-        and Path(path.replace("\\", "/")).stem.lower() in wanted
-        and not Path(path.replace("\\", "/")).stem.lower().endswith("_preview")
-    ]
+def _bank_paths_for_song_key(
+    content: dict[str, bytes],
+    key: str,
+    *,
+    content_index: PsarcContentIndex | None = None,
+) -> list[str]:
+    return (content_index or PsarcContentIndex(content)).full_bank_paths_for_song(key)
 
 
-def _preview_bank_paths_for_song_key(content: dict[str, bytes], key: str) -> list[str]:
-    wanted = {f"song_{key}", key}
-    return [
-        path
-        for path in content
-        if path.replace("\\", "/").lower().endswith(".bnk")
-        and Path(path.replace("\\", "/")).stem.lower().endswith("_preview")
-        and Path(path.replace("\\", "/")).stem.lower().removesuffix("_preview") in wanted
-    ]
+def _preview_bank_paths_for_song_key(
+    content: dict[str, bytes],
+    key: str,
+    *,
+    content_index: PsarcContentIndex | None = None,
+) -> list[str]:
+    return (content_index or PsarcContentIndex(content)).preview_bank_paths_for_song(key)
 
 
 def _is_vocal_sidecar_for_key(stem_key: str, key: str) -> bool:
@@ -1181,20 +2359,13 @@ def _is_vocal_sidecar_for_key(stem_key: str, key: str) -> bool:
     }
 
 
-def _wem_paths_for_banks(content: dict[str, bytes], bnk_paths: list[str]) -> set[str]:
-    wem_by_id = {
-        int(Path(path).stem): path
-        for path in content
-        if path.lower().endswith(".wem") and Path(path).stem.isdigit()
-    }
-    found: set[str] = set()
-    for bnk_path in bnk_paths:
-        data = content.get(bnk_path, b"")
-        for offset in range(0, max(0, len(data) - 3)):
-            value = struct.unpack_from("<I", data, offset)[0]
-            if value in wem_by_id:
-                found.add(wem_by_id[value])
-    return found
+def _wem_paths_for_banks(
+    content: dict[str, bytes],
+    bnk_paths: list[str],
+    *,
+    content_index: PsarcContentIndex | None = None,
+) -> set[str]:
+    return (content_index or PsarcContentIndex(content)).wem_paths_for_banks(bnk_paths)
 
 
 def _metadata_song_title(content: dict[str, bytes]) -> str:
@@ -1280,6 +2451,8 @@ def _extract_metadata(content: dict[str, bytes]) -> dict[str, Any]:
         "arrangement_tones": _arrangement_tones(flat),
         "arrangement_cent_offsets": _arrangement_cent_offsets(flat),
         "arrangement_sources": _arrangement_sources(flat),
+        "arrangement_identity_records": _arrangement_identity_records(flat),
+        "arrangement_chord_templates": _arrangement_chord_template_records(flat),
     }
 
 
@@ -1686,6 +2859,204 @@ def _arrangement_tones(dicts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return arrangement_tones
 
 
+def _arrangement_chord_template_records(
+    dicts: list[dict[str, Any]],
+) -> dict[str, list[Any]]:
+    """Retain exact-source manifest chord tables for XML recovery only.
+
+    Normal SNG conversion does not need these records.  They are kept raw so
+    malformed or conflicting hints affect only an attempted XML fallback,
+    where they can be rejected without breaking an otherwise valid SNG.
+    """
+
+    records: dict[str, list[Any]] = {}
+    for item in dicts:
+        source_stem = _song_xml_source_stem(item.get("SongXml"))
+        if not source_stem or "ChordTemplates" not in item:
+            continue
+        records.setdefault(source_stem, []).append(item.get("ChordTemplates"))
+    return records
+
+
+def _arrangement_identity_records(
+    dicts: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Retain exact SongXml-bound identity fields for safe XML recovery."""
+
+    records: dict[str, list[dict[str, Any]]] = {}
+    for item in dicts:
+        source_stem = _song_xml_source_stem(item.get("SongXml"))
+        if not source_stem:
+            continue
+        records.setdefault(source_stem, []).append(
+            {
+                "song_key": item.get("SongKey"),
+                "title": _first_key(
+                    [item],
+                    "SongName",
+                    "Title",
+                    "Name",
+                    "SongTitle",
+                ),
+                "artist": _first_key(
+                    [item],
+                    "ArtistName",
+                    "Artist",
+                    "SongArtist",
+                ),
+                "arrangement_kind": _manifest_record_arrangement_kind(item),
+                "route_kind": _manifest_record_route_kind(item),
+                "duration": _first_key(
+                    [item],
+                    "SongLength",
+                    "Duration",
+                    "SongLengthSeconds",
+                ),
+            }
+        )
+    return records
+
+
+def _manifest_record_arrangement_kind(item: dict[str, Any]) -> str:
+    explicit_kinds = {
+        kind
+        for value in (item.get("ArrangementName"), item.get("ArrangementType"))
+        if (kind := _canonical_manifest_arrangement_kind(value))
+    }
+    if len(explicit_kinds) == 1:
+        return next(iter(explicit_kinds))
+    if len(explicit_kinds) > 1:
+        return ""
+
+    return _manifest_record_route_kind(item)
+
+
+def _manifest_record_route_kind(item: dict[str, Any]) -> str:
+    props = item.get("ArrangementProperties")
+    if not isinstance(props, dict):
+        return ""
+    paths = [
+        kind
+        for key, kind in (
+            ("pathLead", "lead"),
+            ("pathRhythm", "rhythm"),
+            ("pathBass", "bass"),
+        )
+        if _truthy_manifest_flag(props.get(key))
+    ]
+    return paths[0] if len(paths) == 1 else ""
+
+
+def _canonical_manifest_arrangement_kind(value: Any) -> str:
+    label = _undecorated_arrangement_label(str(value or ""))
+    token = _xml_identity_token(label)
+    token = re.sub(r"\d+$", "", token)
+    return token if token in {"lead", "rhythm", "combo", "bass"} else ""
+
+
+def _compiled_chord_template_hints_for_arrangement(
+    source_path: str,
+    metadata: dict[str, Any],
+) -> dict[int, RocksmithChordTemplateHint] | None:
+    """Normalize one unambiguous manifest chord table for an XML sidecar."""
+
+    source_stem = Path(source_path.replace("\\", "/")).stem.lower()
+    raw_tables = (metadata.get("arrangement_chord_templates") or {}).get(
+        source_stem,
+        [],
+    )
+    if not raw_tables:
+        return None
+
+    candidates: list[dict[int, RocksmithChordTemplateHint]] = []
+    for raw_table in raw_tables:
+        if not isinstance(raw_table, list):
+            raise RocksmithXmlError(
+                f"Manifest ChordTemplates for {source_path} is not a list."
+            )
+        hints: dict[int, RocksmithChordTemplateHint] = {}
+        for index, raw_hint in enumerate(raw_table):
+            if not isinstance(raw_hint, dict):
+                raise RocksmithXmlError(
+                    f"Manifest chord template {index} for {source_path} is not an object."
+                )
+            raw_id = raw_hint.get("ChordId")
+            chord_id = _manifest_integer(raw_id)
+            if isinstance(raw_id, bool) or chord_id is None or chord_id < 0:
+                raise RocksmithXmlError(
+                    f"Manifest chord template {index} for {source_path} has an invalid ChordId."
+                )
+            frets = _six_manifest_integers(
+                raw_hint.get("Frets"),
+                f"manifest chord {chord_id} frets for {source_path}",
+            )
+            fingers = _six_manifest_integers(
+                raw_hint.get("Fingers"),
+                f"manifest chord {chord_id} fingers for {source_path}",
+            )
+            raw_mask = raw_hint.get("Mask")
+            if raw_mask in (None, ""):
+                if "Arpeggio" in raw_hint or "Arp" in raw_hint:
+                    mask = (
+                        CHORD_MASK_ARPEGGIO
+                        if _truthy_manifest_flag(
+                            raw_hint.get("Arpeggio", raw_hint.get("Arp", 0))
+                        )
+                        else 0
+                    )
+                else:
+                    # Missing is distinct from explicit zero: the XML parser
+                    # may inherit an arpeggio mask from one exact master shape.
+                    mask = None
+            else:
+                mask_value = _manifest_integer(raw_mask)
+                if isinstance(raw_mask, bool) or mask_value is None or mask_value < 0:
+                    raise RocksmithXmlError(
+                        f"Manifest chord {chord_id} for {source_path} has an invalid mask."
+                    )
+                mask = mask_value
+            hint = RocksmithChordTemplateHint(
+                frets=frets,
+                fingers=fingers,
+                name=str(
+                    raw_hint.get("ChordName")
+                    or raw_hint.get("DisplayName")
+                    or raw_hint.get("Name")
+                    or ""
+                ),
+                mask=mask,
+            )
+            existing = hints.get(chord_id)
+            if existing is not None and existing != hint:
+                raise RocksmithXmlError(
+                    f"Manifest contains conflicting chord template {chord_id} for {source_path}."
+                )
+            hints[chord_id] = hint
+        if hints not in candidates:
+            candidates.append(hints)
+
+    if len(candidates) != 1:
+        raise RocksmithXmlError(
+            f"Manifest contains ambiguous compiled chord tables for {source_path}."
+        )
+    return candidates[0] or None
+
+
+def _six_manifest_integers(
+    value: Any,
+    label: str,
+) -> tuple[int, int, int, int, int, int]:
+    if not isinstance(value, (list, tuple)) or len(value) != 6:
+        raise RocksmithXmlError(f"{label} must contain exactly six values.")
+    normalized: list[int] = []
+    for raw in value:
+        number = _manifest_integer(raw)
+        if isinstance(raw, bool) or number is None:
+            raise RocksmithXmlError(f"{label} contains a non-integer value.")
+        normalized.append(number)
+    return tuple(normalized)  # type: ignore[return-value]
+
+
 def _arrangement_cent_offsets(
     dicts: list[dict[str, Any]],
 ) -> dict[str, list[tuple[bool, Any]]]:
@@ -1926,6 +3297,7 @@ def _flat_chart_payload(
         )
 
     flat = {"notes": [], "chords": [], "anchors": [], "handshapes": []}
+    selected_handshapes: dict[tuple[int, int], dict[str, Any]] = {}
     for phrase in phrases:
         levels = sorted(
             [level for level in phrase.get("levels", []) if isinstance(level, dict)],
@@ -1939,13 +3311,35 @@ def _flat_chart_payload(
         flat["notes"].extend(level.get("notes") or [])
         flat["chords"].extend(level.get("chords") or [])
         flat["anchors"].extend(level.get("anchors") or [])
-        flat["handshapes"].extend(level.get("handshapes") or [])
+        # Select handshapes from the same dynamic difficulty as the other flat
+        # events, but retain their authored top-level spans. Phrase-level copies
+        # are clipped separately to satisfy each phrase window.
+        difficulty = int(level.get("difficulty", 0))
+        source_level = level_payloads.get(difficulty)
+        source_handshapes = (
+            source_level.get("handshapes", [])
+            if isinstance(source_level, dict)
+            else level.get("handshapes", [])
+        )
+        phrase_start = _num(phrase.get("start_time", 0.0))
+        phrase_end = _num(phrase.get("end_time", 0.0))
+        for source_index, handshape in enumerate(source_handshapes):
+            handshape_start = _num(handshape.get("start_time", 0.0))
+            handshape_end = _num(handshape.get("end_time", handshape_start))
+            if _span_intersects_window(
+                handshape_start, handshape_end, phrase_start, phrase_end
+            ):
+                selected_handshapes.setdefault(
+                    (difficulty, source_index), dict(handshape)
+                )
 
     if not flat["notes"] and not flat["chords"]:
         return max(
             level_payloads.values(),
             key=lambda payload: len(payload["notes"]) + len(payload["chords"]),
         )
+    flat["handshapes"].extend(selected_handshapes.values())
+    flat["handshapes"].sort(key=lambda shape: float(shape.get("start_time", 0.0)))
     return flat
 
 
@@ -2372,8 +3766,12 @@ def _phrase_ladder_to_feedpak(
                     "notes": _slice_by_time(payload["notes"], "t", start, end),
                     "chords": _slice_by_time(payload["chords"], "t", start, end),
                     "anchors": _slice_by_time(payload["anchors"], "time", start, end),
-                    "handshapes": _slice_by_time(
-                        payload["handshapes"], "start_time", start, end
+                    "handshapes": _slice_spans_by_time(
+                        payload["handshapes"],
+                        "start_time",
+                        "end_time",
+                        start,
+                        end,
                     ),
                 }
             )
@@ -2395,6 +3793,43 @@ def _slice_by_time(
     items: list[dict[str, Any]], key: str, start: float, end: float
 ) -> list[dict[str, Any]]:
     return [item for item in items if start <= float(item.get(key, 0.0)) < end]
+
+
+def _span_intersects_window(
+    item_start: float, item_end: float, start: float, end: float
+) -> bool:
+    if item_end <= item_start:
+        return start <= item_start < end
+    return item_end > start and item_start < end
+
+
+def _slice_spans_by_time(
+    items: list[dict[str, Any]],
+    start_key: str,
+    end_key: str,
+    start: float,
+    end: float,
+) -> list[dict[str, Any]]:
+    """Copy spans that intersect a half-open window and clip the copies to it."""
+    sliced: list[dict[str, Any]] = []
+    for item in items:
+        item_start = _num(item.get(start_key, 0.0))
+        item_end = _num(item.get(end_key, item_start))
+
+        if not _span_intersects_window(item_start, item_end, start, end):
+            continue
+        # Keep malformed spans visible to validation instead of silently
+        # repairing them. Valid zero-length spans retain point-event behavior.
+        if item_end < item_start:
+            sliced.append(dict(item))
+            continue
+
+        clipped = dict(item)
+        clipped[start_key] = _num(max(item_start, start))
+        clipped[end_key] = _num(min(item_end, end))
+        sliced.append(clipped)
+
+    return sorted(sliced, key=lambda item: float(item.get(start_key, 0.0)))
 
 
 def _notes_and_chords(
@@ -2768,7 +4203,7 @@ def _handshapes_to_feedpak(level: Any) -> list[dict[str, Any]]:
             if group_index == 1:
                 shape["arp"] = True
             shapes.append(shape)
-    return shapes
+    return sorted(shapes, key=lambda shape: shape["start_time"])
 
 
 def _song_to_timeline(song: Any) -> dict[str, Any]:
@@ -2777,6 +4212,46 @@ def _song_to_timeline(song: Any) -> dict[str, Any]:
         "beats": [_beat_to_feedpak(b) for b in song.beats],
         "sections": _sections_to_feedpak(song),
     }
+
+
+def _beat_map_warning(
+    baseline_name: str,
+    baseline_beats: list[dict[str, Any]],
+    mismatched: list[tuple[str, str, str, dict[str, Any]]],
+) -> str:
+    candidates = [item[3]["beats"] for item in mismatched]
+    counts = [len(baseline_beats), *(len(beats) for beats in candidates)]
+    max_aligned_delta = 0.0
+    measure_markers_differ = False
+    for beats in candidates:
+        for baseline, candidate in zip(baseline_beats, beats):
+            max_aligned_delta = max(
+                max_aligned_delta,
+                abs(float(baseline.get("time", 0.0)) - float(candidate.get("time", 0.0))),
+            )
+            if baseline.get("measure") != candidate.get("measure"):
+                measure_markers_differ = True
+
+    details: list[str] = []
+    if min(counts) == max(counts):
+        details.append(f"{counts[0]} beats per arrangement")
+    else:
+        details.append(f"beat counts range from {min(counts)} to {max(counts)}")
+    if max_aligned_delta > 0:
+        formatted_delta = f"{max_aligned_delta:.6f}".rstrip("0").rstrip(".")
+        details.append(f"largest aligned timestamp difference {formatted_delta}s")
+    if measure_markers_differ:
+        details.append("measure markers also differ")
+    differing_names = ", ".join(item[1] for item in mismatched)
+    if differing_names:
+        details.append(f"different arrangements: {differing_names}")
+
+    fallback = baseline_name or "the first playable arrangement"
+    return (
+        f"Arrangement beat maps differ ({'; '.join(details)}). "
+        "All arrangement timing was preserved; "
+        f"FeedBack will use {fallback} as the global beat grid."
+    )
 
 
 def _beat_to_feedpak(beat: Any) -> dict[str, Any]:
@@ -2911,20 +4386,18 @@ def _copy_audio(
                 demucs_model=demucs_model,
                 demucs_stems=demucs_stems,
             )
-        if not _find_tool(_tools_dir(), "vgmstream-cli"):
-            warnings.append(
-                ConversionWarning(
-                    "Could not decode WEM audio because vgmstream-cli was not found. "
-                    "Install vgmstream and ensure vgmstream-cli is on PATH; preserved WEM, "
-                    "which FeedBack may not play."
-                )
+        if not _find_tool(_tools_dir(), VGMSTREAM_TOOL_NAME):
+            raise WemAudioConversionError(
+                "Rocksmith WEM audio could not be converted because FeedForge could not "
+                "start vgmstream-cli from a complete decoder bundle. Conversion stopped "
+                "without publishing a WEM-only FeedPak. Set FEEDFORGE_TOOLS_DIR to the "
+                "folder containing vgmstream-cli and its companion libraries, then try again."
             )
-        else:
-            warnings.append(
-                ConversionWarning(
-                    "Could not convert WEM audio to OGG; preserved WEM, which FeedBack may not play."
-                )
-            )
+        raise WemAudioConversionError(
+            "vgmstream-cli was found, but it could not decode this Rocksmith WEM audio "
+            "into a FeedBack-compatible OGG or WAV file. Conversion stopped without "
+            "publishing a WEM-only FeedPak; the source audio may be unsupported or damaged."
+        )
 
     target_name = f"full{ext}"
     (package_dir / "stems" / target_name).write_bytes(data)
@@ -3038,14 +4511,23 @@ def _write_preview_from_full_mix(source: Path, target: Path) -> bool:
         return False
 
 
-def _preview_audio_candidates(content: dict[str, bytes]) -> list[tuple[str, bytes]]:
+def _preview_audio_candidates(
+    content: dict[str, bytes],
+    *,
+    content_index: PsarcContentIndex | None = None,
+) -> list[tuple[str, bytes]]:
+    content_index = content_index or PsarcContentIndex(content)
     preview_banks = [
         path
         for path in content
         if path.replace("\\", "/").lower().endswith(".bnk")
         and Path(path.replace("\\", "/")).stem.lower().endswith("_preview")
     ]
-    wem_paths = _wem_paths_for_banks(content, preview_banks)
+    wem_paths = _wem_paths_for_banks(
+        content,
+        preview_banks,
+        content_index=content_index,
+    )
     return [
         (path, data)
         for path, data in content.items()
@@ -3082,11 +4564,7 @@ def _export_audio_from_content(
     target.parent.mkdir(parents=True, exist_ok=True)
 
     if ext == ".wem":
-        workdir = target.with_suffix(target.suffix + ".work")
-        if workdir.exists():
-            if not overwrite:
-                raise FileExistsError(f"Temporary output already exists: {workdir}")
-            shutil.rmtree(workdir, ignore_errors=True)
+        workdir = target.with_name(f".{target.name}.work-{uuid.uuid4().hex}")
         workdir.mkdir(parents=True, exist_ok=True)
         temp_ogg = workdir / "audio.ogg"
         try:
@@ -3099,14 +4577,17 @@ def _export_audio_from_content(
                     raise FileExistsError(f"Output already exists: {target}")
                 temp_ogg = temp_wav
                 warnings.append(ConversionWarning("Exported WAV because no OGG encoder was available."))
-            if target.exists():
-                target.unlink()
-            temp_ogg.replace(target)
+            os.replace(temp_ogg, target)
         finally:
             shutil.rmtree(workdir, ignore_errors=True)
         return target
 
-    target.write_bytes(data)
+    partial = target.with_name(f".{target.name}.partial-{uuid.uuid4().hex}")
+    try:
+        partial.write_bytes(data)
+        os.replace(partial, target)
+    finally:
+        partial.unlink(missing_ok=True)
     if ext != ".ogg":
         warnings.append(
             ConversionWarning(f"Exported original {ext.lstrip('.').upper()} audio because this package was not WEM/OGG.")
@@ -3671,17 +5152,195 @@ def _convert_wav_file_to_ogg(input_path: Path, output_path: Path) -> bool:
         temp_ogg.unlink(missing_ok=True)
 
 
+_vgmstream_verification_cache: dict[tuple[str, int, int], bool] = {}
+_vgmstream_verification_lock = threading.Lock()
+
+
 def _find_tool(tools_dir: Path, name: str) -> Path | None:
-    for filename in (f"{name}.exe", name):
-        bundled = (tools_dir / filename).resolve()
-        if bundled.is_file():
-            return bundled
+    if name.lower().removesuffix(".exe") == VGMSTREAM_TOOL_NAME:
+        return _find_vgmstream_tool(tools_dir)
+
+    for directory in [*_configured_tools_dirs(), Path(tools_dir)]:
+        for filename in (f"{name}.exe", name):
+            bundled = (directory / filename).resolve()
+            if bundled.is_file():
+                return bundled
     found = shutil.which(name)
     return Path(found).resolve() if found else None
 
 
+def _find_vgmstream_tool(tools_dir: Path | None = None) -> Path | None:
+    """Locate and smoke-test a complete vgmstream command-line bundle.
+
+    On Windows the CLI depends on DLLs shipped beside the executable. Merely
+    finding ``vgmstream-cli.exe`` is therefore insufficient: every candidate is
+    launched from its own directory before it is accepted.
+    """
+
+    for candidate in _vgmstream_candidate_paths(tools_dir):
+        if _is_preverified_configured_vgmstream(candidate) or _verify_vgmstream_tool(candidate):
+            return candidate
+    return None
+
+
+def _vgmstream_candidate_paths(tools_dir: Path | None = None) -> list[Path]:
+    candidates: list[Path] = []
+
+    def add_candidate(path: Path) -> None:
+        try:
+            resolved = path.expanduser().resolve()
+        except OSError:
+            return
+        if resolved.is_file():
+            candidates.append(resolved)
+
+    def add_directory(path: Path, *, version_children: bool = False) -> None:
+        try:
+            resolved = path.expanduser().resolve()
+        except OSError:
+            return
+        if resolved.is_file():
+            add_candidate(resolved)
+            return
+        for filename in (f"{VGMSTREAM_TOOL_NAME}.exe", VGMSTREAM_TOOL_NAME):
+            add_candidate(resolved / filename)
+        if version_children and resolved.is_dir():
+            for child in sorted(
+                resolved.glob("vgmstream-*"),
+                key=_vgmstream_bundle_sort_key,
+                reverse=True,
+            ):
+                if child.is_dir():
+                    for filename in (f"{VGMSTREAM_TOOL_NAME}.exe", VGMSTREAM_TOOL_NAME):
+                        add_candidate(child / filename)
+
+    for configured in _configured_tool_paths():
+        add_directory(configured, version_children=True)
+
+    if tools_dir is not None:
+        add_directory(Path(tools_dir))
+
+    bundle_root = getattr(sys, "_MEIPASS", None)
+    if bundle_root:
+        root = Path(bundle_root)
+        add_directory(root / "feedback_converter" / "tools")
+        add_directory(root / "tools")
+
+    if getattr(sys, "frozen", False):
+        executable_root = Path(sys.executable).resolve().parent
+        add_directory(executable_root / "feedback_converter" / "tools")
+        add_directory(executable_root / "tools")
+        add_directory(executable_root / "_internal" / "feedback_converter" / "tools")
+        add_directory(executable_root / "_internal" / "tools")
+
+    module_dir = Path(__file__).resolve().parent
+    add_directory(module_dir / "tools")
+    if len(module_dir.parents) >= 2:
+        add_directory(module_dir.parents[1] / "runtime", version_children=True)
+
+    for executable_name in (VGMSTREAM_TOOL_NAME, f"{VGMSTREAM_TOOL_NAME}.exe"):
+        found = shutil.which(executable_name)
+        if found:
+            add_candidate(Path(found))
+
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = os.path.normcase(str(candidate))
+        if key not in seen:
+            seen.add(key)
+            unique.append(candidate)
+    return unique
+
+
+def _configured_tool_paths() -> list[Path]:
+    raw_value = os.environ.get(FEEDFORGE_TOOLS_DIR_ENV, "").strip()
+    if not raw_value:
+        return []
+    return [
+        Path(value.strip().strip('"'))
+        for value in raw_value.split(os.pathsep)
+        if value.strip().strip('"')
+    ]
+
+
+def _configured_tools_dirs() -> list[Path]:
+    directories: list[Path] = []
+    for path in _configured_tool_paths():
+        if path.is_dir():
+            directories.append(path)
+        elif path.is_file():
+            directories.append(path.parent)
+    return directories
+
+
+def _is_preverified_configured_vgmstream(candidate: Path) -> bool:
+    """Trust only the exact bundle directory smoke-tested by the desktop app."""
+
+    if os.environ.get(FEEDFORGE_VGMSTREAM_VERIFIED_ENV, "").strip() != "1":
+        return False
+    try:
+        resolved_candidate = candidate.resolve()
+    except OSError:
+        return False
+    for configured in _configured_tool_paths():
+        try:
+            resolved_configured = configured.expanduser().resolve()
+        except OSError:
+            continue
+        if resolved_configured.is_file():
+            if resolved_candidate == resolved_configured:
+                return True
+        elif resolved_candidate.parent == resolved_configured:
+            return True
+    return False
+
+
+def _vgmstream_bundle_sort_key(path: Path) -> tuple[int, ...]:
+    numbers = tuple(int(value) for value in re.findall(r"\d+", path.name))
+    return numbers or (0,)
+
+
+def _verify_vgmstream_tool(path: Path) -> bool:
+    try:
+        stat = path.stat()
+    except OSError:
+        return False
+    if not path.is_file() or (os.name != "nt" and not os.access(path, os.X_OK)):
+        return False
+
+    cache_key = (os.path.normcase(str(path.resolve())), stat.st_size, stat.st_mtime_ns)
+    with _vgmstream_verification_lock:
+        cached = _vgmstream_verification_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        try:
+            proc = subprocess.run(
+                [str(path), "-h"],
+                cwd=str(path.parent),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                timeout=VGMSTREAM_VERIFY_TIMEOUT_SECONDS,
+                check=False,
+            )
+            usable = "vgmstream" in str(proc.stdout or "").lower()
+        except (OSError, subprocess.SubprocessError):
+            usable = False
+        _vgmstream_verification_cache[cache_key] = usable
+        return usable
+
+
+def _clear_vgmstream_verification_cache() -> None:
+    """Clear decoder probe results after tools are installed or replaced."""
+
+    with _vgmstream_verification_lock:
+        _vgmstream_verification_cache.clear()
+
+
 def _decode_wem_with_vgmstream(data: bytes, output_path: Path, tools_dir: Path) -> bool:
-    vgmstream = _find_tool(tools_dir, "vgmstream-cli")
+    vgmstream = _find_tool(tools_dir, VGMSTREAM_TOOL_NAME)
     if not vgmstream:
         return False
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -3692,14 +5351,17 @@ def _decode_wem_with_vgmstream(data: bytes, output_path: Path, tools_dir: Path) 
         output_path.unlink(missing_ok=True)
         proc = subprocess.run(
             [str(vgmstream), "-o", str(output_path), str(temp_wem)],
-            cwd=str(tools_dir),
+            cwd=str(vgmstream.parent),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             check=False,
         )
-        return proc.returncode == 0 and output_path.is_file() and output_path.stat().st_size >= 1024
+        decoded = proc.returncode == 0 and output_path.is_file() and output_path.stat().st_size >= 1024
+        if not decoded:
+            output_path.unlink(missing_ok=True)
+        return decoded
     finally:
         temp_wem.unlink(missing_ok=True)
 
@@ -3938,3 +5600,60 @@ def _zip_dir(source: Path, target: Path) -> None:
         for file in sorted(source.rglob("*")):
             if file.is_file():
                 zf.write(file, file.relative_to(source).as_posix())
+
+
+def _commit_zip_dir(source: Path, target: Path) -> None:
+    partial_output = target.with_name(
+        f".{target.name}.partial-{uuid.uuid4().hex}"
+    )
+    try:
+        _zip_dir(source, partial_output)
+        # The partial file lives beside the destination, so os.replace is an
+        # atomic same-volume commit and preserves an older FeedPak until the
+        # replacement is complete.
+        os.replace(partial_output, target)
+    finally:
+        partial_output.unlink(missing_ok=True)
+
+
+def _commit_directory(source: Path, target: Path) -> Path | None:
+    """Publish a staged directory without exposing a partial final package.
+
+    A replacement directory is first moved to a private sibling backup. If the
+    staged rename fails, the previous output is restored. The optional return
+    value is a retained backup that could not be removed after a successful
+    commit; keeping it is safer than deleting user data aggressively.
+    """
+
+    if not source.is_dir():
+        raise NotADirectoryError(f"Staged FeedPak directory not found: {source}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.exists():
+        os.replace(source, target)
+        return None
+    if not target.is_dir():
+        raise NotADirectoryError(f"FeedPak directory output path is not a directory: {target}")
+
+    backup = target.with_name(f".{target.name}.backup-{uuid.uuid4().hex}")
+    os.replace(target, backup)
+    try:
+        os.replace(source, target)
+    except BaseException as commit_error:
+        try:
+            if target.exists():
+                raise OSError(
+                    f"new output unexpectedly exists; previous output retained at {backup}"
+                )
+            os.replace(backup, target)
+        except BaseException as restore_error:
+            raise OSError(
+                "FeedPak directory commit failed and the previous output could not be "
+                f"restored automatically; it remains at {backup}: {restore_error}"
+            ) from commit_error
+        raise
+
+    try:
+        shutil.rmtree(backup)
+    except OSError:
+        return backup
+    return None

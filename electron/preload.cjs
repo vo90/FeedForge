@@ -61,6 +61,12 @@ contextBridge.exposeInMainWorld("feedbackConverter", {
     return () => ipcRenderer.removeListener("converter:planProgress", listener);
   },
   convert: (payload) => ipcRenderer.invoke("converter:convert", payload),
+  cancelConversions: () => ipcRenderer.invoke("converter:cancelConversions"),
+  onConversionProgress: (callback) => {
+    const listener = (_event, progress) => callback(progress);
+    ipcRenderer.on("converter:conversionProgress", listener);
+    return () => ipcRenderer.removeListener("converter:conversionProgress", listener);
+  },
   exportAudio: (payload) => ipcRenderer.invoke("converter:exportAudio", payload),
   updateFeedpak: (payload) => ipcRenderer.invoke("feedpak:update", payload),
   organizeFeedpaks: (payload) => ipcRenderer.invoke("feedpak:organize", payload),
@@ -74,6 +80,9 @@ contextBridge.exposeInMainWorld("feedbackConverter", {
   stopStemServer: () => ipcRenderer.invoke("stemServer:stop"),
   freeStemServerPort: () => ipcRenderer.invoke("stemServer:freePort"),
   getAppVersion: () => ipcRenderer.invoke("app:version"),
+  getPerformanceProfile: () => ipcRenderer.invoke("app:performanceProfile"),
+  getMemoryStatus: () => ipcRenderer.invoke("app:memoryStatus"),
+  getAudioDecoderStatus: (options) => ipcRenderer.invoke("app:audioDecoderStatus", options),
   getDebugLogInfo: () => ipcRenderer.invoke("app:debugLogInfo"),
   openDebugLog: () => ipcRenderer.invoke("app:openDebugLog"),
   openDebugLogFolder: () => ipcRenderer.invoke("app:openDebugLogFolder"),

@@ -474,6 +474,24 @@ button:disabled {
   flex: 0 0 auto;
 }
 
+.audio-dependency-banner {
+  border-color: rgba(255, 91, 110, 0.42);
+  background: rgba(255, 91, 110, 0.1);
+}
+
+.audio-dependency-banner > svg {
+  flex: 0 0 auto;
+  color: #ff9eaa;
+}
+
+.audio-dependency-banner div {
+  flex: 1 1 auto;
+}
+
+.audio-dependency-banner strong {
+  color: #ffd0d8;
+}
+
 .conversion-progress {
   max-width: 1460px;
   margin: 12px auto 0;
@@ -930,6 +948,40 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(2, minmax(260px, 1fr));
   gap: 12px;
+}
+
+.worker-profile-note {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid rgba(245, 184, 73, 0.28);
+  border-radius: 11px;
+  background: rgba(245, 184, 73, 0.09);
+  color: #f5c76a;
+}
+
+.worker-profile-note > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.worker-profile-note > div {
+  display: grid;
+  gap: 4px;
+}
+
+.worker-profile-note strong {
+  color: #ffe0a3;
+  font-size: 12px;
+}
+
+.worker-profile-note span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
 }
 
 .path-action.wide {
@@ -1744,7 +1796,7 @@ button:disabled {
 .stats {
   margin-top: 18px;
   display: grid;
-  grid-template-columns: repeat(4, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px;
 }
 

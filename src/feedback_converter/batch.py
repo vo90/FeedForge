@@ -11,7 +11,10 @@ from typing import Callable
 
 from .converter import (
     ConversionResult,
+    MultiSongConversionError,
     PsarcPlanningData,
+    SongConversionFailure,
+    VALIDATION_POLICY_SAFE,
     convert_psarc_songs,
     load_psarc_planning_data,
     plan_loaded_psarc_songs,
@@ -31,6 +34,7 @@ class BatchItem:
     input_path: Path
     result: ConversionResult | None = None
     results: list[ConversionResult] = field(default_factory=list)
+    song_failures: list[SongConversionFailure] = field(default_factory=list)
     error: str | None = None
 
     @property
@@ -73,6 +77,8 @@ def convert_many(
     demucs_model: str | None = None,
     demucs_stems: list[str] | None = None,
     rs1_songs_psarc: Path | None = None,
+    workers: int = 1,
+    validation_policy: str = VALIDATION_POLICY_SAFE,
 ) -> BatchResult:
     """Convert multiple PSARC files, returning per-file success/error state."""
     items: list[BatchItem] = []
@@ -109,6 +115,18 @@ def convert_many(
                 source_root=resolved_source_root,
                 name_template=name_template,
                 output_plan=plan.to_dict(),
+                workers=workers,
+                validation_policy=validation_policy,
+            )
+        except MultiSongConversionError as exc:
+            items.append(
+                BatchItem(
+                    input_path=input_path,
+                    result=exc.results[0] if exc.results else None,
+                    results=exc.results,
+                    song_failures=exc.failures,
+                    error=str(exc),
+                )
             )
         except Exception as exc:  # noqa: BLE001
             items.append(BatchItem(input_path=input_path, error=str(exc)))
@@ -273,7 +291,7 @@ def _planning_worker_count(value: object, total: int) -> int:
         requested = int(value or 4)
     except (TypeError, ValueError):
         requested = 4
-    return min(max(1, requested), 8, max(1, total))
+    return min(max(1, requested), 32, max(1, total))
 
 
 class _PlanningMetadataCache:
@@ -319,6 +337,7 @@ class _PlanningMetadataCache:
         if self.connection is None:
             return None
         key = self._key(path)
+        raw_payload: str | None = None
         try:
             row = self.connection.execute(
                 "SELECT payload FROM psarc_metadata_v1 WHERE path = ? AND size = ? AND mtime_ns = ?",
@@ -326,7 +345,8 @@ class _PlanningMetadataCache:
             ).fetchone()
             if row is None:
                 return None
-            payload = json.loads(row[0])
+            raw_payload = str(row[0])
+            payload = json.loads(raw_payload)
             planning_data = psarc_planning_data_from_cache(path, size, mtime_ns, payload)
             self.connection.execute(
                 "UPDATE psarc_metadata_v1 SET last_used = ? WHERE path = ?",
@@ -335,8 +355,22 @@ class _PlanningMetadataCache:
             self.pending += 1
             return planning_data
         except (ValueError, TypeError, json.JSONDecodeError, sqlite3.Error):
+            if raw_payload is None:
+                return None
             try:
-                self.connection.execute("DELETE FROM psarc_metadata_v1 WHERE path = ?", (key,))
+                self.connection.execute(
+                    """
+                    DELETE FROM psarc_metadata_v1
+                    WHERE path = ? AND size = ? AND mtime_ns = ? AND payload = ?
+                    """,
+                    (key, int(size), str(mtime_ns), raw_payload),
+                )
+                # Invalid payloads must not survive close() and get retried on
+                # every launch. The compare-and-delete predicate also avoids
+                # erasing a valid row another process replaced after our read.
+                # Commit immediately, including any pending good cache writes.
+                self.connection.commit()
+                self.pending = 0
             except sqlite3.Error:
                 pass
             return None

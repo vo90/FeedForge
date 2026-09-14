@@ -166,7 +166,7 @@ def test_conversion_writes_cent_offset_to_chart_and_manifest(tmp_path, monkeypat
             }
         ).encode(),
         "songs/bin/generic/song_lead.sng": b"sng",
-        "audio/windows/song.wem": b"wem-data",
+        "audio/windows/song.ogg": b"OggS-test-audio",
     }
 
     result = converter.convert_psarc(

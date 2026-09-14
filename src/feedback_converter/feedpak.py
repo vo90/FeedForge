@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import tempfile
+import uuid
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -13,10 +15,10 @@ import yaml
 from .converter import (
     ConversionWarning,
     _codec_for_audio_path,
+    _commit_zip_dir,
     _maybe_separate_stems,
     _safe_output_stem,
     _write_manifest,
-    _zip_dir,
 )
 from .feedpak_validator import FeedpakValidationResult, require_valid_feedpak, validate_feedpak
 
@@ -197,7 +199,12 @@ def export_feedpak_audio(
         if target.exists() and not overwrite:
             raise FileExistsError(f"Output already exists: {target}")
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source, target)
+        partial = target.with_name(f".{target.name}.partial-{uuid.uuid4().hex}")
+        try:
+            shutil.copyfile(source, partial)
+            os.replace(partial, target)
+        finally:
+            partial.unlink(missing_ok=True)
         return FeedpakAudioExportResult(target, str(stem.get("id") or Path(rel_file).stem))
 
 
@@ -246,14 +253,17 @@ def _write_package(package_dir: Path, target: Path, *, overwrite: bool) -> None:
     if target.exists():
         if not overwrite:
             raise FileExistsError(f"Output already exists: {target}")
-        if target.is_dir():
-            shutil.rmtree(target)
-        else:
-            target.unlink()
+        if target.suffix.lower() == ".feedpak" and target.is_dir():
+            raise IsADirectoryError(f"FeedPak output path is a directory: {target}")
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.suffix.lower() == ".feedpak":
-        _zip_dir(package_dir, target)
+        _commit_zip_dir(package_dir, target)
     else:
+        if target.exists():
+            if target.is_dir():
+                shutil.rmtree(target)
+            else:
+                target.unlink()
         shutil.copytree(package_dir, target)
 
 

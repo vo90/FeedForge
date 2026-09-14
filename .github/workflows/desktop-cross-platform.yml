@@ -99,6 +99,7 @@ jobs:
         run: |
           node --check electron/main.cjs
           python -m compileall -q src tools/start-demucs-server.py
+          npm run test:workers
           npm run build
 
       - name: Build desktop app
@@ -115,6 +116,13 @@ jobs:
           chmod +x "$converter"
           expected="$(node -p "require('./package.json').version")"
           test "$("$converter" --version)" = "psarc2feedpak $expected"
+          decoder="$(find release -type f -path '*/feedback_converter/tools/vgmstream-cli' -print -quit)"
+          test -n "$decoder"
+          chmod +x "$decoder"
+          status=0
+          output="$("$decoder" -h 2>&1)" || status=$?
+          test "$status" -lt 126
+          grep -qi vgmstream <<<"$output"
 
       - name: Verify macOS application signature
         if: runner.os == 'macOS'
@@ -140,6 +148,15 @@ jobs:
           if (-not $converter) { throw 'Bundled converter was not found.' }
           $expected = node -p "require('./package.json').version"
           if ((& $converter --version) -ne "psarc2feedpak $expected") { throw 'Bundled converter version mismatch.' }
+          $decoder = Get-ChildItem release -Recurse -Filter vgmstream-cli.exe |
+            Where-Object FullName -Match '[\\/]feedback_converter[\\/]tools[\\/]' |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $decoder) { throw 'Bundled WEM decoder was not found.' }
+          $decoderOutput = (& $decoder -h 2>&1 | Out-String)
+          $decoderExit = $LASTEXITCODE
+          if ($decoderExit -ge 126 -or $decoderOutput -notmatch 'vgmstream') {
+            throw "Bundled WEM decoder failed its smoke test (exit $decoderExit)."
+          }
 
       - uses: actions/upload-artifact@v7
         with:

@@ -4,6 +4,12 @@ function normalizedWorkerLimit(value) {
   return Math.max(1, Math.floor(parsed));
 }
 
+function normalizedWorkerWeight(item, limit) {
+  const parsed = Number(item?.workerWeight ?? 1);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.min(limit, Math.max(1, Math.floor(parsed)));
+}
+
 function archiveName(filePath) {
   return String(filePath || "").replace(/\\/g, "/").split("/").pop().toLowerCase();
 }
@@ -16,26 +22,18 @@ export function usesSharedRs1SongsAudio(filePath) {
   return !/^rs1compatibilitydisc(?:[_\-.]|$)/.test(name);
 }
 
-async function consumeQueue(queue, cursor, runItem, shouldStop) {
-  while (!shouldStop()) {
-    const index = cursor.value;
-    cursor.value += 1;
-    if (index >= queue.length) return;
-    await runItem(queue[index]);
-  }
-}
-
 /**
- * Run ordinary conversions at the selected concurrency while keeping linked
- * RS1 archives serialized. Once the linked queue is empty, its worker joins
- * the ordinary queue so reserved capacity never remains idle.
+ * Run conversions within one global weighted budget while keeping linked RS1
+ * archives serialized. A head item that cannot yet fit reserves the next
+ * opening, preventing lighter work behind it from delaying it indefinitely.
  */
 export async function runConversionQueues({
   linkedItems = [],
   regularItems = [],
   workerLimit = 1,
   runItem,
-  shouldStop = () => false
+  shouldStop = () => false,
+  beforeStart = null
 }) {
   if (typeof runItem !== "function") {
     throw new TypeError("runConversionQueues requires a runItem function.");
@@ -44,32 +42,125 @@ export async function runConversionQueues({
   const linkedQueue = Array.isArray(linkedItems) ? linkedItems : [];
   const regularQueue = Array.isArray(regularItems) ? regularItems : [];
   const limit = normalizedWorkerLimit(workerLimit);
+  if (!linkedQueue.length && !regularQueue.length) return;
+  let linkedIndex = 0;
+  let regularIndex = 0;
+  let activeWeight = 0;
+  let activeLinked = 0;
+  let reservedQueue = null;
+  let launchClosed = false;
+  let hasFailure = false;
+  let firstFailure;
+  const running = new Set();
 
-  if (linkedQueue.length && regularQueue.length && limit > 1) {
-    const linkedCursor = { value: 0 };
-    const regularCursor = { value: 0 };
-    const regularWorkerCount = Math.min(limit - 1, regularQueue.length);
-    const linkedThenRegular = async () => {
-      await consumeQueue(linkedQueue, linkedCursor, runItem, shouldStop);
-      if (!shouldStop()) {
-        await consumeQueue(regularQueue, regularCursor, runItem, shouldStop);
-      }
+  const rememberFailure = (error) => {
+    if (!hasFailure) {
+      hasFailure = true;
+      firstFailure = error;
+    }
+    launchClosed = true;
+  };
+
+  const headItem = (queueName) => {
+    const linked = queueName === "linked";
+    const queue = linked ? linkedQueue : regularQueue;
+    const index = linked ? linkedIndex : regularIndex;
+    if (index >= queue.length) return null;
+    const item = queue[index];
+    return {
+      queueName,
+      item,
+      grantedWeight: normalizedWorkerWeight(item, limit)
     };
-    await Promise.all([
-      linkedThenRegular(),
-      ...Array.from(
-        { length: regularWorkerCount },
-        () => consumeQueue(regularQueue, regularCursor, runItem, shouldStop)
-      )
-    ]);
-    return;
-  }
+  };
 
-  const queue = [...linkedQueue, ...regularQueue];
-  if (!queue.length) return;
-  const cursor = { value: 0 };
-  const workerCount = linkedQueue.length ? 1 : Math.min(limit, queue.length);
-  await Promise.all(
-    Array.from({ length: workerCount }, () => consumeQueue(queue, cursor, runItem, shouldStop))
-  );
+  const candidateToStart = () => {
+    const availableWeight = limit - activeWeight;
+
+    if (reservedQueue) {
+      const reserved = headItem(reservedQueue);
+      if (!reserved) {
+        reservedQueue = null;
+      } else if (
+        (reserved.queueName !== "linked" || activeLinked === 0)
+        && reserved.grantedWeight <= availableWeight
+      ) {
+        return reserved;
+      } else {
+        return null;
+      }
+    }
+
+    if (activeLinked === 0) {
+      const linked = headItem("linked");
+      if (linked) {
+        if (linked.grantedWeight <= availableWeight) return linked;
+        reservedQueue = "linked";
+        return null;
+      }
+    }
+
+    const regular = headItem("regular");
+    if (!regular) return null;
+    if (regular.grantedWeight <= availableWeight) return regular;
+    reservedQueue = "regular";
+    return null;
+  };
+
+  const startCandidate = (candidate) => {
+    if (candidate.queueName === "linked") {
+      linkedIndex += 1;
+      activeLinked += 1;
+    } else {
+      regularIndex += 1;
+    }
+    if (reservedQueue === candidate.queueName) reservedQueue = null;
+    activeWeight += candidate.grantedWeight;
+
+    let task;
+    task = Promise.resolve()
+      .then(() => runItem(candidate.item, candidate.grantedWeight))
+      .catch(rememberFailure)
+      .finally(() => {
+        activeWeight -= candidate.grantedWeight;
+        if (candidate.queueName === "linked") activeLinked -= 1;
+        running.delete(task);
+      });
+    running.add(task);
+  };
+
+  while (true) {
+    if (!launchClosed && shouldStop()) launchClosed = true;
+
+    let candidate = launchClosed ? null : candidateToStart();
+    if (candidate) {
+      if (beforeStart) {
+        try {
+          if (await beforeStart() === false) {
+            launchClosed = true;
+            continue;
+          }
+        } catch (error) {
+          rememberFailure(error);
+          continue;
+        }
+        if (launchClosed || shouldStop()) {
+          launchClosed = true;
+          continue;
+        }
+        // Active work may have completed while the gate was pending. Reapply
+        // queue priority and reservations before claiming exactly one item.
+        candidate = candidateToStart();
+        if (!candidate) continue;
+      }
+      startCandidate(candidate);
+      continue;
+    }
+
+    if (running.size === 0) {
+      if (hasFailure) throw firstFailure;
+      return;
+    }
+    await Promise.race(running);
+  }
 }

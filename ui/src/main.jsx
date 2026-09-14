@@ -24,12 +24,38 @@ import {
   XCircle
 } from "lucide-react";
 import { runConversionQueues, usesSharedRs1SongsAudio } from "./conversion-scheduler.mjs";
+import {
+  checkAudioDecoder,
+  queueRequiresAudioDecoder
+} from "./audio-dependency.mjs";
+import {
+  SAFE_VALIDATION_POLICY,
+  STRICT_VALIDATION_POLICY,
+  chartWarningSummary,
+  conversionOutputPaths,
+  conversionOutcome,
+  conversionResultStatus,
+  normalizeOutputResults,
+  outputLocationSummary,
+  normalizeValidationPolicy
+} from "./conversion-policy.mjs";
+import { createMemoryLaunchGate } from "./memory-launch-gate.mjs";
+import {
+  AUTO_SETTING,
+  FALLBACK_PERFORMANCE_PROFILE,
+  clampWorkerSetting,
+  manualWorkerOptions,
+  normalizePerformanceProfile,
+  normalizeWorkerSetting,
+  resolveConversionWorkerCount,
+  resolveInspectionWorkerCount,
+  resolveMultiSongWorkerCount,
+  resolveSelectedWorkerCount
+} from "./worker-policy.mjs";
 import "./styles.css";
 
 const api = window.feedbackConverter;
-const INSPECTION_WORKERS = 2;
 const QUEUE_RENDER_LIMIT = 500;
-const AUTO_SETTING = "auto";
 const DEFAULT_CONVERSION_WORKERS = AUTO_SETTING;
 const DEFAULT_DEMUCS_STEM_JOBS = AUTO_SETTING;
 const SETTINGS_KEY = "feedforge:desktop-settings";
@@ -125,7 +151,13 @@ function App() {
   const [auditCriteria, setAuditCriteria] = useState(() => normalizeAuditCriteria(initialSettingsRef.current.auditCriteria));
   const [auditReport, setAuditReport] = useState(null);
   const [isAuditingLibrary, setIsAuditingLibrary] = useState(false);
-  const [conversionWorkers, setConversionWorkers] = useState(() => normalizeAutoNumberSetting(initialSettingsRef.current.conversionWorkers, DEFAULT_CONVERSION_WORKERS));
+  const [isFeedpakMutating, setIsFeedpakMutating] = useState(false);
+  const [conversionWorkers, setConversionWorkers] = useState(() => normalizeWorkerSetting(initialSettingsRef.current.conversionWorkers, DEFAULT_CONVERSION_WORKERS));
+  const [validationPolicy, setValidationPolicy] = useState(() => normalizeValidationPolicy(initialSettingsRef.current.validationPolicy));
+  const [performanceProfile, setPerformanceProfile] = useState(FALLBACK_PERFORMANCE_PROFILE);
+  const [performanceProfileReady, setPerformanceProfileReady] = useState(false);
+  const [audioDecoderStatus, setAudioDecoderStatus] = useState(null);
+  const [isCheckingAudioDecoder, setIsCheckingAudioDecoder] = useState(false);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [artistFilter, setArtistFilter] = useState("all");
@@ -139,16 +171,37 @@ function App() {
   const itemsRef = useRef(items);
   const inspectionQueueRef = useRef([]);
   const activeInspectionsRef = useRef(0);
+  const inspectionWorkerLimitRef = useRef(1);
   const isConvertingRef = useRef(false);
+  const isAuditingRef = useRef(false);
+  const isFeedpakMutatingRef = useRef(false);
   const stopRequestedRef = useRef(false);
+  const memoryLaunchGateRef = useRef(null);
+  if (memoryLaunchGateRef.current === null) {
+    memoryLaunchGateRef.current = createMemoryLaunchGate({
+      getMemoryStatus: typeof api.getMemoryStatus === "function" ? () => api.getMemoryStatus() : null,
+      shouldStop: () => stopRequestedRef.current,
+      onPause: (status) => {
+        setConversionProgress((current) => ({
+          ...current,
+          memoryPaused: true,
+          availableMemoryBytes: Math.max(0, Number(status?.freeMemoryBytes) || 0)
+        }));
+      },
+      onResume: () => {
+        setConversionProgress((current) => ({ ...current, memoryPaused: false, availableMemoryBytes: null }));
+      },
+      wait: delay
+    });
+  }
 
   useEffect(() => {
     itemsRef.current = items;
   }, [items]);
 
   useEffect(() => {
-    writeSettings({ outputDir, outputLayout, outputNameFormat, outputNameTemplate, lastSourcePath, bStandardTo7String, separateStems, conversionWorkers, demucsUrl, demucsInstallDir, pythonPath, demucsModel, demucsDevice, demucsStemJobs, demucsStems, auditFolder, auditCriteria, performanceSettingsVersion: 2 });
-  }, [outputDir, outputLayout, outputNameFormat, outputNameTemplate, lastSourcePath, bStandardTo7String, separateStems, conversionWorkers, demucsUrl, demucsInstallDir, pythonPath, demucsModel, demucsDevice, demucsStemJobs, demucsStems, auditFolder, auditCriteria]);
+    writeSettings({ outputDir, outputLayout, outputNameFormat, outputNameTemplate, lastSourcePath, bStandardTo7String, separateStems, conversionWorkers, validationPolicy, demucsUrl, demucsInstallDir, pythonPath, demucsModel, demucsDevice, demucsStemJobs, demucsStems, auditFolder, auditCriteria, performanceSettingsVersion: 3 });
+  }, [outputDir, outputLayout, outputNameFormat, outputNameTemplate, lastSourcePath, bStandardTo7String, separateStems, conversionWorkers, validationPolicy, demucsUrl, demucsInstallDir, pythonPath, demucsModel, demucsDevice, demucsStemJobs, demucsStems, auditFolder, auditCriteria]);
 
   useEffect(() => {
     let cancelled = false;
@@ -170,6 +223,44 @@ function App() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    async function loadPerformanceProfile() {
+      try {
+        const detected = typeof api.getPerformanceProfile === "function"
+          ? await api.getPerformanceProfile()
+          : FALLBACK_PERFORMANCE_PROFILE;
+        if (!cancelled) setPerformanceProfile(normalizePerformanceProfile(detected));
+      } catch {
+        if (!cancelled) setPerformanceProfile(FALLBACK_PERFORMANCE_PROFILE);
+      } finally {
+        if (!cancelled) setPerformanceProfileReady(true);
+      }
+    }
+    loadPerformanceProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!performanceProfileReady) return;
+    setConversionWorkers((current) => clampWorkerSetting(current, performanceProfile));
+  }, [performanceProfileReady, performanceProfile.manualMaxWorkers]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsCheckingAudioDecoder(true);
+    checkAudioDecoder(api, { refresh: false }).then((status) => {
+      if (!cancelled) setAudioDecoderStatus(status);
+    }).finally(() => {
+      if (!cancelled) setIsCheckingAudioDecoder(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (typeof api.onPlanningProgress !== "function") return undefined;
     return api.onPlanningProgress((progress) => {
       if (!isConvertingRef.current) return;
@@ -184,6 +275,34 @@ function App() {
           planningWorkers: Math.max(1, Number(progress?.workers) || 1),
           planningStage: progress?.stage || "metadata"
         };
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (typeof api.onConversionProgress !== "function") return undefined;
+    return api.onConversionProgress((progress) => {
+      if (!isConvertingRef.current) return;
+      const jobId = String(progress?.jobId || "");
+      if (!jobId) return;
+      setConversionProgress((current) => {
+        if (current.phase !== "converting") return current;
+        let matched = false;
+        const active = current.active.map((entry) => {
+          if (entry.jobId !== jobId) return entry;
+          matched = true;
+          const songTotal = Math.max(1, Number(progress?.total) || entry.songTotal || 1);
+          return {
+            ...entry,
+            songCompleted: Math.min(songTotal, Math.max(0, Number(progress?.completed) || 0)),
+            songFailed: Math.max(0, Number(progress?.failed) || 0),
+            songTotal,
+            songWorkers: Math.max(1, Number(progress?.workers) || entry.songWorkers || 1),
+            songKey: String(progress?.key || entry.songKey || ""),
+            hasSongProgress: true
+          };
+        });
+        return matched ? { ...current, active } : current;
       });
     });
   }, []);
@@ -295,6 +414,7 @@ function App() {
   const selected = items.find((item) => item.id === selectedId) || null;
   const workspaceItems = useMemo(() => items.filter((item) => item.sourceType !== "feedpak"), [items]);
   const feedpakItems = useMemo(() => items.filter((item) => item.sourceType === "feedpak"), [items]);
+  const hasPsarcItems = queueRequiresAudioDecoder(workspaceItems);
   const workspaceSelected = selected?.sourceType === "feedpak" ? null : selected || workspaceItems[0] || null;
   const feedpakSelected = selected?.sourceType === "feedpak" ? selected : feedpakItems[0] || null;
   const filterOptions = useMemo(() => {
@@ -321,7 +441,7 @@ function App() {
     const matchesFilter =
       filter === "all" ||
       (filter === "ready" && ["ready", "converted"].includes(item.status)) ||
-      (filter === "issues" && ["failed", "needs-review"].includes(item.status)) ||
+      (filter === "issues" && (["failed", "partial", "needs-review"].includes(item.status) || item.convertedWithChartWarnings === true)) ||
       (filter === "converted" && item.status === "converted");
     const matchesArtist = artistFilter === "all" || item.preview?.artist === artistFilter;
     const matchesAlbum = albumFilter === "all" || item.preview?.album === albumFilter;
@@ -334,15 +454,34 @@ function App() {
     total: workspaceItems.length,
     ready: workspaceItems.filter((item) => item.status === "ready" || item.status === "converted").length,
     converted: workspaceItems.filter((item) => item.status === "converted").length,
+    convertedWithWarnings: workspaceItems.reduce(
+      (total, item) => total + (item.convertedWithChartWarnings
+        ? Math.max(1, Number(item.outputsWithChartWarnings) || 0)
+        : 0),
+      0
+    ),
+    partial: workspaceItems.filter((item) => item.status === "partial").length,
     failed: workspaceItems.filter((item) => item.status === "failed").length
   }), [workspaceItems]);
   const stemServerBusy = (isStartingStemServer || stemServerStatus.starting || stemServerStatus.processRunning) && !stemServerStatus.healthy;
+  const workspaceOperationBusy = isConverting || isAuditingLibrary || isFeedpakMutating;
   const selectedModel = selectedDemucsModel(demucsModels, demucsModel);
   const selectedDevice = selectedDemucsDevice(demucsDevices, demucsDevice);
   const effectiveDemucsStemJobs = resolveStemJobCount(demucsStemJobs, demucsDevice, demucsDevices);
-  const effectiveConversionWorkers = resolveConversionWorkerCount(conversionWorkers, { separateStems, stemJobs: effectiveDemucsStemJobs });
+  const selectedConversionWorkers = resolveSelectedWorkerCount(conversionWorkers, performanceProfile);
+  const effectiveConversionWorkers = resolveConversionWorkerCount(selectedConversionWorkers, { separateStems, stemJobs: effectiveDemucsStemJobs });
+  const inspectionWorkerLimit = resolveInspectionWorkerCount(selectedConversionWorkers);
+  const conversionWorkerOptions = useMemo(
+    () => manualWorkerOptions(performanceProfile),
+    [performanceProfile.manualMaxWorkers]
+  );
+  inspectionWorkerLimitRef.current = inspectionWorkerLimit;
   const stemServerMatchesSelectedConfig = stemServerMatchesSelection(stemServerStatus, demucsModel, demucsDevice, effectiveDemucsStemJobs);
   const stemServerReadyForSelection = stemServerStatus.healthy && stemServerMatchesSelectedConfig;
+
+  useEffect(() => {
+    pumpInspectionQueue();
+  }, [inspectionWorkerLimit]);
 
   async function addFiles(paths, sourceRoot = null) {
     const existing = new Set(itemsRef.current.map((item) => normalizePathKey(item.path)));
@@ -364,6 +503,7 @@ function App() {
         preview: null,
         outputPath: null,
         outputPaths: [],
+        outputResults: [],
         message: null,
         warnings: [],
         error: null
@@ -391,7 +531,7 @@ function App() {
   }
 
   function removeItem(id) {
-    if (isConvertingRef.current) return;
+    if (isConvertingRef.current || isAuditingRef.current || isFeedpakMutatingRef.current) return;
     inspectionQueueRef.current = inspectionQueueRef.current.filter((queuedId) => queuedId !== id);
     const nextItems = itemsRef.current.filter((item) => item.id !== id);
     itemsRef.current = nextItems;
@@ -402,32 +542,49 @@ function App() {
   }
 
   function pumpInspectionQueue() {
-    if (isConvertingRef.current) return;
-    while (activeInspectionsRef.current < INSPECTION_WORKERS && inspectionQueueRef.current.length > 0) {
+    if (isConvertingRef.current || isAuditingRef.current || isFeedpakMutatingRef.current) return;
+    while (activeInspectionsRef.current < inspectionWorkerLimitRef.current && inspectionQueueRef.current.length > 0) {
       const id = inspectionQueueRef.current.shift();
       const item = itemsRef.current.find((entry) => entry.id === id);
-      if (!item || item.status === "converted") continue;
-      activeInspectionsRef.current += 1;
-      inspectItem(item).finally(() => {
-        activeInspectionsRef.current -= 1;
-        pumpInspectionQueue();
-      });
+      if (!item || item.status !== "queued") continue;
+      inspectItem(item);
     }
   }
 
-  async function inspectItem(item) {
+  function inspectItem(item) {
+    activeInspectionsRef.current += 1;
+    return performInspection(item).finally(() => {
+      activeInspectionsRef.current -= 1;
+      pumpInspectionQueue();
+    });
+  }
+
+  async function performInspection(item) {
+    const canLaunch = await waitForMemoryHeadroom();
+    if (!canLaunch || isConvertingRef.current || isAuditingRef.current) {
+      const current = itemsRef.current.find((entry) => entry.id === item.id);
+      if (current?.status === "queued" && !inspectionQueueRef.current.includes(item.id)) {
+        inspectionQueueRef.current.unshift(item.id);
+      }
+      return;
+    }
     updateItem(item.id, { status: "inspecting" });
-    const result = await api.inspect(item.path);
+    let result;
+    try {
+      result = await api.inspect(item.path);
+    } catch (error) {
+      result = { ok: false, error: error?.message || "Inspection failed." };
+    }
     if (!result.ok) {
       updateItem(item.id, (current) => {
-        if (current.status === "converted" || current.status === "converting") return current;
+        if (["converted", "partial", "converting", "failed"].includes(current.status)) return current;
         return { ...current, status: "failed", warnings: [], error: result.error };
       });
       return;
     }
     const preview = result.preview;
     updateItem(item.id, (current) => {
-      if (current.status === "converted" || current.status === "converting") return current;
+      if (["converted", "partial", "converting", "failed"].includes(current.status)) return current;
       return {
         ...current,
         status: preview.arrangements?.length ? "ready" : "needs-review",
@@ -462,7 +619,7 @@ function App() {
   }
 
   async function startLocalStemServer() {
-    if (isStartingStemServer) return;
+    if (isStartingStemServer || isConvertingRef.current || isAuditingRef.current || isFeedpakMutatingRef.current) return;
     setIsStartingStemServer(true);
     setStemServerStatus((current) => ({
       ...current,
@@ -526,12 +683,13 @@ function App() {
   }
 
   async function stopLocalStemServer() {
+    if (isConvertingRef.current || isAuditingRef.current || isFeedpakMutatingRef.current) return;
     const status = await api.stopStemServer();
     setStemServerStatus(status);
   }
 
   async function freeStemServerPort() {
-    if (isFreeingStemPort) return;
+    if (isFreeingStemPort || isConvertingRef.current || isAuditingRef.current || isFeedpakMutatingRef.current) return;
     const owners = stemServerPortOwners(stemServerStatus);
     const detail = owners.length
       ? owners.map((owner) => `${owner.processName || "Process"} ${owner.pid || ""}`.trim()).join(", ")
@@ -558,17 +716,28 @@ function App() {
   }
 
   async function runLibraryAudit() {
-    if (!auditFolder || isAuditingLibrary) return;
+    if (!auditFolder || isAuditingRef.current || isConvertingRef.current || isFeedpakMutatingRef.current) return;
+    isAuditingRef.current = true;
     setIsAuditingLibrary(true);
     setAuditReport(null);
     try {
-      const report = await api.auditFeedpakLibrary({ root: auditFolder, criteria: auditCriteria, workers: 3 });
+      await waitForActiveInspections();
+      if (!await waitForMemoryHeadroom()) return;
+      const report = await api.auditFeedpakLibrary({ root: auditFolder, criteria: auditCriteria, workers: inspectionWorkerLimit });
       setAuditReport(report);
     } catch (error) {
       setAuditReport({ ok: false, error: error?.message || "Library audit failed." });
     } finally {
+      isAuditingRef.current = false;
       setIsAuditingLibrary(false);
+      pumpInspectionQueue();
     }
+  }
+
+  async function deleteAuditFiles(filePaths) {
+    const paths = Array.isArray(filePaths) ? filePaths.filter(Boolean) : [];
+    if (!paths.length) return { ok: false, error: "Select duplicate files first." };
+    return runExclusiveFeedpakMutation(() => api.deleteFiles(paths));
   }
 
   function updateAuditCriterion(key, value) {
@@ -580,8 +749,55 @@ function App() {
     if (sourcePath) setLastSourcePath(sourcePath);
   }
 
+  async function waitForActiveInspections() {
+    while (activeInspectionsRef.current > 0 && !stopRequestedRef.current) {
+      await delay(50);
+    }
+    return !stopRequestedRef.current;
+  }
+
+  async function waitForMemoryHeadroom() {
+    return memoryLaunchGateRef.current();
+  }
+
+  async function refreshAudioDecoder() {
+    if (isCheckingAudioDecoder) return audioDecoderStatus;
+    setIsCheckingAudioDecoder(true);
+    try {
+      const status = await checkAudioDecoder(api);
+      setAudioDecoderStatus(status);
+      return status;
+    } finally {
+      setIsCheckingAudioDecoder(false);
+    }
+  }
+
+  async function ensureAudioDecoderFor(itemsToProcess) {
+    if (!queueRequiresAudioDecoder(itemsToProcess)) return true;
+    const status = await refreshAudioDecoder();
+    return status?.ready === true;
+  }
+
+  async function runExclusiveFeedpakMutation(task) {
+    if (isConvertingRef.current || isAuditingRef.current || isFeedpakMutatingRef.current) {
+      return { ok: false, error: "Another operation is already running." };
+    }
+    isFeedpakMutatingRef.current = true;
+    setIsFeedpakMutating(true);
+    try {
+      if (!await waitForActiveInspections()) {
+        return { ok: false, cancelled: true, error: "The operation was stopped." };
+      }
+      return await task();
+    } finally {
+      isFeedpakMutatingRef.current = false;
+      setIsFeedpakMutating(false);
+      pumpInspectionQueue();
+    }
+  }
+
   async function convertQueue() {
-    if (!items.length || isConvertingRef.current) return;
+    if (!items.length || isConvertingRef.current || isAuditingRef.current || isFeedpakMutatingRef.current) return;
     const pending = [];
     const pendingPaths = new Set();
     for (const item of itemsRef.current) {
@@ -592,6 +808,7 @@ function App() {
       pending.push(item);
     }
     if (!pending.length) return;
+    if (!await ensureAudioDecoderFor(pending)) return;
     // A previously converted songs.psarc is still the shared audio source when
     // retrying a compatibility archive, so find it in the full queue.
     const rs1SongsItem = itemsRef.current.find((item) => isRs1SongsArchive(item.path)) || null;
@@ -601,9 +818,11 @@ function App() {
     setIsStopping(false);
     setIsConverting(true);
     const conversionPending = pending;
-    setConversionProgress({ total: conversionPending.length, completed: 0, failed: 0, active: [], stopped: false, phase: "planning" });
+    setConversionProgress({ total: conversionPending.length, completed: 0, failed: 0, active: [], stopped: false, phase: "planning", memoryPaused: false, workerLimit: selectedConversionWorkers });
     const batchSourceRoot = commonAncestorDir(conversionPending.map((item) => item.path));
     try {
+      if (!await waitForActiveInspections()) return;
+      if (!await waitForMemoryHeadroom()) return;
       const planById = new Map();
       const planningFailures = new Set();
       const psarcItems = conversionPending.filter((item) => item.sourceType !== "feedpak");
@@ -629,7 +848,7 @@ function App() {
             nameTemplate,
             overwrite,
             rs1SongsPsarc: rs1SongsPsarc || "",
-            workers: effectiveConversionWorkers
+            workers: selectedConversionWorkers
           });
         } catch (error) {
           result = { ok: false, error: error?.message || "Output planning failed." };
@@ -690,33 +909,70 @@ function App() {
       const feedpakById = new Map(feedpakReady.map((item) => [item.id, item]));
       const conversionReady = conversionPending
         .filter((item) => !planningFailures.has(item.id))
-        .map((item) => feedpakById.get(item.id) || item);
+        .map((item) => {
+          const readyItem = feedpakById.get(item.id) || item;
+          const plannedOutputCount = planById.get(item.id)?.outputs?.length || 1;
+          const workerWeight = readyItem.sourceType === "feedpak"
+            ? 1
+            : resolveMultiSongWorkerCount(
+              effectiveConversionWorkers,
+              plannedOutputCount,
+              performanceProfile,
+              { separateStems }
+            );
+          return { ...readyItem, workerWeight };
+        });
       setConversionProgress((current) => ({
         ...current,
         completed: planningFailures.size,
         failed: planningFailures.size,
-        phase: "converting"
+        phase: "converting",
+        workerLimit: effectiveConversionWorkers
       }));
 
-      async function convertItem(item) {
+      async function convertItem(item, grantedWeight = 1) {
         if (stopRequestedRef.current) return;
         const outputPlan = planById.get(item.id) || null;
         const plannedFirst = outputPlan?.outputs?.[0] || null;
+        const plannedOutputCount = outputPlan?.outputs?.length || 1;
         const outputPath = item.sourceType === "feedpak" ? (reservedOutputPaths.get(item.id) || null) : null;
-        updateItem(item.id, { status: "converting", warnings: [], error: null, message: null });
+        updateItem(item.id, {
+          status: "converting",
+          warnings: [],
+          chartWarnings: [],
+          chartWarningCount: 0,
+          outputsWithChartWarnings: 0,
+          convertedWithChartWarnings: false,
+          outputPath: null,
+          outputPaths: [],
+          outputResults: [],
+          songErrors: [],
+          failedSongCount: 0,
+          error: null,
+          message: null
+        });
         setConversionProgress((current) => ({
           ...current,
           active: [...current.active.filter((entry) => entry.id !== item.id), {
             id: item.id,
+            jobId: item.id,
             name: plannedFirst?.title || item.preview?.title || item.name,
-            artist: plannedFirst?.artist || item.preview?.artist || ""
+            artist: plannedFirst?.artist || item.preview?.artist || "",
+            songCompleted: 0,
+            songFailed: 0,
+            songTotal: plannedOutputCount,
+            songWorkers: Math.max(1, Number(grantedWeight) || 1),
+            hasSongProgress: item.sourceType !== "feedpak"
           }]
         }));
         const payload = {
+          jobId: item.id,
           inputPath: item.path,
           outputPath,
           outputPlan,
           overwrite,
+          validationPolicy,
+          songWorkers: item.sourceType === "feedpak" ? 1 : Math.max(1, Number(grantedWeight) || 1),
           separateStems,
           demucsUrl: demucsUrl.trim(),
           demucsApiKey: demucsApiKey.trim(),
@@ -731,23 +987,68 @@ function App() {
           const result = item.sourceType === "feedpak"
             ? await api.updateFeedpak(payload)
             : await api.convert({ ...payload, bStandardTo7String });
-          if (!result.ok) {
+          const outcome = conversionOutcome(result);
+          const resultWarnings = outcome.warnings.length ? outcome.warnings : outcome.chartWarnings;
+          const warningSummary = chartWarningSummary(result);
+          const outputResults = normalizeOutputResults(result);
+          const outputPaths = conversionOutputPaths(result, outputResults);
+          const resultStatus = conversionResultStatus(result, outputPaths);
+          if (resultStatus !== "converted") {
             failed = true;
-            updateItem(item.id, { status: "failed", warnings: [], error: result.error });
+            const songErrors = Array.isArray(result.songErrors) ? result.songErrors.filter(Boolean) : [];
+            if (resultStatus === "partial") {
+              const failedSongCount = songErrors.length || Math.max(1, plannedOutputCount - outputPaths.length);
+              const firstSongError = songErrors.find((entry) => entry?.error)?.error || result.error || "Some songs could not be converted.";
+              const outputLocation = outputLocationSummary(outputPaths);
+              updateItem(item.id, {
+                status: "partial",
+                outputPath: result.outputPath || outputPaths[0],
+                outputPaths,
+                outputResults,
+                songErrors,
+                failedSongCount,
+                validation: result.validation || null,
+                validationPolicy: result.validationPolicy || validationPolicy,
+                convertedWithChartWarnings: outcome.convertedWithChartWarnings,
+                chartWarningCount: outcome.chartWarningCount,
+                outputsWithChartWarnings: Math.max(0, Number(result.outputsWithChartWarnings) || (outcome.convertedWithChartWarnings ? 1 : 0)),
+                chartWarnings: outcome.chartWarnings,
+                message: [`Created ${outputPaths.length} FeedPak${outputPaths.length === 1 ? "" : "s"}${outputLocation.suffix}; ${failedSongCount} song${failedSongCount === 1 ? "" : "s"} failed.`, warningSummary].filter(Boolean).join(" "),
+                warnings: resultWarnings,
+                error: failedSongCount > 1
+                  ? `${failedSongCount} songs failed. First error: ${firstSongError}`
+                  : firstSongError
+              });
+            } else {
+              updateItem(item.id, {
+                status: "failed",
+                outputResults,
+                songErrors,
+                warnings: resultWarnings,
+                error: result.error
+              });
+            }
           } else {
-            const warnings = Array.isArray(result.warnings) ? result.warnings.filter(Boolean) : [];
-            const outputPaths = Array.isArray(result.outputPaths) ? result.outputPaths.filter(Boolean) : [];
             const outputCount = outputPaths.length || (result.outputPath ? 1 : 0);
-            const outputFolder = outputPaths.length ? parentDir(outputPaths[0]) : "";
+            const outputLocation = outputLocationSummary(outputPaths);
+            const createdMessage = outputCount > 1
+              ? `Created ${outputCount} FeedPaks${outputLocation.suffix}.`
+              : "";
             updateItem(item.id, {
               status: "converted",
-              outputPath: result.outputPath || outputPath || plannedFirst?.path || null,
+              outputPath: result.outputPath || outputPaths[0] || outputPath || plannedFirst?.path || null,
               outputPaths,
+              outputResults,
+              songErrors: [],
+              failedSongCount: 0,
               validation: result.validation || null,
-              message: outputCount > 1
-                ? `Created ${outputCount} FeedPaks${outputFolder ? ` in ${outputFolder}` : ""}.`
-                : null,
-              warnings,
+              validationPolicy: result.validationPolicy || validationPolicy,
+              convertedWithChartWarnings: outcome.convertedWithChartWarnings,
+              chartWarningCount: outcome.chartWarningCount,
+              outputsWithChartWarnings: Math.max(0, Number(result.outputsWithChartWarnings) || (outcome.convertedWithChartWarnings ? 1 : 0)),
+              chartWarnings: outcome.chartWarnings,
+              message: [createdMessage, warningSummary].filter(Boolean).join(" ") || null,
+              warnings: resultWarnings,
               error: null
             });
           }
@@ -771,7 +1072,8 @@ function App() {
         regularItems,
         workerLimit: effectiveConversionWorkers,
         runItem: convertItem,
-        shouldStop: () => stopRequestedRef.current
+        shouldStop: () => stopRequestedRef.current,
+        beforeStart: waitForMemoryHeadroom
       });
     } finally {
       const stopped = stopRequestedRef.current;
@@ -779,13 +1081,13 @@ function App() {
       stopRequestedRef.current = false;
       setIsStopping(false);
       setIsConverting(false);
-      setConversionProgress((current) => ({ ...current, active: [], stopped }));
+      setConversionProgress((current) => ({ ...current, active: [], stopped, memoryPaused: false, availableMemoryBytes: null }));
       pumpInspectionQueue();
     }
   }
 
   async function exportAudioQueue() {
-    if (!items.length || isConverting) return;
+    if (!items.length || isConvertingRef.current || isAuditingRef.current || isFeedpakMutatingRef.current) return;
     const pending = [];
     const pendingPaths = new Set();
     for (const item of itemsRef.current) {
@@ -796,20 +1098,17 @@ function App() {
       pending.push(item);
     }
     if (!pending.length) return;
+    if (!await ensureAudioDecoderFor(pending)) return;
     isConvertingRef.current = true;
     stopRequestedRef.current = false;
     setIsStopping(false);
     setIsConverting(true);
-    setConversionProgress({ total: pending.length, completed: 0, failed: 0, active: [], stopped: false });
+    setConversionProgress({ total: pending.length, completed: 0, failed: 0, active: [], stopped: false, memoryPaused: false, workerLimit: selectedConversionWorkers });
     const batchSourceRoot = commonAncestorDir(pending.map((item) => item.path));
     const nameTemplate = outputNameTemplateForFormat(outputNameFormat, outputNameTemplate);
-    let index = 0;
 
-    async function exportNext() {
+    async function exportItem(item) {
       if (stopRequestedRef.current) return;
-      const item = pending[index];
-      index += 1;
-      if (!item) return;
       updateItem(item.id, { status: "converting", warnings: [], error: null, message: null });
       setConversionProgress((current) => ({
         ...current,
@@ -854,26 +1153,34 @@ function App() {
           active: current.active.filter((entry) => entry.id !== item.id)
         }));
       }
-      if (stopRequestedRef.current) return;
-      await exportNext();
     }
 
     try {
-      const workerCount = Math.min(Math.max(1, effectiveConversionWorkers), pending.length);
-      await Promise.all(Array.from({ length: workerCount }, () => exportNext()));
+      if (!await waitForActiveInspections()) return;
+      const linkedItems = pending.filter((item) => usesSharedRs1SongsAudio(item.path));
+      const regularItems = pending.filter((item) => !usesSharedRs1SongsAudio(item.path));
+      await runConversionQueues({
+        linkedItems,
+        regularItems,
+        workerLimit: selectedConversionWorkers,
+        runItem: exportItem,
+        shouldStop: () => stopRequestedRef.current,
+        beforeStart: waitForMemoryHeadroom
+      });
     } finally {
       const stopped = stopRequestedRef.current;
       isConvertingRef.current = false;
       stopRequestedRef.current = false;
       setIsStopping(false);
       setIsConverting(false);
-      setConversionProgress((current) => ({ ...current, active: [], stopped }));
+      setConversionProgress((current) => ({ ...current, active: [], stopped, memoryPaused: false, availableMemoryBytes: null }));
       pumpInspectionQueue();
     }
   }
 
   async function exportAudioItem(item) {
-    if (!item || isConverting) return;
+    if (!item || isConvertingRef.current || isAuditingRef.current || isFeedpakMutatingRef.current) return;
+    if (!await ensureAudioDecoderFor([item])) return;
     isConvertingRef.current = true;
     stopRequestedRef.current = false;
     setIsStopping(false);
@@ -883,11 +1190,17 @@ function App() {
       completed: 0,
       failed: 0,
       active: [{ id: item.id, name: itemDisplayTitle(item), artist: itemProgressSubtitle(item) }],
-      stopped: false
+      stopped: false,
+      memoryPaused: false,
+      workerLimit: 1
     });
-    updateItem(item.id, { status: "converting", warnings: [], error: null, message: null });
     let failed = false;
+    let started = false;
     try {
+      if (!await waitForActiveInspections()) return;
+      if (!await waitForMemoryHeadroom()) return;
+      started = true;
+      updateItem(item.id, { status: "converting", warnings: [], error: null, message: null });
       const nameTemplate = outputNameTemplateForFormat(outputNameFormat, outputNameTemplate);
       const result = await api.exportAudio({
         inputPath: item.path,
@@ -916,11 +1229,12 @@ function App() {
       failed = true;
       updateItem(item.id, { status: "failed", warnings: [], error: error?.message || "Audio export failed." });
     } finally {
+      const stopped = stopRequestedRef.current;
       isConvertingRef.current = false;
       stopRequestedRef.current = false;
       setIsStopping(false);
       setIsConverting(false);
-      setConversionProgress({ total: 1, completed: 1, failed: failed ? 1 : 0, active: [], stopped: false });
+      setConversionProgress({ total: 1, completed: started ? 1 : 0, failed: failed ? 1 : 0, active: [], stopped, memoryPaused: false });
       pumpInspectionQueue();
     }
   }
@@ -929,6 +1243,9 @@ function App() {
     stopRequestedRef.current = true;
     setIsStopping(true);
     setConversionProgress((current) => ({ ...current, stopped: true }));
+    if (typeof api.cancelConversions === "function") {
+      Promise.resolve(api.cancelConversions()).catch(() => {});
+    }
     if (conversionProgress.phase === "planning" && typeof api.cancelPlanning === "function") {
       Promise.resolve(api.cancelPlanning()).catch(() => {});
     }
@@ -936,96 +1253,118 @@ function App() {
 
   async function saveFeedpakMetadata(item, metadata, authors, options = {}) {
     if (!item || item.sourceType !== "feedpak") return { ok: false, error: "Select a FeedPak first." };
-    updateItem(item.id, { status: "converting", warnings: [], error: null });
-    const overwriteOriginal = options.overwriteOriginal === true;
-    const outputPath = overwriteOriginal ? null : editedFeedpakPath(item, outputDir);
-    const result = await api.updateFeedpak({
-      inputPath: item.path,
-      outputPath,
-      overwrite: overwriteOriginal,
-      metadata,
-      authors
-    });
-    if (!result.ok) {
-      updateItem(item.id, { status: "failed", warnings: [], error: result.error });
-      return result;
-    }
-    if (overwriteOriginal) {
-      updateItem(item.id, { status: "queued", error: null });
-      await inspectItem({ ...item, status: "queued" });
-    } else {
-      updateItem(item.id, {
-        status: "converted",
-        outputPath: result.outputPath || outputPath,
-        validation: result.validation || null,
-        warnings: Array.isArray(result.warnings) ? result.warnings.filter(Boolean) : [],
-        error: null
+    return runExclusiveFeedpakMutation(async () => {
+      if (!await waitForMemoryHeadroom()) return { ok: false, cancelled: true, error: "The operation was stopped." };
+      updateItem(item.id, { status: "converting", warnings: [], error: null });
+      const overwriteOriginal = options.overwriteOriginal === true;
+      const outputPath = overwriteOriginal ? null : editedFeedpakPath(item, outputDir);
+      const result = await api.updateFeedpak({
+        inputPath: item.path,
+        outputPath,
+        overwrite: overwriteOriginal,
+        metadata,
+        authors
       });
-    }
-    return result;
+      if (!result.ok) {
+        updateItem(item.id, { status: "failed", warnings: [], error: result.error });
+        return result;
+      }
+      if (overwriteOriginal) {
+        updateItem(item.id, { status: "queued", error: null });
+        await inspectItem({ ...item, status: "queued" });
+      } else {
+        updateItem(item.id, {
+          status: "converted",
+          outputPath: result.outputPath || outputPath,
+          validation: result.validation || null,
+          warnings: Array.isArray(result.warnings) ? result.warnings.filter(Boolean) : [],
+          error: null
+        });
+      }
+      return result;
+    });
   }
 
   async function replaceFeedpakCover(item, options = {}) {
     if (!item || item.sourceType !== "feedpak") return;
-    const coverPath = await api.pickCoverImage({ defaultPath: parentDir(item.path) || undefined });
-    if (!coverPath) return;
-    updateItem(item.id, { status: "converting", warnings: [], error: null });
-    const overwriteOriginal = options.overwriteOriginal === true;
-    const outputPath = overwriteOriginal ? null : editedFeedpakPath(item, outputDir);
-    const result = await api.updateFeedpak({
-      inputPath: item.path,
-      outputPath,
-      overwrite: overwriteOriginal,
-      coverPath
+    return runExclusiveFeedpakMutation(async () => {
+      const coverPath = await api.pickCoverImage({ defaultPath: parentDir(item.path) || undefined });
+      if (!coverPath) return { ok: false, cancelled: true };
+      if (!await waitForMemoryHeadroom()) return { ok: false, cancelled: true, error: "The operation was stopped." };
+      updateItem(item.id, { status: "converting", warnings: [], error: null });
+      const overwriteOriginal = options.overwriteOriginal === true;
+      const outputPath = overwriteOriginal ? null : editedFeedpakPath(item, outputDir);
+      const result = await api.updateFeedpak({
+        inputPath: item.path,
+        outputPath,
+        overwrite: overwriteOriginal,
+        coverPath
+      });
+      if (!result.ok) {
+        updateItem(item.id, { status: "failed", warnings: [], error: result.error });
+        return result;
+      }
+      if (overwriteOriginal) {
+        updateItem(item.id, { status: "queued", error: null });
+        await inspectItem({ ...item, status: "queued" });
+      } else {
+        updateItem(item.id, { status: "converted", outputPath: result.outputPath || outputPath, validation: result.validation || null, warnings: Array.isArray(result.warnings) ? result.warnings.filter(Boolean) : [], error: null });
+      }
+      return result;
     });
-    if (!result.ok) {
-      updateItem(item.id, { status: "failed", warnings: [], error: result.error });
-      return;
-    }
-    if (overwriteOriginal) {
-      updateItem(item.id, { status: "queued", error: null });
-      await inspectItem({ ...item, status: "queued" });
-    } else {
-      updateItem(item.id, { status: "converted", outputPath: result.outputPath || outputPath, validation: result.validation || null, warnings: Array.isArray(result.warnings) ? result.warnings.filter(Boolean) : [], error: null });
-    }
   }
 
   async function removeFeedpakCover(item, options = {}) {
     if (!item || item.sourceType !== "feedpak") return;
-    updateItem(item.id, { status: "converting", warnings: [], error: null });
-    const overwriteOriginal = options.overwriteOriginal === true;
-    const outputPath = overwriteOriginal ? null : editedFeedpakPath(item, outputDir);
-    const result = await api.updateFeedpak({
-      inputPath: item.path,
-      outputPath,
-      overwrite: overwriteOriginal,
-      removeCover: true
+    return runExclusiveFeedpakMutation(async () => {
+      if (!await waitForMemoryHeadroom()) return { ok: false, cancelled: true, error: "The operation was stopped." };
+      updateItem(item.id, { status: "converting", warnings: [], error: null });
+      const overwriteOriginal = options.overwriteOriginal === true;
+      const outputPath = overwriteOriginal ? null : editedFeedpakPath(item, outputDir);
+      const result = await api.updateFeedpak({
+        inputPath: item.path,
+        outputPath,
+        overwrite: overwriteOriginal,
+        removeCover: true
+      });
+      if (!result.ok) {
+        updateItem(item.id, { status: "failed", warnings: [], error: result.error });
+        return result;
+      }
+      if (overwriteOriginal) {
+        updateItem(item.id, { status: "queued", error: null });
+        await inspectItem({ ...item, status: "queued" });
+      } else {
+        updateItem(item.id, { status: "converted", outputPath: result.outputPath || outputPath, validation: result.validation || null, warnings: Array.isArray(result.warnings) ? result.warnings.filter(Boolean) : [], error: null });
+      }
+      return result;
     });
-    if (!result.ok) {
-      updateItem(item.id, { status: "failed", warnings: [], error: result.error });
-      return;
-    }
-    if (overwriteOriginal) {
-      updateItem(item.id, { status: "queued", error: null });
-      await inspectItem({ ...item, status: "queued" });
-    } else {
-      updateItem(item.id, { status: "converted", outputPath: result.outputPath || outputPath, validation: result.validation || null, warnings: Array.isArray(result.warnings) ? result.warnings.filter(Boolean) : [], error: null });
-    }
   }
 
   async function replaceFeedpakStem(item, stemId, options = {}) {
     if (!item || item.sourceType !== "feedpak") return { ok: false, error: "Select a FeedPak first." };
-    const audioPath = await api.pickAudioStem({ defaultPath: parentDir(item.path) || undefined });
-    if (!audioPath) return { ok: false, cancelled: true };
-    return updateFeedpakStems(item, [{ id: stemId, file: audioPath }], [], options);
+    return runExclusiveFeedpakMutation(async () => {
+      const audioPath = await api.pickAudioStem({ defaultPath: parentDir(item.path) || undefined });
+      if (!audioPath) return { ok: false, cancelled: true };
+      if (!await waitForMemoryHeadroom()) return { ok: false, cancelled: true, error: "The operation was stopped." };
+      return updateFeedpakStems(item, [{ id: stemId, file: audioPath }], [], { ...options, operationLocked: true });
+    });
   }
 
   async function removeFeedpakStem(item, stemId, options = {}) {
     if (!item || item.sourceType !== "feedpak") return { ok: false, error: "Select a FeedPak first." };
-    return updateFeedpakStems(item, [], [stemId], options);
+    return runExclusiveFeedpakMutation(async () => {
+      if (!await waitForMemoryHeadroom()) return { ok: false, cancelled: true, error: "The operation was stopped." };
+      return updateFeedpakStems(item, [], [stemId], { ...options, operationLocked: true });
+    });
   }
 
   async function updateFeedpakStems(item, stemUpdates, removeStems, options = {}) {
+    if (options.operationLocked !== true && options.allowBatch !== true && (
+      isConvertingRef.current || isAuditingRef.current || isFeedpakMutatingRef.current
+    )) {
+      return { ok: false, error: "Another operation is already running." };
+    }
     updateItem(item.id, { status: "converting", warnings: [], error: null });
     const overwriteOriginal = options.overwriteOriginal === true;
     const outputPath = overwriteOriginal ? null : editedFeedpakPath(item, outputDir);
@@ -1052,6 +1391,12 @@ function App() {
   async function reprocessFeedpakStems(item, options = {}) {
     if (!item || item.sourceType !== "feedpak") return { ok: false, error: "Select a FeedPak first." };
     if (!separateStems) return { ok: false, error: "Enable Separate stems in Settings first." };
+    if (options.allowBatch !== true && options.operationLocked !== true) {
+      return runExclusiveFeedpakMutation(async () => {
+        if (!await waitForMemoryHeadroom()) return { ok: false, cancelled: true, error: "The operation was stopped." };
+        return reprocessFeedpakStems(item, { ...options, operationLocked: true });
+      });
+    }
     updateItem(item.id, { status: "converting", warnings: [], error: null });
     const overwriteOriginal = options.overwriteOriginal === true;
     const outputPath = overwriteOriginal ? null : editedFeedpakPath(item, outputDir);
@@ -1081,40 +1426,95 @@ function App() {
   async function reprocessLoadedFeedpakStems() {
     if (!feedpakItems.length) return { ok: false, error: "Add FeedPaks first." };
     if (!separateStems) return { ok: false, error: "Enable Separate stems in Settings first." };
+    if (isConvertingRef.current || isAuditingRef.current || isFeedpakMutatingRef.current) return { ok: false, error: "Another conversion is already running." };
+    isConvertingRef.current = true;
+    stopRequestedRef.current = false;
+    setIsStopping(false);
+    setIsConverting(true);
+    setConversionProgress({ total: feedpakItems.length, completed: 0, failed: 0, active: [], stopped: false, memoryPaused: false, workerLimit: effectiveConversionWorkers });
     let failed = 0;
-    for (const entry of feedpakItems) {
-      const result = await reprocessFeedpakStems(entry, { overwriteOriginal: overwrite });
-      if (!result?.ok) failed += 1;
+    const reprocessItem = async (entry) => {
+      setConversionProgress((current) => ({
+        ...current,
+        active: [...current.active.filter((active) => active.id !== entry.id), {
+          id: entry.id,
+          name: itemDisplayTitle(entry),
+          artist: itemProgressSubtitle(entry)
+        }]
+      }));
+      let itemFailed = false;
+      try {
+        const result = await reprocessFeedpakStems(entry, { overwriteOriginal: overwrite, allowBatch: true });
+        itemFailed = !result?.ok;
+        if (itemFailed) failed += 1;
+      } catch (error) {
+        itemFailed = true;
+        failed += 1;
+        updateItem(entry.id, { status: "failed", warnings: [], error: error?.message || "Stem reprocessing failed." });
+      } finally {
+        setConversionProgress((current) => ({
+          ...current,
+          completed: Math.min(current.total, current.completed + 1),
+          failed: current.failed + (itemFailed ? 1 : 0),
+          active: current.active.filter((active) => active.id !== entry.id)
+        }));
+      }
+    };
+    try {
+      if (!await waitForActiveInspections()) return { ok: false, cancelled: true, error: "Stem reprocessing was stopped." };
+      await runConversionQueues({
+        regularItems: feedpakItems,
+        workerLimit: effectiveConversionWorkers,
+        runItem: reprocessItem,
+        shouldStop: () => stopRequestedRef.current,
+        beforeStart: waitForMemoryHeadroom
+      });
+      return {
+        ok: failed === 0 && !stopRequestedRef.current,
+        total: feedpakItems.length,
+        failed,
+        cancelled: stopRequestedRef.current,
+        error: stopRequestedRef.current ? "Stem reprocessing was stopped." : null
+      };
+    } finally {
+      const stopped = stopRequestedRef.current;
+      isConvertingRef.current = false;
+      stopRequestedRef.current = false;
+      setIsStopping(false);
+      setIsConverting(false);
+      setConversionProgress((current) => ({ ...current, active: [], stopped, memoryPaused: false, availableMemoryBytes: null }));
+      pumpInspectionQueue();
     }
-    return { ok: failed === 0, total: feedpakItems.length, failed };
   }
 
   async function organizeLoadedFeedpaksByArtist() {
     if (!feedpakItems.length) return { ok: false, error: "Add FeedPaks first." };
-    let targetDir = outputDir;
-    if (!targetDir) {
-      targetDir = await api.pickOutput({ defaultPath: lastSourcePath || undefined });
-      if (targetDir) setOutputDir(targetDir);
-    }
-    if (!targetDir) return { ok: false, cancelled: true };
-    const result = await api.organizeFeedpaks({
-      outputDir: targetDir,
-      overwrite,
-      items: feedpakItems.map((entry) => ({
-        inputPath: entry.path,
-        artist: entry.preview?.artist || "Unknown Artist"
-      }))
-    });
-    if (result?.results?.length) {
-      for (const row of result.results) {
-        const match = feedpakItems.find((entry) => normalizePathKey(entry.path) === normalizePathKey(row.inputPath));
-        if (!match) continue;
-        updateItem(match.id, row.ok
-          ? { status: "converted", outputPath: row.outputPath, error: null }
-          : { status: "failed", error: row.error || "Organize failed." });
+    return runExclusiveFeedpakMutation(async () => {
+      let targetDir = outputDir;
+      if (!targetDir) {
+        targetDir = await api.pickOutput({ defaultPath: lastSourcePath || undefined });
+        if (targetDir) setOutputDir(targetDir);
       }
-    }
-    return result;
+      if (!targetDir) return { ok: false, cancelled: true };
+      const result = await api.organizeFeedpaks({
+        outputDir: targetDir,
+        overwrite,
+        items: feedpakItems.map((entry) => ({
+          inputPath: entry.path,
+          artist: entry.preview?.artist || "Unknown Artist"
+        }))
+      });
+      if (result?.results?.length) {
+        for (const row of result.results) {
+          const match = feedpakItems.find((entry) => normalizePathKey(entry.path) === normalizePathKey(row.inputPath));
+          if (!match) continue;
+          updateItem(match.id, row.ok
+            ? { status: "converted", outputPath: row.outputPath, error: null }
+            : { status: "failed", error: row.error || "Organize failed." });
+        }
+      }
+      return result;
+    });
   }
 
   function onDrop(event) {
@@ -1193,9 +1593,16 @@ function App() {
                 <small>{headerStemStatusLabel(separateStems, stemServerStatus, isStartingStemServer, stemServerMatchesSelectedConfig)}</small>
               </span>
             </button>
-            <button className="primary" onClick={convertQueue} disabled={!items.length || isConverting}>
+            <button
+              className="primary"
+              onClick={convertQueue}
+              disabled={!items.length
+                || workspaceOperationBusy
+                || !performanceProfileReady
+                || (hasPsarcItems && (isCheckingAudioDecoder || audioDecoderStatus?.ready === false))}
+            >
               {isConverting ? <RotateCw className="spin" size={18} /> : <Download size={18} />}
-              Convert queue{isConverting ? ` (${effectiveConversionWorkers}x)` : ""}
+              Convert queue{isConverting ? ` (${conversionProgress.workerLimit || effectiveConversionWorkers}x)` : ""}
             </button>
             {isConverting && (
               <button className="danger" onClick={stopConversion} disabled={isStopping}>
@@ -1224,6 +1631,20 @@ function App() {
             <button onClick={() => api.openLatestRelease(updateInfo.releaseUrl)}>
               <ExternalLink size={16} />
               Open GitHub
+            </button>
+          </section>
+        )}
+
+        {hasPsarcItems && audioDecoderStatus?.ready === false && (
+          <section className="update-banner audio-dependency-banner" title={audioDecoderStatus.error || ""}>
+            <AlertTriangle size={21} />
+            <div>
+              <strong>PSARC audio conversion is blocked</strong>
+              <span>{audioDecoderStatus.message}</span>
+            </div>
+            <button onClick={refreshAudioDecoder} disabled={isCheckingAudioDecoder || workspaceOperationBusy}>
+              <RotateCw className={isCheckingAudioDecoder ? "spin" : ""} size={16} />
+              {isCheckingAudioDecoder ? "Checking" : "Check again"}
             </button>
           </section>
         )}
@@ -1257,11 +1678,45 @@ function App() {
                 </button>
                 <label className="select-control">
                   Workers
-                  <select value={conversionWorkers} onChange={(event) => setConversionWorkers(normalizeAutoNumberSetting(event.target.value, DEFAULT_CONVERSION_WORKERS))} disabled={isConverting}>
-                    <option value={AUTO_SETTING}>{`Auto (${effectiveConversionWorkers})`}</option>
-                    {[1, 2, 3, 4, 5, 6].map((value) => <option key={value} value={value}>{value}</option>)}
+                  <select value={conversionWorkers} onChange={(event) => setConversionWorkers(normalizeWorkerSetting(event.target.value, DEFAULT_CONVERSION_WORKERS))} disabled={isConverting || !performanceProfileReady}>
+                    <option value={AUTO_SETTING}>{`Auto (${performanceProfile.recommendedWorkers} recommended)`}</option>
+                    {conversionWorkerOptions.map((value) => <option key={value} value={value}>{value}</option>)}
                   </select>
                 </label>
+                <label className="select-control">
+                  Chart validation
+                  <select
+                    value={validationPolicy}
+                    onChange={(event) => setValidationPolicy(normalizeValidationPolicy(event.target.value))}
+                    disabled={isConverting}
+                  >
+                    <option value={SAFE_VALIDATION_POLICY}>Safe conversion (recommended)</option>
+                    <option value={STRICT_VALIDATION_POLICY}>Strict validation (advanced)</option>
+                  </select>
+                </label>
+                <div className="worker-profile-note validation-policy-note">
+                  <Info size={17} />
+                  <div>
+                    <strong>{validationPolicy === SAFE_VALIDATION_POLICY
+                      ? "Package-safe charts are published even when they contain unusual chart data."
+                      : "Strict validation rejects charts with any FeedPak compatibility error."}</strong>
+                    <span>{validationPolicy === SAFE_VALIDATION_POLICY
+                      ? "FeedForge preserves the chart data and labels the result Converted with chart warnings. Unsafe or incomplete packages still fail."
+                      : "Use this diagnostic mode when you need every output to pass all chart validation rules."}</span>
+                  </div>
+                </div>
+                <div className="worker-profile-note">
+                  <Info size={17} />
+                  <div>
+                    <strong>{performanceProfileReady
+                      ? `Detected: ${performanceProfile.logicalProcessors} CPU threads, ${performanceProfile.memoryGb} GB RAM - maximum ${performanceProfile.manualMaxWorkers}`
+                      : "Detecting this PC's performance capacity..."}</strong>
+                    <span>Auto is recommended. Higher manual values can speed up large libraries, but may make the PC less responsive and unusually large songs can need more memory.</span>
+                    {separateStems && effectiveConversionWorkers < selectedConversionWorkers && (
+                      <span>Stem splitting currently limits conversion to {effectiveConversionWorkers} workers so the Demucs server stays stable.</span>
+                    )}
+                  </div>
+                </div>
                 <label className="select-control output-layout-control">
                   Output layout
                   <select value={outputLayout} onChange={(event) => setOutputLayout(event.target.value)} disabled={isConverting}>
@@ -1368,7 +1823,7 @@ function App() {
                     </span>
                     <em>{selectedModel?.description || "Selected model."}</em>
                     {!selectedModel?.installed && !selectedModel?.remoteOnly && (
-                      <button onClick={startLocalStemServer} disabled={isConverting || stemServerBusy || pythonInfo?.ok === false}>
+                      <button onClick={startLocalStemServer} disabled={workspaceOperationBusy || stemServerBusy || pythonInfo?.ok === false}>
                         {stemServerBusy ? <RotateCw className="spin" size={16} /> : <Download size={16} />}
                         Download/start this model
                       </button>
@@ -1462,19 +1917,19 @@ function App() {
                     </div>
                     <div className="server-actions">
                       {!stemServerReadyForSelection && !selectedModel?.remoteOnly && (
-                        <button onClick={startLocalStemServer} disabled={isConverting || stemServerBusy || pythonInfo?.ok === false}>
+                        <button onClick={startLocalStemServer} disabled={workspaceOperationBusy || stemServerBusy || pythonInfo?.ok === false}>
                           {stemServerBusy ? <RotateCw className="spin" size={17} /> : <Download size={17} />}
                           {stemServerActionText(stemServerStatus, stemServerBusy, selectedModel)}
                         </button>
                       )}
                       {stemServerStatus.portBlocked && !stemServerBusy && (
-                        <button className="danger" onClick={freeStemServerPort} disabled={isConverting || isFreeingStemPort}>
+                        <button className="danger" onClick={freeStemServerPort} disabled={workspaceOperationBusy || isFreeingStemPort}>
                           {isFreeingStemPort ? <RotateCw className="spin" size={17} /> : <XCircle size={17} />}
                           Free port 7865
                         </button>
                       )}
                       {(stemServerStatus.processRunning || stemServerBusy) && (
-                        <button className="ghost" onClick={stopLocalStemServer} disabled={isConverting}>
+                        <button className="ghost" onClick={stopLocalStemServer} disabled={workspaceOperationBusy}>
                           <Power size={17} />
                           Stop
                         </button>
@@ -1506,9 +1961,12 @@ function App() {
                   criteria={auditCriteria}
                   report={auditReport}
                   busy={isAuditingLibrary}
+                  disabled={isConverting || isFeedpakMutating}
+                  memoryPaused={isAuditingLibrary && conversionProgress.memoryPaused}
                   onChooseFolder={chooseAuditFolder}
                   onRun={runLibraryAudit}
                   onChangeCriterion={updateAuditCriterion}
+                  onDeleteFiles={deleteAuditFiles}
                 />
                 <div className="diagnostics-panel standalone">
                   <div className="diagnostics-head">
@@ -1553,6 +2011,7 @@ function App() {
             overwrite={overwrite}
             separateStems={separateStems}
             demucsStems={demucsStems}
+            busy={workspaceOperationBusy}
           />
         ) : (
           <>
@@ -1583,7 +2042,9 @@ function App() {
               <Metric label="Imported" value={stats.total} />
               <Metric label="Ready" value={stats.ready} tone="blue" />
               <Metric label="Converted" value={stats.converted} tone="green" />
-              <Metric label="Issues" value={stats.failed} tone="red" />
+              <Metric label="With chart warnings" value={stats.convertedWithWarnings} tone="warn" />
+              <Metric label="Partial" value={stats.partial} tone="warn" />
+              <Metric label="Failed" value={stats.failed} tone="red" />
             </section>
 
             <section className="content-grid">
@@ -1596,8 +2057,11 @@ function App() {
                   onRemove={removeItem}
                   onExportAudio={exportAudioQueue}
                   onExportAudioItem={exportAudioItem}
-                  canRemove={!isConverting}
-                  canExportAudio={items.length > 0 && !isConverting}
+                  canRemove={!workspaceOperationBusy}
+                  canExportAudio={items.length > 0
+                    && !workspaceOperationBusy
+                    && !isCheckingAudioDecoder
+                    && audioDecoderStatus?.ready !== false}
                 />
               </div>
               <Inspector
@@ -1846,7 +2310,7 @@ function Metric({ label, value, tone = "" }) {
   );
 }
 
-function LibraryAuditPanel({ folder, criteria, report, busy, onChooseFolder, onRun, onChangeCriterion }) {
+function LibraryAuditPanel({ folder, criteria, report, busy, disabled = false, memoryPaused, onChooseFolder, onRun, onChangeCriterion, onDeleteFiles }) {
   const [selectedDuplicatePaths, setSelectedDuplicatePaths] = useState([]);
   const [deleteMessage, setDeleteMessage] = useState("");
   const [isDeletingDuplicates, setIsDeletingDuplicates] = useState(false);
@@ -1870,13 +2334,13 @@ function LibraryAuditPanel({ folder, criteria, report, busy, onChooseFolder, onR
   }
 
   async function deleteSelectedDuplicates() {
-    if (!selectedDuplicatePaths.length || isDeletingDuplicates) return;
+    if (!selectedDuplicatePaths.length || isDeletingDuplicates || busy || disabled) return;
     const ok = window.confirm(`Move ${selectedDuplicatePaths.length} selected FeedPak file${selectedDuplicatePaths.length === 1 ? "" : "s"} to the Recycle Bin?`);
     if (!ok) return;
     setIsDeletingDuplicates(true);
     setDeleteMessage("");
     try {
-      const result = await api.deleteFiles(selectedDuplicatePaths);
+      const result = await onDeleteFiles(selectedDuplicatePaths);
       setDeleteMessage(result.ok ? `Moved ${result.deleted || 0} file${result.deleted === 1 ? "" : "s"} to the Recycle Bin.` : result.error || "Some files could not be deleted.");
       if (result.ok) setSelectedDuplicatePaths([]);
     } catch (error) {
@@ -1894,10 +2358,10 @@ function LibraryAuditPanel({ folder, criteria, report, busy, onChooseFolder, onR
           <span>{folder || "Choose a folder of FeedPak files to scan recursively."}</span>
         </div>
         <div>
-          <button className="ghost" onClick={onChooseFolder} disabled={busy}><FolderOpen size={16} /> Folder</button>
-          <button onClick={onRun} disabled={busy || !folder}>
+          <button className="ghost" onClick={onChooseFolder} disabled={busy || disabled}><FolderOpen size={16} /> Folder</button>
+          <button onClick={onRun} disabled={busy || disabled || !folder}>
             {busy ? <RotateCw className="spin" size={16} /> : <Check size={16} />}
-            {busy ? "Scanning" : "Run audit"}
+            {memoryPaused ? "Waiting for memory" : busy ? "Scanning" : "Run audit"}
           </button>
         </div>
       </div>
@@ -1910,7 +2374,7 @@ function LibraryAuditPanel({ folder, criteria, report, busy, onChooseFolder, onR
                 type="checkbox"
                 checked={!!criteria[option.key]}
                 onChange={(event) => onChangeCriterion(option.key, event.target.checked)}
-                disabled={busy}
+                disabled={busy || disabled}
               />
               <span>{option.label}</span>
             </label>
@@ -1959,7 +2423,7 @@ function LibraryAuditPanel({ folder, criteria, report, busy, onChooseFolder, onR
                     <strong>Duplicate songs</strong>
                     <span>{duplicateGroups.length ? `${duplicateGroups.length} group${duplicateGroups.length === 1 ? "" : "s"} found. FeedForge recommends one file per group, but you decide what to keep.` : "No duplicates found by metadata."}</span>
                   </div>
-                  <button className="danger" onClick={deleteSelectedDuplicates} disabled={!selectedDuplicatePaths.length || isDeletingDuplicates}>
+                  <button className="danger" onClick={deleteSelectedDuplicates} disabled={!selectedDuplicatePaths.length || isDeletingDuplicates || busy || disabled}>
                     {isDeletingDuplicates ? <RotateCw className="spin" size={16} /> : <XCircle size={16} />}
                     Move selected to Recycle Bin
                   </button>
@@ -2016,9 +2480,11 @@ function ConversionProgress({ progress, isConverting }) {
   const status = progress.stopped
     ? "Stopped"
     : isConverting
-      ? isPlanning
-        ? progress.planningStage === "reserving" ? "Finalizing collision-safe names" : "Reading PSARC metadata"
-        : "Converting"
+      ? progress.memoryPaused
+        ? "Waiting for available memory"
+        : isPlanning
+          ? progress.planningStage === "reserving" ? "Finalizing collision-safe names" : "Reading PSARC metadata"
+          : "Converting"
       : completed >= total
         ? "Complete"
         : "Waiting";
@@ -2034,6 +2500,9 @@ function ConversionProgress({ progress, isConverting }) {
             {failed ? `, ${failed} failed` : ""}
             {isPlanning && progress.planningCached ? `, ${progress.planningCached} cached` : ""}
             {isPlanning && progress.planningWorkers ? `, ${progress.planningWorkers} workers` : ""}
+            {progress.memoryPaused && progress.availableMemoryBytes !== null
+              ? `, ${formatBytes(progress.availableMemoryBytes)} available`
+              : ""}
           </span>
         </div>
         <b>{percent}%</b>
@@ -2043,18 +2512,30 @@ function ConversionProgress({ progress, isConverting }) {
       </div>
       {progress.active?.length > 0 && (
         <div className="active-conversions">
-          {progress.active.map((item) => (
-            <div className="active-conversion-row" key={item.id}>
-              <RotateCw className="spin" size={15} />
-              <div>
-                <strong>{item.name}</strong>
-                {item.artist && <span>{item.artist}</span>}
+          {progress.active.map((item) => {
+            const songTotal = Math.max(1, Number(item.songTotal) || 1);
+            const songCompleted = Math.min(songTotal, Math.max(0, Number(item.songCompleted) || 0));
+            const songPercent = Math.round((songCompleted / songTotal) * 100);
+            return (
+              <div className="active-conversion-row" key={item.id}>
+                <RotateCw className="spin" size={15} />
+                <div>
+                  <strong>{item.name}</strong>
+                  {item.artist && <span>{item.artist}</span>}
+                  {item.hasSongProgress && (
+                    <span>
+                      {songCompleted} of {songTotal} songs
+                      {item.songFailed ? `, ${item.songFailed} failed` : ""}
+                      {item.songWorkers ? ` · ${item.songWorkers} worker${item.songWorkers === 1 ? "" : "s"}` : ""}
+                    </span>
+                  )}
+                </div>
+                <div className="active-file-track" aria-hidden="true">
+                  <span style={item.hasSongProgress ? { width: `${songPercent}%`, animation: "none" } : undefined} />
+                </div>
               </div>
-              <div className="active-file-track" aria-hidden="true">
-                <span />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </section>
@@ -2114,22 +2595,6 @@ function normalizeInitialStemJobs(settings) {
     return AUTO_SETTING;
   }
   return normalized;
-}
-
-function hostCpuCount() {
-  return Math.max(2, Number(window.navigator?.hardwareConcurrency) || 4);
-}
-
-function resolveConversionWorkerCount(setting, options = {}) {
-  const manual = normalizeAutoNumberSetting(setting, AUTO_SETTING);
-  if (manual !== AUTO_SETTING) return Math.max(1, Math.min(Number(manual), 8));
-
-  const cores = hostCpuCount();
-  const base = cores >= 16 ? 6 : cores >= 10 ? 5 : cores >= 6 ? 4 : 2;
-  if (!options.separateStems) return base;
-
-  const stemJobs = Math.max(1, Number(options.stemJobs || 1));
-  return Math.max(2, Math.min(base, stemJobs + 1, 4));
 }
 
 function resolveStemJobCount(setting, deviceId, devices) {
@@ -2299,11 +2764,11 @@ function Queue({ items, selectedId, onSelect, onRemove, onExportAudio, onExportA
             className={`queue-row ${selectedId === item.id ? "selected" : ""}`}
             onClick={() => onSelect(item.id)}
           >
-            <StatusIcon status={item.status} />
+            <StatusIcon status={item.status} convertedWithChartWarnings={item.convertedWithChartWarnings === true} />
             <div className="queue-main">
               <strong>{itemDisplayTitle(item)}</strong>
               <span>{itemDisplaySubtitle(item)}</span>
-              {item.preview?.is_multi_song && item.status !== "converted" && (
+              {item.preview?.is_multi_song && !["converted", "partial"].includes(item.status) && (
                 <em>{item.preview.song_count} songs will export as separate FeedPaks</em>
               )}
               {item.message && <em>{item.message}</em>}
@@ -2311,9 +2776,9 @@ function Queue({ items, selectedId, onSelect, onRemove, onExportAudio, onExportA
             <div className="queue-meta">
               <span>{item.sourceType === "feedpak" ? "FeedPak" : "PSARC"}</span>
               <span>{item.preview ? duration(item.preview.duration) : "-"}</span>
-              <b>{statusText(item.status)}</b>
+              <b>{statusText(item.status, item.convertedWithChartWarnings === true)}</b>
             </div>
-            {item.status !== "converting" && (
+            {canExportAudio && item.status !== "converting" && (
               <span
                 className="queue-export"
                 role="button"
@@ -2380,12 +2845,14 @@ function FeedPakTools({
   outputDir,
   overwrite,
   separateStems,
-  demucsStems
+  demucsStems,
+  busy = false
 }) {
   const [organizeMessage, setOrganizeMessage] = useState("");
   const [batchStemMessage, setBatchStemMessage] = useState("");
 
   async function organizeByArtist() {
+    if (busy) return;
     setOrganizeMessage("Organizing...");
     const result = await onOrganizeByArtist();
     if (result?.cancelled) {
@@ -2398,6 +2865,7 @@ function FeedPakTools({
   }
 
   async function batchReprocessStems() {
+    if (busy) return;
     setBatchStemMessage("Reprocessing...");
     const result = await onBatchReprocessFeedpakStems();
     setBatchStemMessage(result?.ok
@@ -2413,12 +2881,12 @@ function FeedPakTools({
           <span>{outputDir ? `Output: ${outputDir}` : "Choose an output folder for organized copies."}</span>
         </div>
         <div className="tools-actions">
-          <button onClick={onAddFiles}><Plus size={17} /> Add FeedPaks</button>
-          <button className="ghost" onClick={onChooseOutput}><FolderOpen size={17} /> Output</button>
-          <button onClick={organizeByArtist} disabled={!feedpakItems.length}>
+          <button onClick={onAddFiles} disabled={busy}><Plus size={17} /> Add FeedPaks</button>
+          <button className="ghost" onClick={onChooseOutput} disabled={busy}><FolderOpen size={17} /> Output</button>
+          <button onClick={organizeByArtist} disabled={busy || !feedpakItems.length}>
             <FolderOpen size={17} /> Artist folders
           </button>
-          <button onClick={batchReprocessStems} disabled={!feedpakItems.length || !separateStems}>
+          <button onClick={batchReprocessStems} disabled={busy || !feedpakItems.length || !separateStems}>
             <RotateCw size={17} /> Reprocess all
           </button>
         </div>
@@ -2438,13 +2906,14 @@ function FeedPakTools({
                 className={`feedpak-chip ${selectedId === entry.id ? "active" : ""}`}
                 title={entry.path}
               >
-                <button className="feedpak-chip-main" onClick={() => onSelect(entry.id)}>
+                <button className="feedpak-chip-main" onClick={() => onSelect(entry.id)} disabled={busy}>
                   <strong>{entry.preview?.title || entry.name}</strong>
                   <span>{entry.preview?.artist || "Unknown artist"}</span>
                 </button>
                 <button
                   className="feedpak-chip-remove"
                   onClick={() => onRemoveItem(entry.id)}
+                  disabled={busy}
                   title={`Close ${entry.preview?.title || entry.name}`}
                   aria-label={`Close ${entry.preview?.title || entry.name}`}
                 >
@@ -2461,7 +2930,7 @@ function FeedPakTools({
           <FileMusic size={38} />
           <strong>No FeedPak selected</strong>
           <span>Add or select a FeedPak package to inspect and edit it.</span>
-          <button className="primary" onClick={onAddFiles}><Plus size={17} /> Add FeedPaks</button>
+          <button className="primary" onClick={onAddFiles} disabled={busy}><Plus size={17} /> Add FeedPaks</button>
         </div>
       ) : (
         <div className="feedpak-tools-grid">
@@ -2475,6 +2944,7 @@ function FeedPakTools({
             onReprocessFeedpakStems={onReprocessFeedpakStems}
             separateStems={separateStems}
             demucsStems={demucsStems}
+            busy={busy}
           />
         </div>
       )}
@@ -2500,7 +2970,8 @@ function Inspector({
   onRemoveFeedpakStem,
   onReprocessFeedpakStems,
   separateStems = false,
-  demucsStems = []
+  demucsStems = [],
+  busy = false
 }) {
   const [tab, setTab] = useState("overview");
   const [editMetadata, setEditMetadata] = useState(null);
@@ -2516,12 +2987,18 @@ function Inspector({
   const authors = preview?.authors || [];
   const stems = preview?.stems || [];
   const validation = item?.validation || preview?.validation;
-  const itemWarnings = Array.isArray(item?.warnings)
-    ? item.warnings.filter(Boolean)
-    : Array.isArray(preview?.warnings) ? preview.warnings.filter(Boolean) : [];
+  const primaryWarnings = Array.isArray(item?.warnings)
+    ? item.warnings
+    : Array.isArray(preview?.warnings) ? preview.warnings : [];
+  const itemWarnings = [...new Set((primaryWarnings.length
+    ? primaryWarnings
+    : Array.isArray(item?.chartWarnings) ? item.chartWarnings : []
+  ).filter(Boolean))];
   const isFeedpak = item?.sourceType === "feedpak" || preview?.source_type === "feedpak";
   const isMultiSong = !isFeedpak && isMultiSongPackage(item);
   const outputCount = Array.isArray(item?.outputPaths) ? item.outputPaths.length : 0;
+  const outputLocation = outputLocationSummary(item?.outputPaths || []);
+  const failedSongCount = Math.max(0, Number(item?.failedSongCount) || 0);
 
   useEffect(() => {
     if (!preview || !isFeedpak) {
@@ -2548,7 +3025,7 @@ function Inspector({
   }, [item?.id, preview?.title, preview?.artist, isFeedpak]);
 
   async function saveFeedpak() {
-    if (!editMetadata) return;
+    if (!editMetadata || busy) return;
     setSaveMessage("Saving...");
     const result = await onSaveFeedpakMetadata(item, editMetadata, parseAuthors(authorsText), { overwriteOriginal });
     setSaveMessage(result.ok
@@ -2557,6 +3034,7 @@ function Inspector({
   }
 
   async function replaceStem(stemId) {
+    if (busy) return;
     setStemMessage(`Choosing audio for ${stemId}...`);
     const result = await onReplaceFeedpakStem(item, stemId, { overwriteOriginal });
     if (result?.cancelled) {
@@ -2569,6 +3047,7 @@ function Inspector({
   }
 
   async function addStem() {
+    if (busy) return;
     const stemId = stemEditId.trim();
     if (!stemId) {
       setStemMessage("Enter a stem name first.");
@@ -2578,6 +3057,7 @@ function Inspector({
   }
 
   async function removeStem(stemId) {
+    if (busy) return;
     setStemMessage(`Removing ${stemId}...`);
     const result = await onRemoveFeedpakStem(item, stemId, { overwriteOriginal });
     setStemMessage(result?.ok
@@ -2586,6 +3066,7 @@ function Inspector({
   }
 
   async function reprocessStems() {
+    if (busy) return;
     if (!separateStems) {
       setStemMessage("Enable Separate stems in Settings first.");
       return;
@@ -2632,9 +3113,9 @@ function Inspector({
           <section className="panel">
             <div className="panel-title">
               <h2>Package Overview</h2>
-              <span>{item ? statusText(item.status) : "Waiting"}</span>
+              <span>{item ? statusText(item.status, item.convertedWithChartWarnings === true) : "Waiting"}</span>
             </div>
-            {item?.error && <div className="error-box"><AlertTriangle size={17} /> {item.error}</div>}
+            {item?.error && <div className={item.status === "partial" ? "warning-box" : "error-box"}><AlertTriangle size={17} /> {item.error}</div>}
             {itemWarnings.length > 0 && (
               <div className="warning-box"><AlertTriangle size={17} /> <span>{itemWarnings.join("\n")}</span></div>
             )}
@@ -2655,8 +3136,14 @@ function Inspector({
             {preview?.is_multi_song && !outputCount && (
               <div className="info-box"><Info size={17} /> This multi-song PSARC will create {preview.song_count} separate FeedPaks when converted.</div>
             )}
-            {outputCount > 1 && (
-              <div className="info-box success"><Check size={17} /> Created {outputCount} separate FeedPaks{item.outputPaths?.[0] ? ` in ${parentDir(item.outputPaths[0])}` : ""}.</div>
+            {isMultiSong && outputCount > 0 && (
+              <div className={item?.status === "partial" ? "warning-box" : "info-box success"}>
+                {item?.status === "partial" ? <AlertTriangle size={17} /> : <Check size={17} />}
+                Created {outputCount} separate FeedPak{outputCount === 1 ? "" : "s"}{outputLocation.suffix}.
+                {item?.status === "partial" && failedSongCount > 0
+                  ? ` ${failedSongCount} song${failedSongCount === 1 ? "" : "s"} failed.`
+                  : ""}
+              </div>
             )}
             {isFeedpak && validation && !validation.ok && (
               <div className="error-box">
@@ -2722,9 +3209,9 @@ function Inspector({
             Overwrite original FeedPak
           </label>
           <div className="editor-actions">
-            <button className="primary" onClick={saveFeedpak}><Check size={16} /> {overwriteOriginal ? "Save original" : "Save copy"}</button>
-            <button onClick={() => onReplaceFeedpakCover(item, { overwriteOriginal })}><ImageIcon size={16} /> Replace cover</button>
-            <button className="ghost" onClick={() => onRemoveFeedpakCover(item, { overwriteOriginal })}><XCircle size={16} /> Remove cover</button>
+            <button className="primary" onClick={saveFeedpak} disabled={busy}><Check size={16} /> {overwriteOriginal ? "Save original" : "Save copy"}</button>
+            <button onClick={() => onReplaceFeedpakCover(item, { overwriteOriginal })} disabled={busy}><ImageIcon size={16} /> Replace cover</button>
+            <button className="ghost" onClick={() => onRemoveFeedpakCover(item, { overwriteOriginal })} disabled={busy}><XCircle size={16} /> Remove cover</button>
           </div>
         </section>
       ) : tab === "stems" && isFeedpak ? (
@@ -2745,7 +3232,7 @@ function Inspector({
                 <em>{stemSelectionWarning(demucsStems)}</em>
               )}
             </div>
-            <button className="primary" onClick={reprocessStems} disabled={!separateStems}>
+            <button className="primary" onClick={reprocessStems} disabled={busy || !separateStems}>
               <RotateCw size={16} /> Reprocess stems
             </button>
           </div>
@@ -2759,7 +3246,7 @@ function Inspector({
                 placeholder="guitar, bass, vocals, custom"
               />
             </label>
-            <button className="primary" onClick={addStem}><Plus size={16} /> Add / replace</button>
+            <button className="primary" onClick={addStem} disabled={busy}><Plus size={16} /> Add / replace</button>
             <label className="toggle editor-overwrite">
               <input type="checkbox" checked={overwriteOriginal} onChange={(event) => setOverwriteOriginal(event.target.checked)} />
               Overwrite original
@@ -2780,11 +3267,11 @@ function Inspector({
                   </div>
                   <span>{stem.codec || "audio"} - {formatBytes(stem.size)}</span>
                   {stem.default && <b>default</b>}
-                  <button onClick={() => replaceStem(stem.id)}><FileMusic size={15} /> Replace</button>
+                  <button onClick={() => replaceStem(stem.id)} disabled={busy}><FileMusic size={15} /> Replace</button>
                   <button
                     className="ghost"
                     onClick={() => removeStem(stem.id)}
-                    disabled={stemId === "full"}
+                    disabled={busy || stemId === "full"}
                     title={stemId === "full" ? "The full mix is required by the FeedPak spec." : `Remove ${stem.id}`}
                   >
                     <XCircle size={15} /> Remove
@@ -3041,14 +3528,16 @@ function ReadyLine({ ok, text, muted = false }) {
   return <li className={`${muted ? "muted" : ""} ${ok ? "ready-ok" : "ready-missing"}`}>{ok ? <Check size={16} /> : <XCircle size={16} />} {text}</li>;
 }
 
-function StatusIcon({ status }) {
+function StatusIcon({ status, convertedWithChartWarnings = false }) {
+  if (status === "converted" && convertedWithChartWarnings) return <AlertTriangle className="status-warn" size={18} />;
   if (status === "converted") return <Check className="status-ok" size={18} />;
-  if (status === "failed" || status === "needs-review") return <AlertTriangle className="status-warn" size={18} />;
+  if (status === "partial" || status === "failed" || status === "needs-review") return <AlertTriangle className="status-warn" size={18} />;
   if (status === "converting" || status === "inspecting") return <RotateCw className="spin status-blue" size={18} />;
   return <Play className="status-blue" size={18} />;
 }
 
-function statusText(status) {
+function statusText(status, convertedWithChartWarnings = false) {
+  if (status === "converted" && convertedWithChartWarnings) return "Converted with chart warnings";
   return {
     queued: "Queued",
     inspecting: "Inspecting",
@@ -3056,6 +3545,7 @@ function statusText(status) {
     "needs-review": "Review",
     converting: "Converting",
     converted: "Converted",
+    partial: "Partially converted",
     failed: "Failed"
   }[status] || "Waiting";
 }
@@ -3268,6 +3758,10 @@ function duration(value) {
   const minutes = Math.floor(value / 60);
   const seconds = Math.floor(value % 60).toString().padStart(2, "0");
   return `${minutes}:${seconds}`;
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 function readSettings() {

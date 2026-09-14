@@ -6,18 +6,38 @@ from pathlib import Path
 
 root = Path.cwd()
 tools = root / 'src' / 'feedback_converter' / 'tools'
-windows_tools = [
-    'ww2ogg.exe', 'vgmstream-cli.exe', 'oggenc.exe', 'topng.exe',
-    *(item.name for item in tools.glob('*.dll')),
+decoder_name = 'vgmstream-cli.exe' if os.name == 'nt' else 'vgmstream-cli'
+decoder_candidates = [
+    tools,
+    *sorted((root / 'runtime').glob('vgmstream-*'), reverse=True),
 ]
-tool_names = windows_tools if os.name == 'nt' else ['vgmstream-cli']
-native_tools = [name for name in tool_names if (tools / name).is_file()]
+decoder_dir = next(
+    (candidate for candidate in decoder_candidates if (candidate / decoder_name).is_file()),
+    None,
+)
+if decoder_dir is None:
+    raise SystemExit(
+        f'Missing required WEM decoder {decoder_name}. Download the complete vgmstream bundle '
+        'into src/feedback_converter/tools or runtime/vgmstream-<version> before packaging.'
+    )
+
+native_tools = [(decoder_dir / decoder_name, 'feedback_converter/tools')]
+if os.name == 'nt':
+    native_tools.extend(
+        (item, 'feedback_converter/tools')
+        for item in sorted(decoder_dir.glob('*.dll'))
+    )
+    native_tools.extend(
+        (tools / name, 'feedback_converter/tools')
+        for name in ('ww2ogg.exe', 'oggenc.exe', 'topng.exe')
+        if (tools / name).is_file()
+    )
 
 
 a = Analysis(
     [str(root / 'src' / 'feedback_converter' / 'cli.py')],
     pathex=[],
-    binaries=[(str(tools / name), 'feedback_converter/tools') for name in native_tools],
+    binaries=[(str(source), destination) for source, destination in native_tools],
     datas=[
         (str(tools / 'packed_codebooks.bin'), 'feedback_converter/tools'),
         (
