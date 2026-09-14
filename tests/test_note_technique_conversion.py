@@ -102,28 +102,22 @@ def test_sng_note_core_fields_and_bend_shape_map_without_losing_precision():
     }
 
 
-def test_sng_bend_points_are_emitted_in_chronological_order():
-    converted = converter._note_to_feedpak(
-        _note(
-            time=12.5,
-            bends=[
-                _bend(13.0, 2.0),
-                _bend(12.75, 1.5),
-                _bend(12.5, 0.0),
-                _bend(12.75, 0.5),
-            ],
+def test_unsorted_sng_bend_points_are_rejected():
+    with pytest.raises(ValueError, match="chronological order"):
+        converter._note_to_feedpak(
+            _note(
+                time=12.5,
+                bends=[
+                    _bend(13.0, 2.0),
+                    _bend(12.75, 1.5),
+                    _bend(12.5, 0.0),
+                    _bend(12.75, 0.5),
+                ],
+            )
         )
-    )
-
-    assert converted["bnv"] == [
-        {"t": 0.0, "v": 0.0},
-        {"t": 0.25, "v": 1.5},
-        {"t": 0.25, "v": 0.5},
-        {"t": 0.5, "v": 2.0},
-    ]
 
 
-def test_sng_relative_bend_times_keep_their_relative_time_basis():
+def test_relative_looking_sng_bend_times_are_treated_as_absolute():
     converted = converter._note_to_feedpak(
         _note(
             time=12.5,
@@ -134,13 +128,11 @@ def test_sng_relative_bend_times_keep_their_relative_time_basis():
         )
     )
 
-    assert converted["bnv"] == [
-        {"t": 0.0, "v": 0.0},
-        {"t": 0.25, "v": 1.0},
-    ]
+    assert converted["bn"] == 1.0
+    assert converted["bnv"] == [{"t": 0.0, "v": 1.0}]
 
 
-def test_early_note_relative_bend_curve_is_not_misread_as_absolute_time():
+def test_pre_onset_sng_bend_curve_holds_its_last_value_at_onset():
     converted = converter._note_to_feedpak(
         _note(
             time=1.0,
@@ -152,11 +144,8 @@ def test_early_note_relative_bend_curve_is_not_misread_as_absolute_time():
         )
     )
 
-    assert converted["bnv"] == [
-        {"t": 0.0, "v": 0.0},
-        {"t": 0.5, "v": 1.0},
-        {"t": 1.0, "v": 2.0},
-    ]
+    assert converted["bn"] == 2.0
+    assert converted["bnv"] == [{"t": 0.0, "v": 2.0}]
 
 
 def _empty_chord_bends():
@@ -173,7 +162,7 @@ def test_chord_bend_points_near_note_onset_use_one_absolute_time_basis():
         count=2,
     )
     chord_note = _ns(
-        mask=[0, 0, 0, 0, 0, 0],
+        mask=[0, 0, 0, converter.NOTE_MASK_SUSTAIN, 0, 0],
         slideTo=[-1, -1, -1, -1, -1, -1],
         slideUnpitchTo=[-1, -1, -1, -1, -1, -1],
         bends=bends,
@@ -182,7 +171,7 @@ def test_chord_bend_points_near_note_onset_use_one_absolute_time_basis():
         chordTemplates=[_ns(frets=[-1, -1, -1, 7, -1, -1])],
         chordNotes=[chord_note],
     )
-    chord = _ns(time=315.5, sustain=0.0, mask=0, chordNoteId=0)
+    chord = _ns(time=315.5, sustain=0.1, mask=0, chordNoteId=0)
 
     converted = converter._chord_notes(song, chord, chord_id=0)
 
@@ -190,9 +179,10 @@ def test_chord_bend_points_near_note_onset_use_one_absolute_time_basis():
         {
             "s": 3,
             "f": 7,
+            "sus": 0.1,
             "bn": 3.0,
             "bnv": [
-                {"t": 0.0, "v": 2.0},
+                {"t": 0.0, "v": 2.019749},
                 {"t": 0.049988, "v": 3.0},
             ],
         }
