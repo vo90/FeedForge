@@ -7,7 +7,10 @@ from pathlib import Path
 import pytest
 
 from feedback_converter import converter
-from feedback_converter.feedpak_validator import FeedpakValidationResult
+from feedback_converter.feedpak_validator import (
+    FeedpakValidationIssue,
+    FeedpakValidationResult,
+)
 from feedback_converter.validation_pipeline import PathValidationResult
 
 
@@ -156,6 +159,66 @@ def test_stem_separation_forces_serial_song_processing(tmp_path, monkeypatch):
 
     assert maximum_active == 1
     assert progress[0]["workers"] == 1
+
+
+def test_chart_findings_report_success_progress_without_user_warning(
+    tmp_path,
+    monkeypatch,
+):
+    message = "arrangements/lead.json: notes/0/f: must be between 0 and 24"
+
+    def convert_one(_source, target, **_kwargs):
+        return converter.ConversionResult(
+            output_path=Path(target),
+            package_dir=Path(target).with_suffix(".work"),
+            manifest={},
+            validation=FeedpakValidationResult(
+                ok=False,
+                errors=[message],
+                issues=[
+                    FeedpakValidationIssue(
+                        code="chart.fret.out-of-range",
+                        message=message,
+                        category="chart-semantic",
+                        severity="error",
+                        blocking=False,
+                    )
+                ],
+            ),
+        )
+
+    results, progress, _targets = _run_fixture(
+        tmp_path,
+        monkeypatch,
+        total=1,
+        workers=1,
+        convert_one=convert_one,
+    )
+
+    assert results[0].converted_with_chart_warnings
+    assert results[0].warnings == []
+    assert [event["status"] for event in progress if "status" in event] == [
+        "succeeded"
+    ]
+
+
+def test_material_warning_remains_visible_in_progress(tmp_path, monkeypatch):
+    def convert_one(_source, target, **_kwargs):
+        result = _result(Path(target))
+        result.warnings.append(converter.ConversionWarning("Skipped playable arrangement."))
+        return result
+
+    _results, progress, _targets = _run_fixture(
+        tmp_path,
+        monkeypatch,
+        total=1,
+        workers=1,
+        convert_one=convert_one,
+    )
+
+    assert [event["status"] for event in progress if "status" in event] == [
+        "succeeded_with_warnings"
+    ]
 
 
 @pytest.mark.parametrize(

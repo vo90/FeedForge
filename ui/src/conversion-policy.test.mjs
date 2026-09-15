@@ -4,10 +4,11 @@ import test from "node:test";
 import {
   SAFE_VALIDATION_POLICY,
   STRICT_VALIDATION_POLICY,
-  chartWarningSummary,
   conversionOutputPaths,
   conversionOutcome,
   conversionResultStatus,
+  conversionStatusText,
+  isConversionIssue,
   normalizeOutputResults,
   outputLocationSummary,
   normalizeValidationPolicy
@@ -32,7 +33,6 @@ test("structured chart warning fields are normalized", () => {
   assert.equal(result.chartWarningCount, 3);
   assert.deepEqual(result.warnings, ["Tone data was omitted."]);
   assert.deepEqual(result.chartWarnings, ["Chart compatibility warning: fret 127 was preserved."]);
-  assert.equal(chartWarningSummary({ converted_with_chart_warnings: true }), "Converted with 1 chart warning.");
 });
 
 test("ordinary warnings do not turn a conversion into a chart-warning outcome", () => {
@@ -44,12 +44,35 @@ test("ordinary warnings do not turn a conversion into a chart-warning outcome", 
   });
 });
 
-test("older explicitly labelled warning text is recognized defensively", () => {
+test("diagnostic details are not promoted to user-facing warnings", () => {
   const result = conversionOutcome({
-    warnings: ["Chart compatibility warning: unusual slide destination 28 was preserved."]
+    warnings: [],
+    chartWarnings: ["Chart compatibility warning: unusual slide destination 28 was preserved."],
+    conversionDetails: [
+      { category: "source-normalization", message: "Bend timing was normalized." },
+      { category: "chart-validation", message: "Slide destination 28 was preserved." }
+    ]
   });
+
+  assert.deepEqual(result.warnings, []);
+  assert.deepEqual(result.chartWarnings, ["Chart compatibility warning: unusual slide destination 28 was preserved."]);
   assert.equal(result.convertedWithChartWarnings, true);
   assert.equal(result.chartWarningCount, 1);
+});
+
+test("chart findings do not change converted presentation or enter Issues", () => {
+  const converted = {
+    status: "converted",
+    convertedWithChartWarnings: true,
+    chartWarningCount: 12,
+    chartWarnings: ["Chart compatibility warning: unusual chart data was preserved."]
+  };
+
+  assert.equal(conversionStatusText(converted.status), "Converted");
+  assert.equal(isConversionIssue(converted), false);
+  assert.equal(isConversionIssue({ status: "partial", convertedWithChartWarnings: false }), true);
+  assert.equal(isConversionIssue({ status: "failed" }), true);
+  assert.equal(isConversionIssue({ status: "needs-review" }), true);
 });
 
 test("partial multi-song results keep sanitized per-output details", () => {

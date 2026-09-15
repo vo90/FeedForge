@@ -114,7 +114,7 @@ def test_section_only_differences_remain_embedded_without_a_warning(
     ],
     ids=["timestamp", "count"],
 )
-def test_beat_map_differences_warn_clearly_and_remain_embedded(
+def test_beat_map_differences_are_diagnostic_details_and_remain_embedded(
     tmp_path, monkeypatch, rhythm, expected_detail
 ):
     output, result, manifest, arrangements = _convert(
@@ -126,13 +126,18 @@ def test_beat_map_differences_warn_clearly_and_remain_embedded(
     assert "song_timeline" not in manifest
     assert not (output / "song_timeline.json").exists()
     assert arrangements[0]["beats"] != arrangements[1]["beats"]
-    warning = next(
-        warning.message
-        for warning in result.warnings
-        if "Arrangement beat maps differ" in warning.message
+    detail = next(
+        detail
+        for detail in result.conversion_details
+        if "Arrangement beat maps differ" in detail.message
     )
-    assert expected_detail in warning
-    assert "All arrangement timing was preserved" in warning
-    assert "FeedBack will use Lead as the global beat grid" in warning
-    assert "song_lead.sng" not in warning
-    assert "song_rhythm.sng" not in warning
+    assert detail.category == "source-compatibility"
+    assert expected_detail in detail.message
+    assert "All arrangement timing was preserved" in detail.message
+    assert "FeedBack will use Lead as the global beat grid" in detail.message
+    assert "song_lead.sng" not in detail.message
+    assert "song_rhythm.sng" not in detail.message
+    assert not any(
+        "Arrangement beat maps differ" in warning.message
+        for warning in result.warnings
+    )

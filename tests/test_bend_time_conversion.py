@@ -78,7 +78,14 @@ def test_exceptional_source_normalization_is_reported_to_conversion_caller():
     song = NS(metadata=NS(tuning=[0] * 6, capo=0), chordTemplates=[], chordNotes=[],
         levels=[NS(difficulty=0, notes=[source], anchors=[], fingerprints=[[], []])],
         phraseIterations=[], phrases=[], beats=[], sections=[])
-    warnings = []
-    c._song_to_arrangement(song, "example_lead.sng", {}, include_tones=False, warnings=warnings)
-    assert len(warnings) == 1
-    assert "entirely pre-onset bends were held at their last authored value" in warnings[0].message
+    details = []
+    c._song_to_arrangement(
+        song,
+        "example_lead.sng",
+        {},
+        include_tones=False,
+        conversion_details=details,
+    )
+    assert len(details) == 1
+    assert details[0].category == "source-normalization"
+    assert "entirely pre-onset bends were held at their last authored value" in details[0].message

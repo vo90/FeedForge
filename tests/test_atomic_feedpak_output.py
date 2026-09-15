@@ -131,7 +131,12 @@ def test_safe_policy_atomically_publishes_reviewed_chart_warnings(tmp_path):
     assert not source.exists()
     assert result.converted_with_chart_warnings
     assert result.chart_warning_count == 1
-    assert any("data preserved" in warning.message for warning in result.warnings)
+    assert result.warnings == []
+    assert any(
+        detail.category == "chart-validation"
+        and "data preserved" in detail.message
+        for detail in result.conversion_details
+    )
 
 
 def test_safe_policy_publishes_unpacked_directory_from_private_staging(tmp_path):

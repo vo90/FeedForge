@@ -92,6 +92,11 @@ def _print_conversion_results(results: list[Any]) -> None:
         _print(f"wrote {result.output_path}")
         if result.validation and result.validation.ok:
             _print(f"validated {result.output_path}")
+        for detail in _conversion_details(getattr(result, "conversion_details", [])):
+            _print(
+                f"detail [{detail['category']}]: {detail['message']}",
+                stream=sys.stderr,
+            )
         for warning in result.warnings:
             _print(f"warning: {warning.message}", stream=sys.stderr)
         _print(
@@ -113,9 +118,33 @@ def _warning_messages(values: Any) -> list[str]:
     return messages
 
 
+def _conversion_details(values: Any) -> list[dict[str, str]]:
+    if not isinstance(values, (list, tuple)):
+        return []
+    details: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for value in values:
+        if isinstance(value, dict):
+            raw_message = value.get("message", "")
+            raw_category = value.get("category", "conversion")
+        else:
+            raw_message = getattr(value, "message", value)
+            raw_category = getattr(value, "category", "conversion")
+        message = _safe_text(raw_message).strip()
+        category = _safe_text(raw_category).strip() or "conversion"
+        identity = (category, message)
+        if message and identity not in seen:
+            seen.add(identity)
+            details.append({"message": message, "category": category})
+    return details
+
+
 def _conversion_result_payload(result: Any) -> dict[str, Any]:
     validation = getattr(result, "validation", None)
     warnings = _warning_messages(getattr(result, "warnings", []))
+    conversion_details = _conversion_details(
+        getattr(result, "conversion_details", [])
+    )
     chart_warnings = _warning_messages(
         getattr(result, "chart_warnings", None)
         or getattr(validation, "chart_warnings", None)
@@ -151,6 +180,7 @@ def _conversion_result_payload(result: Any) -> dict[str, Any]:
         "convertedWithChartWarnings": converted_with_chart_warnings,
         "chartWarningCount": chart_warning_count,
         "chartWarnings": chart_warnings,
+        "conversionDetails": conversion_details,
         "warnings": warnings,
     }
 

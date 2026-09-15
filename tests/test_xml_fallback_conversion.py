@@ -109,8 +109,13 @@ def test_empty_sng_is_converted_from_its_exact_xml_sidecar(tmp_path: Path) -> No
     arrangement = json.loads((output / entry["file"]).read_text(encoding="utf-8"))
     assert arrangement["notes"] == [{"t": 1.0, "s": 0, "f": 3, "sus": 0.5}]
     assert any(
+        detail.category == "source-recovery"
+        and "Recovered Lead from embedded Rocksmith XML" in detail.message
+        and "compiled SNG songs/bin/generic/song_lead.sng was empty" in detail.message
+        for detail in result.conversion_details
+    )
+    assert not any(
         "Recovered Lead from embedded Rocksmith XML" in warning.message
-        and "compiled SNG songs/bin/generic/song_lead.sng was empty" in warning.message
         for warning in result.warnings
     )
 

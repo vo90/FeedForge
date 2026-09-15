@@ -3,7 +3,15 @@
 __version__ = "0.1.42"
 
 from .batch import BatchItem, BatchResult, convert_many
-from .converter import AudioExportResult, ConversionResult, ConversionWarning, convert_psarc, convert_psarc_songs, export_psarc_audio
+from .converter import (
+    AudioExportResult,
+    ConversionDetail,
+    ConversionResult,
+    ConversionWarning,
+    convert_psarc,
+    convert_psarc_songs,
+    export_psarc_audio,
+)
 from .feedpak import FeedpakAudioExportResult, FeedpakEditResult, export_feedpak_audio, inspect_feedpak, update_feedpak
 from .feedpak_validator import FeedpakValidationError, FeedpakValidationResult, require_valid_feedpak, validate_feedpak
 from .inspector import ArrangementPreview, PsarcPreview, inspect_psarc
@@ -13,6 +21,7 @@ __all__ = [
     "BatchItem",
     "BatchResult",
     "AudioExportResult",
+    "ConversionDetail",
     "ConversionResult",
     "ConversionWarning",
     "FeedpakEditResult",

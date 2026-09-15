@@ -31,10 +31,11 @@ import {
 import {
   SAFE_VALIDATION_POLICY,
   STRICT_VALIDATION_POLICY,
-  chartWarningSummary,
   conversionOutputPaths,
   conversionOutcome,
   conversionResultStatus,
+  conversionStatusText,
+  isConversionIssue,
   normalizeOutputResults,
   outputLocationSummary,
   normalizeValidationPolicy
@@ -441,7 +442,7 @@ function App() {
     const matchesFilter =
       filter === "all" ||
       (filter === "ready" && ["ready", "converted"].includes(item.status)) ||
-      (filter === "issues" && (["failed", "partial", "needs-review"].includes(item.status) || item.convertedWithChartWarnings === true)) ||
+      (filter === "issues" && isConversionIssue(item)) ||
       (filter === "converted" && item.status === "converted");
     const matchesArtist = artistFilter === "all" || item.preview?.artist === artistFilter;
     const matchesAlbum = albumFilter === "all" || item.preview?.album === albumFilter;
@@ -454,12 +455,6 @@ function App() {
     total: workspaceItems.length,
     ready: workspaceItems.filter((item) => item.status === "ready" || item.status === "converted").length,
     converted: workspaceItems.filter((item) => item.status === "converted").length,
-    convertedWithWarnings: workspaceItems.reduce(
-      (total, item) => total + (item.convertedWithChartWarnings
-        ? Math.max(1, Number(item.outputsWithChartWarnings) || 0)
-        : 0),
-      0
-    ),
     partial: workspaceItems.filter((item) => item.status === "partial").length,
     failed: workspaceItems.filter((item) => item.status === "failed").length
   }), [workspaceItems]);
@@ -988,8 +983,7 @@ function App() {
             ? await api.updateFeedpak(payload)
             : await api.convert({ ...payload, bStandardTo7String });
           const outcome = conversionOutcome(result);
-          const resultWarnings = outcome.warnings.length ? outcome.warnings : outcome.chartWarnings;
-          const warningSummary = chartWarningSummary(result);
+          const resultWarnings = outcome.warnings;
           const outputResults = normalizeOutputResults(result);
           const outputPaths = conversionOutputPaths(result, outputResults);
           const resultStatus = conversionResultStatus(result, outputPaths);
@@ -1013,7 +1007,7 @@ function App() {
                 chartWarningCount: outcome.chartWarningCount,
                 outputsWithChartWarnings: Math.max(0, Number(result.outputsWithChartWarnings) || (outcome.convertedWithChartWarnings ? 1 : 0)),
                 chartWarnings: outcome.chartWarnings,
-                message: [`Created ${outputPaths.length} FeedPak${outputPaths.length === 1 ? "" : "s"}${outputLocation.suffix}; ${failedSongCount} song${failedSongCount === 1 ? "" : "s"} failed.`, warningSummary].filter(Boolean).join(" "),
+                message: `Created ${outputPaths.length} FeedPak${outputPaths.length === 1 ? "" : "s"}${outputLocation.suffix}; ${failedSongCount} song${failedSongCount === 1 ? "" : "s"} failed.`,
                 warnings: resultWarnings,
                 error: failedSongCount > 1
                   ? `${failedSongCount} songs failed. First error: ${firstSongError}`
@@ -1047,7 +1041,7 @@ function App() {
               chartWarningCount: outcome.chartWarningCount,
               outputsWithChartWarnings: Math.max(0, Number(result.outputsWithChartWarnings) || (outcome.convertedWithChartWarnings ? 1 : 0)),
               chartWarnings: outcome.chartWarnings,
-              message: [createdMessage, warningSummary].filter(Boolean).join(" ") || null,
+              message: createdMessage || null,
               warnings: resultWarnings,
               error: null
             });
@@ -1698,10 +1692,10 @@ function App() {
                   <Info size={17} />
                   <div>
                     <strong>{validationPolicy === SAFE_VALIDATION_POLICY
-                      ? "Package-safe charts are published even when they contain unusual chart data."
+                      ? "Publishes every safely converted FeedPak."
                       : "Strict validation rejects charts with any FeedPak compatibility error."}</strong>
                     <span>{validationPolicy === SAFE_VALIDATION_POLICY
-                      ? "FeedForge preserves the chart data and labels the result Converted with chart warnings. Unsafe or incomplete packages still fail."
+                      ? "Source chart data is preserved. Unsafe or incomplete packages still fail."
                       : "Use this diagnostic mode when you need every output to pass all chart validation rules."}</span>
                   </div>
                 </div>
@@ -2042,7 +2036,6 @@ function App() {
               <Metric label="Imported" value={stats.total} />
               <Metric label="Ready" value={stats.ready} tone="blue" />
               <Metric label="Converted" value={stats.converted} tone="green" />
-              <Metric label="With chart warnings" value={stats.convertedWithWarnings} tone="warn" />
               <Metric label="Partial" value={stats.partial} tone="warn" />
               <Metric label="Failed" value={stats.failed} tone="red" />
             </section>
@@ -2764,7 +2757,7 @@ function Queue({ items, selectedId, onSelect, onRemove, onExportAudio, onExportA
             className={`queue-row ${selectedId === item.id ? "selected" : ""}`}
             onClick={() => onSelect(item.id)}
           >
-            <StatusIcon status={item.status} convertedWithChartWarnings={item.convertedWithChartWarnings === true} />
+            <StatusIcon status={item.status} />
             <div className="queue-main">
               <strong>{itemDisplayTitle(item)}</strong>
               <span>{itemDisplaySubtitle(item)}</span>
@@ -2776,7 +2769,7 @@ function Queue({ items, selectedId, onSelect, onRemove, onExportAudio, onExportA
             <div className="queue-meta">
               <span>{item.sourceType === "feedpak" ? "FeedPak" : "PSARC"}</span>
               <span>{item.preview ? duration(item.preview.duration) : "-"}</span>
-              <b>{statusText(item.status, item.convertedWithChartWarnings === true)}</b>
+              <b>{conversionStatusText(item.status)}</b>
             </div>
             {canExportAudio && item.status !== "converting" && (
               <span
@@ -2990,10 +2983,7 @@ function Inspector({
   const primaryWarnings = Array.isArray(item?.warnings)
     ? item.warnings
     : Array.isArray(preview?.warnings) ? preview.warnings : [];
-  const itemWarnings = [...new Set((primaryWarnings.length
-    ? primaryWarnings
-    : Array.isArray(item?.chartWarnings) ? item.chartWarnings : []
-  ).filter(Boolean))];
+  const itemWarnings = [...new Set(primaryWarnings.filter(Boolean))];
   const isFeedpak = item?.sourceType === "feedpak" || preview?.source_type === "feedpak";
   const isMultiSong = !isFeedpak && isMultiSongPackage(item);
   const outputCount = Array.isArray(item?.outputPaths) ? item.outputPaths.length : 0;
@@ -3113,7 +3103,7 @@ function Inspector({
           <section className="panel">
             <div className="panel-title">
               <h2>Package Overview</h2>
-              <span>{item ? statusText(item.status, item.convertedWithChartWarnings === true) : "Waiting"}</span>
+              <span>{item ? conversionStatusText(item.status) : "Waiting"}</span>
             </div>
             {item?.error && <div className={item.status === "partial" ? "warning-box" : "error-box"}><AlertTriangle size={17} /> {item.error}</div>}
             {itemWarnings.length > 0 && (
@@ -3528,26 +3518,11 @@ function ReadyLine({ ok, text, muted = false }) {
   return <li className={`${muted ? "muted" : ""} ${ok ? "ready-ok" : "ready-missing"}`}>{ok ? <Check size={16} /> : <XCircle size={16} />} {text}</li>;
 }
 
-function StatusIcon({ status, convertedWithChartWarnings = false }) {
-  if (status === "converted" && convertedWithChartWarnings) return <AlertTriangle className="status-warn" size={18} />;
+function StatusIcon({ status }) {
   if (status === "converted") return <Check className="status-ok" size={18} />;
   if (status === "partial" || status === "failed" || status === "needs-review") return <AlertTriangle className="status-warn" size={18} />;
   if (status === "converting" || status === "inspecting") return <RotateCw className="spin status-blue" size={18} />;
   return <Play className="status-blue" size={18} />;
-}
-
-function statusText(status, convertedWithChartWarnings = false) {
-  if (status === "converted" && convertedWithChartWarnings) return "Converted with chart warnings";
-  return {
-    queued: "Queued",
-    inspecting: "Inspecting",
-    ready: "Ready",
-    "needs-review": "Review",
-    converting: "Converting",
-    converted: "Converted",
-    partial: "Partially converted",
-    failed: "Failed"
-  }[status] || "Waiting";
 }
 
 function sortedOptions(values) {

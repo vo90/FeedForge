@@ -28,11 +28,6 @@ function nonNegativeInteger(...values) {
   return 0;
 }
 
-function explicitlyChartRelated(message) {
-  return /(?:^|\b)(?:chart|arrangement|timeline) compatibility warning(?:\b|:)/i.test(message)
-    || /^\s*\[chart(?: compatibility)?\]/i.test(message);
-}
-
 export function conversionOutcome(result = {}) {
   const validation = result?.validation && typeof result.validation === "object"
     ? result.validation
@@ -55,11 +50,6 @@ export function conversionOutcome(result = {}) {
     validation?.chart_warning_count
   );
 
-  // Older backends may only expose warning text. Only infer chart warnings from
-  // an explicit compatibility label so ordinary tone/audio warnings stay green.
-  if (!chartWarnings.length) {
-    chartWarnings = warnings.filter(explicitlyChartRelated);
-  }
   chartWarningCount = Math.max(chartWarningCount, chartWarnings.length, explicitFlag ? 1 : 0);
 
   return {
@@ -70,10 +60,21 @@ export function conversionOutcome(result = {}) {
   };
 }
 
-export function chartWarningSummary(result = {}) {
-  const outcome = conversionOutcome(result);
-  if (!outcome.convertedWithChartWarnings) return "";
-  return `Converted with ${outcome.chartWarningCount} chart warning${outcome.chartWarningCount === 1 ? "" : "s"}.`;
+export function isConversionIssue(item = {}) {
+  return ["failed", "partial", "needs-review"].includes(item?.status);
+}
+
+export function conversionStatusText(status) {
+  return {
+    queued: "Queued",
+    inspecting: "Inspecting",
+    ready: "Ready",
+    "needs-review": "Review",
+    converting: "Converting",
+    converted: "Converted",
+    partial: "Partially converted",
+    failed: "Failed"
+  }[status] || "Waiting";
 }
 
 function outputPathValue(value) {

@@ -105,7 +105,17 @@ VGMSTREAM_VERIFY_TIMEOUT_SECONDS = 10
 
 @dataclass
 class ConversionWarning:
+    """A material conversion issue that may need the user's attention."""
+
     message: str
+
+
+@dataclass(frozen=True)
+class ConversionDetail:
+    """A non-actionable conversion fact retained for diagnostics and audit logs."""
+
+    message: str
+    category: str = "conversion"
 
 
 @dataclass(frozen=True)
@@ -123,10 +133,11 @@ class ConversionResult:
     manifest: dict[str, Any]
     warnings: list[ConversionWarning] = field(default_factory=list)
     validation: FeedpakValidationResult | None = None
+    conversion_details: list[ConversionDetail] = field(default_factory=list)
 
     @property
     def chart_warnings(self) -> list[str]:
-        """Reviewed chart findings preserved in a safely published FeedPak."""
+        """Internal chart findings preserved in a safely published FeedPak."""
 
         if self.validation is None:
             return []
@@ -495,7 +506,7 @@ def convert_psarc_songs(
             output_path=targets[index],
             status=(
                 "succeeded_with_warnings"
-                if result.converted_with_chart_warnings
+                if result.warnings
                 else "succeeded"
             ),
         )
@@ -592,7 +603,7 @@ def convert_psarc_songs(
                         output_path=targets[index],
                         status=(
                             "succeeded_with_warnings"
-                            if finalized.converted_with_chart_warnings
+                            if finalized.warnings
                             else "succeeded"
                         ),
                     )
@@ -1188,6 +1199,7 @@ def convert_psarc(
     (package_dir / "stems").mkdir()
 
     warnings: list[ConversionWarning] = []
+    conversion_details: list[ConversionDetail] = []
     if _content is None:
         with input_psarc.open("rb") as fh:
             content = PSARC(crypto=True).parse_stream(fh)
@@ -1263,17 +1275,18 @@ def convert_psarc(
                 include_tones=include_tones,
                 cent_offset=cent_offset,
                 arrangement_id=arr_id,
-                warnings=warnings,
+                conversion_details=conversion_details,
             )
         except ValueError as exc:
             warnings.append(ConversionWarning(f"Skipped SNG {path}: {exc}"))
             continue
         if xml_recovery is not None:
-            warnings.append(
-                ConversionWarning(
+            conversion_details.append(
+                ConversionDetail(
                     f"Recovered {arrangement['name']} from embedded Rocksmith XML "
                     f"{xml_recovery.xml_path} because compiled SNG {path} "
-                    f"{xml_recovery.reason}."
+                    f"{xml_recovery.reason}.",
+                    category="source-recovery",
                 )
             )
             approximate_ids = tuple(
@@ -1294,9 +1307,10 @@ def convert_psarc(
                 )
         if b_standard_to_7_string and _is_b_standard_six_string(arrangement.get("tuning")):
             arrangement = _b_standard_arrangement_to_seven_string(arrangement)
-            warnings.append(
-                ConversionWarning(
-                    f"Converted B-standard six-string arrangement to seven-string standard: {arrangement['name']}"
+            conversion_details.append(
+                ConversionDetail(
+                    f"Converted B-standard six-string arrangement to seven-string standard: {arrangement['name']}",
+                    category="requested-transformation",
                 )
             )
         for rig in arrangement.pop("_rigs", []):
@@ -1336,13 +1350,14 @@ def convert_psarc(
             for _arrangement_id_value, _name, _path, candidate in arrangement_timelines[1:]
         )
         if mismatched_beats:
-            warnings.append(
-                ConversionWarning(
+            conversion_details.append(
+                ConversionDetail(
                     _beat_map_warning(
                         baseline_name,
                         timeline["beats"],
                         mismatched_beats,
-                    )
+                    ),
+                    category="source-compatibility",
                 )
             )
         # Sections are arrangement-authored in Rocksmith and commonly differ
@@ -1383,13 +1398,20 @@ def convert_psarc(
         content,
         package_dir,
         warnings,
+        conversion_details=conversion_details,
         separate_stems=separate_stems,
         demucs_url=demucs_url,
         demucs_api_key=demucs_api_key,
         demucs_model=demucs_model,
         demucs_stems=demucs_stems,
     )
-    preview_path = _copy_preview_audio(content, package_dir, stem_entries, warnings)
+    preview_path = _copy_preview_audio(
+        content,
+        package_dir,
+        stem_entries,
+        warnings,
+        conversion_details=conversion_details,
+    )
     cover_path = _copy_cover(content, package_dir)
 
     title = metadata.get("title") or input_psarc.stem
@@ -1415,7 +1437,12 @@ def convert_psarc(
         try:
             manifest["year"] = int(metadata["year"])
         except (TypeError, ValueError):
-            warnings.append(ConversionWarning(f"Ignored non-integer year: {metadata['year']!r}"))
+            conversion_details.append(
+                ConversionDetail(
+                    f"Ignored non-integer year: {metadata['year']!r}",
+                    category="metadata-normalization",
+                )
+            )
     if lyrics_path:
         manifest["lyrics"] = lyrics_path
         manifest["lyrics_source"] = "authored"
@@ -1459,11 +1486,12 @@ def convert_psarc(
     _write_manifest(package_dir / "manifest.yaml", manifest)
 
     staged = ConversionResult(
-        output,
-        package_dir,
-        manifest,
-        warnings,
-        None,
+        output_path=output,
+        package_dir=package_dir,
+        manifest=manifest,
+        warnings=warnings,
+        validation=None,
+        conversion_details=conversion_details,
     )
     if _defer_finalization:
         return staged
@@ -1499,12 +1527,18 @@ def _finalize_staged_conversion(
             shutil.rmtree(staged.package_dir, ignore_errors=True)
         raise FeedpakValidationError(validation)
     for issue in validation.nonblocking_errors:
-        staged.warnings.append(
-            ConversionWarning(f"Chart compatibility warning (data preserved): {issue}")
+        staged.conversion_details.append(
+            ConversionDetail(
+                f"Chart compatibility finding (data preserved): {issue}",
+                category="chart-validation",
+            )
         )
     for warning in validation.warnings:
-        staged.warnings.append(
-            ConversionWarning(f"FeedPak spec validation warning: {warning}")
+        staged.conversion_details.append(
+            ConversionDetail(
+                f"FeedPak spec validation detail: {warning}",
+                category="feedpak-validation",
+            )
         )
     staged.validation = validation
     if archive:
@@ -3189,13 +3223,13 @@ def _song_to_arrangement(
     include_tones: bool = True,
     cent_offset: float = 0.0,
     arrangement_id: str | None = None,
-    warnings: list[ConversionWarning] | None = None,
+    conversion_details: list[ConversionDetail] | None = None,
 ) -> dict[str, Any]:
     tuning = [int(x) for x in list(song.metadata.tuning or [])]
     templates = _templates_to_feedpak(song)
     bend_adjustments: set[str] = set()
     chart = _song_chart_data(song, templates, bend_adjustments=bend_adjustments)
-    if warnings is not None:
+    if conversion_details is not None:
         descriptions = {
             "pre-onset": "pre-onset bend segments were interpolated at note onset",
             "entirely-pre-onset": "entirely pre-onset bends were held at their last authored value",
@@ -3203,7 +3237,12 @@ def _song_to_arrangement(
             "zero-target": "a lone zero-valued bend target and its declared peak were retained without inferring the missing initial shape",
         }
         for kind in sorted(bend_adjustments):
-            warnings.append(ConversionWarning(f"{source_path}: {descriptions[kind]} (source normalization)."))
+            conversion_details.append(
+                ConversionDetail(
+                    f"{source_path}: {descriptions[kind]} (source normalization).",
+                    category="source-normalization",
+                )
+            )
     normalized_cent_offset = (
         _num(cent_offset)
         if not isinstance(cent_offset, bool) and _finite_number(cent_offset)
@@ -4333,6 +4372,7 @@ def _copy_audio(
     package_dir: Path,
     warnings: list[ConversionWarning],
     *,
+    conversion_details: list[ConversionDetail] | None = None,
     separate_stems: bool = False,
     demucs_url: str | None = None,
     demucs_api_key: str | None = None,
@@ -4375,7 +4415,13 @@ def _copy_audio(
                 demucs_stems=demucs_stems,
             )
         if _convert_wem_bytes_to_wav(data, package_dir / "stems" / "full.wav"):
-            warnings.append(ConversionWarning("Converted WEM audio to WAV because no OGG encoder was available."))
+            if conversion_details is not None:
+                conversion_details.append(
+                    ConversionDetail(
+                        "Converted WEM audio to WAV because no OGG encoder was available.",
+                        category="format-conversion",
+                    )
+                )
             return _maybe_separate_stems(
                 package_dir,
                 {"id": "full", "file": "stems/full.wav", "codec": "wav", "default": True},
@@ -4427,6 +4473,8 @@ def _copy_preview_audio(
     package_dir: Path,
     stem_entries: list[dict[str, Any]],
     warnings: list[ConversionWarning],
+    *,
+    conversion_details: list[ConversionDetail] | None = None,
 ) -> str | None:
     """Preserve an authored preview or create one from the converted full mix."""
     preview_audio = _preview_audio_candidates(content)
@@ -4444,11 +4492,13 @@ def _copy_preview_audio(
             wav_target = package_dir / "preview.wav"
             try:
                 if _convert_wem_bytes_to_wav(data, wav_target):
-                    warnings.append(
-                        ConversionWarning(
-                            "Converted preview WEM audio to WAV because no OGG encoder was available."
+                    if conversion_details is not None:
+                        conversion_details.append(
+                            ConversionDetail(
+                                "Converted preview WEM audio to WAV because no OGG encoder was available.",
+                                category="format-conversion",
+                            )
                         )
-                    )
                     return "preview.wav"
             except Exception:  # noqa: BLE001
                 pass

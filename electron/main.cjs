@@ -14,6 +14,13 @@ const {
   converterEnvironment,
   createAudioDecoderStatusCache
 } = require("./audio-dependency.cjs");
+const {
+  aggregateConversionDetails,
+  filterFallbackWarnings,
+  qualifyConversionDetail,
+  sanitizeConversionResult,
+  uniqueStrings
+} = require("./conversion-result.cjs");
 
 let mainWindow;
 let inspectCacheRoot;
@@ -662,6 +669,7 @@ ipcMain.handle("converter:convert", async (event, payload = {}) => {
       chartWarningCount: 0,
       outputsWithChartWarnings: 0,
       chartWarnings: [],
+      conversionDetails: [],
       conversionResults: [],
       songErrors: []
     };
@@ -743,20 +751,24 @@ ipcMain.handle("converter:convert", async (event, payload = {}) => {
   ]);
   const sanitizedConversionResults = conversionResults.map(sanitizeConversionResult);
   const isMultiOutputConversion = outputPaths.length > 1;
+  const conversionDetails = aggregateConversionDetails(
+    sanitizedConversionResults,
+    isMultiOutputConversion
+  );
   const validatedPaths = [...result.stdout.matchAll(/^validated\s+(.+)$/gim)].map((match) => match[1].trim()).filter(Boolean);
   const fallbackWarnings = [...`${result.stdout}\n${result.stderr}`.matchAll(/^warning:\s+(.+)$/gim)]
     .map((match) => match[1]);
-  const structuredWarningMessages = uniqueStrings(
-    sanitizedConversionResults.flatMap((entry) => entry.warnings)
+  const remainingFallbackWarnings = filterFallbackWarnings(
+    fallbackWarnings,
+    sanitizedConversionResults
   );
-  const structuredWarningSet = new Set(structuredWarningMessages);
   const warnings = uniqueStrings([
     ...(sanitizedConversionResults.length
       ? sanitizedConversionResults.flatMap((entry) => entry.warnings.map(
         (warning) => qualifyConversionDetail(entry.outputPath, warning, isMultiOutputConversion)
       ))
       : []),
-    ...fallbackWarnings.filter((warning) => !structuredWarningSet.has(String(warning || "").trim()))
+    ...remainingFallbackWarnings
   ]);
   const chartWarnings = uniqueStrings(
     sanitizedConversionResults.flatMap((entry) => entry.chartWarnings.map(
@@ -792,6 +804,7 @@ ipcMain.handle("converter:convert", async (event, payload = {}) => {
     outputsWithChartWarnings,
     chartWarnings,
     warnings,
+    conversionDetails,
     conversionResults: sanitizedConversionResults,
     songErrors,
     stdoutTail: tail(result.stdout),
@@ -818,6 +831,7 @@ ipcMain.handle("converter:convert", async (event, payload = {}) => {
     outputsWithChartWarnings,
     chartWarnings,
     warnings,
+    conversionDetails,
     conversionResults: sanitizedConversionResults,
     songErrors,
     stdout: result.stdout,
@@ -2110,34 +2124,6 @@ function safeSend(webContents, channel, payload) {
   } catch {
     return false;
   }
-}
-
-function uniqueStrings(values) {
-  return [...new Set((values || []).map((value) => String(value || "").trim()).filter(Boolean))];
-}
-
-function sanitizeConversionResult(value) {
-  const entry = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-  const chartWarnings = uniqueStrings(Array.isArray(entry.chartWarnings) ? entry.chartWarnings : []);
-  const chartWarningCount = Math.max(0, Number(entry.chartWarningCount) || 0);
-  return {
-    outputPath: String(entry.outputPath || "").trim(),
-    validationOk: entry.validationOk === true ? true : entry.validationOk === false ? false : null,
-    publishable: entry.publishable !== false,
-    convertedWithChartWarnings: entry.convertedWithChartWarnings === true
-      || chartWarningCount > 0
-      || chartWarnings.length > 0,
-    chartWarningCount,
-    chartWarnings,
-    warnings: uniqueStrings(Array.isArray(entry.warnings) ? entry.warnings : [])
-  };
-}
-
-function qualifyConversionDetail(outputPath, detail, includeOutputPath) {
-  const message = String(detail || "").trim();
-  if (!message || !includeOutputPath) return message;
-  const outputLabel = String(outputPath || "").trim();
-  return outputLabel ? `${outputLabel}: ${message}` : message;
 }
 
 function normalizeValidationPolicy(value) {
