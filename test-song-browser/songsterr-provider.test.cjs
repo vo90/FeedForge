@@ -172,6 +172,27 @@ test('provider search, approved resolution and anonymous acquisition use an isol
   assert.equal(state.actions.includes('create'), false); assert.equal(state.requests.length, 3);
 });
 
+test('provider retrieves timing anonymously for a trusted cached revision without loading a page', async (t) => {
+  const state = runtime(await temporary(t)); t.after(() => state.provider.dispose());
+  state.provider.restoreTrustedResult(result);
+  const requests = [];
+  state.sessions[0].fetch = async (url, settings) => {
+    requests.push({ url, settings });
+    return response([{ songId: result.id, revisionId: descriptor.revisionId, videoId: 'abcdefghijk',
+      feature: null, status: 'done', problematic: null, points: [0, 2, 4] }]);
+  };
+  state.sessions[1].fetch = async () => { throw new Error('Account session must not be used'); };
+  const audio = { kind: 'url', url: 'https://www.youtube.com/watch?v=abcdefghijk' };
+  const sync = await state.provider.findSynchronization(result, { revisionId: descriptor.revisionId, audio });
+  assert.equal(sync.status, 'done'); assert.equal(sync.videoId, 'abcdefghijk');
+  assert.equal(requests.length, 1); assert.equal(requests[0].settings.credentials, 'omit');
+  assert.equal(state.windows.length, 0); assert.equal(state.actions.length, 0);
+  assert.equal((await state.provider.findSynchronization(result, { revisionId: descriptor.revisionId,
+    audio: { kind: 'file', path: 'replacement.wav' } })).reasonCode, 'unsupported_audio');
+  assert.equal((await state.provider.findSynchronization({ ...result, id: '999' }, { revisionId: descriptor.revisionId, audio })).reasonCode, 'identity_mismatch');
+  assert.equal(requests.length, 1, 'unbound recordings and songs do not trigger timing requests');
+});
+
 test('provider will not resolve a renderer-supplied song that was not searched', async (t) => {
   const root = await temporary(t), state = runtime(root); t.after(() => state.provider.dispose());
   await assert.rejects(state.provider.resolve(result), { code: 'invalid_result' }); assert.equal(state.windows.length, 0);

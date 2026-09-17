@@ -178,9 +178,54 @@ def render(score: Score) -> dict:
     if not outputs:
         raise ScoreImportError("No playable notes were found.")
     source["playableTrackCount"] = len(outputs)
+    # Retain the written-to-performed relationship for independently supplied
+    # recording synchronization. Seconds alone lose repeat occurrences and
+    # musical positions when written tempos vary.
+    occurrence_counts = {}
+    performed_measures = []
+    for occurrence, (index, start) in enumerate(visits):
+        occurrence_counts[index] = occurrence_counts.get(index, 0) + 1
+        bar = score.measures[index]
+        performed_measures.append({"index": occurrence, "writtenIndex": index,
+                                   "visit": occurrence_counts[index],
+                                   "quarter": float(start), "quarters": float(bar.length),
+                                   "start": at(start), "end": at(start + bar.length),
+                                   "numerator": bar.numerator, "denominator": bar.denominator})
+    repeat_starts = []
+    repeat_intervals = []
+    multibar_endings = False
+    for index, bar in enumerate(score.measures):
+        if bar.repeat_start:
+            repeat_starts.append(index)
+        if bar.repeat_count:
+            start = repeat_starts.pop() if repeat_starts else 0
+            repeat_intervals.append((start, index))
+            # Songsterr's player skips an entire ending region. The current
+            # score walker skips marked bars individually; only an ending on
+            # the close bar itself has proven equivalent source semantics.
+            multibar_endings = multibar_endings or any(item.endings for item in score.measures[start:index])
+    # An outer bracket can start implicitly at bar zero. Count actual closed
+    # intervals, not only explicit start markers, to detect such nesting.
+    depth_changes = [0] * (len(score.measures) + 1)
+    for start, end in repeat_intervals:
+        depth_changes[start] += 1
+        depth_changes[end + 1] -= 1
+    repeat_depth = max_repeat_depth = 0
+    for change in depth_changes:
+        repeat_depth += change
+        max_repeat_depth = max(max_repeat_depth, repeat_depth)
+    score_timeline = {"version": 1, "writtenMeasureCount": len(score.measures),
+                      "hasRepeats": any(bar.repeat_start or bar.repeat_count for bar in score.measures),
+                      "hasAlternateEndings": any(bar.endings for bar in score.measures),
+                      "maxRepeatDepth": max_repeat_depth,
+                      "hasMultiBarAlternateEndings": multibar_endings,
+                      "hasWithinBarTempoChanges": any(pos > 0 for bar in score.measures for pos, _ in bar.tempos),
+                      "measures": performed_measures,
+                      "tempoPoints": [{"quarter": float(p), "time": at(p), "bpm": by_position[p]} for p in points]}
     return {"title": score.title, "artist": score.artist, "album": score.album, "year": score.year,
             "duration": at(cursor), "tracks": outputs,
             "beats": [{"time": at(p), "measure": n} for p, n in beat_positions],
             "sections": [{"time": at(p), "name": name} for p, name in section_positions],
             "tempos": [{"time": at(p), "bpm": by_position[p]} for p in points],
+            "scoreTimeline": score_timeline,
             "warnings": warnings, "source": source}

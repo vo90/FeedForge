@@ -1,8 +1,10 @@
 """Build validated staged FeedPaks from an already performed, aligned score."""
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
 from copy import deepcopy
 import json
+import math
 from pathlib import Path
 import shutil
 import zipfile
@@ -13,6 +15,7 @@ from ..feedpak_validator import require_valid_feedpak
 from ..output_naming import output_path, safe_path_segment
 from .alignment import map_time
 from .audio import ImportFailure
+from .synchronization import source_time_scale
 
 
 def _tuning_offsets(track: dict) -> list[int]:
@@ -38,25 +41,52 @@ def _retime_note(note: dict, alignment: dict, duration: float, *, chord_time: fl
     start = map_time(alignment, original)
     if chord_time is None or "t" in note:
         result["t"] = start
-    sustain = max(0.0, float(note.get("sus", 0))) * float(alignment["scale"])
+    nonlinear = alignment.get("mapping") == "piecewise-linear"
+    original_sustain = float(note.get("sus", 0))
+    if nonlinear and (not math.isfinite(original_sustain) or original_sustain < 0):
+        raise ImportFailure("alignment_failed", "The note has an invalid sustain in the recording timing map.")
+    original_sustain = max(0.0, original_sustain)
+    sustain = (map_time(alignment, original + original_sustain) - start if nonlinear
+               else original_sustain * float(alignment["scale"]))
     if start > duration + 0.05 or start + sustain > duration + 0.05:
         raise ImportFailure("alignment_failed", "The matched tab contains notes outside the recording.")
     if "sus" in note:
         result["sus"] = round(sustain, 6)
     if note.get("bnv"):
         # FeedPak bend-curve t values are relative to their note's onset.
-        result["bnv"] = [{**point, "t": round(float(point["t"]) * float(alignment["scale"]), 6)} for point in note["bnv"]]
+        if nonlinear:
+            # A curve segment can cross a map boundary even when it has no
+            # authored bend point there. Insert that breakpoint to preserve
+            # the original piecewise-linear pitch curve after retiming.
+            curve = []
+            for point in note["bnv"]:
+                if curve and float(point["t"]) > float(curve[-1]["t"]):
+                    left = curve[-1]
+                    anchors = alignment["anchors"]
+                    first = bisect_right(anchors, original + float(left["t"]), key=lambda anchor: anchor["score"])
+                    last = bisect_left(anchors, original + float(point["t"]), key=lambda anchor: anchor["score"])
+                    for index in range(first, last):
+                        anchor = anchors[index]
+                        relative = float(anchor["score"]) - original
+                        if float(left["t"]) < relative < float(point["t"]):
+                            fraction = (relative - float(left["t"])) / (float(point["t"]) - float(left["t"]))
+                            curve.append({"t": relative, "v": float(left["v"]) + fraction * (float(point["v"]) - float(left["v"]))})
+                curve.append(point)
+            result["bnv"] = [{**point, "t": round(map_time(alignment, original + float(point["t"])) - start, 6)} for point in curve]
+        else:
+            result["bnv"] = [{**point, "t": round(float(point["t"]) * float(alignment["scale"]), 6)} for point in note["bnv"]]
     return result
 
 
 def _timeline_items(items: list, alignment: dict, duration: float) -> list:
     result = []
     for item in items:
-        time = map_time(alignment, item["time"])
-        if time <= duration:
+        time = map_time(alignment, item["time"], allow_negative=alignment.get("mapping") == "piecewise-linear")
+        if 0 <= time <= duration:
             entry = {**item, "time": time}
             if "bpm" in entry:
-                entry["bpm"] = float(entry["bpm"]) / float(alignment["scale"])
+                scale = source_time_scale(alignment, item["time"]) if alignment.get("mapping") == "piecewise-linear" else float(alignment["scale"])
+                entry["bpm"] = float(entry["bpm"]) / scale
             result.append(entry)
     return result
 
@@ -77,6 +107,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     for key in ("beats", "sections", "tempos", "time_signatures"):
         if performance.get(key):
             timeline[key] = _timeline_items(performance[key], alignment, duration)
+    if alignment.get("mapping") == "piecewise-linear" and alignment.get("tempos"):
+        timeline["tempos"] = [deepcopy(item) for item in alignment["tempos"] if 0 <= item["time"] <= duration]
     arrangements = []
     used = set()
     for index, track in enumerate(performance.get("tracks", [])):

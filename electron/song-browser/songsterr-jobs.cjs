@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { publishFeedpak } = require('./publication.cjs');
 const { normalizeOutputSettings } = require('./output-settings.cjs');
+const { unavailableSynchronization, synchronizationSummary, audioVideo } = require('./providers/songsterr/synchronization.cjs');
 const WAITING = new Set(['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed']);
 const ACTIVE = new Set(['queued', 'resolving', 'downloading', 'converting', 'audio', 'aligning', 'validating', 'saving']);
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -89,7 +90,7 @@ class SongsterrJobs {
       revisionId: job.metadata?.revisionId, outputDir: job.outputDir, outputSettings: job.outputSettings,
       outputPath: job.state === 'completed' ? job.outputPath : undefined,
       outputAvailable: job.state === 'completed' && Boolean(job.outputPath && fs.existsSync(job.outputPath)),
-      warnings: job.warnings, alignment: job.alignment, coverage: job.coverage,
+      warnings: job.warnings, alignment: job.alignment, coverage: job.coverage, synchronization: job.synchronizationSummary,
       canRetry: WAITING.has(job.state) || job.state === 'failed' || job.state === 'cancelled',
       canRetryAudio: job.state === 'needs_audio' && !job.audio && Boolean(job.scorePath) && typeof this.provider.findAudio === 'function',
       canUseAccount: job.canUseAccount === true,
@@ -123,7 +124,7 @@ class SongsterrJobs {
     // supplied or previously chosen recording always keeps priority.
     job.retryAudioDetection = job.state === 'needs_audio' && !job.audio && Boolean(job.scorePath) && typeof this.provider.findAudio === 'function';
     job.controller = new AbortController(); job.committed = false; job.timedOut = false;
-    this._set(job, 'queued', { error: '', alignment: undefined, message: 'Queued.' }); this._start(); return this.public(job);
+    this._set(job, 'queued', { error: '', alignment: undefined, synchronizationSummary: undefined, message: 'Queued.' }); this._start(); return this.public(job);
   }
   async cancel(id) {
     const job = this.jobs.find((j) => j.id === id);
@@ -214,10 +215,28 @@ class SongsterrJobs {
       if (audio) job.audio = audio;
     }
     if (!job.audio) throw Object.assign(new Error('No usable original audio was found. Choose an audio file or paste a link.'), { code: 'needs_audio' });
+    // Fetch once per conversion attempt, including old cached failed jobs.
+    // Never retain the point array in the history ledger or reuse a previous
+    // recording's map after the user supplies replacement audio.
+    const syncIdentity = { songId: job.chart.id, revisionId: String(job.metadata.revisionId), videoId: audioVideo(job.audio)?.videoId };
+    let synchronization = unavailableSynchronization(syncIdentity, 'unavailable');
+    if (typeof this.provider.findSynchronization === 'function') {
+      this._set(job, 'aligning', { message: 'Checking Songsterr timing for this recording…' });
+      try {
+        synchronization = await this.provider.findSynchronization(job.chart, { revisionId: syncIdentity.revisionId,
+          audio: job.audio, signal: job.controller.signal }) || synchronization;
+      } catch (error) {
+        check(job);
+        if (error.code === 'cancelled') throw error;
+        synchronization = unavailableSynchronization(syncIdentity, 'network_error');
+      }
+    }
+    check(job);
+    job.synchronizationSummary = synchronizationSummary(synchronization);
     this._set(job, 'converting', { message: 'Preparing the tab and audio…' });
     const attempt = fs.mkdtempSync(path.join(directory, 'attempt-'));
     const requestPath = path.join(attempt, 'request.json');
-    atomicJson(requestPath, { scorePath: job.scorePath, metadata: job.metadata, audio: job.audio, workDir: attempt,
+    atomicJson(requestPath, { scorePath: job.scorePath, metadata: job.metadata, audio: job.audio, synchronization, workDir: attempt,
       outputDir: job.outputDir, outputSettings: job.outputSettings, tools: this.tools });
     let result;
     try { result = await this._run(job, ['--song-import-file', requestPath], attempt); }

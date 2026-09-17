@@ -54,6 +54,18 @@ test('login/account fallback is optional and explains the unpublished copy witho
   }
 });
 
+test('failed alignment can retry Songsterr synchronization with the existing recording', () => {
+  const html = job({ state: 'alignment_failed', canRetry: true });
+  assert.match(html, />Retry synchronization<\/button>/);
+  assert.match(html, /Choose audio file/);
+  assert.doesNotMatch(html, /Retry audio detection/);
+  for (const state of ['needs_audio', 'aligning', 'completed', 'cancelled']) {
+    assert.doesNotMatch(job({ state, canRetry: true }), /Retry synchronization/);
+  }
+  const busy = render(SongsterrJob, { job: { ...base, state: 'alignment_failed', canRetry: true }, api: {}, action() {}, busy: true });
+  assert.match(busy, /<button[^>]*disabled=""[^>]*>Retry synchronization<\/button>/);
+});
+
 test('active acquisition/alignment shows progress and cancellation, never premature ready or audio prompts', () => {
   for (const state of ['resolving', 'downloading', 'audio', 'aligning', 'converting', 'validating', 'saving']) {
     const html = job({ state, message: 'Working on this song.' });

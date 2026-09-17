@@ -8,6 +8,37 @@ import tempfile
 from .alignment import VERSION, align_audio
 from .audio import ImportFailure, prepare_audio, sha256_file
 from .builder import build_feedpak
+from .synchronization import align_from_songsterr
+
+
+def _choose_alignment(performance: dict, audio: dict, request: dict, progress=None) -> dict:
+    """Use recording-specific source timing first; estimate only when unavailable."""
+    if progress:
+        progress({"stage": "aligning", "message": "Checking Songsterr's recording timing."})
+    try:
+        return align_from_songsterr(performance, audio, request.get("synchronization"),
+                                   request.get("metadata") or {})
+    except ImportFailure as exc:
+        if exc.code != "source_sync_unavailable":
+            raise
+        source_diagnostic = {**exc.diagnostics, "message": str(exc)}
+    if progress:
+        progress({"stage": "aligning", "message": "Songsterr timing is unavailable for this recording. Matching audio automatically."})
+    try:
+        alignment = align_audio(performance, Path(audio["path"]), progress=progress)
+    except ImportFailure as exc:
+        # Keep the failed source-map check alongside the independent matcher's
+        # diagnostics. A fallback failure does not prove the site's sync is bad.
+        exc.diagnostics = {**exc.diagnostics, "sourceSynchronization": source_diagnostic}
+        raise
+    alignment["sourceSynchronization"] = source_diagnostic
+    return alignment
+
+
+def _alignment_summary(alignment: dict) -> dict:
+    # The full map is used only while building the package. Keeping thousands of
+    # anchors in each history row would eventually exceed the bounded ledger.
+    return {key: value for key, value in alignment.items() if key not in {"anchors", "tempos"}}
 
 
 def run_import(request: dict, progress=None) -> dict:
@@ -37,20 +68,25 @@ def run_import(request: dict, progress=None) -> dict:
             progress({"stage": "audio", "message": "Preparing the full recording and song preview."})
         from .runtime import resolve_tools
         audio = prepare_audio(request.get("audio"), job, tools=resolve_tools(request.get("tools") or {}))
-        alignment = align_audio(performance, Path(audio["path"]), progress=progress)
-        recipe = {"version": 1, "source": "songsterr", "songId": metadata.get("songId"),
+        alignment = _choose_alignment(performance, audio, request, progress)
+        alignment_recipe = {key: alignment[key] for key in
+                            ("method", "offset", "scale", "mapping", "provenance") if key in alignment}
+        alignment_recipe.setdefault("method", VERSION)
+        recipe = {"version": 2, "source": "songsterr", "songId": metadata.get("songId"),
                   "revisionId": metadata.get("revisionId"), "scoreHash": score_hash, "audioHash": audio["hash"],
                   "sourceMetadata": dict(performance.get("source") or {}),
                   "audioSource": {key: audio["source"][key] for key in ("kind", "videoId", "title", "sha256") if key in audio["source"]},
-                  "alignment": {"method": VERSION, "offset": alignment["offset"], "scale": alignment["scale"]}}
+                  "alignment": alignment_recipe}
         if progress:
             progress({"stage": "validating", "message": "Building and validating the FeedPak."})
         result = build_feedpak(performance, audio, alignment, job, output_dir=Path(request["outputDir"]),
                                output_settings=request.get("outputSettings"), recipe=recipe)
         return {"ok": True, **result, "scoreHash": score_hash, "audioHash": audio["hash"],
-                "recipe": recipe, "alignment": alignment,
+                "recipe": recipe, "alignment": _alignment_summary(alignment),
                 "warnings": list(performance.get("warnings", [])) + result["warnings"] +
-                            ["Songsterr audio matching is experimental; this recording passed the current automatic checks."]}
+                            (["Timing was imported from Songsterr for this tab revision and recording."]
+                             if alignment.get("method") == "songsterr-video-points-v1" else
+                             ["Songsterr audio matching is experimental; this recording passed the current automatic checks."])}
     except ImportFailure as exc:
         return {"ok": False, "code": exc.code, "error": str(exc), **({"alignment": exc.diagnostics} if exc.diagnostics else {})}
     except ImportError as exc:

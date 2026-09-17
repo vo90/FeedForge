@@ -242,8 +242,11 @@ def align_audio(performance: dict, audio_path: Path, progress=None) -> dict:
                         {"score": score_duration, "audio": offset + score_duration * scale}]}
 
 
-def map_time(alignment: dict, time: float) -> float:
+def map_time(alignment: dict, time: float, *, allow_negative: bool = False) -> float:
+    if alignment.get("mapping") == "piecewise-linear":
+        from .synchronization import map_source_time
+        return map_source_time(alignment, time, allow_negative=allow_negative)
     value = float(alignment["offset"]) + float(time) * float(alignment["scale"])
-    if not math.isfinite(value) or value < -0.00001:
+    if not math.isfinite(value) or (value < -0.00001 and not allow_negative):
         raise ImportFailure("alignment_failed", "Invalid time in the matched arrangement.")
-    return round(max(0, value), 6)
+    return round(value if allow_negative else max(0, value), 6)

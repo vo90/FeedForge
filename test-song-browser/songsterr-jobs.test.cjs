@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { SongsterrJobs } = require('../electron/song-browser/songsterr-jobs.cjs');
+const { selectSynchronization, unavailableSynchronization, audioVideo } = require('../electron/song-browser/providers/songsterr/synchronization.cjs');
 
 const CHART = { id: '123', title: 'Synthetic Song', artist: 'Synthetic Artist' };
 const SETTINGS = { outputLayout: 'flat', nameTemplate: '{artist} - {title}' };
@@ -25,7 +26,7 @@ async function fixture(t, options = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'feedforge-songsterr-jobs-'));
   const root = path.join(directory, 'jobs'), outputDir = path.join(directory, 'output');
   fs.mkdirSync(outputDir);
-  const calls = [], requests = [], acquisitions = [], completed = [], audioProbes = [];
+  const calls = [], requests = [], acquisitions = [], completed = [], audioProbes = [], syncProbes = [];
   const provider = { acquire: async (chart, context) => {
     acquisitions.push(chart.id);
     if (options.acquire) return options.acquire(chart, context, acquireNormally);
@@ -35,11 +36,15 @@ async function fixture(t, options = {}) {
     audioProbes.push({ chart, ...context });
     return options.findAudio(chart, context);
   };
+  if (options.findSynchronization) provider.findSynchronization = async (chart, context) => {
+    syncProbes.push({ chart, ...context });
+    return options.findSynchronization(chart, context);
+  };
   function acquireNormally(chart, { directory: work }) {
     const filename = path.join(work, 'source.gp');
     fs.writeFileSync(filename, 'Synthetic score');
     return { path: filename, metadata: { songId: chart.id, revisionId: '456', approval: 'approved',
-      artist: chart.artist, title: chart.title }, ...(options.missingAudio ? {} : { audio: { kind: 'file', path: path.join(directory, 'recording.wav') } }) };
+      artist: chart.artist, title: chart.title }, ...(options.missingAudio ? {} : { audio: options.audio || { kind: 'file', path: path.join(directory, 'recording.wav') } }) };
   }
   async function normalConverter(args, context) {
     if (args[0] === '--validate-feedpak') return RESPONSE({ valid: true });
@@ -69,7 +74,7 @@ async function fixture(t, options = {}) {
     assert.ok(path.basename(resolved).startsWith('feedforge-songsterr-jobs-'));
     fs.rmSync(resolved, { recursive: true, force: true });
   });
-  return { jobs, directory, root, outputDir, config, calls, requests, acquisitions, completed, audioProbes,
+  return { jobs, directory, root, outputDir, config, calls, requests, acquisitions, completed, audioProbes, syncProbes,
     enqueue: (chart = CHART) => jobs.enqueue(chart, { outputDir, outputSettings: SETTINGS }) };
 }
 
@@ -443,4 +448,104 @@ test('Songsterr interrupted work without a valid receipt requires explicit retry
     assert.equal(restored.snapshot()[0].canRetry, true);
     assert.equal(f.calls.length, 0);
   } finally { await restored.dispose(); }
+});
+
+const YOUTUBE = { kind: 'url', url: 'https://www.youtube.com/watch?v=abcdefghijk', videoId: 'abcdefghijk' };
+function timingMap(chart, context, points = [0, 2, 4]) {
+  const identity = { songId: chart.id, revisionId: context.revisionId, videoId: audioVideo(context.audio)?.videoId };
+  return identity.videoId ? selectSynchronization([{ ...identity, status: 'done', feature: null, problematic: null, points }], identity)
+    : unavailableSynchronization(identity, 'unsupported_audio');
+}
+
+test('fresh import sends one exact synchronization envelope and stores only a bounded summary', async (t) => {
+  const points = Array.from({ length: 20001 }, (_, i) => i);
+  const f = await fixture(t, { audio: YOUTUBE, findSynchronization: (chart, context) => timingMap(chart, context, points) });
+  f.enqueue(); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'completed');
+  assert.equal(f.syncProbes.length, 1); assert.equal(f.acquisitions.length, 1);
+  assert.equal(f.syncProbes[0].revisionId, '456'); assert.deepEqual(f.syncProbes[0].audio, YOUTUBE);
+  const sync = f.requests[0].synchronization;
+  assert.equal(sync.status, 'done'); assert.equal(sync.songId, CHART.id); assert.equal(sync.revisionId, '456');
+  assert.equal(sync.videoId, YOUTUBE.videoId); assert.deepEqual(sync.points, points);
+  const saved = JSON.parse(fs.readFileSync(path.join(f.root, 'jobs.json'), 'utf8')).jobs[0];
+  assert.equal(saved.synchronization, undefined);
+  assert.equal(saved.synchronizationSummary.pointCount, points.length);
+  assert.equal(saved.synchronizationSummary.points, undefined);
+  assert.ok(JSON.stringify(saved.synchronizationSummary).length < 256);
+  assert.deepEqual(f.jobs.snapshot()[0].synchronization, saved.synchronizationSummary);
+});
+
+test('retry of a cached failed import refreshes timing without reacquiring score or audio', async (t) => {
+  let attempt = 0, fail = true;
+  const f = await fixture(t, { audio: YOUTUBE,
+    findSynchronization: (chart, context) => timingMap(chart, context, ++attempt === 1 ? [0, 2, 4] : [0, 2.1, 4.2]),
+    runConverter: async (args, context, normal) => {
+      const result = await normal(args, context);
+      if (args[0] === '--song-import-file' && fail) { fail = false; return { code: 1, stdout: JSON.stringify({ ok: false, code: 'alignment_failed', error: 'Fixture timing failed.' }) }; }
+      return result;
+    } });
+  const queued = f.enqueue(); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'alignment_failed');
+  f.jobs.retry(queued.id); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'completed');
+  assert.equal(f.syncProbes.length, 2); assert.equal(f.acquisitions.length, 1); assert.equal(f.audioProbes.length, 0);
+  assert.deepEqual(f.requests[1].synchronization.points, [0, 2.1, 4.2]);
+  assert.notEqual(f.requests[0].synchronization.mapHash, f.requests[1].synchronization.mapHash);
+});
+
+test('restored legacy cached failure fetches timing on retry even with saved audio', async (t) => {
+  let fail = true;
+  const f = await fixture(t, { audio: YOUTUBE, findSynchronization: timingMap,
+    runConverter: async (args, context, normal) => {
+      if (fail) throw new Error('Old converter failure');
+      return normal(args, context);
+    } });
+  const queued = f.enqueue(); await settle(f.jobs); await f.jobs.dispose();
+  const ledgerPath = path.join(f.root, 'jobs.json'), ledger = JSON.parse(fs.readFileSync(ledgerPath, 'utf8'));
+  delete ledger.jobs[0].synchronizationSummary;
+  fs.writeFileSync(ledgerPath, JSON.stringify(ledger));
+  fail = false;
+  const restored = new SongsterrJobs(f.config);
+  try {
+    await restored.ready; restored.retry(queued.id); await settle(restored);
+    assert.equal(restored.snapshot()[0].state, 'completed');
+    assert.equal(f.acquisitions.length, 1); assert.equal(f.syncProbes.length, 2);
+    assert.equal(f.requests[0].synchronization.status, 'done');
+  } finally { await restored.dispose(); }
+});
+
+test('replacement audio invalidates previous timing and receives local-match diagnostics', async (t) => {
+  let fail = true;
+  const f = await fixture(t, { audio: YOUTUBE, findSynchronization: timingMap,
+    runConverter: async (args, context, normal) => {
+      const result = await normal(args, context);
+      if (args[0] === '--song-import-file' && fail) { fail = false; throw new Error('Fixture conversion failure'); }
+      return result;
+    } });
+  const queued = f.enqueue(); await settle(f.jobs);
+  const replacement = { kind: 'file', path: path.join(f.directory, 'replacement.wav') };
+  f.jobs.retry(queued.id, { audio: replacement }); await settle(f.jobs);
+  assert.equal(f.requests[0].synchronization.status, 'done');
+  assert.equal(f.requests[1].synchronization.status, 'unavailable');
+  assert.equal(f.requests[1].synchronization.reasonCode, 'unsupported_audio');
+  assert.equal(f.requests[1].synchronization.points, undefined);
+  assert.deepEqual(f.syncProbes[1].audio, replacement);
+});
+
+test('timing transport failure falls back without changing score success into a login prompt', async (t) => {
+  const f = await fixture(t, { audio: YOUTUBE, findSynchronization: async () => { throw Object.assign(new Error('Temporary failure'), { code: 'needs_login' }); } });
+  f.enqueue(); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'completed'); assert.equal(f.syncProbes.length, 1);
+  assert.equal(f.requests[0].synchronization.status, 'unavailable');
+  assert.equal(f.jobs.snapshot()[0].canUseAccount, false);
+});
+
+test('cancelling timing retrieval never runs conversion or local fallback', async (t) => {
+  const entered = deferred();
+  const f = await fixture(t, { audio: YOUTUBE, findSynchronization: async (_chart, { signal }) => {
+    entered.resolve(); await new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(new Error('Stopped')), { once: true }));
+  } });
+  const queued = f.enqueue(); await entered.promise; await f.jobs.cancel(queued.id); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'cancelled'); assert.equal(f.calls.length, 0);
+  assert.deepEqual(fs.readdirSync(f.outputDir), []);
 });

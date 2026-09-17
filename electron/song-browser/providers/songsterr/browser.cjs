@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const { readSongsterrPage, actOnSongsterrPage } = require('./dom.cjs');
 const { ORIGIN, MAX_TOTAL_BYTES, failure, check, clean, numeric, sourceFilename, songUrl, safeResult, allowedNavigation, allowedDownload, publicAudio, delay, bounded } = require('./policy.cjs');
 const { acquireAnonymous } = require('./acquire.cjs');
+const { retrieveSynchronization, unavailableSynchronization, audioVideo } = require('./synchronization.cjs');
 
 class SongsterrProvider {
   constructor({ BrowserWindow, session, profilePath, onConnection = () => {}, onDiagnostic = () => {}, parent }) {
@@ -301,6 +302,24 @@ class SongsterrProvider {
       const page = await this._readyPinnedPage(win, id, revision, operation.signal);
       return await this._discoverAudio(win, { songId: id, revisionId: revision }, page, operation.signal);
     } finally { this.resolving = false; operation.release(); }
+  }
+  // The trusted queue supplies the revision from its verified score receipt.
+  // This read never opens a browser, creates an account copy or changes audio.
+  async findSynchronization(result, { revisionId, audio, signal } = {}) {
+    check(signal);
+    const id = numeric(result?.id ?? result?.songId), revision = numeric(revisionId);
+    const registered = id && this.results.get(id), video = audioVideo(audio);
+    const identity = { songId: id, revisionId: revision, videoId: video?.videoId };
+    if (!registered || !revision || (result.url && songUrl(result.url)?.url !== registered.url)) {
+      return unavailableSynchronization(identity, 'identity_mismatch');
+    }
+    if (!video) return unavailableSynchronization(identity, 'unsupported_audio');
+    const operation = this._controller(signal);
+    try {
+      const sync = await retrieveSynchronization(identity, { fetch: this.anonymousSession.fetch.bind(this.anonymousSession), signal: operation.signal });
+      this.diagnostic('synchronization_' + (sync.reasonCode || 'found'), sync.status === 'done' ? 'success' : 'unavailable');
+      return sync;
+    } finally { operation.release(); }
   }
   async acquire(result, { directory, signal, onProgress = () => {}, allowAccount = false } = {}) {
     if (this.acquiring) throw failure('busy', 'Another Songsterr tab is being acquired.');
