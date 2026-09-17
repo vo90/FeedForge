@@ -777,54 +777,9 @@ class SongJobs {
   }
 
   async _publish(job, staging) {
-    check(job);
-    await fsp.mkdir(job.outputDir, { recursive: true });
-    const outputRoot = await fsp.realpath(job.outputDir);
-    const relative = job.outputRelativePath || outputName(job.artist, job.title);
-    if (path.isAbsolute(relative) || relative.split(/[\\/]/).some((part) => !part || part === '..' || part === '.') || path.extname(relative).toLowerCase() !== '.feedpak') throw new Error('The planned output filename is invalid.');
-    const folder = path.dirname(relative);
-    if (folder !== '.' && (job.outputSettings?.outputLayout !== 'artist' || folder.split(/[\\/]/).length !== 1)) throw new Error('The planned output folder is invalid.');
-    const destination = path.resolve(outputRoot, folder);
-    if (folder !== '.') {
-      try { await fsp.mkdir(destination); } catch (error) { if (error.code !== 'EEXIST') throw error; }
-      const stat = await fsp.lstat(destination);
-      if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('The artist output folder must be a regular directory.');
-    }
-    const root = await fsp.realpath(destination);
-    if (root !== outputRoot && path.dirname(root) !== outputRoot) throw new Error('The output folder changed outside the selected library.');
-    const temporary = path.join(root, `.feedforge-${job.id}-${crypto.randomUUID()}.part`);
-    let ownsTemporary = false;
-    try {
-      // Cross-volume copies stage beside the final file. Only this exact owned .part is cleaned.
-      const handle = await fsp.open(temporary, "wx", 0o600);
-      ownsTemporary = true;
-      await handle.close();
-      await fsp.copyFile(staging, temporary);
-      check(job);
-      if (await hashFile(temporary, job.controller.signal) !== job.outputHash) throw new Error("The FeedPak changed while it was being saved. Retry the job.");
-      const name = path.basename(relative);
-      const stem = name.slice(0, -".feedpak".length);
-      for (let index = 0; index < 1000; index++) {
-        check(job);
-        const target = path.join(root, index ? `${stem} (${index + 1}).feedpak` : name);
-        try {
-          // link is atomic and fails on an existing destination, unlike rename or copyFile.
-          // Keep creation and the commit marker in one turn so cancellation is unambiguous.
-          this._writeReceipt(job, target);
-          fs.linkSync(temporary, target);
-          job.outputPath = target; job.committed = true;
-          return target;
-        } catch (error) {
-          if (error.code === "EEXIST") continue;
-          throw new Error(`Could not safely save the FeedPak in the selected folder: ${text(error.message, 250)}`);
-        }
-      }
-      throw new Error("Too many files already use this song name. Choose another output folder.");
-    } finally {
-      if (ownsTemporary) {
-        try { await fsp.unlink(temporary); } catch { /* Do not touch any other output file. */ }
-      }
-    }
+    job.outputRelativePath ||= outputName(job.artist, job.title);
+    return require('./publication.cjs').publishFeedpak({ job, staging, check, hashFile,
+      writeReceipt: (entry, target) => this._writeReceipt(entry, target) });
   }
 
   async dispose() {

@@ -11,6 +11,7 @@ const { normalizeSearchRequest, searchIdentity } = require('./catalogue.cjs');
 const { normalizeRequirements } = require('./file-selection.cjs');
 const { normalizeRecipe, recipesCompatible } = require('./provenance.cjs');
 const { normalizeOutputSettings } = require('./output-settings.cjs');
+const { registerSongsterr } = require('./songsterr-service.cjs');
 
 function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, shell, getMainWindow, runConverter, getConverterRecipe = async () => null }) {
   let browser, jobs, outputDir, root, batches, imports, collecting = null, searching = null, recipePromise;
@@ -21,6 +22,10 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
   let quitting = false;
   const charts = new Map();
   const stages = new Map();
+  const songsterr = registerSongsterr({ app, BrowserWindow, session, ipcMain, dialog, shell, getMainWindow, runConverter, getConverterRecipe,
+    getSettings: () => { initialize(); return { outputDir, outputSettings: config.sharedOutputSettings || {} }; },
+    validateOutput: (directory) => jobs.validateOutputDir(directory),
+    onCompleted: (job) => { if (config.feedback?.autoRefresh && !quitting) return refresh(job.outputPath); } });
   const state = () => ({ outputDir, jobs: jobs.snapshot().map((job) => outputDir ? job : { ...job, inOutputDir: false }), connection: browser.connection,
     batches: batches?.snapshot() || [], preparation: collecting ? { ...collecting.progress, pending: true } : null,
     searchProgress: searching ? { ...searching.progress, requestId: searching.id, pending: true } : null,
@@ -395,8 +400,8 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
     collecting?.controller.abort();
     searching?.controller.abort();
     browser.dispose();
-    Promise.resolve(batches?.dispose?.()).finally(() => jobs.dispose()).finally(() => app.quit()).catch(() => {});
+    Promise.resolve(batches?.dispose?.()).finally(() => jobs.dispose()).finally(() => songsterr.close()).finally(() => app.quit()).catch(() => {});
   });
-  return { close: async () => { collecting?.controller.abort(); searching?.controller.abort(); await batches?.dispose(); browser?.dispose(); return jobs?.dispose(); } };
+  return { close: async () => { collecting?.controller.abort(); searching?.controller.abort(); await batches?.dispose(); browser?.dispose(); await jobs?.dispose(); await songsterr.close(); } };
 }
 module.exports = { registerSongBrowser };

@@ -15,8 +15,8 @@ if ($runtimePath.Equals($sourceRoot, [StringComparison]::OrdinalIgnoreCase) -or
     throw 'Choose a runtime folder outside the source checkout.'
 }
 $branchName = (& git -C $sourceRoot branch --show-current).Trim()
-if ($LASTEXITCODE -ne 0 -or $branchName -ne 'feat/customsforge-song-browser') {
-    throw 'This launcher requires the feat/customsforge-song-browser branch.'
+if ($LASTEXITCODE -ne 0 -or $branchName -notin @('feat/customsforge-song-browser', 'feat/customsforge-browser-expansion', 'feat/songsterr-import')) {
+    throw 'This launcher requires a song-browser development branch.'
 }
 & git -C $sourceRoot merge-base --is-ancestor 804aa8c91c0cc26809ab8ef97093c0b5d7fa042c HEAD
 if ($LASTEXITCODE -ne 0) { throw 'The expected FeedForge baseline is not an ancestor of this build.' }

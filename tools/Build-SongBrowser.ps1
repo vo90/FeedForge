@@ -18,7 +18,7 @@ if ($buildPath.Equals($sourceRoot, [StringComparison]::OrdinalIgnoreCase) -or
     throw 'Choose a dedicated build folder outside the source checkout and filesystem root.'
 }
 $branchName = (& git -C $sourceRoot branch --show-current).Trim()
-if ($LASTEXITCODE -ne 0 -or $branchName -notin @('feat/customsforge-song-browser', 'feat/customsforge-browser-expansion')) { throw 'Build from an approved song-browser development branch.' }
+if ($LASTEXITCODE -ne 0 -or $branchName -notin @('feat/customsforge-song-browser', 'feat/customsforge-browser-expansion', 'feat/songsterr-import')) { throw 'Build from an approved song-browser development branch.' }
 & git -C $sourceRoot merge-base --is-ancestor 804aa8c91c0cc26809ab8ef97093c0b5d7fa042c HEAD
 if ($LASTEXITCODE -ne 0) { throw 'The expected FeedForge baseline is not an ancestor of this build.' }
 $revision = (& git -C $sourceRoot rev-parse HEAD).Trim()
@@ -28,10 +28,10 @@ $audioPath = (Resolve-Path -LiteralPath $AudioToolsPath).Path
 $nodeExe = (Get-Command node -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
 $builderCli = Join-Path $sourceRoot 'node_modules\electron-builder\out\cli\cli.js'
 $viteCli = Join-Path $sourceRoot 'node_modules\vite\bin\vite.js'
-foreach ($filename in @($builderCli, $viteCli, (Join-Path $audioPath 'vgmstream-cli.exe'), (Join-Path $audioPath 'ffmpeg.exe'))) {
+foreach ($filename in @($builderCli, $viteCli, (Join-Path $audioPath 'vgmstream-cli.exe'), (Join-Path $audioPath 'ffmpeg.exe'), (Join-Path $audioPath 'ffprobe.exe'), (Join-Path $audioPath 'node.exe'))) {
     if (!(Test-Path -LiteralPath $filename -PathType Leaf)) { throw "Missing installed prerequisite: $filename" }
 }
-$pythonInfo = & $pythonExe -B -c 'import json, sys, importlib.metadata as m; print(json.dumps({"python":sys.version,"packages":{n:m.version(n) for n in ["pyinstaller","construct","cryptography","jsonschema","Pillow","PyYAML","soundfile"]}}))'
+$pythonInfo = & $pythonExe -B -c 'import json, sys, importlib.metadata as m; print(json.dumps({"python":sys.version,"packages":{n:m.version(n) for n in ["pyinstaller","construct","cryptography","jsonschema","Pillow","PyYAML","soundfile","numpy","yt-dlp","yt-dlp-ejs"]}}))'
 if ($LASTEXITCODE -ne 0) { throw 'The selected Python lacks installed converter/PyInstaller dependencies. No dependencies were installed.' }
 $electronDist = Split-Path -Parent $electronExe
 $electronVersion = (Get-Content -LiteralPath (Join-Path $electronDist 'version') -Raw).Trim()

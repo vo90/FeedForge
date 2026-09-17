@@ -82,6 +82,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Convert PSARC CDLC archives to FeedPak packages.",
     )
     parser.add_argument("input", nargs="*", help="Input .psarc file(s).")
+    parser.add_argument("--song-import-file", help="Import a pinned tab and original audio from a local JSON request.")
+    parser.add_argument("--song-import-health", action="store_true", help="Check bundled Songsterr import dependencies without network access.")
     parser.add_argument(
         "-o",
         "--output",
@@ -221,6 +223,23 @@ def main(argv: list[str] | None = None) -> int:
     _configure_stdio()
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.song_import_health:
+        from feedback_converter.song_import.runtime import runtime_health
+
+        result = runtime_health()
+        _print(json.dumps(result), stream=sys.stdout)
+        return 0 if result["ok"] else 1
+
+    if args.song_import_file:
+        try:
+            from feedback_converter.song_import.worker import run_request_file
+
+            result = run_request_file(Path(args.song_import_file), progress=_emit_planning_progress)
+        except Exception as exc:  # noqa: BLE001
+            result = {"ok": False, "code": "import_failed", "error": str(exc)}
+        _print(json.dumps(_jsonable(result), ensure_ascii=False), stream=sys.stdout)
+        return 0 if result.get("ok") else 1
 
     if args.plan_conversion_file:
         try:

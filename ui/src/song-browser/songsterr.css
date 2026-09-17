@@ -1,0 +1,28 @@
+.sb-source-picker { display:flex; gap:8px; padding:20px 28px 0; align-items:center; }
+.sb-source-picker button[aria-pressed="true"] { border-color:#3faadd; background:#19324c; color:#e7f8ff; }
+.st-browser { padding:28px; max-width:1800px; margin:auto; }
+.st-browser .sb-header { display:flex; justify-content:space-between; align-items:center; gap:20px; }
+.st-browser .sb-header h1 { font-size:34px; margin:8px 0; }
+.st-browser .sb-header p,.st-browser small,.st-browser aside > p { color:var(--text-muted,#9dacc0); }
+.st-browser .sb-output { display:flex; gap:18px; align-items:center; padding:20px; margin:26px 0 12px; border:1px solid #2c4055; border-radius:12px; background:#131e2d; }
+.st-browser .sb-output > div { flex:1; overflow-wrap:anywhere; }
+.st-browser .sb-output p { margin:6px 0; color:#9dacc0; }
+.st-experimental { color:#a9bdcf; font-size:13px; margin-bottom:24px; }
+.st-search label { display:block; font-weight:600; margin-bottom:9px; }
+.st-search-row { display:flex; gap:10px; }
+.st-search input,.st-audio-input input,.st-results-heading select { background:#111e2d; border:1px solid #3b4e63; color:#e7edf5; border-radius:7px; padding:11px; }
+.st-search input { flex:1; min-width:0; }
+.st-results-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,340px); gap:22px; margin-top:28px; }
+.st-results-heading { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:18px; }
+.st-results-heading h2,.st-results-layout aside h2 { font-size:17px; }
+.st-results-heading label { font-size:13px; display:flex; align-items:center; gap:10px; }
+.st-results-layout aside { border:1px solid #2c4055; padding:16px; border-radius:12px; background:#101b29; }
+.st-jobs { padding:0; margin:0; list-style:none; display:grid; gap:12px; }
+.st-jobs .sb-job-top { flex-wrap:wrap; gap:10px; }
+.st-jobs p { overflow-wrap:anywhere; font-size:13px; }
+.st-audio-input { display:grid; gap:10px; margin-top:15px; }
+.st-audio-input form { display:grid; gap:8px; }
+.st-audio-input label { font-size:12px; }
+.st-audio-input input { width:100%; box-sizing:border-box; }
+.st-empty { padding:60px 20px; border:1px dashed #2c4055; border-radius:12px; text-align:center; color:#9dacc0; }
+@media(max-width:950px) { .st-results-layout { grid-template-columns:1fr; } .st-browser .sb-output,.st-results-heading { flex-wrap:wrap; } }

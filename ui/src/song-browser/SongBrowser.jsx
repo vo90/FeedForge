@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { AlertTriangle, Check, ChevronLeft, ChevronRight, Download, ExternalLink, FileMusic, FolderOpen, LoaderCircle, Search, X } from "lucide-react";
 import "./song-browser.css";
+import SongsterrBrowser from './SongsterrBrowser.jsx';
+import './songsterr.css';
 import { getSearchSession } from "./search-session.mjs";
 import { BatchPanel } from './BatchPanel.jsx';
 import { FileCandidateDetails } from './FileCandidateDetails.jsx';
@@ -8,6 +10,7 @@ import { createResultAssessmentSession } from './result-assessment-session.mjs';
 
 const FINISHED = new Set(["completed", "done", "failed", "error", "cancelled", "canceled", "parked"]);
 const selectionSessions = new WeakMap();
+let rememberedSource = 'customsforge';
 const COMPLETE = new Set(["completed", "done"]);
 const OUTPUT_SETTINGS_ACTIONS = new Set(['enqueue', 'retry', 'prepareBatch', 'updateBatchPreferences', 'chooseBatch', 'startBatch', 'resumeBatch', 'retryBatchItem', 'resolveBatchItem', 'chooseFile', 'chooseBatchFile']);
 const STATE_LABELS = {
@@ -127,7 +130,21 @@ export function JobCard({ job, busy, canSave = true, onCancel, onShowOutput, onS
   );
 }
 
-export default function SongBrowser({ api: providedApi, onReview, outputSettings, onOpenOutputSettings, onOutputDirChange }) {
+export default function SongBrowser(props) {
+  const [source, setSource] = useState(rememberedSource);
+  const [songsterrOpened, setSongsterrOpened] = useState(rememberedSource === 'songsterr');
+  const chooseSource = (next) => { rememberedSource = next; setSource(next); };
+  return <>
+    <nav className="sb-source-picker" aria-label="Song source">
+      <button type="button" className="sb-button" aria-pressed={source === 'customsforge'} onClick={() => chooseSource('customsforge')}>CustomsForge</button>
+      <button type="button" className="sb-button" aria-pressed={source === 'songsterr'} onClick={() => { setSongsterrOpened(true); chooseSource('songsterr'); }}>Songsterr</button>
+    </nav>
+    <div style={{ display: source === 'customsforge' ? undefined : 'none' }}><CustomsForgeBrowser {...props} /></div>
+    {songsterrOpened ? <div style={{ display: source === 'songsterr' ? undefined : 'none' }}><SongsterrBrowser outputSettings={props.outputSettings} onOpenOutputSettings={props.onOpenOutputSettings} outputApi={props.api} /></div> : null}
+  </>;
+}
+
+export function CustomsForgeBrowser({ api: providedApi, onReview, outputSettings, onOpenOutputSettings, onOutputDirChange }) {
   const api = providedApi ?? (typeof window !== "undefined" ? window.songBrowser : undefined);
   const available = typeof api?.getState === "function" && typeof api?.search === "function";
   const searchSession = useMemo(() => getSearchSession(api), [api]);

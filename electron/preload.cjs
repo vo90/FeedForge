@@ -1,5 +1,24 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
+contextBridge.exposeInMainWorld('songsterrBrowser', {
+  getState: () => ipcRenderer.invoke('songsterr:getState'),
+  search: (request) => ipcRenderer.invoke('songsterr:search', request),
+  cancelSearch: () => ipcRenderer.invoke('songsterr:cancelSearch'),
+  enqueue: (request) => ipcRenderer.invoke('songsterr:enqueue', request),
+  retry: (request) => ipcRenderer.invoke('songsterr:retry', request),
+  cancel: (request) => ipcRenderer.invoke('songsterr:cancel', request),
+  signIn: () => ipcRenderer.invoke('songsterr:signIn'),
+  showBrowser: () => ipcRenderer.invoke('songsterr:showBrowser'),
+  chooseAudio: (request) => ipcRenderer.invoke('songsterr:chooseAudio', request),
+  useAudioUrl: (request) => ipcRenderer.invoke('songsterr:useAudioUrl', request),
+  showOutput: (request) => ipcRenderer.invoke('songsterr:showOutput', request),
+  onState: (callback) => {
+    const listener = (_event, value) => callback(value);
+    ipcRenderer.on('songsterr:state', listener);
+    return () => ipcRenderer.removeListener('songsterr:state', listener);
+  },
+});
+
 // This bridge is installed only in FeedForge's local UI, never on remote song pages.
 contextBridge.exposeInMainWorld("songBrowser", {
   getState: () => ipcRenderer.invoke("song-browser:getState"),

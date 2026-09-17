@@ -16,6 +16,8 @@ dependencies = [
     "Pillow>=10",
     "PyYAML>=6",
     "soundfile>=0.12",
+    "numpy>=1.26,<3",
+    "yt-dlp[default]>=2026.3.17",
 ]
 
 [project.optional-dependencies]
