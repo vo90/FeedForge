@@ -99,6 +99,9 @@ the original official studio album and keeps recording-version distinctions.
 Ambiguous/truncated catalogue results, unavailable artwork and service failures
 leave cover art absent. They do not block faithful musical conversion. A video
 thumbnail or generated title card is never substituted for an album cover.
+Imported covers use JPEG quality 90 with a maximum 512-pixel edge, preserving
+aspect ratio without enlargement. Legacy PNG caches are compacted locally;
+already compact JPEGs are reused without another lossy encoding generation.
 An image can also be supplied afterward using the existing Edit FeedPaks controls.
 
 The resolver uses a descriptive User-Agent, coordinates its one-request-per-second

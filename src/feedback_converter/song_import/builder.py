@@ -10,6 +10,7 @@ import shutil
 import zipfile
 
 import yaml
+from PIL import Image
 
 from ..feedpak_validator import require_valid_feedpak
 from ..output_naming import output_path, safe_path_segment
@@ -195,8 +196,11 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     if recipe:
         manifest["song_import"] = {**recipe, "coverage": coverage}
     if artwork and artwork.get("status") == "matched" and artwork.get("path"):
-        shutil.copyfile(artwork["path"], package / "cover.png")
-        manifest["cover"] = "cover.png"
+        with Image.open(artwork["path"]) as cover:
+            extension = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}[cover.format]
+        cover_name = f"cover.{extension}"
+        shutil.copyfile(artwork["path"], package / cover_name)
+        manifest["cover"] = cover_name
         for key in ("album", "year"):
             if key not in manifest and artwork.get(key):
                 manifest[key] = artwork[key]

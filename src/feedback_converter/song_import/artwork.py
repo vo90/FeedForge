@@ -30,6 +30,8 @@ import warnings
 from PIL import Image, ImageOps
 
 POLICY_VERSION = 1
+COVER_ENCODING = "jpeg-512-q90-v1"
+COVER_MAX_SIZE = 512
 USER_AGENT = "FeedForge/0.1.40 (album artwork; https://github.com/balki97/FeedForge)"
 JSON_LIMIT = 2 * 1024 * 1024
 IMAGE_LIMIT = 12 * 1024 * 1024
@@ -459,7 +461,7 @@ def _cover(client, group):
             continue
         image = eligible[0]
         thumbnails = image.get("thumbnails") if isinstance(image.get("thumbnails"), dict) else {}
-        image_url = thumbnails.get("1200") or thumbnails.get("500") or image.get("image")
+        image_url = thumbnails.get("500") or thumbnails.get("1200") or image.get("image")
         if not isinstance(image_url, str):
             continue
         # Historical CAA indexes include HTTP links to their own image hosts.
@@ -476,15 +478,22 @@ def _cover(client, group):
     raise _LookupFailure("cover_not_available")
 
 
-def _normalize_image(raw):
+def _normalize_image(raw, *, reuse_encoded=False):
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("error", Image.DecompressionBombWarning)
             with Image.open(io.BytesIO(raw)) as opened:
-                if opened.format not in {"JPEG", "PNG", "WEBP"} or opened.width * opened.height > 20_000_000 or min(opened.size) < 32:
+                if (opened.format not in {"JPEG", "PNG", "WEBP"} or opened.width * opened.height > 20_000_000
+                        or min(opened.size) < (1 if reuse_encoded else 32)):
                     raise ValueError()
+                # Our validated compact cache must not acquire another lossy
+                # generation every time the same album is reused.
+                if (reuse_encoded and opened.format == "JPEG" and opened.mode == "RGB"
+                        and max(opened.size) <= COVER_MAX_SIZE and not opened.getexif()):
+                    opened.load()
+                    return raw
                 image = ImageOps.exif_transpose(opened)
-                image.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
+                image.thumbnail((COVER_MAX_SIZE, COVER_MAX_SIZE), Image.Resampling.LANCZOS)
                 if image.mode == "RGBA" or "transparency" in image.info:
                     rgba = image.convert("RGBA")
                     image = Image.new("RGB", rgba.size, "white")
@@ -492,7 +501,7 @@ def _normalize_image(raw):
                 else:
                     image = image.convert("RGB")
                 output = io.BytesIO()
-                image.save(output, format="PNG")
+                image.save(output, format="JPEG", quality=90, optimize=True)
                 return output.getvalue()
     except (OSError, ValueError, Image.DecompressionBombError, Image.DecompressionBombWarning):
         raise _LookupFailure("invalid_cover_image") from None
@@ -520,13 +529,18 @@ def _cache_read(cache, key, now, *, max_age=None):
             return None
         raw = None
         if result["status"] == "matched":
-            image = cache / f"{key}.png"
+            compact = result["provenance"].get("imageEncoding") == COVER_ENCODING
+            image = cache / f"{key}.{'jpg' if compact else 'png'}"
             if not image.is_file() or image.stat().st_size > IMAGE_LIMIT:
                 return None
             raw = image.read_bytes()
             if hashlib.sha256(raw).hexdigest() != result["provenance"]["imageHash"]:
                 return None
-            _normalize_image(raw)  # Validate local cache bytes before publication too.
+            # Old matching records remain useful: compact their PNG locally,
+            # without another lookup or changing the saved cache's expiry.
+            raw = _normalize_image(raw, reuse_encoded=compact)
+            result["provenance"].update({"imageHash": hashlib.sha256(raw).hexdigest(),
+                                         "imageEncoding": COVER_ENCODING})
         return result, raw
     except (OSError, ValueError, KeyError, TypeError, _LookupFailure):
         return None
@@ -540,7 +554,7 @@ def _cache_write(cache, key, result, raw, now):
             temporary = cache / f"{key}.{uuid.uuid4().hex}.tmp"
             try:
                 temporary.write_bytes(raw)
-                os.replace(temporary, cache / f"{key}.png")
+                os.replace(temporary, cache / f"{key}.jpg")
             finally:
                 temporary.unlink(missing_ok=True)
         _atomic_json(cache / f"{key}.json", {"version": POLICY_VERSION, "createdAt": now(),
@@ -574,10 +588,10 @@ def _album_cover(client, group, cache, now):
             # and match scope. Never restore those from another song's result.
             return raw, {field: provenance[field] for field in (
                 "source", "sourceUrl", "imageUrl", "artworkReleaseId",
-                "releaseGroupId", "releaseId", "imageHash") if field in provenance}
+                "releaseGroupId", "releaseId", "imageHash", "imageEncoding") if field in provenance}
     image_bytes, provenance = _cover(client, group)
     raw = _normalize_image(image_bytes)
-    provenance.update({**identity, "imageHash": hashlib.sha256(raw).hexdigest()})
+    provenance.update({**identity, "imageHash": hashlib.sha256(raw).hexdigest(), "imageEncoding": COVER_ENCODING})
     _cache_write(shared, key, _result("matched", "album_cover", provenance=provenance), raw, now)
     return raw, provenance
 
@@ -589,7 +603,8 @@ def resolve_album_art(metadata: dict, directory: Path, cache_dir: Path | None = 
     ``metadata`` accepts title, artist, optional album/year/duration/audioKind.
     Ambiguous recordings may identify the same album; in that case provenance
     records all recordingIds and matchingScope='album', without inventing one.
-    The returned file is a unique normalized PNG in the caller-owned directory.
+    The returned file is a compact JPEG, at most 512 pixels on its longest edge,
+    in the caller-owned directory. Existing PNG caches are compacted locally.
     Different songs reuse a cover only after independently matching the same
     release-group and release IDs; shared covers expire after 30 days.
     """
@@ -646,7 +661,7 @@ def resolve_album_art(metadata: dict, directory: Path, cache_dir: Path | None = 
         if raw is not None:
             destination = Path(directory)
             destination.mkdir(parents=True, exist_ok=True)
-            image_path = destination / f"album-cover-{uuid.uuid4().hex}.png"
+            image_path = destination / f"album-cover-{uuid.uuid4().hex}.jpg"
             with image_path.open("xb") as stream:
                 stream.write(raw)
             return {**result, "path": str(image_path)}

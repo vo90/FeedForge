@@ -1,4 +1,5 @@
 import io
+import hashlib
 import json
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -106,7 +107,8 @@ def test_official_album_cover_preserves_aspect_and_records_identity(tmp_path):
     assert result["provenance"]["releaseId"] == uid(3)
     assert supplied == {"artist": "Example Artist", "title": "Example Song", "year": 1999}
     with Image.open(result["path"]) as image:
-        assert image.size == (1200, 600)
+        assert image.size == (512, 256)
+        assert image.format == "JPEG"
         assert image.mode == "RGB"
     assert all("FeedForge/" in call["headers"]["User-Agent"] for call in network.calls)
     assert all(call["timeout"] <= 10 for call in network.calls)
@@ -263,7 +265,7 @@ def test_missing_front_art_is_nonblocking_and_never_a_thumbnail_fallback(tmp_pat
     result = network.resolve(tmp_path)
     assert result["status"] == "unavailable"
     assert result["reason"] == "cover_not_available"
-    assert not list(tmp_path.glob("*.png"))
+    assert not list(tmp_path.glob("*.jpg"))
     assert not any("youtube" in call["url"] for call in network.calls)
 
 
@@ -342,10 +344,71 @@ def test_persistent_cache_avoids_network_and_checks_image_hash(tmp_path):
     assert len(network.calls) == count
     assert first["path"] != second["path"]
     assert Path(first["path"]).read_bytes() == Path(second["path"]).read_bytes()
-    next(cache.glob("*.png")).write_bytes(b"corrupt")
+    next(cache.glob("*.jpg")).write_bytes(b"corrupt")
     third = network.resolve(tmp_path / "three", cache=cache)
     assert third["status"] == "matched"
     assert len(network.calls) > count
+
+
+def test_small_cover_thumbnail_is_preferred_and_small_images_are_not_enlarged(tmp_path):
+    network = Network()
+    network.cover["images"][0]["thumbnails"]["500"] = "https://archive.org/download/example/small.jpg"
+    network.image = image_bytes((300, 200), format="JPEG")
+    result = network.resolve(tmp_path)
+    assert result["provenance"]["imageUrl"].endswith("/small.jpg")
+    with Image.open(result["path"]) as image:
+        assert image.size == (300, 200) and image.format == "JPEG"
+
+
+def test_narrow_cover_can_be_reused_after_proportional_resize(tmp_path):
+    network = Network()
+    network.image = image_bytes((1200, 50))
+    first = network.resolve(tmp_path / "first", cache=tmp_path / "cache")
+    count = len(network.calls)
+    second = network.resolve(tmp_path / "second", cache=tmp_path / "cache")
+    assert len(network.calls) == count
+    assert Path(first["path"]).read_bytes() == Path(second["path"]).read_bytes()
+    with Image.open(second["path"]) as image:
+        assert image.size == (512, 21)
+
+
+@pytest.mark.parametrize("shared", [False, True])
+def test_legacy_png_cache_is_compacted_offline_with_matching_provenance(tmp_path, shared):
+    network = Network()
+    cache = tmp_path / "cache"
+    network.resolve(tmp_path / "first", cache=cache)
+    legacy_image = image_bytes((1200, 600))
+    records = list(cache.glob("*.json")) + list((cache / "albums").glob("*.json"))
+    legacy_records = {}
+    for record in records:
+        saved = json.loads(record.read_text())
+        if "result" not in saved:
+            continue
+        provenance = saved["result"]["provenance"]
+        provenance.pop("imageEncoding", None)
+        provenance["imageHash"] = hashlib.sha256(legacy_image).hexdigest()
+        record.with_suffix(".png").write_bytes(legacy_image)
+        record.write_text(json.dumps(saved))
+        legacy_records[record] = record.read_bytes()
+    artwork_count = len(_artwork_calls(network))
+    calls = len(network.calls)
+    if shared:
+        _another_song(network)
+    result = network.resolve(tmp_path / "second", cache=cache, title="Another Song" if shared else "Example Song")
+    assert result["status"] == "matched"
+    assert len(_artwork_calls(network)) == artwork_count
+    if not shared:
+        assert len(network.calls) == calls
+    raw = Path(result["path"]).read_bytes()
+    assert result["provenance"]["imageHash"] == hashlib.sha256(raw).hexdigest()
+    assert result["provenance"]["imageEncoding"] == "jpeg-512-q90-v1"
+    assert Path(result["path"]).suffix == ".jpg"
+    with Image.open(io.BytesIO(raw)) as image:
+        assert image.size == (512, 256) and image.format == "JPEG"
+    assert all(record.read_bytes() == saved for record, saved in legacy_records.items()), "migration must not renew old cache expiry"
+    # Repeated reads do not add a second JPEG encoding generation.
+    again = network.resolve(tmp_path / "third", cache=cache, title="Another Song" if shared else "Example Song")
+    assert Path(again["path"]).read_bytes() == raw
 
 
 def test_lock_file_left_by_cancelled_worker_does_not_block_lookup(tmp_path):
@@ -388,11 +451,11 @@ def test_corrupt_shared_cover_is_refetched_for_next_song(tmp_path):
     cache = tmp_path / "cache"
     assert network.resolve(tmp_path / "first", cache=cache)["status"] == "matched"
     count = len(_artwork_calls(network))
-    next((cache / "albums").glob("*.png")).write_bytes(b"corrupt")
+    next((cache / "albums").glob("*.jpg")).write_bytes(b"corrupt")
     _another_song(network)
     assert network.resolve(tmp_path / "second", cache=cache, title="Another Song")["status"] == "matched"
     assert len(_artwork_calls(network)) > count
-    with Image.open(next((cache / "albums").glob("*.png"))) as image:
+    with Image.open(next((cache / "albums").glob("*.jpg"))) as image:
         image.verify()
 
 
@@ -427,7 +490,7 @@ def test_failed_image_decode_does_not_create_a_shared_cover_entry(tmp_path):
     cache = tmp_path / "cache"
     network.image = b"not an image"
     assert network.resolve(tmp_path / "first", cache=cache)["reason"] == "invalid_cover_image"
-    assert not list((cache / "albums").glob("*.png"))
+    assert not list((cache / "albums").glob("*.jpg"))
     assert not list((cache / "albums").glob("*.json"))
 
 
@@ -442,7 +505,7 @@ def test_negative_match_cache_expires_and_does_not_publish_a_placeholder(tmp_pat
     network.clock.value += 86401
     network.resolve(tmp_path / "three", cache=cache)
     assert len(network.calls) == count + 1
-    assert not list(cache.glob("*.png"))
+    assert not list(cache.glob("*.jpg"))
 
 
 def test_unavailable_service_is_nonblocking_and_retry_is_bounded(tmp_path):

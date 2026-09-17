@@ -66,10 +66,11 @@ def test_unvalidated_sync_cannot_build(tmp_path):
         build_feedpak(performance, audio, {}, job, output_dir=tmp_path / "out")
 
 
-def test_builder_embeds_album_cover_without_overwriting_source_album(tmp_path):
+@pytest.mark.parametrize("extension", ["png", "jpg"])
+def test_builder_embeds_album_cover_without_overwriting_source_album(tmp_path, extension):
     from PIL import Image
     performance, audio, alignment, job = inputs(tmp_path)
-    cover = tmp_path / "album.png"
+    cover = tmp_path / f"album.{extension}"
     Image.new("RGB", (300, 200), "red").save(cover)
     performance["album"] = "Source album"
     artwork = {"status": "matched", "path": str(cover), "album": "Source album", "year": 2019}
@@ -77,6 +78,7 @@ def test_builder_embeds_album_cover_without_overwriting_source_album(tmp_path):
     with zipfile.ZipFile(result["stagingPath"]) as archive:
         manifest = yaml.safe_load(archive.read("manifest.yaml"))
         assert manifest["album"] == "Source album" and manifest["year"] == 2019
+        assert manifest["cover"] == f"cover.{extension}"
         assert archive.read(manifest["cover"]) == cover.read_bytes()
 
 
