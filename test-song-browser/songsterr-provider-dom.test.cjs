@@ -15,7 +15,7 @@ class Element {
   get textContent() { return [this.own, ...this.children.map((child) => child.textContent)].filter(Boolean).join(' '); }
   get innerText() { return [this.own, ...this.children.map((child) => child.innerText)].filter(Boolean).join('\n'); }
   getAttribute(name) { return this.attrs[name] ?? null; }
-  getClientRects() { return this.hidden ? [] : [{}]; }
+  getClientRects() { return this.hidden || this.rectCount === 0 ? [] : [{}]; }
   click() { this.clicked++; }
   descendants() { return this.children.flatMap((child) => [child, ...child.descendants()]); }
   querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
@@ -107,6 +107,40 @@ test('a pinned tab becomes ready only after its track mixer loads, even when no 
   assert.equal(loading.canOpenHistory, true); assert.equal(loading.revisionId, '7788783'); assert.equal(loading.tabReady, false);
   mixer.disabled = false; mixer.own = 'Distortion Guitar Fire - Lead';
   const ready = run(readSongsterrPage, doc); assert.equal(ready.tabReady, true); assert.deepEqual(ready.audio, []);
+});
+
+test('CSS-hidden sticky copies before the real toolbar do not block pinned readiness', () => {
+  const duplicates = (tag, id, text, options = {}) => {
+    const sticky = el(tag, { id, ...options }, [], text); sticky.rectCount = 0;
+    const actual = el(tag, { id, ...options }, [], text);
+    return [sticky, actual];
+  };
+  const mixer = duplicates('button', 'control-mixer', 'Distortion Guitar Fire - Lead', { title: 'Show tracks ((T))' });
+  const doc = page([
+    ...duplicates('h1', 'song-ttl', 'Rats'), ...duplicates('span', 'song-artist', 'Ghost'),
+    ...duplicates('button', 'revisions-toggle-tab', '7/8/2026', { title: 'Show revisions' }), ...mixer,
+  ], 'https://www.songsterr.com/a/wsa/ghost-rats-tab-s441770/r7788783');
+  const state = run(readSongsterrPage, doc);
+  assert.equal(doc.querySelector('#control-mixer'), mixer[0]); assert.equal(mixer[0].getClientRects().length, 0);
+  assert.equal(state.canOpenHistory, true); assert.equal(state.tabReady, true);
+  mixer[1].disabled = true; assert.equal(run(readSongsterrPage, doc).tabReady, false, 'a hidden enabled copy cannot replace a still-loading visible control');
+});
+
+test('enabled visible duplicate controls win over hidden or disabled first matches for history, editor and exports', () => {
+  for (const [id, label, action] of [
+    ['revisions-toggle-tab', 'Show revisions', 'history'], ['control-editor', 'Editor', 'editor'],
+    ['control-export', 'Download', 'exportMenu'], ['control-export-gp', 'Guitar Pro', 'export'],
+  ]) {
+    const hidden = el('button', { id, title: label }, [], label); hidden.rectCount = 0;
+    const disabled = el('button', { id, title: label }, [], label); disabled.disabled = true;
+    const accessibleDisabled = el('button', { id, title: label, 'aria-disabled': 'true' }, [], label);
+    const actual = el('button', { id, title: label }, [], label);
+    const doc = page([hidden, disabled, accessibleDisabled, actual]);
+    assert.equal(run(actOnSongsterrPage, doc, { action }).ok, true, action);
+    assert.equal(actual.clicked, 1); assert.equal(hidden.clicked + disabled.clicked + accessibleDisabled.clicked, 0);
+    if (action === 'export') assert.equal(run(readSongsterrPage, doc).canExport, true);
+    if (action === 'history') assert.equal(run(readSongsterrPage, doc).canOpenHistory, true);
+  }
 });
 
 test('approved rows require matching same-song revision links and never infer current revision from dates', () => {

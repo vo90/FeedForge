@@ -64,6 +64,15 @@ dated July 8, 2026. Regression fixtures cover that button, individual revision r
 and delayed rendering. This verifies the revision-resolution fix, not a completed
 live Rats import.
 
+The next Rats attempt passed approval discovery but timed out on pinned-tab
+readiness. The live page contains two `#control-mixer` buttons: the first belongs
+to a hidden header, while the second is the visible, enabled toolbar control.
+Readiness and control actions must consider all matches and choose a visible,
+enabled element. A hidden first match must not make a loaded tab appear unfinished.
+Read-only evaluation on the live approved Rats page reproduced `false` with the
+old readiness condition and `true` with the corrected condition, while preserving
+song ID `441770` and revision `7788783`. No acquisition was performed in that check.
+
 The real approved Woodland Rites GP8 export was parsed offline: all four guitar/bass
 tracks, 168 performed measures after repeat expansion, 272 seconds at the score's
 tempo. Original Songsterr IDs and metadata are preserved separately from its copy.
