@@ -93,15 +93,23 @@ function runtime(root, options = {}) {
       this.webContents = new EventEmitter(); const wc = this.webContents; wc.url = ''; wc.page = {}; wc.setAudioMuted = () => {}; wc.stop = () => {};
       wc.setWindowOpenHandler = (fn) => { wc.popup = fn; }; wc.getURL = () => wc.url;
       wc.loadURL = async (url) => {
-        wc.url = url; const parsed = songUrl(url);
+        wc.url = url; wc.controlReads = 0; wc.historyReads = 0; wc.mixerReads = 0; wc.historyPending = false; const parsed = songUrl(url);
         if (url.includes('pattern=')) wc.page = options.challengeOnSearch ? { status: 'needs_attention' } : { status: 'ready', searchReady: true, results: [result], hasMore: false };
         else if (parsed?.id === '99999') wc.page = { status: 'ready', url, songId: '99999', unpublished: true, editor: true };
-        else wc.page = { status: 'ready', url, songId: parsed?.id, revisionId: parsed?.revisionId, signedOut: config.webPreferences.session === sessions[1] && options.signedOut === true, audio: ['https://www.youtube.com/embed/abcdefghijk'] };
+        else wc.page = { status: 'ready', url, songId: parsed?.id, revisionId: parsed?.revisionId, canOpenHistory: Boolean(parsed), tabReady: Boolean(parsed), signedOut: config.webPreferences.session === sessions[1] && options.signedOut === true, audio: ['https://www.youtube.com/embed/abcdefghijk'] };
       };
       wc.mainFrame = { executeJavaScript: async (script) => {
-        if (script.includes('function readSongsterrPage')) return wc.page;
+        if (script.includes('function readSongsterrPage')) {
+          if (options.delayedHistory && wc.page.songId && !wc.page.historyVisible && wc.controlReads++ < 1) return { ...wc.page, canOpenHistory: false };
+          if (wc.historyPending && wc.historyReads++ < 1) return { ...wc.page, historyReady: false, approvedRevisions: [] };
+          if (options.delayedMixer && wc.page.revisionId && wc.mixerReads++ < 1) return { ...wc.page, tabReady: false };
+          return wc.page;
+        }
         const request = JSON.parse(script.slice(script.lastIndexOf(')(') + 2, -1)); actions.push(request.action);
-        if (request.action === 'history') wc.page = { ...wc.page, historyVisible: true, approvedRevisions: [{ revisionId: '626617', approval: 'approved', date: '10/8/2023' }, { revisionId: '2585330', approval: 'approved', date: '7/31/2025' }] };
+        if (request.action === 'history') {
+          if (options.delayedHistory) { assert.ok(wc.controlReads >= 2, 'wait for rendered history controls'); wc.historyPending = true; }
+          wc.page = { ...wc.page, historyVisible: true, historyReady: true, approvedRevisions: options.noApproved ? [] : [{ revisionId: '626617', approval: 'approved', date: '10/8/2023' }, { revisionId: '2585330', approval: 'approved', date: '7/31/2025' }] };
+        }
         if (request.action === 'copy') wc.page = { ...wc.page, copyForm: true };
         if (request.action === 'create') {
           if (options.uncertainCreate) throw new Error('lost create response');
@@ -145,6 +153,30 @@ test('provider search, approved resolution and anonymous acquisition use an isol
 test('provider will not resolve a renderer-supplied song that was not searched', async (t) => {
   const root = await temporary(t), state = runtime(root); t.after(() => state.provider.dispose());
   await assert.rejects(state.provider.resolve(result), { code: 'invalid_result' }); assert.equal(state.windows.length, 0);
+});
+
+test('revision resolution waits for rendered controls and populated history rather than accepting the URL or empty list', async (t) => {
+  const root = await temporary(t), state = runtime(root, { delayedHistory: true }); t.after(() => state.provider.dispose());
+  await state.provider.search({ query: 'green lung' });
+  const pinned = await state.provider.resolve(result);
+  assert.equal(pinned.revisionId, descriptor.revisionId);
+  assert.equal(state.actions.filter((action) => action === 'history').length, 1);
+  assert.equal(state.requests.length, 0);
+});
+
+test('loaded history without an approved matching revision reports a distinct approval failure', async (t) => {
+  const root = await temporary(t), state = runtime(root, { noApproved: true }); t.after(() => state.provider.dispose());
+  await state.provider.search({ query: 'green lung' });
+  await assert.rejects(state.provider.resolve(result), { code: 'unapproved_revision', message: 'Songsterr’s revision history loaded, but no approved revision with a matching tab link could be verified.' });
+  assert.equal(state.requests.length, 0);
+});
+
+test('pinned revision resolution waits for its mixer instead of returning as soon as the URL matches', async (t) => {
+  const root = await temporary(t), state = runtime(root, { delayedMixer: true }); t.after(() => state.provider.dispose());
+  await state.provider.search({ query: 'green lung' });
+  const pinned = await state.provider.resolve(result);
+  assert.equal(pinned.revisionId, descriptor.revisionId); assert.ok(state.windows[0].webContents.mixerReads >= 2);
+  assert.equal(state.requests.length, 0);
 });
 
 test('trusted ledger restoration validates provider, numeric identity and canonical source URL before retry', async (t) => {

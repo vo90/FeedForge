@@ -155,20 +155,36 @@ class SongsterrProvider {
     try {
       const win = this._window(false);
       await this._navigate(win, registered.url, operation.signal);
-      let page = await this._wait(win, (value) => value.songId === id, operation.signal);
+      let page;
+      try {
+        page = await this._wait(win, (value) => value.songId === id && (value.canOpenHistory || value.historyVisible), operation.signal);
+      } catch (error) {
+        if (error.code === 'timeout') throw failure('revision_controls_unavailable', 'Songsterr loaded, but its revision-history control did not become ready. Please retry.');
+        throw error;
+      }
       if (!page.historyVisible) {
         const action = await this._act(win, 'history', operation.signal);
-        if (!action.ok) throw failure('unapproved_revision', 'The approved Songsterr revision could not be established.');
-        page = await this._wait(win, (value) => value.historyVisible || value.approvedRevisions?.length, operation.signal);
+        if (!action.ok) throw failure('revision_controls_unavailable', 'Songsterr’s revision-history button could not be opened. Please retry.');
+      }
+      try {
+        page = await this._wait(win, (value) => value.songId === id && value.historyReady === true, operation.signal);
+      } catch (error) {
+        if (error.code === 'timeout') throw failure('revision_history_unavailable', 'Songsterr opened revision history, but its revision rows did not become ready. Please retry.');
+        throw error;
       }
       const revisions = (page.approvedRevisions || []).filter((revision) => numeric(revision.revisionId) && revision.approval === 'approved');
       // History is displayed newest first. Use dates when every row supplies a
       // valid date; otherwise retain the observed order, not numeric ID guesses.
       if (revisions.every((revision) => revision.date && Number.isFinite(Date.parse(revision.date)))) revisions.sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
-      if (!revisions.length) throw failure('unapproved_revision', 'No explicitly approved Songsterr revision could be verified.');
+      if (!revisions.length) throw failure('unapproved_revision', 'Songsterr’s revision history loaded, but no approved revision with a matching tab link could be verified.');
       const revisionId = String(revisions[0].revisionId), url = `${registered.url}/r${revisionId}`;
       await this._navigate(win, url, operation.signal);
-      page = await this._wait(win, (value) => value.songId === id && value.revisionId === revisionId, operation.signal);
+      try {
+        page = await this._wait(win, (value) => value.songId === id && value.revisionId === revisionId && value.tabReady === true, operation.signal);
+      } catch (error) {
+        if (error.code === 'timeout') throw failure('revision_unavailable', 'The approved Songsterr tab did not finish loading. Please retry.');
+        throw error;
+      }
       const audio = (page.audio || []).map(publicAudio).find(Boolean);
       const descriptor = { ...registered, revisionId, approval: 'approved', approvedUrl: url, ...(audio ? { audio } : {}) };
       this.resolved.set(`${id}:${revisionId}`, descriptor);

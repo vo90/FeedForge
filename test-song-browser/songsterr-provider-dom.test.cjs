@@ -56,10 +56,10 @@ test('rendered public search extracts separate titles/artists, deduplicates IDs 
 
 test('approval reader associates each explicit badge with its own revision and excludes newer unapproved rows', () => {
   const song = '/a/wsa/green-lung-woodland-rites-tab-s564073';
-  const doc = page([el('section', { id: 'revisions-list' }, [
-    el('article', { 'data-revision-id': '3000000' }, [span('9/17/2026'), span('Pending'), el('a', { href: song + '/r3000000' }, [], 'View')]),
-    el('article', {}, [span('7/31/2025'), span('APPROVED'), span('NF23')]),
-    el('article', {}, [span('10/8/2023'), span('APPROVED'), el('a', { href: song + '/r626617' }, [], 'View')]),
+  const doc = page([el('ul', { id: 'revisions-list' }, [
+    el('li', { id: 'r3000000' }, [span('9/17/2026'), span('Pending'), el('a', { href: song + '/r3000000' }, [], 'View')]),
+    el('li', { id: 'r2585330' }, [span('7/31/2025'), span('APPROVED'), span('NF23'), el('a', { title: 'Show full tab', href: song + '/r2585330' }, [], 'Tab')]),
+    el('li', { id: 'r626617' }, [el('a', { 'aria-label': 'View', href: song + '/r123...r626617' }, [span('10/8/2023'), span('APPROVED')])]),
   ])], 'https://www.songsterr.com' + song + '/r626617...r2585330');
   const state = run(readSongsterrPage, doc);
   assert.deepEqual(state.approvedRevisions, [
@@ -68,8 +68,60 @@ test('approval reader associates each explicit badge with its own revision and e
   ]);
 });
 
+test('observed Ghost Rats revision toggle is ready and clickable despite its tooltip overriding the displayed date', () => {
+  const toggle = el('button', { id: 'revisions-toggle-tab', title: 'Show revisions' }, [span('7/8/2026'), el('span', { 'data-visible': 'false', 'aria-hidden': 'true' }, [], 'new')]);
+  const doc = page([toggle], 'https://www.songsterr.com/a/wsa/ghost-rats-tab-s441770');
+  assert.equal(run(readSongsterrPage, doc).canOpenHistory, true);
+  assert.equal(run(actOnSongsterrPage, doc, { action: 'history' }).ok, true);
+  assert.equal(toggle.clicked, 1);
+});
+
+test('observed Ghost Rats history keeps current and older approved rows separate from alternative and unapproved rows', () => {
+  const song = '/a/wsa/ghost-rats-tab-s441770';
+  const doc = page([el('ul', { id: 'revisions-list' }, [
+    el('li', { id: 'r7788783' }, [el('div', { title: 'Moderator set this revision as default' }, [], 'Approved'), span('7/8/2026'),
+      el('a', { title: 'Show full tab', 'aria-label': 'show 7788783 revision', href: song + '/r7788783' }, [], 'Tab')]),
+    el('li', { id: 'r6634421' }, [el('a', { href: song + '/r5173121...r6634421', 'aria-label': 'View' }, [
+      el('div', { title: 'Moderator set this revision as default' }, [], 'Approved'), span('5/4/2026'), el('a', { href: '/a/u/r12345' }, [], 'Author')])]),
+    el('li', { id: 'r5173121' }, [span('Alternative'), span('4/1/2026'), el('a', { href: song + '/r123...r5173121' }, [], 'View')]),
+    el('li', { id: 'r123' }, [span('Pending'), span('3/1/2026'), el('a', { href: song + '/r123' }, [], 'View')]),
+  ])], 'https://www.songsterr.com' + song + '/r6634421...r7788783');
+  const state = run(readSongsterrPage, doc);
+  assert.equal(state.songId, '441770'); assert.equal(state.revisionId, '7788783'); assert.equal(state.historyReady, true);
+  assert.deepEqual(state.approvedRevisions, [{ revisionId: '7788783', approval: 'approved', date: '7/8/2026' }, { revisionId: '6634421', approval: 'approved', date: '5/4/2026' }]);
+});
+
+test('empty history shell and URL-only tab are not considered ready', () => {
+  const url = 'https://www.songsterr.com/a/wsa/ghost-rats-tab-s441770/r6634421...r7788783';
+  const empty = run(readSongsterrPage, page([el('ul', { id: 'revisions-list' }, [])], url));
+  assert.equal(empty.historyVisible, true); assert.equal(empty.historyReady, false);
+  const shell = run(readSongsterrPage, page([], url)); assert.equal(shell.songId, '441770'); assert.equal(shell.canOpenHistory, false); assert.equal(shell.historyReady, false);
+});
+
+test('a pinned tab becomes ready only after its track mixer loads, even when no linked audio is rendered', () => {
+  const mixer = el('button', { id: 'control-mixer', title: 'Show tracks ((T))' }, [], 'Loading'); mixer.disabled = true;
+  const doc = page([el('button', { id: 'revisions-toggle-tab', title: 'Show revisions' }, [], '7/8/2026'),
+    el('h1', { id: 'song-ttl' }, [], 'Rats'), el('span', { id: 'song-artist' }, [], 'Ghost'), mixer],
+  'https://www.songsterr.com/a/wsa/ghost-rats-tab-s441770/r7788783');
+  const loading = run(readSongsterrPage, doc);
+  assert.equal(loading.canOpenHistory, true); assert.equal(loading.revisionId, '7788783'); assert.equal(loading.tabReady, false);
+  mixer.disabled = false; mixer.own = 'Distortion Guitar Fire - Lead';
+  const ready = run(readSongsterrPage, doc); assert.equal(ready.tabReady, true); assert.deepEqual(ready.audio, []);
+});
+
+test('approved rows require matching same-song revision links and never infer current revision from dates', () => {
+  const song = '/a/wsa/ghost-rats-tab-s441770';
+  const doc = page([el('ul', { id: 'revisions-list' }, [
+    el('li', { id: 'r7788783' }, [span('Approved'), span('7/8/2026')]),
+    el('li', { id: 'r6634421' }, [span('Approved'), span('5/4/2026'), el('a', { href: '/a/wsa/other-song-tab-s999/r6634421' }, [], 'Tab')]),
+    el('li', { id: 'r5173121' }, [span('Approved'), span('4/1/2026'), el('a', { href: song + '/r111' }, [], 'Tab')]),
+  ])], 'https://www.songsterr.com' + song + '/r6634421...r7788783');
+  assert.deepEqual(run(readSongsterrPage, doc).approvedRevisions, []);
+});
+
 test('hidden approval labels cannot establish approval of an unapproved revision', () => {
-  const doc = page([el('section', { id: 'revisions-list' }, [el('article', { 'data-revision-id': '123' }, [span('9/17/2026'), el('span', { hidden: true }, [], 'APPROVED'), span('Pending')])])]);
+  const song = '/a/wsa/ghost-rats-tab-s441770';
+  const doc = page([el('ul', { id: 'revisions-list' }, [el('li', { id: 'r123' }, [span('9/17/2026'), el('span', { hidden: true }, [], 'APPROVED'), span('Pending'), el('a', { href: song + '/r123' }, [], 'Tab')])])], 'https://www.songsterr.com' + song + '/r123');
   assert.deepEqual(run(readSongsterrPage, doc).approvedRevisions, []);
 });
 

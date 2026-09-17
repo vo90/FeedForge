@@ -57,6 +57,13 @@ Anonymous acquisition and website controls are exercised with fixtures; no succe
 live anonymous retrieval has been established. The earlier research tool's URL
 safety denial was not retried through another tool or this implementation.
 
+The first live Ghost — Rats attempt stopped before acquisition because the revision
+button was not recognized. Its public revision UI was inspected on 2026-09-17:
+`#revisions-toggle-tab` opens `#revisions-list`, with approved revision `7788783`
+dated July 8, 2026. Regression fixtures cover that button, individual revision rows
+and delayed rendering. This verifies the revision-resolution fix, not a completed
+live Rats import.
+
 The real approved Woodland Rites GP8 export was parsed offline: all four guitar/bass
 tracks, 168 performed measures after repeat expansion, 272 seconds at the score's
 tempo. Original Songsterr IDs and metadata are preserved separately from its copy.

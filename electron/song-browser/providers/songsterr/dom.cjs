@@ -22,9 +22,18 @@ function readSongsterrPage() {
   const loginRequired = all(document, 'input[type="password"]').some(visible) || /please sign (?:up|in).*create and edit a copy/i.test(body);
   const controls = all(document, 'a, button').filter(visible);
   const signedOut = controls.some((node) => /^sign in$/i.test(label(node)));
-  const songMatch = /-s([1-9]\d{0,11})(?:t\d+)?(?:\/|$)/.exec(current.pathname);
-  const revisionsInPath = [...current.pathname.matchAll(/r([1-9]\d{0,11})/g)];
-  const currentRevision = revisionsInPath.at(-1)?.[1] || null;
+  const songMatch = /^\/a\/wsa\/[^/]+-s([1-9]\d{0,11})(?:t\d+)?(?:\/r([1-9]\d{0,11})(?:\.\.\.r([1-9]\d{0,11}))?)?$/.exec(current.pathname);
+  const currentRevision = songMatch?.[3] || songMatch?.[2] || null;
+  const enabled = (node) => visible(node) && !node.disabled && node.getAttribute?.('aria-disabled') !== 'true';
+  const historyControls = ['#revisions-toggle-tab', '#control-revisions', '#control-revision-history'].map((selector) => document.querySelector(selector));
+  const historyLabels = controls.filter((node) => /^(?:show revisions|revisions|revision history|\d{1,2}\/\d{1,2}\/\d{4})$/i.test(label(node)) && enabled(node));
+  const canOpenHistory = historyControls.some(enabled) || historyLabels.length === 1;
+  const titleElement = document.querySelector('#song-ttl'), artistElement = document.querySelector('#song-artist');
+  // The pinned URL and header appear before track loading has finished. The
+  // observed mixer changes from disabled Loading to an enabled track control.
+  // Audio presence is optional and must not be a readiness requirement.
+  const tabReady = Boolean(songMatch && canOpenHistory && visible(titleElement) && text(titleElement)
+    && visible(artistElement) && text(artistElement) && enabled(document.querySelector('#control-mixer')));
   const results = [], seen = new Set();
   for (const anchor of all(document, 'a[href]').filter(visible)) {
     let url;
@@ -43,31 +52,37 @@ function readSongsterrPage() {
   }
   const historyRoot = document.querySelector('#revisions-list, [data-testid="revisions-list"], [class*="revisions-list"]');
   const approved = [], revisionSeen = new Set();
-  const approvalLabels = all(historyRoot || document, '*').filter((node) => visible(node) && /^approved$/i.test(text(node)) && !Array.from(node.children || []).some((child) => /^approved$/i.test(text(child))));
-  for (const badge of approvalLabels) {
-    for (let row = badge.parentElement, depth = 0; row && depth < 7; row = row.parentElement, depth++) {
-      const rowText = text(row);
-      if (rowText.length > 5000) break;
-      const ids = new Set();
-      const attr = row.getAttribute?.('data-revision-id'); if (/^[1-9]\d{0,11}$/.test(attr || '')) ids.add(attr);
-      for (const anchor of all(row, 'a[href]')) {
-        let url; try { url = new URL(anchor.getAttribute('href'), current); } catch { continue; }
-        if (url.origin !== current.origin) continue;
-        const revisions = [...url.pathname.matchAll(/r([1-9]\d{0,11})/g)];
-        const id = revisions.at(-1)?.[1]; if (id) ids.add(id);
-      }
-      const badges = all(row, '*').filter((node) => /^approved$/i.test(text(node)) && !(node.children?.length));
-      if (ids.size > 1 || badges.length > 1) break;
-      // The current revision has no View link in the observed history list;
-      // it is identified by the comparison URL and its own dated Approved row.
-      const date = rowText.match(/\b(\d{1,2}\/\d{1,2}\/\d{4})\b/)?.[1];
-      if (!ids.size && historyRoot && currentRevision && date && !all(row, 'a, button').some((node) => /^view$/i.test(label(node)))) ids.add(currentRevision);
-      if (ids.size === 1) {
-        const id = [...ids][0];
-        if (!revisionSeen.has(id)) { approved.push({ revisionId: id, approval: 'approved', date: date || null }); revisionSeen.add(id); }
-        break;
-      }
+  const historyVisible = visible(historyRoot);
+  // Observed history: ul#revisions-list > li#r7788783. The active row
+  // contains a full-tab link; older rows wrap their contents in a comparison
+  // link. Read each row independently so author/profile links and another
+  // row's badge can never supply this revision's identity or approval.
+  const rows = historyRoot ? all(historyRoot, 'li, [data-revision-id]').filter(visible) : [];
+  let readableHistoryRows = 0;
+  for (const row of rows) {
+    const rowId = /^r([1-9]\d{0,11})$/.exec(row.getAttribute?.('id') || '')?.[1]
+      || (/^[1-9]\d{0,11}$/.test(row.getAttribute?.('data-revision-id') || '') ? row.getAttribute('data-revision-id') : null);
+    if (!rowId) continue;
+    const rowText = text(row);
+    const date = rowText.match(/\b(\d{1,2}\/\d{1,2}\/\d{4})\b/)?.[1] || null;
+    const ids = new Set(); let foreignRevisionLink = false;
+    for (const anchor of all(row, 'a[href]').filter(visible)) {
+      let url; try { url = new URL(anchor.getAttribute('href'), current); } catch { continue; }
+      const revision = /^\/a\/wsa\/[^/]+-s([1-9]\d{0,11})(?:t\d+)?\/r([1-9]\d{0,11})(?:\.\.\.r([1-9]\d{0,11}))?$/.exec(url.pathname);
+      if (!revision) continue;
+      if (url.origin !== current.origin || revision[1] !== songMatch?.[1]) { foreignRevisionLink = true; continue; }
+      ids.add(revision[3] || revision[2]);
     }
+    // Empty/skeleton lists are not yet usable. A row's explicit identity must
+    // agree with its tab/comparison link. Older dateless rows can still use
+    // that explicit link; never infer an ID from absence of a View button.
+    if (!rowText || (!date && !ids.size)) continue;
+    readableHistoryRows++;
+    if (foreignRevisionLink || ids.size !== 1 || !ids.has(rowId)) continue;
+    const badges = all(row, '*').filter((node) => visible(node) && /^approved$/i.test(text(node))
+      && !Array.from(node.children || []).some((child) => visible(child) && /^approved$/i.test(text(child))));
+    if (badges.length !== 1 || revisionSeen.has(rowId)) continue;
+    revisionSeen.add(rowId); approved.push({ revisionId: rowId, approval: 'approved', date });
   }
   const audio = [];
   for (const node of all(document, 'iframe[src], a[href]').filter(visible)) {
@@ -79,7 +94,8 @@ function readSongsterrPage() {
   const noResults = /no (?:songs|tabs|results)(?: found| match|$)/i.test(body);
   const searchReady = results.length > 0 || noResults;
   return { status: loginRequired ? 'needs_login' : 'ready', url: current.href, songId: songMatch?.[1] || null,
-    revisionId: currentRevision, signedOut, searchReady, results, noResults, historyVisible: Boolean(historyRoot), approvedRevisions: approved,
+    revisionId: currentRevision, signedOut, searchReady, results, noResults, canOpenHistory, tabReady,
+    historyVisible, historyReady: historyVisible && readableHistoryRows > 0, approvedRevisions: approved,
     copyForm, unpublished: /\bnot published\b/i.test(body), editor: Boolean(document.querySelector('#control-export-gp')),
     canExport: visible(document.querySelector('#control-export-gp')),
     audio, hasMore: controls.some((node) => /^(?:next|load more|show more)$/i.test(label(node))) };
@@ -97,8 +113,9 @@ function actOnSongsterrPage(request = {}) {
   try { current = new URL(String(globalThis.location?.href || document.URL)); } catch { return { ok: false, reason: 'invalid_page' }; }
   if (current.origin !== 'https://www.songsterr.com') return { ok: false, reason: 'wrong_origin' };
   if (request.action === 'history') {
-    const byId = document.querySelector('#control-revisions, #control-revision-history');
-    const candidates = controls.filter((node) => /^(?:revisions|revision history|\d{1,2}\/\d{1,2}\/\d{4})$/i.test(text(node)));
+    const byId = ['#revisions-toggle-tab', '#control-revisions', '#control-revision-history'].map((selector) => document.querySelector(selector))
+      .find((node) => visible(node) && !node.disabled && node.getAttribute?.('aria-disabled') !== 'true');
+    const candidates = controls.filter((node) => /^(?:show revisions|revisions|revision history|\d{1,2}\/\d{1,2}\/\d{4})$/i.test(text(node)));
     return click(byId || (candidates.length === 1 ? candidates[0] : null));
   }
   if (request.action === 'editor') return click(document.querySelector('#control-editor') || controls.find((node) => /^editor$/i.test(text(node))));
