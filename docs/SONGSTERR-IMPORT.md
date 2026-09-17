@@ -60,8 +60,12 @@ again and checks approval anew.
 This is an experimental single-song implementation, not a production coverage claim.
 The user's live anonymous Rats import on 2026-09-17 retrieved approved revision
 `7788783` for song `441770`, including all 11 source tracks and 135 measures.
-The saved score reached the missing-audio stage. This establishes anonymous score
-retrieval for that revision, not general coverage or completed game playback.
+The saved score was reused in an app test on the same date. The anonymous hidden
+browser automatically discovered the Original/full-mix video `C_ijc7A5oAc`, and
+the bundled downloader retrieved the 264.53-second recording without credentials.
+The probe waits for audio controls separately from tab readiness; the mixer can
+appear before the Play control is ready. This establishes score retrieval and
+linked-audio discovery/download for that revision, not completed game playback.
 The earlier research tool's URL safety denial was not retried by the agent through
 another tool or this implementation.
 
@@ -97,6 +101,13 @@ is an engineering gate, not a calibrated probability. Wrong recordings, uncertai
 matches and nonlinear drift are rejected. A user may supply a better matching
 recording; there is no manual timing editor in this flow. Nonlinear alignment and
 broader real-song calibration remain future work.
+
+The live Rats recording was rejected at the initial musical-match gate (training
+0.6053, held-out validation 0.6035, regional values 0.5602–0.6271). The length and
+alternative-match margin checks passed. No onset/drift validation ran, so this
+does not establish that the recording is wrong or that its timing drifts. The
+current thresholds have synthetic regression coverage and need calibration on
+real recordings before broader acceptance. No FeedPak was published for this test.
 
 Unsupported critical notation fails explicitly rather than silently dropping it:
 navigation jumps, swing, linear tempo ramps and some ornaments. Supported output

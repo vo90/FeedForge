@@ -126,3 +126,28 @@ def test_missing_and_silent_audio_need_replacement(tmp_path):
 def test_remote_audio_rejects_private_or_credential_urls(url):
     with pytest.raises(ImportFailure):
         _public_url(url)
+
+
+def test_youtube_library_disables_progress_and_sends_diagnostics_to_stderr(tmp_path, monkeypatch, capsys):
+    # Exercise yt-dlp's real output routing; replace acquisition so no network,
+    # external process or copyrighted recording is involved.
+    import yt_dlp
+    from feedback_converter.song_import import audio
+
+    captured = {}
+
+    def extract_info(downloader, url, download):
+        captured.update(downloader.params)
+        assert download is True
+        downloader.to_stdout("[download] offline fixture diagnostic")
+        (tmp_path / "download.ogg").write_bytes(b"synthetic-placeholder")
+        return {"id": "abcdefghijk", "title": "Offline fixture"}
+
+    monkeypatch.setattr(yt_dlp.YoutubeDL, "extract_info", extract_info)
+    monkeypatch.setattr(audio, "_tool", lambda tools, name: str(tmp_path / "unused-ffmpeg.exe"))
+    path, source = audio._download_youtube("https://www.youtube.com/watch?v=abcdefghijk", tmp_path, {})
+    assert path.name == "download.ogg" and source["videoId"] == "abcdefghijk"
+    assert captured["quiet"] is True and captured["noprogress"] is True and captured["logtostderr"] is True
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "[download] offline fixture diagnostic" in output.err

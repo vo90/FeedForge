@@ -272,12 +272,17 @@ test('retry uses a fresh acquisition folder after cancellation leaves a complete
 });
 
 test('Songsterr never publishes after alignment failure', async (t) => {
+  const alignment = { trainingSimilarity: 0.6, validationSimilarity: 0.6, regionalSimilarity: [0.56, 0.61, 0.63, 0.62] };
   const f = await fixture(t, { runConverter: async () => ({ code: 1, stdout: JSON.stringify({
-    ok: false, code: 'alignment_failed', error: 'The recording does not match this tab.' }) }) });
-  f.enqueue(); await settle(f.jobs);
+    ok: false, code: 'alignment_failed', error: 'The recording does not match this tab.', alignment }) }) });
+  const job = f.enqueue(); await settle(f.jobs);
   assert.equal(f.jobs.snapshot()[0].state, 'alignment_failed');
+  assert.deepEqual(f.jobs.snapshot()[0].alignment, alignment);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(f.root, 'jobs.json'), 'utf8')).jobs[0].alignment, alignment);
   assert.deepEqual(fs.readdirSync(f.outputDir), []);
   assert.equal(f.completed.length, 0);
+  assert.equal(f.jobs.retry(job.id).alignment, undefined);
+  await settle(f.jobs);
 });
 
 for (const relativePath of ['../escaped.feedpak', 'Artist/nested/song.feedpak', 'C:\\escaped.feedpak']) {

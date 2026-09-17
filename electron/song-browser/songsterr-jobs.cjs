@@ -123,7 +123,7 @@ class SongsterrJobs {
     // supplied or previously chosen recording always keeps priority.
     job.retryAudioDetection = job.state === 'needs_audio' && !job.audio && Boolean(job.scorePath) && typeof this.provider.findAudio === 'function';
     job.controller = new AbortController(); job.committed = false; job.timedOut = false;
-    this._set(job, 'queued', { error: '', message: 'Queued.' }); this._start(); return this.public(job);
+    this._set(job, 'queued', { error: '', alignment: undefined, message: 'Queued.' }); this._start(); return this.public(job);
   }
   async cancel(id) {
     const job = this.jobs.find((j) => j.id === id);
@@ -149,6 +149,7 @@ class SongsterrJobs {
           }
           const code = job.controller.signal.aborted ? 'cancelled' : error.code;
           job.canUseAccount = error.canUseAccount === true;
+          if (code === 'alignment_failed' && error.alignment && typeof error.alignment === 'object' && !Array.isArray(error.alignment)) job.alignment = error.alignment;
           this._set(job, WAITING.has(code) || code === 'cancelled' ? code : 'failed', { error: code === 'cancelled' ? '' : clean(error.message), message: code === 'cancelled' ? 'Cancelled.' : '' });
         } finally {
           job.child = null;
@@ -175,7 +176,7 @@ class SongsterrJobs {
       if (job.timedOut) throw new Error('Conversion timed out. Retry with another audio file.');
       if (typeof result?.stdout !== 'string' || result.stdout.length > 4 * 1024 * 1024) throw new Error('The converter returned an invalid response.');
       let parsed; try { parsed = JSON.parse(result.stdout); } catch { throw new Error('The converter returned an unreadable response.'); }
-      if (result.code !== 0 || parsed.ok !== true) throw Object.assign(new Error(clean(parsed.error) || 'Conversion failed.'), { code: parsed.code });
+      if (result.code !== 0 || parsed.ok !== true) throw Object.assign(new Error(clean(parsed.error) || 'Conversion failed.'), { code: parsed.code, alignment: parsed.alignment });
       return parsed;
     } finally { clearTimeout(timer); }
   }

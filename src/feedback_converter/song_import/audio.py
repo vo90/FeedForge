@@ -107,7 +107,8 @@ def _download_youtube(url: str, directory: Path, tools: dict) -> tuple[Path, dic
     else:
         import yt_dlp
         options = {"format": "bestaudio/best", "outtmpl": template, "noplaylist": True,
-                   "quiet": True, "socket_timeout": 30, "retries": 2, "fragment_retries": 2,
+                   "quiet": True, "noprogress": True, "logtostderr": True,
+                   "socket_timeout": 30, "retries": 2, "fragment_retries": 2,
                    "max_filesize": MAX_BYTES, "ffmpeg_location": ffmpeg,
                    "match_filter": lambda info, **_: "Recording is too long" if float(info.get("duration") or 0) > MAX_DURATION else None}
         if runtime:

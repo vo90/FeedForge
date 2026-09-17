@@ -4,6 +4,7 @@ import argparse
 import json
 import shutil
 import sys
+from contextlib import redirect_stdout
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
@@ -225,17 +226,22 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.song_import_health:
-        from feedback_converter.song_import.runtime import runtime_health
+        with redirect_stdout(sys.stderr):
+            from feedback_converter.song_import.runtime import runtime_health
 
-        result = runtime_health()
+            result = runtime_health()
         _print(json.dumps(result), stream=sys.stdout)
         return 0 if result["ok"] else 1
 
     if args.song_import_file:
         try:
-            from feedback_converter.song_import.worker import run_request_file
+            # stdout is the desktop worker protocol: exactly one JSON result.
+            # Libraries can print diagnostics despite quiet/progress options;
+            # retain that output on stderr without corrupting success/failure.
+            with redirect_stdout(sys.stderr):
+                from feedback_converter.song_import.worker import run_request_file
 
-            result = run_request_file(Path(args.song_import_file), progress=_emit_planning_progress)
+                result = run_request_file(Path(args.song_import_file), progress=_emit_planning_progress)
         except Exception as exc:  # noqa: BLE001
             result = {"ok": False, "code": "import_failed", "error": str(exc)}
         _print(json.dumps(_jsonable(result), ensure_ascii=False), stream=sys.stdout)

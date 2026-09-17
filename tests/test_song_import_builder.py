@@ -133,7 +133,7 @@ def test_real_score_parser_worker_cli_and_feedpak_validator_end_to_end(tmp_path)
     result = subprocess.run([sys.executable, "-m", "feedback_converter.cli", "--song-import-file", str(request_path)],
                             capture_output=True, text=True, timeout=45)
     assert result.returncode == 0, result.stdout + result.stderr
-    imported = json.loads(result.stdout.splitlines()[-1])
+    imported = json.loads(result.stdout)
     assert imported["ok"] and imported["coverage"]["notes"] == 48
     assert imported["alignment"]["offset"] == pytest.approx(offset, abs=0.06)
     assert imported["alignment"]["scale"] == pytest.approx(scale, abs=0.005)
@@ -142,3 +142,47 @@ def test_real_score_parser_worker_cli_and_feedpak_validator_end_to_end(tmp_path)
     validation = subprocess.run([sys.executable, "-m", "feedback_converter.cli", "--validate-feedpak", imported["stagingPath"]],
                                 capture_output=True, text=True, timeout=30)
     assert validation.returncode == 0, validation.stdout + validation.stderr
+
+
+@pytest.mark.parametrize("outcome", ["success", "alignment_failed", "exception"])
+def test_song_import_cli_keeps_noisy_worker_output_off_json_protocol(monkeypatch, capsys, outcome):
+    from feedback_converter import cli
+    from feedback_converter.song_import import worker
+
+    expected = {"ok": True, "stagingPath": "synthetic.feedpak"} if outcome == "success" else {
+        "ok": False, "code": "alignment_failed", "error": "The synthetic recording did not match."}
+
+    def noisy_worker(path, progress):
+        print("[download] 100% offline fixture")
+        progress({"stage": "aligning", "message": "Checking the fixture."})
+        if outcome == "exception":
+            raise RuntimeError("Synthetic worker exception")
+        return expected
+
+    monkeypatch.setattr(worker, "run_request_file", noisy_worker)
+    exit_code = cli.main(["--song-import-file", "synthetic-request.json"])
+    output = capsys.readouterr()
+    result = json.loads(output.out)
+    assert len(output.out.splitlines()) == 1
+    assert exit_code == (0 if outcome == "success" else 1)
+    assert "[download] 100% offline fixture" in output.err
+    assert "FEEDFORGE_PROGRESS " in output.err
+    if outcome == "exception":
+        assert result == {"ok": False, "code": "import_failed", "error": "Synthetic worker exception"}
+    else:
+        assert result == expected
+
+
+def test_song_import_health_keeps_library_diagnostics_off_json_protocol(monkeypatch, capsys):
+    from feedback_converter import cli
+    from feedback_converter.song_import import runtime
+
+    def noisy_health():
+        print("Offline dependency diagnostic")
+        return {"ok": True, "portable": False}
+
+    monkeypatch.setattr(runtime, "runtime_health", noisy_health)
+    assert cli.main(["--song-import-health"]) == 0
+    output = capsys.readouterr()
+    assert json.loads(output.out) == {"ok": True, "portable": False}
+    assert output.err == "Offline dependency diagnostic\n"
