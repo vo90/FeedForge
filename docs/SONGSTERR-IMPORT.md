@@ -17,10 +17,15 @@ supported techniques. Drums/vocals and other excluded tracks are recorded in sou
 coverage. The converter creates original full audio, an Ogg preview, a generated
 title cover and a validated FeedPak. It does not perform stem separation.
 
-When no usable original audio link is found, choose a local audio file or paste an
-audio/YouTube link in the activity card. This never substitutes Songsterr's
-synthesized playback for the original recording. Original audio availability and
-YouTube retrieval can vary; failure offers the local-file route.
+Audio discovery selects Original and the full mix, initializes its player in the
+muted background window, then pauses after reading the associated YouTube link.
+Some tabs, including Rats, only expose that link after playback starts. When no
+usable original audio link is found, choose a local audio file or paste an
+audio/YouTube link in the activity card. A missing-audio job can also retry site
+audio discovery against its saved revision without downloading its tab again.
+This never substitutes Songsterr's synthesized playback for the original recording.
+Original audio availability and YouTube retrieval can vary; failure offers the
+local-file route.
 
 Output folder, naming template and artist/flat folder layout come from FeedForge
 Settings. A network import has no source folder, so Preserve uses the selected
@@ -53,9 +58,12 @@ again and checks approval anew.
 ## Current limits and evidence
 
 This is an experimental single-song implementation, not a production coverage claim.
-Anonymous acquisition and website controls are exercised with fixtures; no successful
-live anonymous retrieval has been established. The earlier research tool's URL
-safety denial was not retried through another tool or this implementation.
+The user's live anonymous Rats import on 2026-09-17 retrieved approved revision
+`7788783` for song `441770`, including all 11 source tracks and 135 measures.
+The saved score reached the missing-audio stage. This establishes anonymous score
+retrieval for that revision, not general coverage or completed game playback.
+The earlier research tool's URL safety denial was not retried by the agent through
+another tool or this implementation.
 
 The first live Ghost — Rats attempt stopped before acquisition because the revision
 button was not recognized. Its public revision UI was inspected on 2026-09-17:
@@ -76,6 +84,12 @@ song ID `441770` and revision `7788783`. No acquisition was performed in that ch
 The real approved Woodland Rites GP8 export was parsed offline: all four guitar/bass
 tracks, 168 performed measures after repeat expansion, 272 seconds at the score's
 tempo. Original Songsterr IDs and metadata are preserved separately from its copy.
+
+The unchanged cached Rats JSON also parses offline: four playable guitar/bass
+tracks, 2,752 notes and 135 measures. On-beat grace notes borrow their encoded
+duration from the following pitched note; unsupported grace placement or an
+insufficient following duration fails explicitly. Synthetic tests verify that
+grace notes preserve bar length, other voices, ties, repeats and tempo changes.
 
 Automatic alignment currently fits a global offset and constant tempo ratio, with
 held-out pitch, attack, regional drift, coverage and ambiguity checks. Confidence
@@ -117,6 +131,6 @@ conversion, output settings, cancellation, interrupted commit recovery, path
 containment and duplicate publication. The portable smoke generates its own score
 and recording and uses a restricted PATH; it performs no live site requests.
 
-Live Songsterr search/export, anonymous score availability, linked YouTube audio
-and playback in FeedBack still require separate end-to-end acceptance. Those checks
-must not be inferred from fixture tests or schema validation.
+Broader live Songsterr search/export, anonymous score availability, linked YouTube
+audio and playback in FeedBack require separate end-to-end acceptance. Those
+checks must not be inferred from fixture tests or schema validation.

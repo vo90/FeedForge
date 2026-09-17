@@ -30,6 +30,19 @@ test('missing or mismatched audio offers exactly the supported link/file replace
   }
 });
 
+test('only a cached job awaiting automatic audio discovery offers Retry audio detection', () => {
+  const missing = job({ state: 'needs_audio', canRetry: true, canRetryAudio: true });
+  assert.match(missing, />Retry audio detection<\/button>/);
+  assert.match(missing, /Choose audio file/);
+  assert.doesNotMatch(missing, />Retry import<\/button>/);
+  for (const state of ['alignment_failed', 'audio', 'failed', 'cancelled', 'completed']) {
+    assert.doesNotMatch(job({ state, canRetry: true, canRetryAudio: true }), /Retry audio detection/);
+  }
+  assert.doesNotMatch(job({ state: 'needs_audio', canRetry: true, canRetryAudio: false }), /Retry audio detection/);
+  const busy = render(SongsterrJob, { job: { ...base, state: 'needs_audio', canRetryAudio: true }, api: {}, action() {}, busy: true });
+  assert.match(busy, /<button[^>]*disabled=""[^>]*>Retry audio detection<\/button>/);
+});
+
 test('login/account fallback is optional and explains the unpublished copy without manual export controls', () => {
   const ordinary = job({ state: 'downloading' });
   assert.doesNotMatch(ordinary, /Sign in to Songsterr|Continue after signing in/);

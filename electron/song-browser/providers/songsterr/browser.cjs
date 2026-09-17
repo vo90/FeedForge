@@ -77,14 +77,14 @@ class SongsterrProvider {
     check(signal);
     if (!allowedNavigation(wc.getURL())) throw failure('unavailable', 'Songsterr redirected to an unsupported page.');
   }
-  async _execute(win, fn, request, signal) {
+  async _execute(win, fn, request, signal, timeout = 10000) {
     check(signal);
     if (this.disposed || win.isDestroyed()) throw failure('unavailable', 'The Songsterr page closed.');
     if (!allowedNavigation(win.webContents.getURL())) throw failure('unavailable', 'The Songsterr page is not ready.');
-    return bounded(win.webContents.mainFrame.executeJavaScript(`(${fn.toString()})(${JSON.stringify(request || {})})`), signal, 10000, () => win.webContents.stop());
+    return bounded(win.webContents.mainFrame.executeJavaScript(`(${fn.toString()})(${JSON.stringify(request || {})})`), signal, timeout, () => win.webContents.stop());
   }
   _read(win, signal) { return this._execute(win, readSongsterrPage, null, signal); }
-  _act(win, action, signal) { return this._execute(win, actOnSongsterrPage, { action }, signal); }
+  _act(win, action, signal, identity = {}, timeout) { return this._execute(win, actOnSongsterrPage, { ...identity, action }, signal, timeout); }
   async _wait(win, predicate, signal, timeout = 15000) {
     const until = Date.now() + timeout;
     while (Date.now() < until) {
@@ -98,6 +98,82 @@ class SongsterrProvider {
       await delay(300, signal);
     }
     throw failure('timeout', 'The expected Songsterr page did not become ready. Please retry.');
+  }
+  async _readyPinnedPage(win, id, revisionId, signal) {
+    try {
+      const page = await this._wait(win, (value) => value.status === 'needs_login'
+        || (value.songId === id && value.revisionId === revisionId && value.tabReady === true), signal);
+      if (page.status === 'needs_login') throw failure('needs_login', 'Songsterr is requesting sign-in to load this tab.');
+      return page;
+    } catch (error) {
+      if (error.code === 'timeout') throw failure('revision_unavailable', 'The approved Songsterr tab did not finish loading. Please retry.');
+      throw error;
+    }
+  }
+  async _discoverAudio(win, identity, initialPage, signal, timeout = 8000) {
+    let page = initialPage, pauseNeeded = false;
+    const staleMixVideos = new Set();
+    const until = Date.now() + timeout;
+    const validate = (value) => {
+      check(signal);
+      if (value.status === 'needs_attention') {
+        this.attentionWindow = win;
+        throw failure('needs_attention', 'Complete the Songsterr website check in its browser.');
+      }
+      if (value.status === 'needs_login') throw failure('needs_login', 'Songsterr is requesting sign-in to load its original audio.');
+      if (value.status !== 'ready') throw failure('unavailable', 'The Songsterr audio player is unavailable. Please retry.');
+      const parsed = songUrl(value.url), current = songUrl(win.webContents.getURL());
+      if (value.songId !== identity.songId || value.revisionId !== identity.revisionId
+        || parsed?.id !== identity.songId || parsed.revisionId !== identity.revisionId
+        || current?.id !== identity.songId || current.revisionId !== identity.revisionId) {
+        throw failure('revision_unavailable', 'The Songsterr tab changed while checking its original audio. Please retry.');
+      }
+    };
+    const audio = () => page.tabReady && page.originalSelected && (page.audioMix === null || page.audioMix === 'main')
+      ? (page.audio || []).map(publicAudio).find((value) => value && !staleMixVideos.has(value.videoId)) || null : null;
+    const act = async (action) => {
+      const outcome = await this._act(win, action, signal, identity);
+      if (!outcome.ok) { page = await this._read(win, signal); validate(page); }
+      return outcome.ok;
+    };
+    const poll = async (predicate) => {
+      while (Date.now() < until) {
+        page = await this._read(win, signal); validate(page);
+        if (predicate(page)) return true;
+        await delay(Math.min(300, Math.max(1, until - Date.now())), signal);
+      }
+      return false;
+    };
+    try {
+      validate(page); pauseNeeded = page.playing === true;
+      if (!page.originalAvailable) return null;
+      if (!page.originalSelected) {
+        pauseNeeded = true;
+        if (!await act('selectOriginal') || !await poll((value) => value.originalSelected)) return null;
+      }
+      if (page.audioMix !== null && page.audioMix !== 'main') {
+        if (!page.fullMixAvailable) return null;
+        for (const url of page.audio || []) { const previous = publicAudio(url); if (previous) staleMixVideos.add(previous.videoId); }
+        pauseNeeded = true;
+        if (!await act('selectFullMix') || !await poll((value) => value.audioMix === 'main')) return null;
+      }
+      if (audio()) return audio();
+      if (!page.canPlay) return null;
+      // Play is an ordinary, muted page action that materializes the linked
+      // iframe. Mark cleanup before the click, including ambiguous responses.
+      pauseNeeded = true;
+      if (!await act('play')) return null;
+      return await poll(() => Boolean(audio())) ? audio() : null;
+    } finally {
+      if (pauseNeeded && !this.disposed && !win.isDestroyed()) {
+        // Cleanup must still run after cancellation; the guarded page action
+        // can only pause the exact pinned tab and never starts playback.
+        try {
+          const paused = await this._act(win, 'pause', undefined, identity, 2000);
+          if (!paused.ok) this.diagnostic('audio_probe_pause', 'unavailable');
+        } catch { this.diagnostic('audio_probe_pause', 'unavailable'); }
+      }
+    }
   }
   async signIn() {
     const win = this._window(true); win.show(); win.focus();
@@ -179,16 +255,28 @@ class SongsterrProvider {
       if (!revisions.length) throw failure('unapproved_revision', 'Songsterr’s revision history loaded, but no approved revision with a matching tab link could be verified.');
       const revisionId = String(revisions[0].revisionId), url = `${registered.url}/r${revisionId}`;
       await this._navigate(win, url, operation.signal);
-      try {
-        page = await this._wait(win, (value) => value.songId === id && value.revisionId === revisionId && value.tabReady === true, operation.signal);
-      } catch (error) {
-        if (error.code === 'timeout') throw failure('revision_unavailable', 'The approved Songsterr tab did not finish loading. Please retry.');
-        throw error;
-      }
-      const audio = (page.audio || []).map(publicAudio).find(Boolean);
+      page = await this._readyPinnedPage(win, id, revisionId, operation.signal);
+      const audio = await this._discoverAudio(win, { songId: id, revisionId }, page, operation.signal);
       const descriptor = { ...registered, revisionId, approval: 'approved', approvedUrl: url, ...(audio ? { audio } : {}) };
       this.resolved.set(`${id}:${revisionId}`, descriptor);
       return descriptor;
+    } finally { this.resolving = false; operation.release(); }
+  }
+  // A cached, verified score must retain its original revision when retrying
+  // linked audio. No history lookup, account copy or score request is needed.
+  async findAudio(result, { revisionId, signal } = {}) {
+    if (this.searching || this.resolving) throw failure('busy', 'The Songsterr catalogue is already being read.');
+    const id = numeric(result?.id ?? result?.songId), revision = numeric(revisionId);
+    const registered = id && this.results.get(id);
+    if (!registered || !revision || (result.url && songUrl(result.url)?.url !== registered.url)) {
+      throw failure('invalid_result', 'The saved Songsterr song or revision could not be verified.');
+    }
+    const operation = this._controller(signal); this.resolving = true;
+    try {
+      const win = this._window(false);
+      await this._navigate(win, `${registered.url}/r${revision}`, operation.signal);
+      const page = await this._readyPinnedPage(win, id, revision, operation.signal);
+      return await this._discoverAudio(win, { songId: id, revisionId: revision }, page, operation.signal);
     } finally { this.resolving = false; operation.release(); }
   }
   async acquire(result, { directory, signal, onProgress = () => {}, allowAccount = false } = {}) {

@@ -10,13 +10,14 @@ const { readSongsterrPage, actOnSongsterrPage } = require('../electron/song-brow
 class Element {
   constructor(tag, attrs = {}, children = [], own = '') {
     this.tagName = tag.toUpperCase(); this.attrs = attrs; this.children = children; this.own = own; this.style = {}; this.clicked = 0;
-    this.hidden = attrs.hidden === true; for (const child of children) child.parentElement = this;
+    this.hidden = attrs.hidden === true; this.value = attrs.value || ''; this.events = []; for (const child of children) child.parentElement = this;
   }
   get textContent() { return [this.own, ...this.children.map((child) => child.textContent)].filter(Boolean).join(' '); }
   get innerText() { return [this.own, ...this.children.map((child) => child.innerText)].filter(Boolean).join('\n'); }
   getAttribute(name) { return this.attrs[name] ?? null; }
   getClientRects() { return this.hidden || this.rectCount === 0 ? [] : [{}]; }
   click() { this.clicked++; }
+  dispatchEvent(event) { this.events.push(event.type); return true; }
   descendants() { return this.children.flatMap((child) => [child, ...child.descendants()]); }
   querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
   querySelectorAll(selector) {
@@ -39,7 +40,7 @@ const span = (text) => el('span', {}, [], text);
 function page(children, url = 'https://www.songsterr.com/?pattern=green+lung') {
   const body = el('body', {}, children), doc = el('document', {}, [body]); doc.body = body; doc.URL = url; doc.title = 'Songsterr'; return doc;
 }
-function run(fn, document, request) { return JSON.parse(JSON.stringify(vm.runInNewContext(`(${fn.toString()})(request)`, { document, location: { href: document.URL }, request, URL }))); }
+function run(fn, document, request) { return JSON.parse(JSON.stringify(vm.runInNewContext(`(${fn.toString()})(request)`, { document, location: { href: document.URL }, request, URL, Event }))); }
 
 test('rendered public search extracts separate titles/artists, deduplicates IDs and ignores unrelated links', () => {
   const href = '/a/wsa/green-lung-woodland-rites-tab-s564073';
@@ -175,9 +176,48 @@ test('only observed editor/copy/create/export actions are supported; publish and
   assert.equal(publish.clicked, 0); assert.equal(create.clicked, 1); assert.equal(exportControl.clicked, 1);
 });
 
-test('rendered player link is captured and no script or page state is needed', () => {
-  const doc = page([el('iframe', { src: 'https://www.youtube-nocookie.com/embed/abcdefghijk' }), el('iframe', { src: 'https://evil.test/embed/abcdefghijk' })]);
-  assert.deepEqual(run(readSongsterrPage, doc).audio, ['https://www.youtube-nocookie.com/embed/abcdefghijk']);
+test('only the scoped current-song player supplies audio; unrelated YouTube links and mismatched players are ignored', () => {
+  const frame = (video, song = '441770', host = 'www.youtube.com') => el('iframe', { id: `youtube-player-${video}-${song}`, src: `https://${host}/embed/${video}` });
+  const doc = page([
+    el('a', { href: 'https://www.youtube.com/watch?v=zzzzzzzzzzz' }, [], 'A comment link'),
+    frame('zzzzzzzzzzz'),
+    el('div', { id: 'youtube-video-container' }, [frame('C_ijc7A5oAc'), frame('abcdefghijk', '999'), frame('abcdefghijk', '441770', 'evil.test'),
+      el('iframe', { id: 'youtube-player-abcdefghijk-441770', src: 'https://www.youtube.com/embed/zzzzzzzzzzz' })]),
+  ], 'https://www.songsterr.com/a/wsa/ghost-rats-tab-s441770/r7788783');
+  assert.deepEqual(run(readSongsterrPage, doc).audio, ['https://www.youtube.com/embed/C_ijc7A5oAc']);
+});
+
+test('Original selection is read from the radio checked property, and its lazy player is optional', () => {
+  const original = el('input', { type: 'radio', value: 'original', readonly: '' }); original.checked = true; original.rectCount = 0;
+  const synth = el('input', { type: 'radio', value: 'synth', readonly: '' }); synth.checked = false;
+  const mix = el('select', { id: 'video-select' }, [el('option', { value: 'main' }, [], 'Full mix'), el('option', { value: 'backing' }, [], 'Backing track')]); mix.value = 'main';
+  const play = el('button', { id: 'control-play', 'data-can-play': 'true', 'aria-pressed': 'false', title: 'Play' });
+  const doc = page([el('div', { id: 'control-source', role: 'radiogroup' }, [el('label', {}, [original], 'Original'), el('label', {}, [synth], 'Synth')]), mix, play],
+    'https://www.songsterr.com/a/wsa/ghost-rats-tab-s441770/r7788783');
+  const ready = run(readSongsterrPage, doc);
+  assert.equal(original.getAttribute('checked'), null); assert.equal(ready.originalSelected, true); assert.equal(ready.originalAvailable, true);
+  assert.equal(ready.audioMix, 'main'); assert.equal(ready.fullMixAvailable, true); assert.equal(ready.canPlay, true); assert.equal(ready.playing, false); assert.deepEqual(ready.audio, []);
+  original.checked = false; synth.checked = true; play.attrs['aria-pressed'] = 'true';
+  const synthState = run(readSongsterrPage, doc); assert.equal(synthState.originalSelected, false); assert.equal(synthState.playing, true);
+});
+
+test('audio controls select Original and Full mix, then play and pause idempotently only on the expected revision', () => {
+  const original = el('input', { type: 'radio', value: 'original', readonly: '' }); original.checked = false;
+  const label = el('label', {}, [original], 'Original');
+  const mix = el('select', { id: 'video-select' }, [el('option', { value: 'main' }, [], 'Full mix'), el('option', { value: 'solo' }, [], 'Solo')]); mix.value = 'solo';
+  const hidden = el('button', { id: 'control-play', 'data-can-play': 'true', 'aria-pressed': 'false' }); hidden.rectCount = 0;
+  const play = el('button', { id: 'control-play', 'data-can-play': 'true', 'aria-pressed': 'false' });
+  const doc = page([el('div', { id: 'control-source' }, [label]), mix, hidden, play], 'https://www.songsterr.com/a/wsa/ghost-rats-tab-s441770/r7788783');
+  const act = (action, revisionId = '7788783') => run(actOnSongsterrPage, doc, { action, songId: '441770', revisionId });
+  assert.equal(act('play').ok, false); assert.equal(act('selectOriginal').ok, true); assert.equal(label.clicked, 1); assert.equal(original.clicked, 0);
+  original.checked = true; assert.equal(act('selectOriginal').changed, false); assert.equal(label.clicked, 1);
+  assert.equal(act('selectFullMix').ok, true); assert.equal(mix.value, 'main'); assert.deepEqual(mix.events, ['input', 'change']);
+  assert.equal(act('selectFullMix').changed, false); assert.equal(mix.events.length, 2);
+  assert.equal(act('play').ok, true); assert.equal(play.clicked, 1); assert.equal(hidden.clicked, 0);
+  play.attrs['aria-pressed'] = 'true'; assert.equal(act('play').changed, false); assert.equal(play.clicked, 1);
+  assert.equal(act('pause', '999').reason, 'revision_changed'); assert.equal(play.clicked, 1);
+  assert.equal(act('pause').ok, true); assert.equal(play.clicked, 2);
+  play.attrs['aria-pressed'] = 'false'; assert.equal(act('pause').changed, false); assert.equal(play.clicked, 2);
 });
 
 test('Download opens the format menu before its hidden Guitar Pro export control is clicked', () => {

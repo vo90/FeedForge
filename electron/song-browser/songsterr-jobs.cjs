@@ -21,7 +21,7 @@ function atomicJson(filename, value) {
   finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); }
 }
 function record(job) {
-  const { controller, child, done, resolveDone, ...saved } = job;
+  const { controller, child, done, resolveDone, retryAudioDetection, ...saved } = job;
   return saved;
 }
 function within(root, filename) { const rel = path.relative(root, filename); return rel && !rel.startsWith('..') && !path.isAbsolute(rel); }
@@ -91,6 +91,7 @@ class SongsterrJobs {
       outputAvailable: job.state === 'completed' && Boolean(job.outputPath && fs.existsSync(job.outputPath)),
       warnings: job.warnings, alignment: job.alignment, coverage: job.coverage,
       canRetry: WAITING.has(job.state) || job.state === 'failed' || job.state === 'cancelled',
+      canRetryAudio: job.state === 'needs_audio' && !job.audio && Boolean(job.scorePath) && typeof this.provider.findAudio === 'function',
       canUseAccount: job.canUseAccount === true,
       canCancel: ACTIVE.has(job.state) || WAITING.has(job.state) };
   }
@@ -118,6 +119,9 @@ class SongsterrJobs {
     if (!job || !this.public(job).canRetry || this.current === job) throw new Error('This import cannot be retried yet.');
     if (audio) job.audio = audio;
     if (allowAccount === true) job.allowAccount = true;
+    // Audio discovery is an explicit, one-shot retry of the saved revision. A
+    // supplied or previously chosen recording always keeps priority.
+    job.retryAudioDetection = job.state === 'needs_audio' && !job.audio && Boolean(job.scorePath) && typeof this.provider.findAudio === 'function';
     job.controller = new AbortController(); job.committed = false; job.timedOut = false;
     this._set(job, 'queued', { error: '', message: 'Queued.' }); this._start(); return this.public(job);
   }
@@ -176,10 +180,12 @@ class SongsterrJobs {
     } finally { clearTimeout(timer); }
   }
   async _work(job) {
+    const retryAudioDetection = job.retryAudioDetection === true;
+    delete job.retryAudioDetection;
     const directory = path.join(this.root, job.id); fs.mkdirSync(directory, { recursive: true });
     const stat = fs.lstatSync(directory); if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('The import working folder is invalid.');
     check(job); job.converterRecipe = await this.getConverterRecipe();
-    if (!job.scorePath || !fs.existsSync(job.scorePath)) {
+    if ((!job.scorePath || !fs.existsSync(job.scorePath)) && !retryAudioDetection) {
       this._set(job, 'resolving', { message: 'Finding the latest approved revision…', error: '' });
       // A cancelled provider may have finished writing before its promise rejects.
       // A fresh acquisition folder makes retry safe without overwriting that file.
@@ -194,8 +200,18 @@ class SongsterrJobs {
       job.sourceKey = `songsterr:${job.chart.id}:${job.metadata.revisionId}`;
       if (!job.audio && acquired.audio) job.audio = acquired.audio;
     }
-    if (!within(directory, path.resolve(job.scorePath)) || fs.lstatSync(job.scorePath).isSymbolicLink()
+    if (String(job.metadata?.songId) !== job.chart.id || !/^\d+$/.test(String(job.metadata?.revisionId)) || job.metadata?.approval !== 'approved'
+        || job.sourceKey !== `songsterr:${job.chart.id}:${job.metadata.revisionId}`) throw new Error('The saved tab revision is invalid. Search for the song again to create a new import.');
+    if (typeof job.scorePath !== 'string' || !path.isAbsolute(job.scorePath) || !within(directory, path.resolve(job.scorePath))
+        || !fs.existsSync(job.scorePath) || fs.lstatSync(job.scorePath).isSymbolicLink() || !fs.lstatSync(job.scorePath).isFile()
         || await hashFile(job.scorePath, job.controller.signal) !== job.cachedScoreHash) throw new Error('The saved tab changed. Search for the song again to create a new import.');
+    check(job);
+    if (retryAudioDetection && !job.audio) {
+      this._set(job, 'audio', { message: 'Checking Songsterr for the recording…' });
+      const audio = await this.provider.findAudio(job.chart, { revisionId: String(job.metadata.revisionId), signal: job.controller.signal });
+      check(job);
+      if (audio) job.audio = audio;
+    }
     if (!job.audio) throw Object.assign(new Error('No usable original audio was found. Choose an audio file or paste a link.'), { code: 'needs_audio' });
     this._set(job, 'converting', { message: 'Preparing the tab and audio…' });
     const attempt = fs.mkdtempSync(path.join(directory, 'attempt-'));

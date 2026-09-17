@@ -25,12 +25,16 @@ async function fixture(t, options = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'feedforge-songsterr-jobs-'));
   const root = path.join(directory, 'jobs'), outputDir = path.join(directory, 'output');
   fs.mkdirSync(outputDir);
-  const calls = [], requests = [], acquisitions = [], completed = [];
+  const calls = [], requests = [], acquisitions = [], completed = [], audioProbes = [];
   const provider = { acquire: async (chart, context) => {
     acquisitions.push(chart.id);
     if (options.acquire) return options.acquire(chart, context, acquireNormally);
     return acquireNormally(chart, context);
   } };
+  if (options.findAudio) provider.findAudio = async (chart, context) => {
+    audioProbes.push({ chart, ...context });
+    return options.findAudio(chart, context);
+  };
   function acquireNormally(chart, { directory: work }) {
     const filename = path.join(work, 'source.gp');
     fs.writeFileSync(filename, 'Synthetic score');
@@ -65,7 +69,7 @@ async function fixture(t, options = {}) {
     assert.ok(path.basename(resolved).startsWith('feedforge-songsterr-jobs-'));
     fs.rmSync(resolved, { recursive: true, force: true });
   });
-  return { jobs, directory, root, outputDir, config, calls, requests, acquisitions, completed,
+  return { jobs, directory, root, outputDir, config, calls, requests, acquisitions, completed, audioProbes,
     enqueue: (chart = CHART) => jobs.enqueue(chart, { outputDir, outputSettings: SETTINGS }) };
 }
 
@@ -85,6 +89,148 @@ test('Songsterr pauses for missing audio and reuses the approved score on retry'
   assert.equal(f.requests[0].metadata.approval, 'approved');
   assert.deepEqual(f.requests[0].outputSettings, SETTINGS);
   assert.ok(fs.existsSync(saved.outputPath));
+});
+
+test('explicit audio detection reuses the cached approved revision without acquiring another tab', async (t) => {
+  const audio = { kind: 'url', url: 'https://www.youtube.com/watch?v=abcdefghijk', videoId: 'abcdefghijk' };
+  const f = await fixture(t, { missingAudio: true, findAudio: async () => audio });
+  const queued = f.enqueue(); await settle(f.jobs);
+  const before = f.jobs.jobs[0];
+  const scorePath = before.scorePath, scoreHash = before.cachedScoreHash;
+  assert.equal(f.audioProbes.length, 0, 'fresh acquisition already searched for audio');
+  assert.equal(f.jobs.snapshot()[0].canRetryAudio, true);
+  f.jobs.retry(queued.id);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(f.root, 'jobs.json'), 'utf8')).jobs[0].retryAudioDetection, undefined,
+    'the one-shot user action must not be replayed automatically after restart');
+  await settle(f.jobs);
+  assert.deepEqual(f.acquisitions, ['123']);
+  assert.equal(f.audioProbes.length, 1);
+  assert.equal(f.audioProbes[0].revisionId, '456');
+  assert.equal(f.audioProbes[0].chart.id, '123');
+  assert.ok(f.audioProbes[0].signal instanceof AbortSignal);
+  assert.equal(f.jobs.jobs[0].scorePath, scorePath);
+  assert.equal(f.jobs.jobs[0].cachedScoreHash, scoreHash);
+  assert.equal(f.requests[0].metadata.revisionId, '456');
+  assert.deepEqual(f.requests[0].audio, audio);
+  assert.equal(f.jobs.snapshot()[0].state, 'completed');
+  assert.equal(f.jobs.snapshot()[0].canRetryAudio, false);
+});
+
+test('a missing audio retry pauses once without a retry loop or a duplicate tab download', async (t) => {
+  const f = await fixture(t, { missingAudio: true, findAudio: async () => null });
+  const queued = f.enqueue(); await settle(f.jobs);
+  f.jobs.retry(queued.id); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'needs_audio');
+  assert.equal(f.jobs.snapshot()[0].canRetryAudio, true);
+  assert.equal(f.audioProbes.length, 1);
+  assert.deepEqual(f.acquisitions, ['123']);
+  assert.equal(f.calls.length, 0);
+  await f.jobs.dispose();
+  const restored = new SongsterrJobs(f.config);
+  try {
+    await settle(restored);
+    assert.equal(restored.snapshot()[0].state, 'needs_audio');
+    assert.equal(f.audioProbes.length, 1, 'restoring a waiting import must not probe the website');
+    restored.retry(queued.id); await settle(restored);
+    assert.equal(f.audioProbes.length, 2, 'another explicit retry may check again');
+    assert.deepEqual(f.acquisitions, ['123']);
+  } finally { await restored.dispose(); }
+});
+
+test('cancelling audio discovery prevents conversion and discards a late candidate', async (t) => {
+  const entered = deferred(), release = deferred();
+  const f = await fixture(t, { missingAudio: true, findAudio: async (_chart, { signal }) => {
+    entered.resolve(signal);
+    await release.promise;
+    return { kind: 'url', url: 'https://www.youtube.com/watch?v=abcdefghijk', videoId: 'abcdefghijk' };
+  } });
+  const queued = f.enqueue(); await settle(f.jobs);
+  f.jobs.retry(queued.id);
+  const signal = await entered.promise;
+  const cancelling = f.jobs.cancel(queued.id);
+  assert.equal(signal.aborted, true);
+  release.resolve(); await cancelling; await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'cancelled');
+  assert.equal(f.jobs.jobs[0].audio, undefined);
+  assert.equal(f.calls.length, 0);
+  assert.deepEqual(f.acquisitions, ['123']);
+  assert.deepEqual(fs.readdirSync(f.outputDir), []);
+});
+
+for (const corruption of ['changed score', 'missing score', 'unapproved revision', 'different song', 'different revision']) {
+  test(`audio-only retry rejects ${corruption} before discovery or acquisition`, async (t) => {
+    const f = await fixture(t, { missingAudio: true, findAudio: async () => ({ kind: 'url', url: 'https://www.youtube.com/watch?v=abcdefghijk' }) });
+    const queued = f.enqueue(); await settle(f.jobs);
+    const cached = f.jobs.jobs[0];
+    if (corruption === 'changed score') fs.writeFileSync(cached.scorePath, 'Changed score');
+    if (corruption === 'missing score') fs.unlinkSync(cached.scorePath);
+    if (corruption === 'unapproved revision') cached.metadata.approval = 'pending';
+    if (corruption === 'different song') cached.metadata.songId = '124';
+    if (corruption === 'different revision') cached.metadata.revisionId = '789';
+    f.jobs.retry(queued.id); await settle(f.jobs);
+    assert.equal(f.jobs.snapshot()[0].state, 'failed');
+    assert.match(f.jobs.snapshot()[0].error, /saved tab/);
+    assert.equal(f.audioProbes.length, 0);
+    assert.deepEqual(f.acquisitions, ['123']);
+    assert.equal(f.calls.length, 0);
+  });
+}
+
+test('manual audio keeps priority and alignment replacement never starts site discovery', async (t) => {
+  const replacements = [
+    { kind: 'file', path: 'first.wav' },
+    { kind: 'url', url: 'https://example.com/chosen-recording.mp3' },
+  ];
+  let failAlignment = true;
+  const f = await fixture(t, { missingAudio: true, findAudio: async () => { throw new Error('Must not probe'); },
+    runConverter: async (args, context, normal) => {
+      if (args[0] === '--song-import-file' && failAlignment) {
+        failAlignment = false;
+        assert.deepEqual(JSON.parse(fs.readFileSync(args[1], 'utf8')).audio, replacements[0]);
+        return { code: 1, stdout: JSON.stringify({ ok: false, code: 'alignment_failed', error: 'Choose the matching recording.' }) };
+      }
+      return normal(args, context);
+    } });
+  const queued = f.enqueue(); await settle(f.jobs);
+  f.jobs.retry(queued.id, { audio: replacements[0] }); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'alignment_failed');
+  assert.equal(f.jobs.snapshot()[0].canRetryAudio, false);
+  assert.deepEqual(f.jobs.jobs[0].audio, replacements[0]);
+  f.jobs.retry(queued.id, { audio: replacements[1] }); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'completed');
+  assert.deepEqual(f.requests[0].audio, replacements[1]);
+  assert.equal(f.audioProbes.length, 0);
+  assert.deepEqual(f.acquisitions, ['123']);
+});
+
+test('an existing recording is retained on a normal conversion retry', async (t) => {
+  let fail = true;
+  const f = await fixture(t, { findAudio: async () => { throw new Error('Must not probe'); },
+    runConverter: async (args, context, normal) => {
+      if (fail) { fail = false; throw new Error('Temporary converter failure'); }
+      return normal(args, context);
+    } });
+  const queued = f.enqueue(); await settle(f.jobs);
+  const audio = { ...f.jobs.jobs[0].audio };
+  f.jobs.retry(queued.id); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'completed');
+  assert.deepEqual(f.requests[0].audio, audio);
+  assert.equal(f.audioProbes.length, 0);
+});
+
+test('a general retry still reacquires a missing cached tab and checks its new approval', async (t) => {
+  let fail = true;
+  const f = await fixture(t, { findAudio: async () => { throw new Error('Must not probe'); },
+    runConverter: async (args, context, normal) => {
+      if (fail) { fail = false; throw new Error('Temporary converter failure'); }
+      return normal(args, context);
+    } });
+  const queued = f.enqueue(); await settle(f.jobs);
+  fs.unlinkSync(f.jobs.jobs[0].scorePath);
+  f.jobs.retry(queued.id); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'completed');
+  assert.deepEqual(f.acquisitions, ['123', '123']);
+  assert.equal(f.audioProbes.length, 0);
 });
 
 test('Songsterr rejects an unapproved revision before conversion', async (t) => {

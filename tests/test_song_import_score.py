@@ -244,6 +244,56 @@ def test_raw_hammer_origin_marks_the_destination(tmp_path):
     assert all(not any(k.startswith("__") for k in n) for n in notes)
 
 
+def test_on_beat_grace_borrows_from_principal_note_without_moving_bar_or_other_voice(tmp_path):
+    grace = {**beat(2, duration=(1, 16), hp=True), "graceNote": "onBeat"}
+    data = raw_score([measure(beat(1, duration=(1, 4)), grace,
+                              beat(4, duration=(1, 4)), beat(4, duration=(1, 2), tie=True)),
+                      measure(beat(6))])
+    data["parts"][0]["measures"][0]["voices"].append({"beats": [beat(7, string=1)]})
+    before = deepcopy(data)
+    result = import_json(tmp_path, data)
+    notes = result["tracks"][0]["notes"]
+    melody = [note for note in notes if note["s"] == 5]
+    assert [note["t"] for note in melody] == [0, 0.5, 0.625, 2]
+    assert [note["sus"] for note in melody] == [0.5, 0.125, 1.375, 2]
+    assert melody[1]["ln"] is True and melody[2]["ho"] is True
+    other_voice = next(note for note in notes if note["s"] == 4)
+    assert other_voice["t"] == 0 and other_voice["sus"] == 2
+    assert result["duration"] == 4
+    assert [beat["time"] for beat in result["beats"]] == [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5]
+    assert data == before
+
+
+def test_grouped_on_beat_grace_keeps_original_beat_span_with_repeat_and_tempo_change(tmp_path):
+    grace1 = {**beat(2, duration=(1, 32)), "graceNote": "onBeat"}
+    grace2 = {**beat(3, duration=(1, 32)), "graceNote": "onBeat"}
+    data = raw_score([measure(grace1, grace2, beat(4, duration=(1, 2)),
+                              beat(6, duration=(1, 2)), repeatStart=True, repeat=2)])
+    data["parts"][0]["automations"]["tempo"].append({"measure": 0, "position": [1, 2], "bpm": 60})
+    result = import_json(tmp_path, data)
+    notes = result["tracks"][0]["notes"]
+    assert [note["t"] for note in notes] == [0, 0.0625, 0.125, 1, 3, 3.0625, 3.125, 4]
+    assert [note["sus"] for note in notes] == [0.0625, 0.0625, 0.875, 2] * 2
+    assert result["duration"] == 6
+
+
+@pytest.mark.parametrize("case", ["beforeBeat", "unknown", "no_target", "rest_target", "equal_target", "short_target"])
+def test_unsupported_or_unbounded_grace_timing_is_rejected(tmp_path, case):
+    grace = {**beat(2, duration=(1, 16)), "graceNote": "onBeat"}
+    target = beat(4, duration=(1, 1))
+    if case in ("beforeBeat", "unknown"):
+        grace["graceNote"] = case
+    elif case == "rest_target":
+        target["notes"] = [{"rest": True}]
+    elif case == "equal_target":
+        target["duration"] = [1, 16]
+    elif case == "short_target":
+        target["duration"] = [1, 32]
+    beats = [grace] if case == "no_target" else [grace, target]
+    with pytest.raises(ScoreImportError, match="grace"):
+        import_json(tmp_path, raw_score([measure(*beats)]))
+
+
 def test_repeat_restores_tempo_at_the_written_start(tmp_path):
     data = raw_score([measure(beat(1), repeatStart=True), measure(beat(2), repeat=2)])
     data["parts"][0]["automations"]["tempo"] = [

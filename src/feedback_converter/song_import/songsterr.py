@@ -170,9 +170,13 @@ def parse(document: dict) -> Score:
                 if not isinstance(voice, dict) or not isinstance(voice.get("beats"), list):
                     raise ScoreImportError("Missing Songsterr beat data.")
                 position = Fraction(0)
+                grace_duration = Fraction(0)
                 for beat in voice["beats"]:
                     if any(beat.get(k) for k in ("grace", "graceNotes", "tremoloBar", "stroke", "whammy")):
                         raise ScoreImportError("Unsupported Songsterr beat technique.")
+                    grace = beat.get("graceNote")
+                    if grace not in (None, "onBeat"):
+                        raise ScoreImportError(f"Songsterr grace note type {grace!r} is unsupported in {name}, measure {bi + 1}.")
                     if "duration" not in beat:
                         raise ScoreImportError("Missing exact Songsterr beat duration.")
                     duration = rational(beat["duration"], "beat duration") * 4
@@ -180,10 +184,28 @@ def parse(document: dict) -> Score:
                         raise ScoreImportError("Invalid beat duration.")
                     if not isinstance(beat.get("notes"), list):
                         raise ScoreImportError("Missing Songsterr notes (rests must have an explicit empty list).")
+                    if grace or grace_duration:
+                        if beat.get("rest") or not any(not note.get("rest") for note in beat["notes"]):
+                            raise ScoreImportError(f"An on-beat grace note needs a following pitched note in {name}, measure {bi + 1}.")
+                    # Songsterr's notation help and Guitar Pro's grace-note
+                    # documentation define on-beat grace as starting at the
+                    # principal beat and shortening/delaying that note. Grace
+                    # durations therefore do not extend the measure. Retain
+                    # their encoded duration; never stretch the whole bar or
+                    # discard the grace notes to make an overfull voice fit.
+                    if grace:
+                        grace_duration += duration
+                    elif grace_duration:
+                        duration -= grace_duration
+                        if duration <= 0:
+                            raise ScoreImportError(f"On-beat grace notes consume the following note in {name}, measure {bi + 1}.")
+                        grace_duration = Fraction(0)
                     for note in beat["notes"]:
                         if not note.get("rest"):
                             bar_notes.append(_note(note, beat, position, duration, len(tuning)))
                     position += duration
+                if grace_duration:
+                    raise ScoreImportError(f"An on-beat grace note has no following note in {name}, measure {bi + 1}.")
                 if position > measures[bi].length:
                     raise ScoreImportError(f"Voice exceeds measure {bi + 1} in {name}.")
             track_bars.append(bar_notes)

@@ -88,11 +88,26 @@ function readSongsterrPage() {
     if (badges.length !== 1 || revisionSeen.has(rowId)) continue;
     revisionSeen.add(rowId); approved.push({ revisionId: rowId, approval: 'approved', date });
   }
+  // The Original player is created lazily on Play. Only its rendered iframe
+  // identifies linked song audio; YouTube links in comments are unrelated.
+  const sourceControl = visibleNode('#control-source');
+  const originalLabel = sourceControl && all(sourceControl, 'label').find((node) => {
+    const input = node.querySelector('input');
+    return enabled(node) && input?.getAttribute('type') === 'radio' && input.getAttribute('value') === 'original'
+      && !input.disabled && input.getAttribute('aria-disabled') !== 'true';
+  });
+  const originalInput = originalLabel?.querySelector('input');
+  const mixControl = visibleNode('#video-select'), playControl = enabledControl('#control-play');
   const audio = [];
-  for (const node of all(document, 'iframe[src], a[href]').filter(visible)) {
-    const value = node.getAttribute('src') || node.getAttribute('href');
-    let url; try { url = new URL(value, current); } catch { continue; }
-    if (url.protocol === 'https:' && ['www.youtube.com', 'youtube.com', 'youtu.be', 'www.youtube-nocookie.com'].includes(url.hostname)) audio.push(url.href);
+  for (const container of all(document, '#youtube-video-container').filter(visible)) {
+    for (const node of all(container, 'iframe[src]').filter(visible)) {
+      let url; try { url = new URL(node.getAttribute('src'), current); } catch { continue; }
+      const video = /^\/embed\/([a-zA-Z0-9_-]{11})$/.exec(url.pathname)?.[1];
+      const player = /^youtube-player-([a-zA-Z0-9_-]{11})-([1-9]\d{0,11})$/.exec(node.getAttribute('id') || '');
+      if (url.protocol === 'https:' && !url.username && !url.password
+        && ['www.youtube.com', 'youtube.com', 'www.youtube-nocookie.com'].includes(url.hostname)
+        && video && player?.[1] === video && player[2] === songMatch?.[1]) audio.push(url.href);
+    }
   }
   const copyForm = controls.some((node) => /^create$/i.test(label(node))) && all(document, 'input').filter(visible).some((node) => !['password', 'hidden', 'checkbox'].includes(node.getAttribute('type')));
   const noResults = /no (?:songs|tabs|results)(?: found| match|$)/i.test(body);
@@ -102,11 +117,22 @@ function readSongsterrPage() {
     historyVisible, historyReady: historyVisible && readableHistoryRows > 0, approvedRevisions: approved,
     copyForm, unpublished: /\bnot published\b/i.test(body), editor: Boolean(enabledControl('#control-export-gp')),
     canExport: Boolean(enabledControl('#control-export-gp')),
-    audio, hasMore: controls.some((node) => /^(?:next|load more|show more)$/i.test(label(node))) };
+    audio, originalAvailable: Boolean(originalInput), originalSelected: originalInput?.checked === true,
+    audioMix: mixControl ? String(mixControl.value || '') : null,
+    fullMixAvailable: Boolean(enabled(mixControl) && all(mixControl, 'option').some((node) => node.getAttribute('value') === 'main' && !node.disabled)),
+    canPlay: Boolean(playControl && playControl.getAttribute('data-can-play') === 'true'),
+    playing: playControl?.getAttribute('aria-pressed') === 'true',
+    hasMore: controls.some((node) => /^(?:next|load more|show more)$/i.test(label(node))) };
 }
 
 function actOnSongsterrPage(request = {}) {
-  const visible = (node) => node && !node.hidden && node.getAttribute?.('aria-hidden') !== 'true' && node.style?.display !== 'none' && (!node.getClientRects || node.getClientRects().length > 0);
+  const visible = (node) => {
+    if (!node) return false;
+    for (let at = node; at; at = at.parentElement) {
+      if (at.hidden || at.getAttribute?.('aria-hidden') === 'true' || at.style?.display === 'none' || at.style?.visibility === 'hidden') return false;
+    }
+    return !node.getClientRects || node.getClientRects().length > 0;
+  };
   const enabled = (node) => visible(node) && !node.disabled && node.getAttribute?.('aria-disabled') !== 'true';
   const text = (node) => String(node?.getAttribute?.('aria-label') || node?.getAttribute?.('title') || node?.textContent || '').replace(/\s+/g, ' ').trim();
   const enabledControl = (selector) => Array.from(document.querySelectorAll(selector)).find(enabled);
@@ -118,6 +144,33 @@ function actOnSongsterrPage(request = {}) {
   let current;
   try { current = new URL(String(globalThis.location?.href || document.URL)); } catch { return { ok: false, reason: 'invalid_page' }; }
   if (current.origin !== 'https://www.songsterr.com') return { ok: false, reason: 'wrong_origin' };
+  if (['selectOriginal', 'selectFullMix', 'play', 'pause'].includes(request.action)) {
+    const pinned = /^\/a\/wsa\/[^/]+-s([1-9]\d{0,11})(?:t\d+)?\/r([1-9]\d{0,11})$/.exec(current.pathname);
+    if (!pinned || pinned[1] !== request.songId || pinned[2] !== request.revisionId) return { ok: false, reason: 'revision_changed' };
+    const source = Array.from(document.querySelectorAll('#control-source')).find(visible);
+    const original = source && Array.from(source.querySelectorAll('label')).find((node) => {
+      const input = node.querySelector('input');
+      return enabled(node) && input?.getAttribute('type') === 'radio' && input.getAttribute('value') === 'original'
+        && !input.disabled && input.getAttribute('aria-disabled') !== 'true';
+    });
+    const selected = original?.querySelector('input')?.checked === true;
+    const mix = Array.from(document.querySelectorAll('#video-select')).find(visible);
+    if (request.action === 'selectOriginal') return selected ? { ok: true, changed: false } : click(original);
+    if (request.action === 'selectFullMix') {
+      if (!mix || mix.value === 'main') return { ok: true, changed: false };
+      const main = Array.from(mix.querySelectorAll('option')).find((node) => node.getAttribute('value') === 'main' && !node.disabled);
+      if (!enabled(mix) || !main) return { ok: false, reason: 'control_unavailable' };
+      const setter = Object.getOwnPropertyDescriptor(globalThis.HTMLSelectElement?.prototype || {}, 'value')?.set;
+      if (setter) setter.call(mix, 'main'); else mix.value = 'main';
+      mix.dispatchEvent(new Event('input', { bubbles: true })); mix.dispatchEvent(new Event('change', { bubbles: true }));
+      return { ok: true, changed: true };
+    }
+    const play = enabledControl('#control-play'), pressed = play?.getAttribute('aria-pressed');
+    if (!play || !['true', 'false'].includes(pressed)) return { ok: false, reason: 'control_unavailable' };
+    if (request.action === 'pause') return pressed === 'false' ? { ok: true, changed: false } : click(play);
+    if (!selected || (mix && mix.value !== 'main') || play.getAttribute('data-can-play') !== 'true') return { ok: false, reason: 'control_unavailable' };
+    return pressed === 'true' ? { ok: true, changed: false } : click(play);
+  }
   if (request.action === 'history') {
     const byId = enabledControl('#revisions-toggle-tab, #control-revisions, #control-revision-history');
     const candidates = controls.filter((node) => /^(?:show revisions|revisions|revision history|\d{1,2}\/\d{1,2}\/\d{4})$/i.test(text(node)));
