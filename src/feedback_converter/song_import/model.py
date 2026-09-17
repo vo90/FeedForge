@@ -43,6 +43,33 @@ class Note:
     bends: list[tuple[Fraction, float]] = field(default_factory=list)
     hopo: bool = False
     slide: str | None = None
+    source_id: str = ""
+    beat_id: str = ""
+    voice_id: str = ""
+
+
+@dataclass
+class WrittenBeat:
+    """A source beat before ties/repeats are folded for the playable chart."""
+    source_id: str
+    position: Fraction
+    duration: Fraction
+    notes: list[Note] = field(default_factory=list)
+    rest: bool = False
+    denominator: int | None = None
+    dots: int = 0
+    tuplet: tuple[int, int] | None = None
+    grace: str = ""
+    annotations: dict = field(default_factory=dict)
+    written_duration: Fraction | None = None
+    written_position: Fraction | None = None
+
+
+@dataclass
+class WrittenVoice:
+    source_id: str
+    beats: list[WrittenBeat] = field(default_factory=list)
+    source_index: int | None = None
 
 
 @dataclass
@@ -66,6 +93,7 @@ class Track:
     bars: list[list[Note]]
     capo: int = 0
     role: str = ""
+    written_bars: list[list[WrittenVoice]] = field(default_factory=list)
 
 
 @dataclass
@@ -78,6 +106,8 @@ class Score:
     year: str | int = ""
     source: dict = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    source_document: dict = field(default_factory=dict)
+    feature_inventory: list[dict] = field(default_factory=list)
 
 
 def validate_score(score: Score) -> None:

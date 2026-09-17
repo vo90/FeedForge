@@ -4,6 +4,7 @@ from bisect import bisect_right
 from fractions import Fraction
 
 from .model import Measure, Score, ScoreImportError, validate_score
+from .notation import render_notation
 
 
 def playback_order(measures: list[Measure]) -> list[int]:
@@ -79,7 +80,7 @@ def render(score: Score) -> dict:
             events.append((cursor + pos, bpm))
         pos = Fraction(0)
         while pos < bar.length:
-            beat_positions.append((cursor + pos, occurrence))
+            beat_positions.append((cursor + pos, occurrence + 1 if pos == 0 else -1))
             pos += Fraction(4, bar.denominator)
         if bar.section:
             section_positions.append((cursor, bar.section))
@@ -102,11 +103,12 @@ def render(score: Score) -> dict:
     performed_notes = 0
     for track in score.tracks:
         rendered: list[dict] = []
-        previous_note: dict[int, tuple[dict, Fraction]] = {}
-        pending_slide: dict[int, tuple[dict, str]] = {}
-        pending_hopo: dict[int, dict] = {}
+        previous_note = {}
+        pending_slide = {}
+        pending_hopo = {}
+        authored_groups = {}
         last_written = -1
-        for index, start in visits:
+        for occurrence, (index, start) in enumerate(visits):
             if index <= last_written:
                 if pending_slide or pending_hopo:
                     raise ScoreImportError(f"An unresolved linked technique crosses a repeat jump in {track.name}.")
@@ -116,16 +118,14 @@ def render(score: Score) -> dict:
             for note in sorted(track.bars[index], key=lambda n: (n.position, n.string)):
                 position = start + note.position
                 end = position + note.duration
-                prior = previous_note.get(note.string)
+                link_key = (note.voice_id, note.string)
+                prior = previous_note.get(link_key)
                 effects = {key: value for key, value in note.effects.items() if not key.startswith("__")}
                 key = (note.position, note.string)
                 if key in seen:
-                    # Polyphonic notation sometimes duplicates a note in two voices;
-                    # differing values on one physical string cannot both be played.
-                    old = seen[key]
-                    if old == note:
-                        continue
-                    raise ScoreImportError(f"Conflicting voices on one string in {track.name}, measure {index + 1}.")
+                    # Keep authored voices in source evidence. A playable event
+                    # cannot silently collapse their separate same-string attacks.
+                    raise ScoreImportError(f"Ambiguous simultaneous voices on one string in {track.name}, measure {index + 1}; no notes were deduplicated.")
                 seen[key] = note
                 if note.tie:
                     if prior is None or prior[0]["f"] != note.fret or prior[1] != position:
@@ -133,15 +133,21 @@ def render(score: Score) -> dict:
                     output = prior[0]
                     output["sus"] = at(end) - output["t"]
                     output.update(effects)
+                    if note.source_id:
+                        output.setdefault("source_ids", []).append(note.source_id)
                 else:
                     output = {"t": at(position), "s": note.string, "f": note.fret,
                               "sus": at(end) - at(position), **effects}
-                    if note.hopo or note.string in pending_hopo:
+                    if note.source_id:
+                        output["source_ids"] = [note.source_id]
+                    if note.hopo or link_key in pending_hopo:
                         if prior is None:
                             raise ScoreImportError(f"Unresolved hammer-on/pull-off in {track.name}.")
                         output["ho" if note.fret > prior[0]["f"] else "po"] = True
-                        pending_hopo.pop(note.string, None)
+                        pending_hopo.pop(link_key, None)
                     rendered.append(output)
+                    if note.beat_id:
+                        authored_groups.setdefault((occurrence, note.beat_id), []).append(output)
                     performed_notes += 1
                     if performed_notes > 500_000:
                         raise ScoreImportError("Performed score exceeds the note import limit.")
@@ -149,22 +155,19 @@ def render(score: Score) -> dict:
                     curve = [{"t": at(position + note.duration * p) - output["t"], "v": v} for p, v in note.bends]
                     output.setdefault("bnv", []).extend(curve)
                     output["bn"] = max((p["v"] for p in output["bnv"]), key=abs)
-                if note.string in pending_slide and not note.tie:
-                    sliding, kind = pending_slide.pop(note.string)
+                if link_key in pending_slide and not note.tie:
+                    sliding, kind = pending_slide.pop(link_key)
                     sliding["sl"] = note.fret
                     if kind == "legato":
                         sliding["ln"] = True
                 if note.slide in {"shift", "legato"}:
-                    pending_slide[note.string] = (output, note.slide)
+                    pending_slide[link_key] = (output, note.slide)
                 elif note.slide in {"out_down", "out_up"}:
-                    output["slu"] = max(0, note.fret - 5) if note.slide == "out_down" else note.fret + 5
-                    message = "Unpitched slide display uses a five-fret span; the source specifies direction only."
-                    if message not in warnings:
-                        warnings.append(message)
+                    output["slide_out"] = "down" if note.slide == "out_down" else "up"
                 if note.effects.get("__hopo_origin"):
-                    pending_hopo[note.string] = output
+                    pending_hopo[link_key] = output
                     output["ln"] = True
-                previous_note[note.string] = (output, end)
+                previous_note[link_key] = (output, end)
         if pending_slide or pending_hopo:
             raise ScoreImportError(f"A linked technique has no destination in {track.name}.")
         if not rendered:
@@ -172,9 +175,27 @@ def render(score: Score) -> dict:
             source["excludedTracks"].append({"id": track.id, "name": track.name,
                                              "instrument": track.instrument, "reason": "empty"})
             continue
+        chords, templates, grouped = [], [], set()
+        template_ids = {}
+        for (_, beat_id), group in authored_groups.items():
+            if len(group) < 2:
+                continue
+            frets = [-1] * len(track.tuning)
+            for note in group:
+                frets[note["s"]] = note["f"]
+                grouped.add(id(note))
+            shape = tuple(frets)
+            if shape not in template_ids:
+                template_ids[shape] = len(templates)
+                templates.append({"name": "", "fingers": [-1] * len(frets), "frets": frets})
+            chords.append({"t": group[0]["t"], "id": template_ids[shape], "source_ids": [beat_id],
+                           "notes": [{key: value for key, value in note.items() if key != "t"} for note in group]})
+        notation, notation_warnings = render_notation(score, track, visits, at, rendered)
+        warnings.extend(notation_warnings)
         outputs.append({"id": track.id, "name": track.name, "instrument": track.instrument,
                         "role": track.role or track.instrument, "tuning": track.tuning,
-                        "capo": track.capo, "notes": rendered})
+                        "capo": track.capo, "notes": [note for note in rendered if id(note) not in grouped],
+                        "chords": chords, "templates": templates, **({"notation": notation} if notation else {})})
     if not outputs:
         raise ScoreImportError("No playable notes were found.")
     source["playableTrackCount"] = len(outputs)
@@ -222,10 +243,21 @@ def render(score: Score) -> dict:
                       "hasWithinBarTempoChanges": any(pos > 0 for bar in score.measures for pos, _ in bar.tempos),
                       "measures": performed_measures,
                       "tempoPoints": [{"quarter": float(p), "time": at(p), "bpm": by_position[p]} for p in points]}
+    time_signatures = []
+    previous_signature = None
+    for index, start in visits:
+        bar = score.measures[index]
+        signature = [bar.numerator, bar.denominator]
+        if signature != previous_signature:
+            time_signatures.append({"time": at(start), "ts": signature})
+            previous_signature = signature
     return {"title": score.title, "artist": score.artist, "album": score.album, "year": score.year,
             "duration": at(cursor), "tracks": outputs,
             "beats": [{"time": at(p), "measure": n} for p, n in beat_positions],
             "sections": [{"time": at(p), "name": name} for p, name in section_positions],
             "tempos": [{"time": at(p), "bpm": by_position[p]} for p in points],
+            "time_signatures": time_signatures,
             "scoreTimeline": score_timeline,
-            "warnings": warnings, "source": source}
+            "warnings": warnings, "source": source,
+            "sourceScore": score.source_document,
+            "featureInventory": score.feature_inventory}

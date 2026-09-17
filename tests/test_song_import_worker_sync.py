@@ -113,7 +113,7 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
     monkeypatch.setattr(worker, "align_audio", lambda *args, **kwargs: pytest.fail("must use supplied source timing"))
     synchronization = {"version": 1, "source": "songsterr-video-points", "songId": "12", "revisionId": "34",
                        "videoId": video_id, "status": "done", "feature": None, "points": [1, 3.1, 5.8]}
-    request = {"scorePath": str(score), "audio": {"kind": "url", "url": f"https://www.youtube.com/watch?v={video_id}"},
+    request = {"scorePath": str(score), "audio": {"kind": "url", "url": f"https://www.youtube.com/watch?v={video_id}"}, "artworkLookup": False,
                "metadata": {"songId": "12", "revisionId": "34", "approval": "approved", "title": "Test song", "artist": "Test artist"},
                "synchronization": synchronization, "workDir": str(tmp_path / "work"), "outputDir": str(tmp_path / "library"),
                "outputSettings": {"nameTemplate": "{artist} - {title}", "outputLayout": "artist"}}

@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { publishFeedpak } = require('./publication.cjs');
 const { normalizeOutputSettings } = require('./output-settings.cjs');
+const { inspectEvidence, reportBundle } = require('./songsterr-evidence.cjs');
 const { unavailableSynchronization, synchronizationSummary, audioVideo } = require('./providers/songsterr/synchronization.cjs');
 const WAITING = new Set(['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed']);
 const ACTIVE = new Set(['queued', 'resolving', 'downloading', 'converting', 'audio', 'aligning', 'validating', 'saving']);
@@ -61,8 +62,9 @@ function terminate(child) {
   } else child.kill('SIGTERM');
 }
 class SongsterrJobs {
-  constructor({ root, provider, runConverter, getConverterRecipe = async () => null, emit = () => {}, onCompleted = () => {}, tools = {} }) {
-    Object.assign(this, { root: path.resolve(root), provider, runConverter, getConverterRecipe, emit, onCompleted, tools });
+  constructor({ root, provider, runConverter, getConverterRecipe = async () => null, emit = () => {}, onCompleted = () => {}, tools = {}, artworkLookup = true }) {
+    Object.assign(this, { root: path.resolve(root), provider, runConverter, getConverterRecipe, emit, onCompleted, tools, artworkLookup });
+    this.auditRoot = path.join(path.dirname(this.root), 'evidence');
     fs.mkdirSync(this.root, { recursive: true }); this.jobs = []; this.disposed = false;
     const ledger = path.join(this.root, 'jobs.json');
     if (fs.existsSync(ledger)) {
@@ -87,12 +89,41 @@ class SongsterrJobs {
         const output = containedFile(job.outputDir, saved.outputPath, { allowRootLink: true });
         if (saved.id === job.id && saved.outputHash && output.path
             && await hashFile(output.path) === saved.outputHash) {
+          if (saved.recipe?.preservationContract) {
+            const checked = inspectEvidence(this.auditRoot, saved.evidence, saved.outputHash);
+            if (saved.verification?.version !== 1 || saved.verification.status !== 'passed'
+                || checked.verification.version !== 1 || checked.verification.status !== 'passed') throw new Error('Unverified recovery receipt.');
+          }
           Object.assign(job, saved, { outputPath: output.path, state: 'completed', committed: true, message: 'FeedPak ready.',
-            error: '', pathValidation: undefined, controller: new AbortController() });
+            error: '', pathValidation: undefined, outputVerification: saved.verification?.status === 'passed' ? 'passed' : 'not_checked', controller: new AbortController() });
         }
       } catch { /* Preserve interrupted job and files for an explicit retry. */ }
     }
-    this._save(); this.emit();
+    await this.refreshOutputs(); this._save(); this.emit();
+  }
+  async refreshOutputs() {
+    if (this.refreshing) return this.refreshing;
+    if (Date.now() - (this.lastOutputCheck || 0) < 30000) return;
+    this.refreshing = (async () => {
+      for (const job of this.jobs.filter((j) => j.state === 'completed')) {
+        if (!job.verification) { job.outputVerification = 'not_checked'; continue; }
+        try {
+          const output = containedFile(job.outputDir, job.outputPath, { allowRootLink: true });
+          if (!output.path) { job.outputVerification = 'unavailable'; continue; }
+          const hash = await hashFile(output.path);
+          if (hash !== job.verification.outputHash) { job.outputVerification = 'modified'; continue; }
+          const checked = inspectEvidence(this.auditRoot, job.evidence, hash);
+          job.outputVerification = checked.verification.version === 1 && checked.verification.status === 'passed' ? 'passed' : 'not_checked';
+        } catch { job.outputVerification = 'not_checked'; }
+      }
+      this.lastOutputCheck = Date.now();
+    })().finally(() => { this.refreshing = null; });
+    return this.refreshing;
+  }
+  auditBundle(id) {
+    const job = this.jobs.find((entry) => entry.id === id);
+    if (!job) throw new Error('The import no longer exists.');
+    return reportBundle(this.auditRoot, job.evidence);
   }
   async _cleanAttempts(job) {
     const directory = path.join(this.root, job.id);
@@ -120,6 +151,8 @@ class SongsterrJobs {
       outputPath: job.state === 'completed' ? job.outputPath : undefined,
       outputAvailable: job.state === 'completed' && Boolean(job.outputPath && fs.existsSync(job.outputPath)),
       warnings: job.warnings, alignment: job.alignment, coverage: job.coverage, synchronization: job.synchronizationSummary,
+      verification: job.verification ? { ...job.verification, status: job.state === 'completed' ? job.outputVerification || 'not_checked' : job.verification.status } : undefined,
+      artwork: job.artwork, hasReport: Boolean(job.evidence),
       canRetry: WAITING.has(job.state) || job.state === 'failed' || job.state === 'cancelled',
       canRetryAudio: job.state === 'needs_audio' && !job.audio && Boolean(job.scorePath) && typeof this.provider.findAudio === 'function',
       canUseAccount: job.canUseAccount === true,
@@ -180,6 +213,7 @@ class SongsterrJobs {
           const code = job.controller.signal.aborted ? 'cancelled' : error.code;
           job.canUseAccount = error.canUseAccount === true;
           if (error.pathValidation) job.pathValidation = error.pathValidation;
+          for (const key of ['verification', 'evidence', 'warnings']) if (error[key]) job[key] = error[key];
           if (code === 'alignment_failed' && error.alignment && typeof error.alignment === 'object' && !Array.isArray(error.alignment)) job.alignment = error.alignment;
           this._set(job, WAITING.has(code) || code === 'cancelled' ? code : 'failed', { error: code === 'cancelled' ? '' : clean(error.message), message: code === 'cancelled' ? 'Cancelled.' : '' });
         } finally {
@@ -207,7 +241,7 @@ class SongsterrJobs {
       if (job.timedOut) throw new Error('Conversion timed out. Retry with another audio file.');
       if (typeof result?.stdout !== 'string' || result.stdout.length > 4 * 1024 * 1024) throw new Error('The converter returned an invalid response.');
       let parsed; try { parsed = JSON.parse(result.stdout); } catch { throw new Error('The converter returned an unreadable response.'); }
-      if (result.code !== 0 || parsed.ok !== true) throw Object.assign(new Error(clean(parsed.error) || 'Conversion failed.'), { code: parsed.code, alignment: parsed.alignment });
+      if (result.code !== 0 || parsed.ok !== true) throw Object.assign(new Error(clean(parsed.error) || 'Conversion failed.'), { code: parsed.code, alignment: parsed.alignment, verification: parsed.verification, evidence: parsed.evidence, warnings: parsed.warnings });
       return parsed;
     } finally { clearTimeout(timer); }
   }
@@ -268,6 +302,7 @@ class SongsterrJobs {
     const attempt = fs.mkdtempSync(path.join(directory, 'attempt-'));
     const requestPath = path.join(attempt, 'request.json');
     atomicJson(requestPath, { scorePath: job.scorePath, metadata: job.metadata, audio: job.audio, synchronization, workDir: attempt,
+      auditDir: this.auditRoot, artworkCacheDir: path.join(path.dirname(this.root), 'artwork-cache'), artworkLookup: this.artworkLookup,
       outputDir: job.outputDir, outputSettings: job.outputSettings, tools: this.tools });
     let result;
     try { result = await this._run(job, ['--song-import-file', requestPath], attempt); }
@@ -277,12 +312,27 @@ class SongsterrJobs {
     const staging = staged.path;
     this._set(job, 'validating', { message: 'Checking the completed FeedPak…' });
     await this._run(job, ['--validate-feedpak', staging], attempt);
-    Object.assign(job, { outputRelativePath: result.relativePath, outputHash: await hashFile(staging, job.controller.signal),
+    const outputHash = await hashFile(staging, job.controller.signal);
+    if (result.recipe?.preservationContract !== 1 || result.verification?.version !== 1 || result.verification.status !== 'passed'
+        || result.verification.outputHash !== outputHash) throw new Error('The converter did not provide a current source verification. Update the converter and retry.');
+    const checked = inspectEvidence(this.auditRoot, result.evidence, outputHash);
+    if (checked.verification.version !== 1 || checked.verification.status !== 'passed') throw new Error('Source verification did not pass.');
+    if (result.scoreHash !== job.cachedScoreHash || checked.record.objects.source !== job.cachedScoreHash) throw new Error('Source verification describes a different tab.');
+    Object.assign(job, { outputRelativePath: result.relativePath, outputHash,
+      verification: result.verification, evidence: result.evidence, artwork: result.artwork, outputVerification: 'passed',
       scoreHash: result.scoreHash, audioHash: result.audioHash, recipe: result.recipe, alignment: result.alignment, coverage: result.coverage, warnings: result.warnings });
     const identity = (j) => JSON.stringify([j.sourceKey, j.scoreHash, j.audioHash, j.recipe, j.converterRecipe, j.outputDir, j.outputRelativePath, j.outputSettings]);
     const prior = this.jobs.find((j) => j !== job && j.state === 'completed' && identity(j) === identity(job) && j.outputPath);
-    if (prior && await hashFile(prior.outputPath, job.controller.signal).catch(() => '') === prior.outputHash) {
+    let canReuse = false;
+    if (prior && prior.verification?.version === 1 && prior.verification.status === 'passed') {
+      try {
+        canReuse = await hashFile(prior.outputPath, job.controller.signal) === prior.outputHash
+          && inspectEvidence(this.auditRoot, prior.evidence, prior.outputHash).verification.status === 'passed';
+      } catch { /* A missing historical report does not invalidate this fresh conversion. */ }
+    }
+    if (canReuse) {
       job.outputPath = prior.outputPath; job.outputHash = prior.outputHash; job.committed = true;
+      job.evidence = prior.evidence; job.verification = prior.verification;
     } else {
       this._set(job, 'saving', { message: 'Saving to your FeedForge output folder…' });
       await publishFeedpak({ job, staging, check, hashFile, writeReceipt: (j, target) => atomicJson(path.join(this.root, `${j.id}.receipt.json`), { ...record(j), outputPath: target }) });

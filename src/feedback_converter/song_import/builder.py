@@ -37,10 +37,11 @@ def _write_json(path: Path, value) -> None:
 
 def _retime_note(note: dict, alignment: dict, duration: float, *, chord_time: float | None = None) -> dict:
     result = deepcopy(note)
+    result.pop("source_ids", None)
     original = float(note.get("t", chord_time if chord_time is not None else 0))
     start = map_time(alignment, original)
     if chord_time is None or "t" in note:
-        result["t"] = start
+        result["t"] = round(start, 6)
     nonlinear = alignment.get("mapping") == "piecewise-linear"
     original_sustain = float(note.get("sus", 0))
     if nonlinear and (not math.isfinite(original_sustain) or original_sustain < 0):
@@ -78,6 +79,26 @@ def _retime_note(note: dict, alignment: dict, duration: float, *, chord_time: fl
     return result
 
 
+def _retime_notation(value, alignment: dict):
+    """Retain written values; only absolute score-second coordinates are mapped."""
+    if isinstance(value, list):
+        return [_retime_notation(item, alignment) for item in value]
+    if not isinstance(value, dict):
+        return value
+    result = {key: _retime_notation(item, alignment) for key, item in value.items()
+              if key not in {"source_ids", "end_time"}}
+    if "t" in value:
+        result["t"] = round(map_time(alignment, float(value["t"]), allow_negative=True), 6)
+        if "tempo" in value:
+            scale = source_time_scale(alignment, float(value["t"])) if alignment.get("mapping") == "piecewise-linear" else float(alignment["scale"])
+            result["written_tempo"] = value["tempo"]
+            result["tempo"] = float(value["tempo"]) / scale
+    if "end_time" in value and "t" in value:
+        result["duration_seconds"] = round(map_time(alignment, float(value["end_time"]), allow_negative=True) -
+                                           map_time(alignment, float(value["t"]), allow_negative=True), 6)
+    return result
+
+
 def _timeline_items(items: list, alignment: dict, duration: float) -> list:
     result = []
     for item in items:
@@ -92,7 +113,8 @@ def _timeline_items(items: list, alignment: dict, duration: float) -> list:
 
 
 def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Path,
-                  *, output_dir: Path, output_settings: dict | None = None, recipe: dict | None = None) -> dict:
+                  *, output_dir: Path, output_settings: dict | None = None, recipe: dict | None = None,
+                  artwork: dict | None = None) -> dict:
     """Only write inside directory. Publishing/collision handling belongs to the app."""
     if alignment.get("status") != "validated":
         raise ImportFailure("alignment_failed", "The recording has not passed synchronization checks.")
@@ -105,8 +127,7 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         raise ImportFailure("unsupported_score", "The song title and original artist are required.")
     timeline = {"version": 1}
     for key in ("beats", "sections", "tempos", "time_signatures"):
-        if performance.get(key):
-            timeline[key] = _timeline_items(performance[key], alignment, duration)
+        timeline[key] = _timeline_items(performance.get(key, []), alignment, duration)
     if alignment.get("mapping") == "piecewise-linear" and alignment.get("tempos"):
         timeline["tempos"] = [deepcopy(item) for item in alignment["tempos"] if 0 <= item["time"] <= duration]
     arrangements = []
@@ -128,12 +149,15 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
                  "anchors": [], "handshapes": [], "beats": timeline.get("beats", []),
                  "sections": timeline.get("sections", [])}
         for chord in track.get("chords", []):
-            entry = {**deepcopy(chord), "t": map_time(alignment, chord["t"])}
+            entry = {**deepcopy(chord), "t": round(map_time(alignment, chord["t"]), 6)}
+            entry.pop("source_ids", None)
             if "notes" in chord:
                 entry["notes"] = [_retime_note(note, alignment, duration, chord_time=float(chord["t"])) for note in chord["notes"]]
             chart["chords"].append(entry)
         if timeline.get("tempos"):
             chart["tempos"] = timeline["tempos"]
+        if timeline.get("time_signatures"):
+            chart["time_signatures"] = timeline["time_signatures"]
         relative_file = f"arrangements/{ident}.json"
         _write_json(package / relative_file, chart)
         kind = "bass" if track["instrument"] == "bass" else str(track.get("role") or "guitar")
@@ -141,6 +165,10 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
                              "tuning": tuning, "capo": chart["capo"],
                              "event_count": len(chart["notes"]) + len(chart["chords"]),
                              "note_count": len(chart["notes"]) + sum(len(chord.get("notes", [])) for chord in chart["chords"])})
+        if track.get("notation"):
+            notation_file = f"notation/{ident}.json"
+            _write_json(package / notation_file, _retime_notation(track["notation"], alignment))
+            arrangements[-1]["notation"] = notation_file
     if not arrangements:
         raise ImportFailure("unsupported_score", "The tab has no supported playable guitar or bass arrangements.")
     source = performance.get("source") or {}
@@ -166,15 +194,12 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             pass
     if recipe:
         manifest["song_import"] = {**recipe, "coverage": coverage}
-    # A generated title card avoids inventing or downloading unrelated artwork.
-    from PIL import Image, ImageDraw
-    cover = Image.new("RGB", (512, 512), (17, 28, 44))
-    draw = ImageDraw.Draw(cover)
-    draw.text((32, 40), title[:64], fill=(234, 241, 248), font_size=25)
-    draw.text((32, 110), artist[:64], fill=(111, 184, 220), font_size=20)
-    draw.text((32, 452), "FeedForge", fill=(162, 177, 195), font_size=18)
-    cover.save(package / "cover.png")
-    manifest["cover"] = "cover.png"
+    if artwork and artwork.get("status") == "matched" and artwork.get("path"):
+        shutil.copyfile(artwork["path"], package / "cover.png")
+        manifest["cover"] = "cover.png"
+        for key in ("album", "year"):
+            if key not in manifest and artwork.get(key):
+                manifest[key] = artwork[key]
     (package / "manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False, allow_unicode=True), encoding="utf-8")
     validation = require_valid_feedpak(package)
     archive = directory / "result.feedpak"

@@ -66,9 +66,12 @@ def _score_samples(performance: dict):
     for track in performance.get("tracks", []):
         tuning = track.get("tuning", [])
         capo = int(track.get("capo", 0))
-        for note in track.get("notes", []):
+        notes = list(track.get("notes", []))
+        for chord in track.get("chords", []):
+            notes.extend({**note, "t": note.get("t", chord["t"])} for note in chord.get("notes", []))
+        for note in notes:
             string, fret = int(note.get("s", -1)), int(note.get("f", -1))
-            if not 0 <= string < len(tuning) or fret < 0 or note.get("mute"):
+            if not 0 <= string < len(tuning) or fret < 0 or note.get("mute") or note.get("mt"):
                 continue
             t, duration = float(note["t"]), float(note.get("sus", 0.2))
             if math.isfinite(t) and math.isfinite(duration) and t >= 0:

@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('songsterrBrowser', {
   chooseAudio: (request) => ipcRenderer.invoke('songsterr:chooseAudio', request),
   useAudioUrl: (request) => ipcRenderer.invoke('songsterr:useAudioUrl', request),
   showOutput: (request) => ipcRenderer.invoke('songsterr:showOutput', request),
+  exportReport: (request) => ipcRenderer.invoke('songsterr:exportReport', request),
   onState: (callback) => {
     const listener = (_event, value) => callback(value);
     ipcRenderer.on('songsterr:state', listener);

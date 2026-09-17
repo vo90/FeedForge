@@ -5,13 +5,15 @@ Positions, notes, string order and techniques are read from the score itself.
 Unsupported timing/navigation is reported rather than silently flattened.
 """
 
+import base64
 from fractions import Fraction
 from pathlib import Path
 import re
 import xml.etree.ElementTree as ET
 from zipfile import BadZipFile, ZipFile
 
-from .model import Measure, Note, Score, ScoreImportError, Track, integer, rational
+from .inventory import FeatureInventory
+from .model import Measure, Note, Score, ScoreImportError, Track, WrittenBeat, WrittenVoice, integer, rational
 
 MAX_XML = 64 * 1024 * 1024
 VALUES = {"Long": 16, "DoubleWhole": 8, "Whole": 4, "Half": 2, "Quarter": 1,
@@ -83,6 +85,16 @@ def _duration(beat, rhythms):
     return duration
 
 
+def _written_rhythm(beat, rhythms):
+    rhythm = resolve(rhythms, beat.find("Rhythm").get("ref"), "rhythm")
+    value = Fraction(4) / Fraction(VALUES[text(rhythm, "NoteValue")])
+    dot = rhythm.find("AugmentationDot")
+    dots = integer(dot.get("count", "1"), "dot count") if dot is not None else 0
+    tuplet = rhythm.find("PrimaryTuplet")
+    ratio = (integer(tuplet.get("num"), "tuplet count"), integer(tuplet.get("den"), "tuplet count")) if tuplet is not None else None
+    return int(value) if value.denominator == 1 else None, dots, ratio
+
+
 def _note(node, position, duration, beat):
     p = props(node)
     known = {"ConcertPitch", "TransposedPitch", "Fret", "String", "Midi", "Octave",
@@ -96,6 +108,8 @@ def _note(node, position, duration, beat):
         raise ScoreImportError(f"Unsupported GPIF note property: {', '.join(sorted(unfamiliar))}.")
     if any(node.find(tag) is not None for tag in ("Trill", "Ornament")):
         raise ScoreImportError("Trills/ornaments require additional conversion support.")
+    if "HarmonicFret" in p and rational(property_value(p, "HarmonicFret", "0"), "harmonic fret"):
+        raise ScoreImportError("GPIF harmonic-fret interpretation requires additional conversion support.")
     string = integer(property_value(p, "String", None), "string index")
     fret = integer(property_value(p, "Fret", None), "fret")
     effects = {}
@@ -104,9 +118,14 @@ def _note(node, position, duration, beat):
         if enabled(p, key):
             effects[target] = True
     if enabled(p, "HopoOrigin"):
-        effects["ln"] = True
+        effects["__hopo_origin"] = True
+    vibrato = text(node, "Vibrato")
+    if vibrato not in {"", "Slight", "Wide"}:
+        raise ScoreImportError(f"Unsupported GPIF vibrato: {vibrato}.")
     if node.find("Vibrato") is not None or enabled(p, "Vibrato"):
         effects["vb"] = True
+    if vibrato == "Wide":
+        effects["__wide_vibrato"] = True
     if node.find("Accent") is not None:
         effects["ac"] = True
     if node.find("AntiAccent") is not None:
@@ -171,6 +190,7 @@ def parse(path: Path) -> Score:
     except ET.ParseError as exc:
         raise ScoreImportError("Invalid GPIF XML.") from exc
     version = text(root, "GPVersion")
+    inventory = FeatureInventory()
     if root.tag != "GPIF" or not version.startswith(("7.", "8.")):
         raise ScoreImportError("This importer currently supports GP7/GP8 scores only.")
     masterbars = root.findall("MasterBars/MasterBar")
@@ -201,9 +221,15 @@ def parse(path: Path) -> Score:
                                 count, endings, section))
     if not measures:
         raise ScoreImportError("GPIF contains no measures.")
-    for auto in root.findall("MasterTrack/Automations/Automation"):
-        if text(auto, "Type") != "Tempo":
+    for auto_index, auto in enumerate(root.findall("MasterTrack/Automations/Automation")):
+        automation_type = text(auto, "Type")
+        if automation_type in {"Volume", "Balance", "Pan"}:
+            inventory.record("GPIF automation", automation_type, "source", f"MasterTrack/Automations/{auto_index}")
             continue
+        if automation_type != "Tempo":
+            raise ScoreImportError(f"Unsupported GPIF automation: {automation_type or 'unspecified'}.")
+        inventory.inspect({child.tag: True for child in auto}, "GPIF tempo", f"MasterTrack/Automations/{auto_index}",
+                          playable={"Type", "Linear", "Bar", "Position", "Value"}, retained={"Visible"}, strict=True)
         if text(auto, "Linear").lower() == "true":
             raise ScoreImportError("Linear tempo ramps require additional conversion support.")
         bi = integer(text(auto, "Bar", "0"), "tempo measure")
@@ -256,35 +282,82 @@ def parse(path: Path) -> Score:
             raise ScoreImportError("Partial capo is not supported yet.")
         capo = integer(property_value(properties, "CapoFret", "0"), "capo")
         arrangement_bars = []
+        written_bars = []
         for bi, mb in enumerate(masterbars):
             refs = text(mb, "Bars").split()
             if column >= len(refs):
                 raise ScoreImportError(f"Truncated bar list in measure {bi + 1}.")
             bar = resolve(bars, refs[column], "bar")
             bar_notes = []
-            for vid in text(bar, "Voices").split():
+            written_voices = []
+            for vi, vid in enumerate(text(bar, "Voices").split()):
                 if vid == "-1":
                     continue
                 voice = resolve(voices, vid, "voice")
                 position = Fraction(0)
+                written_voice = WrittenVoice(f"gpif:{tid}:{bi}:{vid}", source_index=vi)
                 for bid in text(voice, "Beats").split():
                     beat = resolve(beats, bid, "beat")
+                    beat_id = f"gpif:{tid}:{bi}:{vid}:{bid}"
+                    inventory.inspect({child.tag: True for child in beat}, "GPIF beat", beat_id,
+                                      playable={"Rhythm", "Notes", "Tremolo", "Slapped", "Popped", "GraceNotes", "Whammy", "Arpeggio", "Brush"},
+                                      notation={"Rhythm", "Notes", "Dynamic", "FreeText"}, retained={"Properties", "XProperties"}, strict=True)
+                    for property_name in props(beat):
+                        if property_name not in {"StemDirection", "BeamingMode"}:
+                            raise ScoreImportError(f"Unsupported GPIF beat property at {beat_id}: {property_name}.")
+                        inventory.record("GPIF beat property", property_name, "layout", beat_id)
                     if any(beat.find(tag) is not None for tag in ("GraceNotes", "Whammy", "Arpeggio", "Brush")):
                         raise ScoreImportError("Grace notes, whammy, arpeggio or brush timing needs additional support.")
                     duration = _duration(beat, rhythms)
+                    rhythm = resolve(rhythms, beat.find("Rhythm").get("ref"), "rhythm")
+                    inventory.inspect({child.tag: True for child in rhythm}, "GPIF rhythm", beat_id,
+                                      playable={"NoteValue", "AugmentationDot", "PrimaryTuplet", "SecondaryTuplet"},
+                                      notation={"NoteValue", "AugmentationDot", "PrimaryTuplet"}, strict=True)
+                    denominator, dots, tuplet = _written_rhythm(beat, rhythms)
+                    annotations = {}
+                    if text(beat, "Dynamic"):
+                        annotations["dyn"] = text(beat, "Dynamic").lower()
+                        if annotations["dyn"] not in {"ppp", "pp", "p", "mp", "mf", "f", "ff", "fff"}:
+                            raise ScoreImportError(f"Unsupported GPIF dynamic marking at {beat_id}.")
+                    if text(beat, "FreeText"):
+                        annotations["txt"] = text(beat, "FreeText")
+                    written_beat = WrittenBeat(beat_id, position, duration, denominator=denominator,
+                                               dots=dots, tuplet=tuplet, annotations=annotations,
+                                               written_duration=duration, written_position=position)
                     for nid in text(beat, "Notes").split():
-                        bar_notes.append(_note(resolve(notes, nid, "note"), position, duration, beat))
+                        node = resolve(notes, nid, "note")
+                        source_id = f"{beat_id}:{nid}"
+                        inventory.inspect({child.tag: True for child in node}, "GPIF note", source_id,
+                                          playable={"Properties", "Tie", "Vibrato", "Accent", "AntiAccent", "Trill", "Ornament"},
+                                          notation={"Tie", "Vibrato", "Accent", "AntiAccent"},
+                                          retained={"XProperties"}, strict=True)
+                        for property_name in props(node):
+                            handling = "playable" if property_name not in {"ConcertPitch", "TransposedPitch", "HarmonicFret", "Midi", "Octave", "Tone", "Variation"} else "source"
+                            destinations = ["source", handling]
+                            if property_name in {"String", "Fret", "HopoOrigin", "HopoDestination", "Muted", "Tapped", "LeftHandTapped", "RightHandTapped", "Vibrato"}:
+                                destinations.append("notation")
+                            inventory.record("GPIF note property", property_name, handling, source_id, destinations)
+                        parsed = _note(node, position, duration, beat)
+                        parsed.source_id, parsed.beat_id, parsed.voice_id = source_id, beat_id, str(vi)
+                        bar_notes.append(parsed)
+                        written_beat.notes.append(parsed)
+                    written_beat.rest = not written_beat.notes
+                    written_voice.beats.append(written_beat)
                     position += duration
                 if position > measures[bi].length:
                     raise ScoreImportError(f"Voice exceeds measure {bi + 1} in {name}.")
+                written_voices.append(written_voice)
             arrangement_bars.append(bar_notes)
+            written_bars.append(written_voices)
         role = "bass" if instrument == "bass" else (
             "rhythm" if "rhythm" in name.lower() else "lead" if any(s in name.lower() for s in ("lead", "solo")) else "guitar")
-        tracks.append(Track(tid, name, instrument, tuning, arrangement_bars, capo, role))
+        tracks.append(Track(tid, name, instrument, tuning, arrangement_bars, capo, role, written_bars))
         column += width
     for mb in masterbars:
         if len(text(mb, "Bars").split()) != column:
             raise ScoreImportError("GPIF master-bar columns do not match the track/staff list.")
+    warnings.extend(inventory.warnings())
     return Score(text(root, "Score/Title"), text(root, "Score/Artist"), measures, tracks,
                  text(root, "Score/Album"), "", {"format": "gpif", "version": version,
-                    "trackCount": len(track_ids), "excludedTracks": excluded}, warnings)
+                    "trackCount": len(track_ids), "excludedTracks": excluded}, warnings,
+                 {"version": 1, "format": "gpif", "encoding": "base64", "data": base64.b64encode(data).decode("ascii")}, inventory.entries())

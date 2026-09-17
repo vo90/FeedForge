@@ -16,6 +16,10 @@ export function SongsterrJob({ job, api, action, busy }) {
     {active ? <progress className="sb-progress" aria-label={`${job.title}: ${LABELS[job.state]}`} /> : null}
     <p>{job.error || job.message}</p>
     {job.revisionId ? <small>Approved revision {job.revisionId}</small> : null}
+    {job.state === 'completed' ? <p>{job.verification?.status === 'passed' ? 'Conversion checked against the source tab.' : job.verification?.status === 'modified' ? 'This file has changed since conversion. The report describes the original import.' : 'Source verification is unavailable for this file.'}</p> : null}
+    {job.verification?.timing ? <small>{job.verification.timing === 'source_map' ? 'Timing: Songsterr recording map.' : 'Timing: automatic estimate.'}</small> : null}
+    {job.verification?.compatibility?.status === 'requires_consumer_support' ? <p>Ghost-note or directional-slide symbols need a FeedBack version that supports them. Their original meaning is preserved in this file.</p> : null}
+    {job.artwork ? <p>{job.artwork.status === 'matched' ? `Album cover: ${job.artwork.album || 'matched album'}.` : 'Album cover unavailable or uncertain. You can add an image in Edit FeedPaks.'}</p> : null}
     {job.state === 'completed' ? <div className="sb-job-controls">{job.outputAvailable ? <button className="sb-text-button" disabled={busy} onClick={() => action(() => api.showOutput({ id: job.id }))}><FolderOpen size={14} /> Show file</button> : <span>The saved file has been moved or removed.</span>}</div> : null}
     {needsAudio ? <div className="st-audio-input">
       {job.state === 'needs_audio' && job.canRetryAudio ? <button className="sb-button" disabled={busy} onClick={() => action(() => api.retry({ id: job.id }))}>Retry audio detection</button> : null}
@@ -34,10 +38,11 @@ export function SongsterrJob({ job, api, action, busy }) {
       <small>The account route creates an unpublished copy so Songsterr can export the tab.</small>
     </div> : null}
     <div className="sb-job-controls">
+      {job.hasReport && api.exportReport ? <button className="sb-text-button" disabled={busy} onClick={() => action(() => api.exportReport({ id: job.id }))}>Save conversion report</button> : null}
       {job.canRetry && !needsAudio && job.state !== 'needs_login' ? <button className="sb-text-button" disabled={busy} onClick={() => action(() => api.retry({ id: job.id }))}>Retry import</button> : null}
       {job.canCancel ? <button className="sb-text-button" disabled={busy} onClick={() => action(() => api.cancel({ id: job.id }))}>Cancel</button> : null}
     </div>
-    {job.warnings?.length ? <details><summary>Import notes</summary><ul>{job.warnings.map((warning, index) => <li key={index}>{typeof warning === 'string' ? warning : warning.message}</li>)}</ul></details> : null}
+    {job.warnings?.length ? <details><summary>Import notes</summary><ul>{job.warnings.map((warning, index) => <li key={index}>{typeof warning === 'string' ? warning : `${warning.location ? warning.location + ': ' : ''}${warning.message}`}</li>)}</ul></details> : null}
   </li>;
 }
 
@@ -57,7 +62,15 @@ export default function SongsterrBrowser({ api: providedApi, outputApi: provided
     if (!api) return () => { mounted.current = false; };
     api.getState().then((state) => { if (mounted.current) { if (state?.ok === false) setError(errorText(state)); else setSnapshot(state); } }).catch((err) => { if (mounted.current) setError(errorText(err)); });
     const unsubscribe = api.onState?.((state) => { if (mounted.current) setSnapshot(state); });
-    return () => { mounted.current = false; searchGeneration.current++; unsubscribe?.(); };
+    const refresh = () => {
+      if (globalThis.document?.visibilityState === 'hidden') return;
+      api.getState().then((state) => { if (mounted.current && state?.ok !== false) setSnapshot(state); }).catch(() => {});
+    };
+    globalThis.window?.addEventListener('focus', refresh);
+    globalThis.document?.addEventListener('visibilitychange', refresh);
+    const timer = setInterval(refresh, 30000);
+    return () => { mounted.current = false; searchGeneration.current++; unsubscribe?.(); clearInterval(timer);
+      globalThis.window?.removeEventListener('focus', refresh); globalThis.document?.removeEventListener('visibilitychange', refresh); };
   }, [api]);
   useEffect(() => {
     if (!outputSettings || !outputApi?.setOutputSettings) return;

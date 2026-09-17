@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { SongsterrJobs } = require('../electron/song-browser/songsterr-jobs.cjs');
 const { selectSynchronization, unavailableSynchronization, audioVideo } = require('../electron/song-browser/providers/songsterr/synchronization.cjs');
 
@@ -76,8 +77,19 @@ async function fixture(t, options = {}) {
     requests.push(request);
     const stagingPath = path.join(context.directory, 'result.feedpak');
     fs.writeFileSync(stagingPath, options.outputBytes ? options.outputBytes(requests.length) : 'Synthetic FeedPak');
+    const hash = (data) => crypto.createHash('sha256').update(data).digest('hex');
+    const outputHash = hash(fs.readFileSync(stagingPath));
+    const sourceHash = hash(fs.readFileSync(request.scorePath));
+    const report = JSON.stringify({ version: 1, status: 'passed', sourceSha256: sourceHash }), verificationHash = hash(report);
+    const record = JSON.stringify({ version: 1, outputHash, objects: { verification: verificationHash, source: sourceHash } });
+    const id = hash(record);
+    fs.mkdirSync(path.join(request.auditDir, 'objects'), { recursive: true });
+    fs.mkdirSync(path.join(request.auditDir, 'records'), { recursive: true });
+    fs.writeFileSync(path.join(request.auditDir, 'objects', verificationHash), report);
+    fs.writeFileSync(path.join(request.auditDir, 'records', `${id}.json`), record);
     return RESPONSE({ stagingPath, relativePath: options.relativePath || 'Synthetic Artist - Synthetic Song.feedpak',
-      scoreHash: 'score-digest', audioHash: 'audio-digest', recipe: { version: 1, scoreHash: 'score-digest', audioHash: 'audio-digest' },
+      scoreHash: sourceHash, audioHash: 'audio-digest', recipe: { version: 3, preservationContract: 1, scoreHash: sourceHash, audioHash: 'audio-digest' },
+      verification: { version: 1, status: 'passed', outputHash }, evidence: { version: 1, id, sourceHash, verificationHash, outputHash },
       warnings: [], alignment: { status: 'validated' }, coverage: { arrangements: 1 } });
   }
   const runConverter = async (args, context) => {
@@ -120,6 +132,68 @@ test('Songsterr pauses for missing audio and reuses the approved score on retry'
   assert.equal(f.requests[0].metadata.approval, 'approved');
   assert.deepEqual(f.requests[0].outputSettings, SETTINGS);
   assert.ok(fs.existsSync(saved.outputPath));
+});
+
+test('unverified converter responses cannot publish even after structural validation', async (t) => {
+  const f = await fixture(t, { runConverter: async (args, context, normal) => {
+    const response = await normal(args, context);
+    if (args[0] === '--song-import-file') {
+      const result = JSON.parse(response.stdout); delete result.verification;
+      return RESPONSE(result);
+    }
+    return response;
+  } });
+  f.enqueue(); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'failed');
+  assert.match(f.jobs.snapshot()[0].error, /source verification/);
+  assert.deepEqual(fs.readdirSync(f.outputDir), []);
+});
+
+test('verification is bound to the exact staged file before publication', async (t) => {
+  const f = await fixture(t, { runConverter: async (args, context, normal) => {
+    const response = await normal(args, context);
+    if (args[0] === '--song-import-file') fs.appendFileSync(JSON.parse(response.stdout).stagingPath, 'modified');
+    return response;
+  } });
+  f.enqueue(); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'failed');
+  assert.deepEqual(fs.readdirSync(f.outputDir), []);
+});
+
+test('later edits retain historical report without claiming current verification', async (t) => {
+  const f = await fixture(t);
+  f.enqueue(); await settle(f.jobs);
+  const initial = f.jobs.snapshot()[0];
+  assert.equal(initial.verification.status, 'passed');
+  const reference = f.jobs.jobs[0].evidence;
+  fs.appendFileSync(initial.outputPath, 'user edit');
+  f.jobs.lastOutputCheck = 0;
+  await f.jobs.refreshOutputs();
+  assert.equal(f.jobs.snapshot()[0].verification.status, 'modified');
+  assert.deepEqual(f.jobs.jobs[0].evidence, reference);
+  assert.equal(f.jobs.snapshot()[0].hasReport, true);
+});
+
+test('an unavailable prior report declines reuse without blocking a freshly checked import', async (t) => {
+  const f = await fixture(t, { outputBytes: (n) => `Synthetic FeedPak ${n}` });
+  f.enqueue(); await settle(f.jobs);
+  const first = f.jobs.jobs[0];
+  fs.writeFileSync(path.join(f.jobs.auditRoot, 'records', first.evidence.id + '.json'), 'corrupted historical record');
+  f.enqueue(); await settle(f.jobs);
+  const current = f.jobs.snapshot()[1];
+  assert.equal(current.state, 'completed', current.error);
+  assert.equal(current.verification.status, 'passed');
+  assert.notEqual(current.outputPath, first.outputPath);
+  assert.equal(fs.readFileSync(first.outputPath, 'utf8'), 'Synthetic FeedPak 1');
+});
+
+test('source verification evidence lives outside cleaned attempts', async (t) => {
+  const f = await fixture(t);
+  f.enqueue(); await settle(f.jobs);
+  const request = f.requests[0];
+  assert.equal(path.dirname(request.auditDir), path.dirname(f.root));
+  assert.equal(fs.existsSync(request.workDir), false);
+  assert.equal(fs.existsSync(path.join(request.auditDir, 'records', f.jobs.jobs[0].evidence.id + '.json')), true);
 });
 
 test('explicit audio detection reuses the cached approved revision without acquiring another tab', async (t) => {

@@ -46,7 +46,7 @@ function registerSongsterr({ app, BrowserWindow, session, ipcMain, dialog, shell
       catch (error) { return { ok: false, code: error.code, error: String(error.message || 'The operation failed.').replace(/https?:\/\/[^\s]+/g, '[link]').slice(0, 1200) }; }
     });
   }
-  handler('getState', () => state());
+  handler('getState', async () => { await jobs.refreshOutputs(); return state(); });
   handler('search', async (request) => {
     const query = typeof request.query === 'string' ? request.query.trim() : '';
     if (query.length < 2 || query.length > 160) throw new Error('Enter an artist or song title (2–160 characters).');
@@ -92,6 +92,14 @@ function registerSongsterr({ app, BrowserWindow, session, ipcMain, dialog, shell
     const job = jobs.snapshot().find((j) => j.id === id && j.state === 'completed' && j.outputAvailable);
     if (!job) { emit(); throw new Error('The saved FeedPak is no longer available.'); }
     shell.showItemInFolder(job.outputPath); return { ok: true };
+  });
+  handler('exportReport', async ({ id }) => {
+    const bundle = jobs.auditBundle(String(id));
+    const selected = await dialog.showSaveDialog(getMainWindow(), { title: 'Save conversion report',
+      defaultPath: 'FeedForge conversion report.zip', filters: [{ name: 'Conversion report', extensions: ['zip'] }] });
+    if (selected.canceled || !selected.filePath) return { cancelled: true };
+    fs.copyFileSync(bundle, selected.filePath);
+    return { ok: true };
   });
   return { active: () => Boolean(jobs), close: async () => { searching?.abort(); await jobs?.dispose(); await provider?.dispose(); } };
 }

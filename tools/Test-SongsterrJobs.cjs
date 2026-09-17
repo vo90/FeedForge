@@ -134,7 +134,7 @@ async function main() {
       },
     };
     const configuration = {
-      root: queueRoot, provider,
+      root: queueRoot, provider, artworkLookup: false,
       getConverterRecipe: async () => receipt.converterHash,
       emit(job) { if (job) scenario.transitions.push({ state: job.state, message: job.message, error: job.error }); },
       onCompleted() { scenario.completionCallbacks++; },

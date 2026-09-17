@@ -8,6 +8,8 @@ import tempfile
 from .alignment import VERSION, align_audio
 from .audio import ImportFailure, prepare_audio, sha256_file
 from .builder import build_feedpak
+from .evidence import CONTRACT_VERSION, save_evidence
+from .model import ScoreImportError
 from .synchronization import align_from_songsterr
 
 
@@ -36,13 +38,15 @@ def _choose_alignment(performance: dict, audio: dict, request: dict, progress=No
 
 
 def _alignment_summary(alignment: dict) -> dict:
-    # The full map is used only while building the package. Keeping thousands of
-    # anchors in each history row would eventually exceed the bounded ledger.
+    # Full timing survives in the evidence store, not the bounded history ledger.
     return {key: value for key, value in alignment.items() if key not in {"anchors", "tempos"}}
 
 
 def run_import(request: dict, progress=None) -> dict:
     job = None
+    performance = alignment = None
+    artwork = {"status": "unavailable", "message": "Album artwork was not looked up."}
+    audit_root = None
     try:
         if not isinstance(request, dict):
             raise ImportFailure("unsupported_score", "The import request must be an object.")
@@ -53,6 +57,7 @@ def run_import(request: dict, progress=None) -> dict:
             raise ImportFailure("unsupported_score", "The import workspace and FeedForge output folder are required.")
         work = Path(str(request["workDir"])).resolve()
         work.mkdir(parents=True, exist_ok=True)
+        audit_root = Path(request.get("auditDir") or work.parent / "song-import-evidence").resolve()
         job = Path(tempfile.mkdtemp(prefix="song-import-", dir=work))
         if progress:
             progress({"stage": "converting", "message": "Reading the exported tab and expanding its performed timeline."})
@@ -72,27 +77,73 @@ def run_import(request: dict, progress=None) -> dict:
         alignment_recipe = {key: alignment[key] for key in
                             ("method", "offset", "scale", "mapping", "provenance") if key in alignment}
         alignment_recipe.setdefault("method", VERSION)
-        recipe = {"version": 2, "source": "songsterr", "songId": metadata.get("songId"),
+        recipe = {"version": 3, "preservationContract": CONTRACT_VERSION, "source": "songsterr", "songId": metadata.get("songId"),
                   "revisionId": metadata.get("revisionId"), "scoreHash": score_hash, "audioHash": audio["hash"],
                   "sourceMetadata": dict(performance.get("source") or {}),
                   "audioSource": {key: audio["source"][key] for key in ("kind", "videoId", "title", "sha256") if key in audio["source"]},
                   "alignment": alignment_recipe}
+        features = set()
+        for track in performance.get("tracks", []):
+            notes = list(track.get("notes", [])) + [note for chord in track.get("chords", []) for note in chord.get("notes", [])]
+            features.update(key for key in ("ghost", "slide_out") if any(note.get(key) for note in notes))
+        recipe["compatibility"] = {"version": 1, "extensions": sorted(features),
+                                   "status": "requires_consumer_support" if features else "standard_fields"}
+        if request.get("artworkLookup", True):
+            if progress:
+                progress({"stage": "converting", "message": "Finding the album cover."})
+            from .artwork import resolve_album_art
+            artwork = resolve_album_art({**metadata, "title": performance["title"], "artist": performance["artist"],
+                                         "album": performance.get("album"), "duration": audio["duration"],
+                                         "audioKind": audio["source"].get("kind")}, job / "artwork",
+                                        cache_dir=Path(request.get("artworkCacheDir") or audit_root.parent / "artwork-cache"))
+        recipe["artwork"] = {key: artwork[key] for key in ("status", "album", "year", "provenance", "reason") if key in artwork}
         if progress:
             progress({"stage": "validating", "message": "Building and validating the FeedPak."})
         result = build_feedpak(performance, audio, alignment, job, output_dir=Path(request["outputDir"]),
-                               output_settings=request.get("outputSettings"), recipe=recipe)
+                               output_settings=request.get("outputSettings"), recipe=recipe, artwork=artwork)
+        if progress:
+            progress({"stage": "validating", "message": "Comparing the completed FeedPak with the original tab."})
+        from .verification import verify_import
+        verification = verify_import(score, Path(result["stagingPath"]), alignment, metadata=metadata)
+        verification["consumerCompatibility"] = recipe["compatibility"]
+        evidence = save_evidence(audit_root, score=score, metadata=metadata, performance=performance,
+                                 synchronization=request.get("synchronization"), alignment=alignment,
+                                 verification=verification, archive=Path(result["stagingPath"]), artwork=artwork)
+        summary = {key: verification[key] for key in ("version", "status", "counts") if key in verification}
+        summary["outputHash"] = evidence["outputHash"]
+        summary["timing"] = "source_map" if alignment.get("method") == "songsterr-video-points-v1" else "estimated"
+        summary["compatibility"] = recipe["compatibility"]
+        if verification.get("status") != "passed":
+            unsupported = verification.get("status") == "unsupported"
+            return {"ok": False, "code": "needs_attention" if unsupported else "verification_failed",
+                    "error": "This tab contains information that cannot yet be checked faithfully." if unsupported else
+                             "The converted FeedPak differs from the source tab. It has not been saved to your song folder.",
+                    "verification": summary, "evidence": evidence,
+                    "warnings": (verification.get("errors", []) + verification.get("unsupported", []))[:10]}
         return {"ok": True, **result, "scoreHash": score_hash, "audioHash": audio["hash"],
                 "recipe": recipe, "alignment": _alignment_summary(alignment),
+                "verification": summary, "evidence": evidence,
+                "artwork": {key: artwork[key] for key in ("status", "album", "year", "message", "reason") if key in artwork},
                 "warnings": list(performance.get("warnings", [])) + result["warnings"] +
                             (["Timing was imported from Songsterr for this tab revision and recording."]
                              if alignment.get("method") == "songsterr-video-points-v1" else
                              ["Songsterr audio matching is experimental; this recording passed the current automatic checks."])}
     except ImportFailure as exc:
-        return {"ok": False, "code": exc.code, "error": str(exc), **({"alignment": exc.diagnostics} if exc.diagnostics else {})}
+        failed = {"ok": False, "code": exc.code, "error": str(exc), **({"alignment": exc.diagnostics} if exc.diagnostics else {})}
     except ImportError as exc:
-        return {"ok": False, "code": "dependency_missing", "error": f"Song import needs an unavailable component: {exc.name or 'unknown'}."}
+        failed = {"ok": False, "code": "dependency_missing", "error": f"Song import needs an unavailable component: {exc.name or 'unknown'}."}
+    except ScoreImportError as exc:
+        failed = {"ok": False, "code": "needs_attention", "error": str(exc)}
     except (OSError, ValueError, TypeError, KeyError) as exc:
-        return {"ok": False, "code": "unsupported_score", "error": str(exc)}
+        failed = {"ok": False, "code": "unsupported_score", "error": str(exc)}
+    if audit_root and score.is_file():
+        try:
+            failed["evidence"] = save_evidence(audit_root, score=score, metadata=request.get("metadata") or {},
+                                               performance=performance, synchronization=request.get("synchronization"), alignment=alignment,
+                                               verification={"version": CONTRACT_VERSION, "status": "incomplete", "code": failed["code"]})
+        except (OSError, ValueError, TypeError):
+            pass  # The original failure remains actionable; no output is published.
+    return failed
 
 
 def run_request_file(path: Path, progress=None) -> dict:

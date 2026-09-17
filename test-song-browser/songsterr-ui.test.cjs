@@ -19,6 +19,18 @@ const render = (Component, props) => renderToStaticMarkup(React.createElement(Co
 const job = (change) => render(SongsterrJob, { job: { ...base, ...change }, api: {}, action() {}, busy: false });
 const buttonText = (html) => [...html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map((match) => match[1].replace(/<[^>]*>/g, '').trim());
 
+test('conversion fidelity, audio timing and artwork have separate honest outcomes', () => {
+  const checked = job({ state: 'completed', verification: { status: 'passed', timing: 'estimated' }, artwork: { status: 'unavailable' } });
+  assert.match(checked, /checked against the source tab/);
+  assert.match(checked, /Timing: automatic estimate/);
+  assert.match(checked, /Album cover unavailable or uncertain/);
+  const modified = job({ state: 'completed', verification: { status: 'modified' } });
+  assert.match(modified, /changed since conversion/);
+  assert.doesNotMatch(modified, /checked against the source tab/);
+  assert.doesNotMatch(job({ state: 'completed' }), /checked against the source tab/);
+  assert.doesNotMatch(checked + modified, /library doctor|repair.*required/i);
+});
+
 test('missing or mismatched audio offers exactly the supported link/file replacement flow', () => {
   for (const state of ['needs_audio', 'alignment_failed']) {
     const html = job({ state, canCancel: false, canRetry: true, error: 'Provide a matching recording.' });

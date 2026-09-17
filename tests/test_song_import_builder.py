@@ -49,7 +49,7 @@ def test_builder_preserves_settings_metadata_pitch_and_timed_techniques(tmp_path
         assert manifest["artist"] == "Green Lung"
         assert "year" not in manifest and "album" not in manifest
         assert manifest["preview"] in archive.namelist()
-        assert manifest["cover"] in archive.namelist()
+        assert "cover" not in manifest, "a placeholder must not block downstream artwork lookup"
         assert manifest["stems"][0]["id"] == "full"
         assert chart["tuning"] == [-2] * 6
         assert chart["capo"] == 1
@@ -64,6 +64,39 @@ def test_unvalidated_sync_cannot_build(tmp_path):
     performance, audio, _, job = inputs(tmp_path)
     with pytest.raises(ImportFailure, match="synchronization"):
         build_feedpak(performance, audio, {}, job, output_dir=tmp_path / "out")
+
+
+def test_builder_embeds_album_cover_without_overwriting_source_album(tmp_path):
+    from PIL import Image
+    performance, audio, alignment, job = inputs(tmp_path)
+    cover = tmp_path / "album.png"
+    Image.new("RGB", (300, 200), "red").save(cover)
+    performance["album"] = "Source album"
+    artwork = {"status": "matched", "path": str(cover), "album": "Source album", "year": 2019}
+    result = build_feedpak(performance, audio, alignment, job, output_dir=tmp_path / "out", artwork=artwork)
+    with zipfile.ZipFile(result["stagingPath"]) as archive:
+        manifest = yaml.safe_load(archive.read("manifest.yaml"))
+        assert manifest["album"] == "Source album" and manifest["year"] == 2019
+        assert archive.read(manifest["cover"]) == cover.read_bytes()
+
+
+def test_notation_uses_recording_time_but_keeps_written_values_and_lineage(tmp_path):
+    performance, audio, alignment, job = inputs(tmp_path)
+    performance["tracks"][0]["notes"][0]["source_ids"] = ["authored-note"]
+    performance["tracks"][0]["notation"] = {"version": 1, "staves": [{"id": "s", "clef": "G2"}],
+        "measures": [{"idx": 1, "t": 0, "end_time": 2, "tempo": 120, "ts": [4, 4], "source_measure": 1,
+                      "staves": {"s": {"voices": [{"v": 0, "beats": [{"t": 1, "end_time": 1.5, "dur": 8, "rest": True, "source_id": "beat:1"}]}]}}}]}
+    result = build_feedpak(performance, audio, alignment, job, output_dir=tmp_path / "out")
+    with zipfile.ZipFile(result["stagingPath"]) as archive:
+        manifest = yaml.safe_load(archive.read("manifest.yaml"))
+        entry = manifest["arrangements"][0]
+        assert "source_ids" not in json.loads(archive.read(entry["file"]))["notes"][0]
+        measure = json.loads(archive.read(entry["notation"]))["measures"][0]
+        assert measure["written_tempo"] == 120
+        assert measure["tempo"] == pytest.approx(120 / 1.1)
+        beat = measure["staves"]["s"]["voices"][0]["beats"][0]
+        assert beat["dur"] == 8 and beat["rest"] and beat["source_id"] == "beat:1"
+        assert beat["t"] == 1.85 and beat["duration_seconds"] == 0.55
 
 
 def test_archive_metadata_is_deterministic_across_staging_directories(tmp_path):
@@ -124,7 +157,7 @@ def test_real_score_parser_worker_cli_and_feedpak_validator_end_to_end(tmp_path)
             samples[start:start + len(wave)] += wave
     audio = tmp_path / "recording.wav"
     sf.write(audio, samples, rate)
-    request = {"scorePath": str(score), "audio": {"kind": "file", "path": str(audio)},
+    request = {"scorePath": str(score), "audio": {"kind": "file", "path": str(audio)}, "artworkLookup": False,
                "metadata": {"songId": 12, "revisionId": 34, "title": "Real song", "artist": "Original band"},
                "workDir": str(tmp_path / "jobs"), "outputDir": str(tmp_path / "library"),
                "outputSettings": {"nameTemplate": "{artist} - {title}", "outputLayout": "artist"}}

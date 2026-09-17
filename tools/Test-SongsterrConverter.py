@@ -71,7 +71,7 @@ def synthetic_inputs(root: Path) -> dict:
             samples[begin:begin + length] += wave
     audio = root / "synthetic-recording.wav"
     sf.write(audio, samples, rate, subtype="PCM_16")
-    request = {"scorePath": str(score), "audio": {"kind": "file", "path": str(audio)},
+    request = {"scorePath": str(score), "audio": {"kind": "file", "path": str(audio)}, "artworkLookup": False,
                "metadata": {"songId": 12, "revisionId": 34, "approved": True,
                             "title": "Portable fixture", "artist": "Original band"},
                "workDir": str(root / "jobs"), "outputDir": str(root / "unpublished-library"),
@@ -188,10 +188,13 @@ def main() -> int:
             assert "year" not in manifest and "album" not in manifest
             assert {entry["type"] for entry in manifest["arrangements"]} == {"lead", "bass"}
             assert len(manifest["stems"]) == 1 and manifest["stems"][0]["id"] == "full"
-            assert manifest["cover"] in pack.namelist() and manifest["preview"] in pack.namelist()
+            assert "cover" not in manifest and manifest["preview"] in pack.namelist()
+            assert imported["verification"]["status"] == "passed"
             for entry in manifest["arrangements"]:
                 chart = json.loads(pack.read(entry["file"]))
-                assert chart["notes"] and all(note["t"] >= 0 for note in chart["notes"])
+                events = chart["notes"] + chart["chords"]
+                assert events and all(note["t"] >= 0 for note in events)
+                assert entry["notation"] in pack.namelist()
             preview_path = root / "preview-check.ogg"
             preview_path.write_bytes(pack.read(manifest["preview"]))
             assert 2 < sf.info(preview_path).duration <= 30.01
