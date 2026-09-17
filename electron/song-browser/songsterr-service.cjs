@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { SongsterrProvider } = require('./providers/songsterr/index.cjs');
 const { SongsterrJobs } = require('./songsterr-jobs.cjs');
 
@@ -14,7 +15,27 @@ function registerSongsterr({ app, BrowserWindow, session, ipcMain, dialog, shell
     getSettings();
     const root = path.join(app.getPath('userData'), 'songsterr');
     fs.mkdirSync(root, { recursive: true });
-    provider = new SongsterrProvider({ BrowserWindow, session, profilePath: path.join(root, 'browser-profile'), parent: getMainWindow, onConnection: emit });
+    // Local bounded diagnostics contain enums only, never page text, song IDs,
+    // URLs, credentials or account state. They distinguish a missing control
+    // from a Play action that failed to materialize the linked iframe.
+    const trace = [], codes = new Set(['audio_probe_started', 'audio_probe_found', 'audio_probe_play_requested', 'audio_probe_play', 'audio_probe_pause',
+      'audio_probe_original_unavailable', 'audio_probe_original_action_failed', 'audio_probe_original_selection_timeout',
+      'audio_probe_full_mix_unavailable', 'audio_probe_full_mix_action_failed', 'audio_probe_full_mix_selection_timeout',
+      'audio_probe_play_unavailable', 'audio_probe_play_action_failed', 'audio_probe_stale_mix_timeout', 'audio_probe_iframe_timeout',
+      'audio_probe_original_control', 'audio_probe_original_selected', 'audio_probe_full_mix', 'audio_probe_play_control', 'audio_probe_iframe',
+      'audio_probe_play_enabled', 'audio_probe_play_attribute_true', 'audio_probe_play_attribute_false', 'audio_probe_play_attribute_missing', 'audio_probe_play_attribute_other']);
+    const outcomes = new Set(['started', 'success', 'ready', 'unavailable']);
+    const onDiagnostic = (event) => {
+      if (!codes.has(event?.code) || !outcomes.has(event?.outcome)) return;
+      trace.push({ at: new Date().toISOString(), code: event.code, outcome: event.outcome });
+      if (trace.length > 200) trace.shift();
+      const temporary = path.join(root, `audio-diagnostics-${crypto.randomUUID()}.tmp`);
+      try {
+        fs.writeFileSync(temporary, JSON.stringify({ version: 1, events: trace }), { flag: 'wx', mode: 0o600 });
+        fs.renameSync(temporary, path.join(root, 'audio-diagnostics.json'));
+      } catch {} finally { try { fs.unlinkSync(temporary); } catch {} }
+    };
+    provider = new SongsterrProvider({ BrowserWindow, session, profilePath: path.join(root, 'browser-profile'), parent: getMainWindow, onConnection: emit, onDiagnostic });
     jobs = new SongsterrJobs({ root: path.join(root, 'jobs'), provider, runConverter, getConverterRecipe, emit, onCompleted });
   }
   function handler(name, action) {

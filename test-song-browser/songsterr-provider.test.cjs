@@ -78,7 +78,7 @@ test('anonymous adapter rejects large/HTML responses and honors cancellation', a
 });
 
 function runtime(root, options = {}) {
-  const sessions = [], windows = [], actions = [], requests = [], partitions = [];
+  const sessions = [], windows = [], actions = [], requests = [], partitions = [], diagnostics = [];
   function makeSession() {
     const value = new EventEmitter();
     value.setPermissionRequestHandler = (handler) => { value.permission = handler; };
@@ -93,7 +93,7 @@ function runtime(root, options = {}) {
       this.webContents = new EventEmitter(); const wc = this.webContents; wc.url = ''; wc.page = {}; wc.setAudioMuted = (value) => { wc.muted = value; }; wc.stop = () => {};
       wc.setWindowOpenHandler = (fn) => { wc.popup = fn; }; wc.getURL = () => wc.url;
       wc.loadURL = async (url) => {
-        wc.url = url; wc.controlReads = 0; wc.historyReads = 0; wc.mixerReads = 0; wc.playerReads = 0; wc.playerPending = false; wc.historyPending = false; const parsed = songUrl(url);
+        wc.url = url; wc.controlReads = 0; wc.historyReads = 0; wc.mixerReads = 0; wc.audioControlReads = 0; wc.playerReads = 0; wc.playerPending = false; wc.historyPending = false; const parsed = songUrl(url);
         if (url.includes('pattern=')) wc.page = options.challengeOnSearch ? { status: 'needs_attention' } : { status: 'ready', searchReady: true, results: [result], hasMore: false };
         else if (parsed?.id === '99999') wc.page = { status: 'ready', url, songId: '99999', unpublished: true, editor: true };
         else wc.page = { status: 'ready', url, songId: parsed?.id, revisionId: parsed?.revisionId, canOpenHistory: Boolean(parsed), tabReady: Boolean(parsed),
@@ -107,6 +107,8 @@ function runtime(root, options = {}) {
           if (options.delayedHistory && wc.page.songId && !wc.page.historyVisible && wc.controlReads++ < 1) return { ...wc.page, canOpenHistory: false };
           if (wc.historyPending && wc.historyReads++ < 1) return { ...wc.page, historyReady: false, approvedRevisions: [] };
           if (options.delayedMixer && wc.page.revisionId && wc.mixerReads++ < 1) return { ...wc.page, tabReady: false };
+          if (options.delayedAudioControls && wc.page.revisionId && wc.audioControlReads++ < 2) return { ...wc.page, originalAvailable: false, originalSelected: false, canPlay: false };
+          if (options.delayedPlayControl && wc.page.revisionId && wc.audioControlReads++ < 2) return { ...wc.page, canPlay: false };
           if (wc.playerPending && !options.noAudio && wc.playerReads++ >= (options.delayedAudio ? 1 : 0)) {
             wc.page.audio = ['https://www.youtube.com/embed/abcdefghijk']; wc.playerPending = false;
           }
@@ -152,7 +154,7 @@ function runtime(root, options = {}) {
     }
     isDestroyed() { return this.destroyed; } destroy() { this.destroyed = true; this.emit('closed'); } show() { this.shown = true; } hide() { this.shown = false; } focus() {}
   }
-  return { provider: new SongsterrProvider({ BrowserWindow: Window, session, profilePath: path.join(root, 'profile') }), sessions, windows, actions, requests, partitions };
+  return { provider: new SongsterrProvider({ BrowserWindow: Window, session, profilePath: path.join(root, 'profile'), onDiagnostic: (event) => diagnostics.push(event) }), sessions, windows, actions, requests, partitions, diagnostics };
 }
 
 test('provider search, approved resolution and anonymous acquisition use an isolated hidden browser', async (t) => {
@@ -214,6 +216,17 @@ test('an already rendered Original full-mix player needs no playback action', as
   assert.deepEqual(state.actions, []); assert.equal(state.windows[0].webContents.getURL(), result.url + '/r626617'); assert.equal(state.requests.length, 0);
 });
 
+test('audio discovery waits for Original and Play controls that load after the tab mixer', async (t) => {
+  for (const option of ['delayedAudioControls', 'delayedPlayControl']) {
+    const root = await temporary(t), state = runtime(root, { lazyAudio: true, [option]: true }); t.after(() => state.provider.dispose());
+    state.provider.restoreTrustedResult(result);
+    assert.equal((await state.provider.findAudio(result, { revisionId: descriptor.revisionId })).videoId, 'abcdefghijk');
+    assert.deepEqual(state.actions, ['play', 'pause']); assert.ok(state.windows[0].webContents.audioControlReads >= 3);
+    assert.ok(state.diagnostics.some((event) => event.code === 'audio_probe_play_requested'));
+    assert.ok(state.diagnostics.some((event) => event.code === 'audio_probe_found'));
+  }
+});
+
 test('audio rediscovery uses the cached revision, selecting Original and Full mix without accepting the stale backing iframe', async (t) => {
   const root = await temporary(t), state = runtime(root, { initialSynth: true, initialMix: 'backing', delayedAudio: true }); t.after(() => state.provider.dispose());
   state.provider.restoreTrustedResult(result);
@@ -225,12 +238,15 @@ test('audio rediscovery uses the cached revision, selecting Original and Full mi
 
 test('missing Original support or a bounded player wait returns absent audio and always pauses an attempted probe', async (t) => {
   const root = await temporary(t), state = runtime(root, { noOriginal: true }); t.after(() => state.provider.dispose());
-  state.provider.restoreTrustedResult(result);
-  assert.equal(await state.provider.findAudio(result, { revisionId: '2585330' }), null); assert.deepEqual(state.actions, []);
+  const noOriginalWin = state.provider._window(false); await state.provider._navigate(noOriginalWin, descriptor.approvedUrl);
+  assert.equal(await state.provider._discoverAudio(noOriginalWin, { songId: result.id, revisionId: descriptor.revisionId }, noOriginalWin.webContents.page, undefined, 10), null); assert.deepEqual(state.actions, []);
+  assert.ok(state.diagnostics.some((event) => event.code === 'audio_probe_original_unavailable' && event.outcome === 'unavailable'));
   const missing = runtime(root, { lazyAudio: true, noAudio: true }); t.after(() => missing.provider.dispose());
   const win = missing.provider._window(false); await missing.provider._navigate(win, descriptor.approvedUrl);
   const value = await missing.provider._discoverAudio(win, { songId: result.id, revisionId: descriptor.revisionId }, win.webContents.page, undefined, 10);
   assert.equal(value, null); assert.deepEqual(missing.actions, ['play', 'pause']); assert.equal(win.webContents.page.playing, false);
+  assert.ok(missing.diagnostics.some((event) => event.code === 'audio_probe_iframe_timeout'));
+  assert.ok(missing.diagnostics.some((event) => event.code === 'audio_probe_play_control' && event.outcome === 'ready'));
 });
 
 test('a stale backing player that never updates cannot be accepted as Full mix', async (t) => {

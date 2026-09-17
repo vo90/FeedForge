@@ -121,6 +121,9 @@ function readSongsterrPage() {
     audioMix: mixControl ? String(mixControl.value || '') : null,
     fullMixAvailable: Boolean(enabled(mixControl) && all(mixControl, 'option').some((node) => node.getAttribute('value') === 'main' && !node.disabled)),
     canPlay: Boolean(playControl && playControl.getAttribute('data-can-play') === 'true'),
+    playEnabled: Boolean(playControl),
+    playEligibility: !playControl || playControl.getAttribute('data-can-play') === null ? 'missing'
+      : ['true', 'false'].includes(playControl.getAttribute('data-can-play')) ? playControl.getAttribute('data-can-play') : 'other',
     playing: playControl?.getAttribute('aria-pressed') === 'true',
     hasMore: controls.some((node) => /^(?:next|load more|show more)$/i.test(label(node))) };
 }

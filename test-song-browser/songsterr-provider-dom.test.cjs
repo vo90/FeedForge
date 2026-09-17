@@ -201,6 +201,17 @@ test('Original selection is read from the radio checked property, and its lazy p
   const synthState = run(readSongsterrPage, doc); assert.equal(synthState.originalSelected, false); assert.equal(synthState.playing, true);
 });
 
+test('audio diagnostics distinguish an enabled Play button from its missing or explicitly false eligibility attribute', () => {
+  const play = el('button', { id: 'control-play', 'aria-pressed': 'false' });
+  const doc = page([play], 'https://www.songsterr.com/a/wsa/ghost-rats-tab-s441770/r7788783');
+  for (const [attribute, expected] of [[undefined, 'missing'], ['false', 'false'], ['true', 'true'], ['unexpected page text', 'other']]) {
+    if (attribute === undefined) delete play.attrs['data-can-play']; else play.attrs['data-can-play'] = attribute;
+    const read = run(readSongsterrPage, doc);
+    assert.equal(read.playEnabled, true); assert.equal(read.playEligibility, expected); assert.equal(read.canPlay, expected === 'true');
+  }
+  play.disabled = true; assert.equal(run(readSongsterrPage, doc).playEnabled, false);
+});
+
 test('audio controls select Original and Full mix, then play and pause idempotently only on the expected revision', () => {
   const original = el('input', { type: 'radio', value: 'original', readonly: '' }); original.checked = false;
   const label = el('label', {}, [original], 'Original');

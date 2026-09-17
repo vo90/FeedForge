@@ -131,6 +131,19 @@ class SongsterrProvider {
     };
     const audio = () => page.tabReady && page.originalSelected && (page.audioMix === null || page.audioMix === 'main')
       ? (page.audio || []).map(publicAudio).find((value) => value && !staleMixVideos.has(value.videoId)) || null : null;
+    const absent = (reason) => {
+      this.diagnostic('audio_probe_' + reason, 'unavailable');
+      this.diagnostic('audio_probe_original_control', page.originalAvailable ? 'ready' : 'unavailable');
+      this.diagnostic('audio_probe_original_selected', page.originalSelected ? 'ready' : 'unavailable');
+      this.diagnostic('audio_probe_full_mix', page.audioMix === null || page.audioMix === 'main' ? 'ready' : 'unavailable');
+      this.diagnostic('audio_probe_play_control', page.canPlay ? 'ready' : 'unavailable');
+      this.diagnostic('audio_probe_play_enabled', page.playEnabled ? 'ready' : 'unavailable');
+      const eligibility = ['true', 'false', 'missing', 'other'].includes(page.playEligibility) ? page.playEligibility : 'missing';
+      this.diagnostic('audio_probe_play_attribute_' + eligibility, 'ready');
+      this.diagnostic('audio_probe_iframe', (page.audio || []).length ? 'ready' : 'unavailable');
+      return null;
+    };
+    const found = () => { this.diagnostic('audio_probe_found', 'success'); return audio(); };
     const act = async (action) => {
       const outcome = await this._act(win, action, signal, identity);
       if (!outcome.ok) { page = await this._read(win, signal); validate(page); }
@@ -145,25 +158,35 @@ class SongsterrProvider {
       return false;
     };
     try {
+      this.diagnostic('audio_probe_started', 'started');
       validate(page); pauseNeeded = page.playing === true;
-      if (!page.originalAvailable) return null;
+      // The track mixer can become ready before the independent audio
+      // controls. Give those controls the same bounded discovery window.
+      if (!page.originalAvailable && !await poll((value) => value.originalAvailable)) return absent('original_unavailable');
       if (!page.originalSelected) {
         pauseNeeded = true;
-        if (!await act('selectOriginal') || !await poll((value) => value.originalSelected)) return null;
+        if (!await act('selectOriginal')) return absent('original_action_failed');
+        if (!await poll((value) => value.originalSelected)) return absent('original_selection_timeout');
       }
       if (page.audioMix !== null && page.audioMix !== 'main') {
-        if (!page.fullMixAvailable) return null;
         for (const url of page.audio || []) { const previous = publicAudio(url); if (previous) staleMixVideos.add(previous.videoId); }
-        pauseNeeded = true;
-        if (!await act('selectFullMix') || !await poll((value) => value.audioMix === 'main')) return null;
+        if (!page.fullMixAvailable && !await poll((value) => value.fullMixAvailable || value.audioMix === null || value.audioMix === 'main')) return absent('full_mix_unavailable');
+        if (page.audioMix !== null && page.audioMix !== 'main') {
+          pauseNeeded = true;
+          if (!await act('selectFullMix')) return absent('full_mix_action_failed');
+          if (!await poll((value) => value.audioMix === 'main')) return absent('full_mix_selection_timeout');
+        }
       }
-      if (audio()) return audio();
-      if (!page.canPlay) return null;
+      if (audio()) return found();
+      if (!page.canPlay && !await poll((value) => value.canPlay || Boolean(audio()))) return absent('play_unavailable');
+      if (audio()) return found();
       // Play is an ordinary, muted page action that materializes the linked
       // iframe. Mark cleanup before the click, including ambiguous responses.
       pauseNeeded = true;
-      if (!await act('play')) return null;
-      return await poll(() => Boolean(audio())) ? audio() : null;
+      this.diagnostic('audio_probe_play_requested', 'started');
+      if (!await act('play')) return absent('play_action_failed');
+      this.diagnostic('audio_probe_play', 'success');
+      return await poll(() => Boolean(audio())) ? found() : absent(staleMixVideos.size ? 'stale_mix_timeout' : 'iframe_timeout');
     } finally {
       if (pauseNeeded && !this.disposed && !win.isDestroyed()) {
         // Cleanup must still run after cancellation; the guarded page action
