@@ -54,6 +54,31 @@ def _retime_note(note: dict, alignment: dict, duration: float, *, chord_time: fl
         raise ImportFailure("alignment_failed", "The matched tab contains notes outside the recording.")
     if "sus" in note:
         result["sus"] = round(sustain, 6)
+    if "slide_out_marks" in note:
+        marks = note["slide_out_marks"]
+        if not isinstance(marks, list):
+            raise ImportFailure("unsupported_score", "Slide-out marks must be an array of source intervals.")
+        mapped, previous_end = [], 0.0
+        for mark in marks:
+            if (not isinstance(mark, dict) or set(mark) != {"direction", "start", "end"}
+                    or not isinstance(mark.get("direction"), str) or mark["direction"] not in {"up", "down"}
+                    or any(isinstance(mark.get(key), bool) or not isinstance(mark.get(key), (int, float))
+                           or not math.isfinite(mark[key]) for key in ("start", "end"))):
+                raise ImportFailure("unsupported_score", "A slide-out mark has invalid direction or interval values.")
+            left, right = mark["start"], mark["end"]
+            if left < 0 or right <= left or right > original_sustain or left < previous_end:
+                raise ImportFailure("unsupported_score", "A slide-out mark is outside its source segment or out of order.")
+            # Both boundaries can cross different synchronization segments.
+            # Scaling the interval by the attack's local scale is incorrect.
+            mapped_left = round(map_time(alignment, original + left) - start, 6)
+            mapped_right = round(map_time(alignment, original + right) - start, 6)
+            # The established affine sustain and independently rounded absolute
+            # endpoints can differ by one microsecond. Preserve both values.
+            if mapped_left < 0 or mapped_right <= mapped_left or mapped_right > round(sustain, 6) + 0.0000011:
+                raise ImportFailure("alignment_failed", "A slide-out interval cannot be represented at FeedPak timing precision.")
+            mapped.append({"direction": mark["direction"], "start": mapped_left, "end": mapped_right})
+            previous_end = right
+        result["slide_out_marks"] = mapped
     if note.get("bnv"):
         # FeedPak bend-curve t values are relative to their note's onset.
         if nonlinear:

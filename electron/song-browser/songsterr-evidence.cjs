@@ -16,12 +16,12 @@ function checkedFile(root, relative, expected, maxBytes) {
 }
 
 function inspectEvidence(root, reference, outputHash) {
-  if (reference?.version !== 1 || !DIGEST.test(reference.id || '')) throw new Error('The conversion report is unavailable.');
+  if (![1, 2].includes(reference?.version) || !DIGEST.test(reference.id || '')) throw new Error('The conversion report is unavailable.');
   const filename = checkedFile(root, `records/${reference.id}.json`, reference.id, 1024 * 1024);
   const record = JSON.parse(fs.readFileSync(filename, 'utf8'));
   const report = checkedFile(root, `objects/${record.objects?.verification}`, record.objects?.verification, 16 * 1024 * 1024);
   const verification = JSON.parse(fs.readFileSync(report, 'utf8'));
-  if (record.version !== 1 || record.objects.verification !== reference.verificationHash || record.objects.source !== reference.sourceHash
+  if (record.version !== reference.version || record.objects.verification !== reference.verificationHash || record.objects.source !== reference.sourceHash
       || (outputHash && (record.outputHash !== outputHash || reference.outputHash !== outputHash))) throw new Error('The conversion report does not describe this FeedPak.');
   if (verification.status === 'passed' && verification.sourceSha256 !== record.objects.source) throw new Error('The conversion report does not describe this source tab.');
   return { record, verification };

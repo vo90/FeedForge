@@ -18,9 +18,9 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 1
+VERSION = 2
 TIME_TOLERANCE = 0.0000011
-TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "ho", "po", "ln", "sl", "slu", "slide_out", "bn"}
+TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "bn"}
 TUNINGS = {"guitar": {6: [40, 45, 50, 55, 59, 64], 7: [35, 40, 45, 50, 55, 59, 64], 8: [30, 35, 40, 45, 50, 55, 59, 64]},
            "bass": {4: [28, 33, 38, 43], 5: [23, 28, 33, 38, 43], 6: [23, 28, 33, 38, 43, 48]}}
 
@@ -118,6 +118,8 @@ def _notes(wanted, actual, check, part, duration):
         for key in ("t", "sus"):
             check.near("note_time" if key == "t" else "note_sustain", loc + "/" + key, a[key], b.get(key, 0))
         for key in TECHNIQUES:
+            if key == "slide_out_marks":
+                continue
             wanted_value, actual_value = a.get(key), b.get(key)
             if wanted_value is None and (actual_value is None or actual_value is False):
                 continue
@@ -125,6 +127,7 @@ def _notes(wanted, actual, check, part, duration):
                 check.near("note_technique", loc + "/bn", wanted_value, actual_value, 1e-8)
             else:
                 check.equal("note_technique", loc + "/" + key, wanted_value, actual_value)
+        _slide_marks(a.get("slide_out_marks", []), b, check, loc)
         curves = (a.get("bnv", []), b.get("bnv", []))
         check.equal("bend_point_count", loc + "/bnv", len(curves[0]), len(curves[1]))
         for pi, (ap, bp) in enumerate(zip(*curves)):
@@ -134,6 +137,37 @@ def _notes(wanted, actual, check, part, duration):
             continue
         if b["t"] < 0 or b.get("sus", 0) < 0 or b["t"] + b.get("sus", 0) > duration + TIME_TOLERANCE:
             check.fail("note_audio_bounds", loc, "A playable note is outside the encoded audio timeline.")
+
+
+def _slide_marks(wanted, note, check, location):
+    """Compare source intervals individually, including absence and validity."""
+    actual = note.get("slide_out_marks", [])
+    loc = location + "/slide_out_marks"
+    if not isinstance(actual, list):
+        check.fail("slide_mark_shape", loc, "Slide-out marks must be an array.")
+        return
+    check.equal("slide_mark_count", loc, len(wanted), len(actual))
+    previous_end = 0.0
+    for index, mark in enumerate(actual):
+        at = loc + f"/{index}"
+        if not isinstance(mark, dict) or set(mark) != {"direction", "start", "end"}:
+            check.fail("slide_mark_shape", at, "A slide-out interval has an invalid shape.")
+            continue
+        left, right = mark["start"], mark["end"]
+        if (not isinstance(mark["direction"], str) or mark["direction"] not in {"up", "down"}
+                or any(isinstance(n, bool) or not isinstance(n, (int, float)) or not math.isfinite(n) for n in (left, right))):
+            check.fail("slide_mark_shape", at, "A slide-out interval has an invalid direction or number.")
+            continue
+        sustain = note.get("sus", 0)
+        if (left < 0 or right <= left or left < previous_end - TIME_TOLERANCE
+                or not isinstance(sustain, (int, float)) or right > sustain + TIME_TOLERANCE):
+            check.fail("slide_mark_bounds", at, "A slide-out interval is outside the sustain or out of order.")
+        previous_end = right
+        if index < len(wanted):
+            expected = wanted[index]
+            check.equal("slide_mark_direction", at + "/direction", expected["direction"], mark["direction"])
+            check.near("slide_mark_time", at + "/start", expected["start"], left)
+            check.near("slide_mark_time", at + "/end", expected["end"], right)
 
 
 def _chords(wanted, chart, check, part):
@@ -233,7 +267,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
     check = Check()
     report = {"version": VERSION, "status": "failed", "errors": check.errors, "warnings": [], "counts": {},
               "scope": ["source_identity", "track_coverage", "physical_pitch", "note_timing", "techniques", "bend_curves",
-                        "authored_chord_groups", "beats", "meter", "sections", "tempo", "notation_beat_timing",
+                        "slide_out_segment_timing", "authored_chord_groups", "beats", "meter", "sections", "tempo", "notation_beat_timing",
                         "notation_written_rhythm", "notation_pitch_and_ties", "container_references"],
               "rounding": {"secondsDecimalPlaces": 6, "comparisonToleranceSeconds": TIME_TOLERANCE},
               "musicalQualityAssessed": False}
