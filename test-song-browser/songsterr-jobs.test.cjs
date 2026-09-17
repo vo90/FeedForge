@@ -24,8 +24,31 @@ async function settle(jobs) {
 
 async function fixture(t, options = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'feedforge-songsterr-jobs-'));
-  const root = path.join(directory, 'jobs'), outputDir = path.join(directory, 'output');
-  fs.mkdirSync(outputDir);
+  let root = path.join(directory, 'jobs'), outputDir = path.join(directory, 'output');
+  let physicalRoot = root, physicalOutputDir = outputDir, restoreRealpath = () => {};
+  if (options.redirectedProfile) {
+    const physicalProfile = path.join(directory, 'native-profile');
+    const logicalProfile = path.join(directory, 'roaming-profile');
+    physicalRoot = path.join(physicalProfile, 'jobs'); physicalOutputDir = path.join(physicalProfile, 'output');
+    root = path.join(logicalProfile, 'jobs'); outputDir = path.join(logicalProfile, 'output');
+    fs.mkdirSync(physicalRoot, { recursive: true });
+    fs.symlinkSync(physicalProfile, logicalProfile, 'junction');
+    // Reproduce MSIX redirection: the legacy resolver retains AppData's logical
+    // spelling, while Python, the native resolver and real files use its target.
+    const realpath = fs.realpathSync;
+    function logicalRealpath(filename, settings) {
+      const resolved = path.resolve(String(filename));
+      if (resolved === logicalProfile || resolved.startsWith(logicalProfile + path.sep)) {
+        fs.lstatSync(resolved);
+        return settings?.encoding === 'buffer' ? Buffer.from(resolved) : resolved;
+      }
+      return realpath(filename, settings);
+    }
+    logicalRealpath.native = realpath.native;
+    fs.realpathSync = logicalRealpath;
+    restoreRealpath = () => { fs.realpathSync = realpath; };
+  }
+  fs.mkdirSync(outputDir, { recursive: true });
   const calls = [], requests = [], acquisitions = [], completed = [], audioProbes = [], syncProbes = [];
   const provider = { acquire: async (chart, context) => {
     acquisitions.push(chart.id);
@@ -67,14 +90,17 @@ async function fixture(t, options = {}) {
   const jobs = new SongsterrJobs(config);
   await jobs.ready;
   t.after(async () => {
-    await jobs.dispose();
-    // Only this fixture's freshly allocated temp directory can be removed.
-    const resolved = path.resolve(directory);
-    assert.equal(path.dirname(resolved), path.resolve(os.tmpdir()));
-    assert.ok(path.basename(resolved).startsWith('feedforge-songsterr-jobs-'));
-    fs.rmSync(resolved, { recursive: true, force: true });
+    try { await jobs.dispose(); }
+    finally {
+      restoreRealpath();
+      // Every junction target is inside this fixture's newly allocated folder.
+      const resolved = path.resolve(directory);
+      assert.equal(path.dirname(resolved), path.resolve(os.tmpdir()));
+      assert.ok(path.basename(resolved).startsWith('feedforge-songsterr-jobs-'));
+      fs.rmSync(resolved, { recursive: true, force: true });
+    }
   });
-  return { jobs, directory, root, outputDir, config, calls, requests, acquisitions, completed, audioProbes, syncProbes,
+  return { jobs, directory, root, outputDir, physicalRoot, physicalOutputDir, config, calls, requests, acquisitions, completed, audioProbes, syncProbes,
     enqueue: (chart = CHART) => jobs.enqueue(chart, { outputDir, outputSettings: SETTINGS }) };
 }
 
@@ -313,8 +339,253 @@ test('Songsterr rejects a converter staging file outside the current attempt', a
   outside = path.join(f.directory, 'outside.feedpak'); fs.writeFileSync(outside, 'outside');
   f.enqueue(); await settle(f.jobs);
   assert.equal(f.jobs.snapshot()[0].state, 'failed');
-  assert.match(f.jobs.snapshot()[0].error, /invalid staged FeedPak/);
+  assert.match(f.jobs.snapshot()[0].error, /invalid temporary FeedPak file/);
+  assert.deepEqual(f.jobs.jobs[0].pathValidation, { stage: 'staged_feedpak', reason: 'outside_folder' });
+  assert.equal(f.calls.filter((args) => args[0] === '--validate-feedpak').length, 0);
+  assert.equal(fs.readFileSync(outside, 'utf8'), 'outside');
   assert.deepEqual(fs.readdirSync(f.outputDir), []);
+});
+
+for (const [kind, reason] of [
+  ['junction escape', 'outside_folder'], ['file symlink', 'symbolic_link'],
+  ['missing file', 'missing_file'], ['directory', 'not_file'], ['relative path', 'invalid_path'],
+]) {
+  test(`Songsterr rejects a ${kind} staging path before content validation or publication`, async (t) => {
+    let outside;
+    const f = await fixture(t, { runConverter: async (args, context, normal) => {
+      const result = await normal(args, context);
+      if (args[0] !== '--song-import-file') return result;
+      const parsed = JSON.parse(result.stdout);
+      fs.unlinkSync(parsed.stagingPath);
+      if (kind === 'junction escape') {
+        const link = path.join(context.directory, 'escaped');
+        fs.symlinkSync(path.dirname(outside), link, 'junction');
+        parsed.stagingPath = path.join(link, path.basename(outside));
+      } else if (kind === 'file symlink') fs.symlinkSync(outside, parsed.stagingPath, 'file');
+      else if (kind === 'directory') fs.mkdirSync(parsed.stagingPath);
+      else if (kind === 'relative path') parsed.stagingPath = 'result.feedpak';
+      return RESPONSE(parsed);
+    } });
+    const outsideDir = path.join(f.directory, 'outside'); fs.mkdirSync(outsideDir);
+    outside = path.join(outsideDir, 'retained.feedpak'); fs.writeFileSync(outside, 'Outside file must survive');
+    if (kind === 'file symlink') {
+      const probe = path.join(f.directory, 'symlink-probe');
+      try { fs.symlinkSync(outside, probe, 'file'); fs.unlinkSync(probe); }
+      catch (error) {
+        if (process.platform === 'win32' && error.code === 'EPERM') {
+          t.skip('File symlinks require Windows Developer Mode or the corresponding privilege.'); return;
+        }
+        throw error;
+      }
+    }
+    f.enqueue(); await settle(f.jobs);
+    const saved = f.jobs.snapshot()[0];
+    assert.equal(saved.state, 'failed');
+    assert.match(saved.error, /invalid temporary FeedPak file/);
+    assert.deepEqual(f.jobs.jobs[0].pathValidation, { stage: 'staged_feedpak', reason });
+    const ledger = JSON.parse(fs.readFileSync(path.join(f.root, 'jobs.json'), 'utf8'));
+    assert.deepEqual(ledger.jobs[0].pathValidation, { stage: 'staged_feedpak', reason });
+    assert.equal(f.calls.filter((args) => args[0] === '--validate-feedpak').length, 0);
+    assert.deepEqual(fs.readdirSync(f.outputDir), []);
+    assert.equal(fs.readFileSync(outside, 'utf8'), 'Outside file must survive');
+    assert.equal(f.completed.length, 0);
+  });
+}
+
+test('Songsterr accepts Python native staging paths through a redirected Windows profile', { skip: process.platform !== 'win32' }, async (t) => {
+  const f = await fixture(t, { redirectedProfile: true, runConverter: async (args, context, normal) => {
+    const result = await normal(args, context);
+    if (args[0] !== '--song-import-file') return result;
+    const parsed = JSON.parse(result.stdout);
+    parsed.stagingPath = fs.realpathSync.native(parsed.stagingPath);
+    assert.notEqual(path.dirname(parsed.stagingPath), context.directory);
+    return RESPONSE(parsed);
+  } });
+  assert.equal(fs.realpathSync(f.root), f.root);
+  assert.equal(fs.realpathSync.native(f.root), f.physicalRoot);
+  assert.equal(await fs.promises.realpath(f.root), f.physicalRoot);
+  f.enqueue(); await settle(f.jobs);
+  const saved = f.jobs.snapshot()[0];
+  assert.equal(saved.state, 'completed', saved.error);
+  assert.equal(saved.outputAvailable, true);
+  assert.equal(f.jobs.root, f.root, 'Existing ledger roots keep their logical path spelling.');
+  assert.equal(saved.outputDir, f.outputDir);
+  assert.equal(path.dirname(saved.outputPath), f.physicalOutputDir);
+  assert.equal(path.basename(saved.outputPath), 'Synthetic Artist - Synthetic Song.feedpak');
+  assert.equal(fs.readFileSync(saved.outputPath, 'utf8'), 'Synthetic FeedPak');
+  assert.equal(f.calls.filter((args) => args[0] === '--validate-feedpak').length, 1);
+  assert.deepEqual(f.completed, [saved.id]);
+});
+
+test('restored logical cached scores can retry through redirected Windows paths without another download', { skip: process.platform !== 'win32' }, async (t) => {
+  let fail = true;
+  const f = await fixture(t, { redirectedProfile: true, runConverter: async (args, context, normal) => {
+    const result = await normal(args, context);
+    if (args[0] !== '--song-import-file') return result;
+    const parsed = JSON.parse(result.stdout);
+    // The first attempt recreates the old final-save failure. A real retry
+    // returns Python's existing native file in the newly allocated attempt.
+    parsed.stagingPath = fail ? path.join(context.directory, 'missing.feedpak') : fs.realpathSync.native(parsed.stagingPath);
+    return RESPONSE(parsed);
+  } });
+  const queued = f.enqueue(); await settle(f.jobs); await f.jobs.dispose();
+  assert.equal(f.jobs.snapshot()[0].state, 'failed');
+  const cachedPath = f.jobs.jobs[0].scorePath;
+  assert.ok(cachedPath.startsWith(f.root + path.sep));
+  assert.notEqual(fs.realpathSync.native(cachedPath), cachedPath);
+  fail = false;
+  const restored = new SongsterrJobs(f.config);
+  try {
+    await restored.ready; restored.retry(queued.id); await settle(restored);
+    const saved = restored.snapshot()[0];
+    assert.equal(saved.state, 'completed', saved.error);
+    assert.equal(saved.outputAvailable, true);
+    assert.equal(restored.jobs[0].scorePath, cachedPath);
+    assert.equal(restored.jobs[0].pathValidation, undefined, 'The successful retry clears obsolete path diagnostics.');
+    assert.deepEqual(f.acquisitions, ['123']);
+    assert.equal(f.requests.length, 2);
+    assert.equal(f.requests[1].scorePath, cachedPath);
+    assert.equal(path.dirname(saved.outputPath), f.physicalOutputDir);
+    assert.deepEqual(fs.readdirSync(f.outputDir), ['Synthetic Artist - Synthetic Song.feedpak']);
+  } finally { await restored.dispose(); }
+});
+
+test('receipt recovery accepts a physical output inside the selected logical Windows library', { skip: process.platform !== 'win32' }, async (t) => {
+  const f = await fixture(t, { redirectedProfile: true });
+  f.enqueue(); await settle(f.jobs); await f.jobs.dispose();
+  const completed = f.jobs.snapshot()[0];
+  assert.equal(completed.state, 'completed', completed.error);
+  assert.equal(path.dirname(completed.outputPath), f.physicalOutputDir);
+  const ledgerPath = path.join(f.root, 'jobs.json');
+  const ledger = JSON.parse(fs.readFileSync(ledgerPath, 'utf8'));
+  assert.equal(ledger.jobs[0].outputDir, f.outputDir);
+  Object.assign(ledger.jobs[0], { state: 'saving', committed: false });
+  delete ledger.jobs[0].outputPath;
+  fs.writeFileSync(ledgerPath, JSON.stringify(ledger));
+  const callsBeforeRestore = f.calls.length;
+  const restored = new SongsterrJobs(f.config);
+  try {
+    await settle(restored);
+    const saved = restored.snapshot()[0];
+    assert.equal(saved.state, 'completed', saved.error);
+    assert.equal(saved.outputPath, completed.outputPath);
+    assert.equal(saved.outputDir, f.outputDir);
+    assert.equal(saved.outputAvailable, true);
+    assert.equal(saved.canRetry, false);
+    assert.equal(f.calls.length, callsBeforeRestore, 'Recovery must verify the existing file without converting again.');
+    assert.deepEqual(fs.readdirSync(f.outputDir), ['Synthetic Artist - Synthetic Song.feedpak']);
+  } finally { await restored.dispose(); }
+});
+
+test('Songsterr rejects an attempt directory replaced with a junction', async (t) => {
+  let outside;
+  const f = await fixture(t, { runConverter: async (args, context, normal) => {
+    const result = await normal(args, context);
+    if (args[0] !== '--song-import-file') return result;
+    const parsed = JSON.parse(result.stdout);
+    // Both locations are inside this test's new temp directory. Moving the
+    // request too permits the ordinary cleanup to run before path validation.
+    assert.equal(path.dirname(outside), f.directory);
+    assert.ok(context.directory.startsWith(f.root + path.sep));
+    fs.renameSync(context.directory, outside);
+    fs.symlinkSync(outside, context.directory, 'junction');
+    parsed.stagingPath = path.join(outside, 'result.feedpak');
+    return RESPONSE(parsed);
+  } });
+  outside = path.join(f.directory, 'outside-attempt');
+  f.enqueue(); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'failed');
+  assert.match(f.jobs.snapshot()[0].error, /invalid temporary FeedPak file/);
+  assert.deepEqual(f.jobs.jobs[0].pathValidation, { stage: 'staged_feedpak', reason: 'linked_folder' });
+  assert.equal(f.calls.filter((args) => args[0] === '--validate-feedpak').length, 0);
+  assert.deepEqual(fs.readdirSync(f.outputDir), []);
+  assert.equal(fs.readFileSync(path.join(outside, 'result.feedpak'), 'utf8'), 'Synthetic FeedPak');
+});
+
+test('Songsterr rejects an acquired score returned through a junction outside its acquisition folder', async (t) => {
+  let outside;
+  const f = await fixture(t, { acquire: (chart, context, normal) => {
+    const result = normal(chart, context);
+    const link = path.join(context.directory, 'escaped');
+    fs.symlinkSync(path.dirname(outside), link, 'junction');
+    return { ...result, path: path.join(link, path.basename(outside)) };
+  } });
+  fs.mkdirSync(path.join(f.directory, 'outside-score'));
+  outside = path.join(f.directory, 'outside-score', 'source.gp'); fs.writeFileSync(outside, 'Outside tab');
+  f.enqueue(); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'failed');
+  assert.match(f.jobs.snapshot()[0].error, /invalid tab file/);
+  assert.equal(f.calls.length, 0);
+  assert.deepEqual(fs.readdirSync(f.outputDir), []);
+  assert.equal(fs.readFileSync(outside, 'utf8'), 'Outside tab');
+});
+
+test('Songsterr rejects an unchanged cached score moved outside the job through a junction', async (t) => {
+  const f = await fixture(t, { missingAudio: true });
+  const queued = f.enqueue(); await settle(f.jobs);
+  const scorePath = f.jobs.jobs[0].scorePath;
+  const sourceDir = path.dirname(scorePath), outside = path.join(f.directory, 'outside-cached-score');
+  assert.ok(sourceDir.startsWith(f.root + path.sep));
+  fs.renameSync(sourceDir, outside);
+  fs.symlinkSync(outside, sourceDir, 'junction');
+  f.jobs.retry(queued.id, { audio: { kind: 'file', path: 'chosen.wav' } }); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'failed');
+  assert.match(f.jobs.snapshot()[0].error, /saved tab/);
+  assert.deepEqual(f.acquisitions, ['123']);
+  assert.equal(f.calls.length, 0);
+  assert.deepEqual(fs.readdirSync(f.outputDir), []);
+  assert.equal(fs.readFileSync(path.join(outside, path.basename(scorePath)), 'utf8'), 'Synthetic score');
+});
+
+test('receipt recovery rejects a matching file outside the output folder through a junction', async (t) => {
+  const f = await fixture(t);
+  f.enqueue(); await settle(f.jobs); await f.jobs.dispose();
+  const completed = f.jobs.snapshot()[0], outsideDir = path.join(f.directory, 'outside-receipt');
+  fs.mkdirSync(outsideDir);
+  const outsideFile = path.join(outsideDir, path.basename(completed.outputPath));
+  fs.renameSync(completed.outputPath, outsideFile);
+  const escaped = path.join(f.outputDir, 'escaped'); fs.symlinkSync(outsideDir, escaped, 'junction');
+  const receiptPath = path.join(f.root, `${completed.id}.receipt.json`);
+  const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8'));
+  receipt.outputPath = path.join(escaped, path.basename(outsideFile));
+  fs.writeFileSync(receiptPath, JSON.stringify(receipt));
+  const ledgerPath = path.join(f.root, 'jobs.json'), ledger = JSON.parse(fs.readFileSync(ledgerPath, 'utf8'));
+  Object.assign(ledger.jobs[0], { state: 'saving', committed: false });
+  delete ledger.jobs[0].outputPath;
+  fs.writeFileSync(ledgerPath, JSON.stringify(ledger));
+  const callsBeforeRestore = f.calls.length;
+  const restored = new SongsterrJobs(f.config);
+  try {
+    await settle(restored);
+    assert.equal(restored.snapshot()[0].state, 'needs_attention');
+    assert.equal(restored.snapshot()[0].outputAvailable, false);
+    assert.equal(restored.snapshot()[0].canRetry, true);
+    assert.equal(f.calls.length, callsBeforeRestore);
+    assert.equal(fs.readFileSync(outsideFile, 'utf8'), 'Synthetic FeedPak');
+  } finally { await restored.dispose(); }
+});
+
+test('receipt recovery allows a selected output folder that is itself a junction', async (t) => {
+  const f = await fixture(t);
+  f.enqueue(); await settle(f.jobs); await f.jobs.dispose();
+  const completed = f.jobs.snapshot()[0], physicalOutput = path.join(f.directory, 'relocated-library');
+  assert.equal(path.dirname(f.outputDir), f.directory);
+  fs.renameSync(f.outputDir, physicalOutput);
+  fs.symlinkSync(physicalOutput, f.outputDir, 'junction');
+  const ledgerPath = path.join(f.root, 'jobs.json'), ledger = JSON.parse(fs.readFileSync(ledgerPath, 'utf8'));
+  Object.assign(ledger.jobs[0], { state: 'saving', committed: false });
+  delete ledger.jobs[0].outputPath;
+  fs.writeFileSync(ledgerPath, JSON.stringify(ledger));
+  const restored = new SongsterrJobs(f.config);
+  try {
+    await settle(restored);
+    const saved = restored.snapshot()[0];
+    assert.equal(saved.state, 'completed', saved.error);
+    assert.equal(saved.outputDir, f.outputDir);
+    assert.equal(saved.outputPath, path.join(physicalOutput, path.basename(completed.outputPath)));
+    assert.equal(saved.outputAvailable, true);
+    assert.equal(fs.readFileSync(saved.outputPath, 'utf8'), 'Synthetic FeedPak');
+  } finally { await restored.dispose(); }
 });
 
 test('Songsterr preserves an existing different file when publishing', async (t) => {

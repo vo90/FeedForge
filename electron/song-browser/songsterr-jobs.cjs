@@ -25,7 +25,34 @@ function record(job) {
   const { controller, child, done, resolveDone, retryAudioDetection, ...saved } = job;
   return saved;
 }
-function within(root, filename) { const rel = path.relative(root, filename); return rel && !rel.startsWith('..') && !path.isAbsolute(rel); }
+function within(root, filename) { const rel = path.relative(root, filename); return Boolean(rel && rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel)); }
+function containedFile(root, filename, { allowRootLink = false } = {}) {
+  if (typeof filename !== 'string' || !path.isAbsolute(filename)) return { reason: 'invalid_path' };
+  try {
+    // Owned source/attempt folders cannot be replaced by a junction. A selected
+    // output library may intentionally be linked, so receipt recovery opts in.
+    const rootStat = fs.lstatSync(root);
+    if (!allowRootLink && rootStat.isSymbolicLink()) return { reason: 'linked_folder' };
+    if (!rootStat.isDirectory() && !(allowRootLink && rootStat.isSymbolicLink())) return { reason: 'not_directory' };
+    const stat = fs.lstatSync(filename);
+    if (stat.isSymbolicLink()) return { reason: 'symbolic_link' };
+    if (!stat.isFile()) return { reason: 'not_file' };
+    // Python Path.resolve and async realpath use the native Windows backing
+    // directory. Legacy realpathSync can retain an MSIX AppData alias instead.
+    const realRoot = fs.realpathSync.native(root), realFile = fs.realpathSync.native(filename);
+    if (!within(realRoot, realFile)) return { reason: 'outside_folder' };
+    return { path: realFile };
+  } catch (error) {
+    return { reason: error.code === 'ENOENT' || error.code === 'ENOTDIR' ? 'missing_file' : 'unreadable_file' };
+  }
+}
+function fileLocationError(message, stage, reason) {
+  const detail = { invalid_path: 'the file path is missing or is not absolute', missing_file: 'the file is missing',
+    symbolic_link: 'the file is a symbolic link', not_file: 'the path is not a regular file',
+    outside_folder: 'the file is outside the expected folder', linked_folder: 'the working folder is a symbolic link or junction',
+    not_directory: 'the working folder is not a directory', unreadable_file: 'the file location could not be read' }[reason];
+  return Object.assign(new Error(`${message} (${detail}).`), { code: 'import_file_location', pathValidation: { stage, reason } });
+}
 function terminate(child) {
   if (!child || child.exitCode != null) return;
   if (process.platform === 'win32' && Number.isInteger(child.pid)) {
@@ -57,9 +84,11 @@ class SongsterrJobs {
       if (!fs.existsSync(receipt)) continue;
       try {
         const saved = JSON.parse(fs.readFileSync(receipt, 'utf8'));
-        if (saved.id === job.id && saved.outputHash && path.isAbsolute(saved.outputPath) && within(job.outputDir, saved.outputPath)
-            && await hashFile(saved.outputPath) === saved.outputHash) {
-          Object.assign(job, saved, { state: 'completed', committed: true, message: 'FeedPak ready.', controller: new AbortController() });
+        const output = containedFile(job.outputDir, saved.outputPath, { allowRootLink: true });
+        if (saved.id === job.id && saved.outputHash && output.path
+            && await hashFile(output.path) === saved.outputHash) {
+          Object.assign(job, saved, { outputPath: output.path, state: 'completed', committed: true, message: 'FeedPak ready.',
+            error: '', pathValidation: undefined, controller: new AbortController() });
         }
       } catch { /* Preserve interrupted job and files for an explicit retry. */ }
     }
@@ -124,7 +153,7 @@ class SongsterrJobs {
     // supplied or previously chosen recording always keeps priority.
     job.retryAudioDetection = job.state === 'needs_audio' && !job.audio && Boolean(job.scorePath) && typeof this.provider.findAudio === 'function';
     job.controller = new AbortController(); job.committed = false; job.timedOut = false;
-    this._set(job, 'queued', { error: '', alignment: undefined, synchronizationSummary: undefined, message: 'Queued.' }); this._start(); return this.public(job);
+    this._set(job, 'queued', { error: '', alignment: undefined, synchronizationSummary: undefined, pathValidation: undefined, message: 'Queued.' }); this._start(); return this.public(job);
   }
   async cancel(id) {
     const job = this.jobs.find((j) => j.id === id);
@@ -150,6 +179,7 @@ class SongsterrJobs {
           }
           const code = job.controller.signal.aborted ? 'cancelled' : error.code;
           job.canUseAccount = error.canUseAccount === true;
+          if (error.pathValidation) job.pathValidation = error.pathValidation;
           if (code === 'alignment_failed' && error.alignment && typeof error.alignment === 'object' && !Array.isArray(error.alignment)) job.alignment = error.alignment;
           this._set(job, WAITING.has(code) || code === 'cancelled' ? code : 'failed', { error: code === 'cancelled' ? '' : clean(error.message), message: code === 'cancelled' ? 'Cancelled.' : '' });
         } finally {
@@ -195,7 +225,8 @@ class SongsterrJobs {
       const acquired = await this.provider.acquire(job.chart, { directory: acquisition, signal: job.controller.signal, allowAccount: job.allowAccount === true,
         onProgress: (p) => this._set(job, 'downloading', { message: clean(p?.message || 'Retrieving the approved tab…') }) });
       check(job);
-      if (!acquired?.path || !within(acquisition, path.resolve(acquired.path)) || !fs.statSync(acquired.path).isFile()) throw new Error('The source returned an invalid tab file.');
+      const source = containedFile(acquisition, acquired?.path);
+      if (!source.path) throw fileLocationError('The source returned an invalid tab file', 'acquired_score', source.reason);
       if (String(acquired.metadata?.songId) !== job.chart.id || !/^\d+$/.test(String(acquired.metadata?.revisionId)) || acquired.metadata?.approval !== 'approved') throw new Error('The source did not identify an approved revision.');
       job.scorePath = acquired.path; job.metadata = acquired.metadata;
       job.cachedScoreHash = await hashFile(job.scorePath, job.controller.signal);
@@ -204,9 +235,9 @@ class SongsterrJobs {
     }
     if (String(job.metadata?.songId) !== job.chart.id || !/^\d+$/.test(String(job.metadata?.revisionId)) || job.metadata?.approval !== 'approved'
         || job.sourceKey !== `songsterr:${job.chart.id}:${job.metadata.revisionId}`) throw new Error('The saved tab revision is invalid. Search for the song again to create a new import.');
-    if (typeof job.scorePath !== 'string' || !path.isAbsolute(job.scorePath) || !within(directory, path.resolve(job.scorePath))
-        || !fs.existsSync(job.scorePath) || fs.lstatSync(job.scorePath).isSymbolicLink() || !fs.lstatSync(job.scorePath).isFile()
-        || await hashFile(job.scorePath, job.controller.signal) !== job.cachedScoreHash) throw new Error('The saved tab changed. Search for the song again to create a new import.');
+    const score = containedFile(directory, job.scorePath);
+    if (!score.path) throw fileLocationError('The saved tab changed. Search for the song again to create a new import', 'cached_score', score.reason);
+    if (await hashFile(score.path, job.controller.signal) !== job.cachedScoreHash) throw new Error('The saved tab changed. Search for the song again to create a new import.');
     check(job);
     if (retryAudioDetection && !job.audio) {
       this._set(job, 'audio', { message: 'Checking Songsterr for the recording…' });
@@ -241,8 +272,9 @@ class SongsterrJobs {
     let result;
     try { result = await this._run(job, ['--song-import-file', requestPath], attempt); }
     finally { fs.unlinkSync(requestPath); }
-    const staging = path.resolve(result.stagingPath || '');
-    if (!within(attempt, staging) || fs.lstatSync(staging).isSymbolicLink() || !fs.statSync(staging).isFile()) throw new Error('The converter returned an invalid staged FeedPak.');
+    const staged = containedFile(attempt, result.stagingPath);
+    if (!staged.path) throw fileLocationError('The converter returned an invalid temporary FeedPak file', 'staged_feedpak', staged.reason);
+    const staging = staged.path;
     this._set(job, 'validating', { message: 'Checking the completed FeedPak…' });
     await this._run(job, ['--validate-feedpak', staging], attempt);
     Object.assign(job, { outputRelativePath: result.relativePath, outputHash: await hashFile(staging, job.controller.signal),
