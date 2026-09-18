@@ -4,6 +4,7 @@ const fs = require("fs");
 const http = require("http");
 const https = require("https");
 const path = require("path");
+const { redactConverterArgs } = require("./converter-args.cjs");
 const {
   clampRequestedWorkers,
   detectMemoryStatus,
@@ -2173,7 +2174,7 @@ function runConverterProcess(args, options = {}) {
   logDebug("converter.process.start", {
     command,
     cwd,
-    args: [...prefix, ...args],
+    args: redactConverterArgs([...prefix, ...args]),
     diagnostics
   });
   return new Promise((resolve) => {
