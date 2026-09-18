@@ -50,7 +50,7 @@ song_datas.extend((str(item), 'feedback_converter/tools/licenses') for item in (
 
 a = Analysis(
     [str(root / 'src' / 'feedback_converter' / 'cli.py')],
-    pathex=[],
+    pathex=[str(root / 'src')],
     binaries=[(str(source), destination) for source, destination in native_tools] + song_binaries,
     datas=[
         (str(tools / 'packed_codebooks.bin'), 'feedback_converter/tools'),
