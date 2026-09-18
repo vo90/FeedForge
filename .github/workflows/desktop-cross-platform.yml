@@ -99,7 +99,8 @@ jobs:
         run: |
           node --check electron/main.cjs
           python -m compileall -q src tools/start-demucs-server.py
-          npm run test:workers
+          npm test
+          npm run test:python
           npm run build
 
       - name: Build desktop app

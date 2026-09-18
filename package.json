@@ -8,6 +8,8 @@
   "main": "electron/main.cjs",
   "desktopName": "FeedForge.desktop",
   "scripts": {
+    "test": "node --test tests/js/*.test.cjs ui/src/*.test.mjs test-song-browser/*.test.cjs",
+    "test:python": "python -m pytest tests test-song-browser/instrument_evidence_test.py",
     "test:song-browser": "node --test test-song-browser/*.test.cjs",
     "test:song-browser:electron": "node test-song-browser/electron-runner.cjs",
     "test:song-browser:mega": "node test-song-browser/mega-electron-runner.cjs",
