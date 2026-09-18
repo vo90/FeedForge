@@ -9,11 +9,10 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
 const { spawn } = require('node:child_process');
-const asar = require('@electron/asar');
-const { NtExecutable, NtExecutableResource, Resource } = require('resedit');
 
 const PRODUCT = 'FeedForge Song Browser Test';
 const REQUIRED_MODULES = ['main.cjs', 'preload.cjs', ...['index', 'browser', 'dom', 'host-actions', 'jobs', 'diagnostics', 'feedback'].map((name) => `song-browser/${name}.cjs`)];
+const STARTUP_MODULES = new Set(['performance-profile.cjs', 'concurrency-limiter.cjs', 'audio-dependency.cjs', 'conversion-result.cjs', 'converter-args.cjs', 'local-assets.cjs', 'library-audit.cjs']);
 const digest = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 const cleanKey = (value) => value.replace(/\\/g, '/').replace(/^\/+/, '');
 const inside = (root, target) => { const relative = path.relative(root, target); return Boolean(relative) && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative); };
@@ -57,7 +56,7 @@ function fileList(root) {
   });
 }
 
-async function verifyStartupHooks({ source, metadata, archive, converter, reportRoot, portable }) {
+async function verifyStartupHooks({ source, metadata, archive, converter, reportRoot, portable, moduleSources = {} }) {
   // Execute the packaged main module with in-memory Electron/FS stand-ins.
   // These are assertions about startup logic, not a desktop launch or UI test.
   const virtualRoot = path.join(reportRoot, portable ? 'simulated-portable' : 'simulated-appdata');
@@ -65,6 +64,12 @@ async function verifyStartupHooks({ source, metadata, archive, converter, report
   const paths = { appData: virtualRoot };
   const ready = [], timers = [], windows = [], filesystem = [], logs = [];
   const forbidden = [], handlers = new Map();
+  const moduleCache = new Map(), schemes = new Map(), protocolHandlers = new Map();
+  const assetDirectories = new Set([
+    path.join(profile, 'temp', 'feedforge-inspect-cache'),
+    path.join(archive, 'assets', 'tone-equipment'),
+    path.join(path.dirname(archive), 'tone-equipment'),
+  ]);
   let locks = 0, registrations = 0, converterRunner;
   const deny = (name) => (..._args) => { forbidden.push(name); throw new Error(`Verification blocked unexpected ${name}.`); };
   const ownedVirtual = (filename) => {
@@ -78,8 +83,18 @@ async function verifyStartupHooks({ source, metadata, archive, converter, report
     existsSync: (filename) => path.resolve(filename) === converter,
     rmSync: (filename) => filesystem.push({ operation: 'remove', path: ownedVirtual(filename) }),
     readdirSync: deny('directory enumeration / stale portable cleanup'),
-    statSync: deny('unexpected filesystem inspection'),
+    statSync: (filename) => {
+      if (assetDirectories.has(path.resolve(filename))) return { isDirectory: () => true, isFile: () => false };
+      return deny('unexpected filesystem inspection')();
+    },
+    readFileSync: deny('filesystem read'),
+    promises: { readFile: deny('filesystem read') },
   };
+  fakeFs.realpathSync = Object.assign((filename) => {
+    const resolved = path.resolve(filename);
+    if (assetDirectories.has(resolved)) return resolved;
+    return deny('unexpected filesystem identity lookup')();
+  }, { native: (filename) => fakeFs.realpathSync(filename) });
   const app = new EventEmitter();
   Object.assign(app, {
     isPackaged: true,
@@ -108,24 +123,52 @@ async function verifyStartupHooks({ source, metadata, archive, converter, report
     dialog: { showOpenDialog: deny('native dialog') }, session: {},
     ipcMain: { handle: (name, handler) => handlers.set(name, handler), on() {} },
     shell: { openExternal: deny('external URL'), openPath: deny('external application') },
+    protocol: {
+      registerSchemesAsPrivileged: (values) => {
+        assert.equal(values.length, 1);
+        assert.equal(values[0].scheme, 'feedforge-local');
+        assert.deepEqual(JSON.parse(JSON.stringify(values[0].privileges)), { standard: true, secure: true, supportFetchAPI: true });
+        schemes.set(values[0].scheme, values[0].privileges);
+      },
+      handle: (scheme, handler) => {
+        assert.ok(schemes.has(scheme) && !protocolHandlers.has(scheme));
+        protocolHandlers.set(scheme, handler);
+      },
+      unhandle: deny('protocol shutdown during startup'),
+    },
   };
   const sandboxRequire = (name) => {
+    name = name.replace(/^node:/, '');
     if (name === 'electron') return electron;
     if (name === 'fs') return fakeFs;
     if (name === 'path') return path;
     if (name === 'http' || name === 'https') return { get: deny('network request'), request: deny('network request') };
-    if (name === 'child_process') return { spawn: deny('child process'), execFileSync: deny('child process') };
+    if (name === 'child_process') return { spawn: deny('child process'), spawnSync: deny('child process'), execFileSync: deny('child process') };
+    if (name === 'os') return { availableParallelism: () => 4, cpus: () => Array(4).fill({}), totalmem: () => 8 * 1024 ** 3, freemem: () => 4 * 1024 ** 3 };
+    if (name === 'crypto') return { randomUUID: () => '00000000-0000-4000-8000-000000000001' };
     if (name === path.join(archive, 'package.json')) return metadata;
     if (name === './song-browser/index.cjs') return { registerSongBrowser(options) { registrations += 1; converterRunner = options.runConverter; } };
+    if (name.startsWith('./') && STARTUP_MODULES.has(name.slice(2))) {
+      const key = name.slice(2);
+      assert.equal(typeof moduleSources[key], 'string', `Packaged startup dependency missing: ${key}`);
+      if (!moduleCache.has(key)) {
+        const childModule = { exports: {} };
+        moduleCache.set(key, childModule);
+        const childContext = makeContext(childModule, key);
+        new vm.Script(`(function () {\n${moduleSources[key]}\n})();`, { filename: `packaged-${key}` }).runInContext(childContext, { timeout: 2000 });
+      }
+      return moduleCache.get(key).exports;
+    }
     throw new Error(`Unexpected dependency in packaged startup: ${name}`);
   };
-  const module = { exports: {} };
-  const context = vm.createContext({ require: sandboxRequire, module, exports: module.exports,
-    __dirname: path.join(archive, 'electron'), __filename: path.join(archive, 'electron', 'main.cjs'),
-    process: fakeProcess, Buffer, URL,
+  const makeContext = (module, filename) => vm.createContext({ require: sandboxRequire, module, exports: module.exports,
+    __dirname: path.join(archive, 'electron'), __filename: path.join(archive, 'electron', filename),
+    process: fakeProcess, Buffer, URL, Response,
     setTimeout: (callback) => { timers.push(callback); return timers.length; }, clearTimeout() {},
     setInterval: deny('background interval'), clearInterval() {},
   }, { codeGeneration: { strings: false, wasm: false } });
+  const module = { exports: {} };
+  const context = makeContext(module, 'main.cjs');
   new vm.Script(`(function () {\n${source}\nmodule.exports.packageVerifierConverterCommand = converterCommand;\n})();`, { filename: 'packaged-electron-main.cjs' }).runInContext(context, { timeout: 2000 });
   for (const callback of ready) await callback();
   assert.equal(locks, 1, 'The test profile must obtain a single-instance lock.');
@@ -144,6 +187,11 @@ async function verifyStartupHooks({ source, metadata, archive, converter, report
   assert.equal(registrations, 1);
   assert.equal(typeof converterRunner, 'function');
   for (const timer of timers) await timer();
+  if (moduleCache.has('local-assets.cjs')) {
+    assert.ok(protocolHandlers.has('feedforge-local'), 'The packaged image protocol must be registered.');
+    const rejected = await protocolHandlers.get('feedforge-local')({ url: 'feedforge-local://asset/unregistered' });
+    assert.equal(rejected.status, 404, 'An unknown local image token must not read the filesystem.');
+  }
   assert.ok(handlers.has('updates:check') && handlers.has('updates:openLatest'));
   const update = await handlers.get('updates:check')();
   assert.equal(update.ok, true);
@@ -161,6 +209,7 @@ async function verifyStartupHooks({ source, metadata, archive, converter, report
     profileIsolation: true, initialView: 'songs', title: windows[0].options.title, titleProtected,
     registrationHookCalled: true, bundledConverterSelected: true, updaterCheckDisabled: true, updaterOpenDisabled: true,
     ordinaryPortableCleanupSkipped: true, forbiddenActionsRequested: forbidden.length,
+    verifiedStartupModules: [...moduleCache.keys()], localAssetProtocolRegistered: protocolHandlers.has('feedforge-local'),
     simulatedFilesystemOperations: filesystem.length };
 }
 
@@ -187,6 +236,8 @@ async function runConverterSmoke(converter, psarc, reportRoot) {
 }
 
 async function main() {
+  const asar = require('@electron/asar');
+  const { NtExecutable, NtExecutableResource, Resource } = require('resedit');
   const args = argumentsFrom(process.argv.slice(2));
   const packageRoot = realDirectory(args['--package-root']);
   const sourceRoot = args['--source-root'] ? realDirectory(args['--source-root']) : null;
@@ -243,11 +294,12 @@ async function main() {
       assert.ok(entries.includes(`desktop-dist/${match[1].slice(2)}`), `Referenced UI asset missing: ${match[1]}`);
     }
     const tools = path.join(path.dirname(converter), '_internal', 'feedback_converter', 'tools');
-    for (const name of ['vgmstream-cli.exe', 'ffmpeg.exe']) regularFile(path.join(tools, name));
+    for (const name of ['vgmstream-cli.exe', 'ffmpeg.exe', 'ffprobe.exe', 'node.exe']) regularFile(path.join(tools, name));
     report.artifacts = await Promise.all([executable, archive, converter].map(async (filename) => ({ path: filename, bytes: regularFile(filename).size, sha256: await hashFile(filename) })));
     const mainSource = extract('electron/main.cjs').toString('utf8');
+    const moduleSources = Object.fromEntries([...STARTUP_MODULES].filter((name) => entries.includes(`electron/${name}`)).map((name) => [name, extract(`electron/${name}`).toString('utf8')]));
     report.startupLogic = [];
-    for (const portable of [true, false]) report.startupLogic.push(await verifyStartupHooks({ source: mainSource, metadata, archive, converter, reportRoot, portable }));
+    for (const portable of [true, false]) report.startupLogic.push(await verifyStartupHooks({ source: mainSource, metadata, archive, converter, reportRoot, portable, moduleSources }));
     if (args['--psarc']) report.converterSmoke = await runConverterSmoke(converter, args['--psarc'], reportRoot);
     report.ok = true;
   } catch (error) { report.error = error.message; throw error; }
@@ -257,4 +309,5 @@ async function main() {
   }
 }
 
-main().catch((error) => { process.stderr.write(error.stack + '\n'); process.exitCode = 1; });
+if (require.main === module) main().catch((error) => { process.stderr.write(error.stack + '\n'); process.exitCode = 1; });
+module.exports = { verifyStartupHooks };
