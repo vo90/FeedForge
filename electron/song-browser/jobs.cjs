@@ -541,6 +541,7 @@ class SongJobs {
       const result = await this.runConverter(args, {
         // The adapter scopes Python/tool temporary files without changing global config.
         directory: path.join(this.root, job.id),
+        admissionSignal: job.controller.signal,
         onSpawn: (child) => {
           if (!child || typeof child.once !== "function") throw new Error("Converter did not provide a process handle.");
           record = { child, closed: child.exitCode !== null && child.exitCode !== undefined, terminating: false };

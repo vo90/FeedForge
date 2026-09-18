@@ -6,6 +6,7 @@ const { spawn } = require('node:child_process');
 const { publishFeedpak } = require('./publication.cjs');
 const { normalizeOutputSettings } = require('./output-settings.cjs');
 const { inspectEvidence, reportBundle } = require('./songsterr-evidence.cjs');
+const { waitForSharedOperation } = require('./shared-operation.cjs');
 const { unavailableSynchronization, synchronizationSummary, audioVideo } = require('./providers/songsterr/synchronization.cjs');
 const WAITING = new Set(['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed']);
 const ACTIVE = new Set(['queued', 'resolving', 'downloading', 'converting', 'audio', 'aligning', 'validating', 'saving']);
@@ -229,29 +230,43 @@ class SongsterrJobs {
   }
   async _run(job, args, directory) {
     check(job);
+    // The deadline includes waiting for shared converter capacity. Keep its
+    // cancellation separate from the job so a timeout remains a retryable error.
+    const admission = new AbortController();
+    const cancelAdmission = () => admission.abort();
+    job.controller.signal.addEventListener('abort', cancelAdmission, { once: true });
+    const timeoutError = () => new Error('Conversion timed out. Retry with another audio file.');
+    let timedOut = false;
     let timer;
     try {
-      timer = setTimeout(() => { job.timedOut = true; terminate(job.child); }, 30 * 60 * 1000); timer.unref?.();
-      const result = await this.runConverter(args, { directory,
-        onSpawn: (child) => { job.child = child; if (job.controller.signal.aborted) terminate(child); },
+      timer = setTimeout(() => { timedOut = true; job.timedOut = true; admission.abort(); terminate(job.child); }, 30 * 60 * 1000); timer.unref?.();
+      const result = await this.runConverter(args, { directory, admissionSignal: admission.signal,
+        onSpawn: (child) => { job.child = child; if (admission.signal.aborted) terminate(child); },
         onStderrLine: (line) => {
           if (!line.startsWith('FEEDFORGE_PROGRESS ')) return;
           try { const progress = JSON.parse(line.slice(19)); if (['audio', 'aligning', 'converting', 'validating'].includes(progress.stage)) this._set(job, progress.stage, { message: clean(progress.message) }); } catch { /* Ignore unrelated output. */ }
         } });
       job.child = null; check(job);
-      if (job.timedOut) throw new Error('Conversion timed out. Retry with another audio file.');
+      if (timedOut) throw timeoutError();
       if (typeof result?.stdout !== 'string' || result.stdout.length > 4 * 1024 * 1024) throw new Error('The converter returned an invalid response.');
       let parsed; try { parsed = JSON.parse(result.stdout); } catch { throw new Error('The converter returned an unreadable response.'); }
       if (result.code !== 0 || parsed.ok !== true) throw Object.assign(new Error(clean(parsed.error) || 'Conversion failed.'), { code: parsed.code, alignment: parsed.alignment, verification: parsed.verification, evidence: parsed.evidence, warnings: parsed.warnings });
       return parsed;
-    } finally { clearTimeout(timer); }
+    } catch (error) {
+      check(job);
+      if (timedOut) throw timeoutError();
+      throw error;
+    } finally {
+      clearTimeout(timer);
+      job.controller.signal.removeEventListener('abort', cancelAdmission);
+    }
   }
   async _work(job) {
     const retryAudioDetection = job.retryAudioDetection === true;
     delete job.retryAudioDetection;
     const directory = path.join(this.root, job.id); fs.mkdirSync(directory, { recursive: true });
     const stat = fs.lstatSync(directory); if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('The import working folder is invalid.');
-    check(job); job.converterRecipe = await this.getConverterRecipe();
+    check(job); job.converterRecipe = await waitForSharedOperation(this.getConverterRecipe(), job.controller.signal); check(job);
     if ((!job.scorePath || !fs.existsSync(job.scorePath)) && !retryAudioDetection) {
       this._set(job, 'resolving', { message: 'Finding the latest approved revision…', error: '' });
       // A cancelled provider may have finished writing before its promise rejects.

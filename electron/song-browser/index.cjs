@@ -12,6 +12,7 @@ const { normalizeRequirements } = require('./file-selection.cjs');
 const { normalizeRecipe, recipesCompatible } = require('./provenance.cjs');
 const { normalizeOutputSettings } = require('./output-settings.cjs');
 const { registerSongsterr } = require('./songsterr-service.cjs');
+const { waitForSharedOperation } = require('./shared-operation.cjs');
 
 function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, shell, getMainWindow, runConverter, getConverterRecipe = async () => null }) {
   let browser, jobs, outputDir, root, batches, imports, collecting = null, searching = null, recipePromise;
@@ -146,9 +147,9 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
       for (const job of jobs.snapshot()) stages.set(job.id, { stage: job.state, at: Date.now() });
     } catch (error) { browser.dispose(); browser = null; throw error; }
   }
-  async function ensureRecipe() {
+  async function ensureRecipe(signal) {
     if (!recipePromise) recipePromise = Promise.resolve().then(getConverterRecipe).then(normalizeRecipe).catch((error) => { recipePromise = null; throw error; });
-    jobs.recipe = await recipePromise;
+    jobs.recipe = await waitForSharedOperation(recipePromise, signal);
     return jobs.recipe;
   }
   function usesSharedOutput() {
@@ -218,7 +219,7 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
     const operation = { id, controller: new AbortController(), progress: { collected: 0, total: null, page: 1 } };
     searching = operation; emit();
     try {
-    if (request.filters?.hideConverted) await ensureRecipe();
+    if (request.filters?.hideConverted) await ensureRecipe(operation.controller.signal);
     const result = await browser.search(request, { signal: operation.controller.signal, onProgress: (progress) => { if (searching === operation) { operation.progress = progress; emit(); } } });
     if (operation.controller.signal.aborted) return { status: 'cancelled', requestId: id };
     if (result.status === 'ready') {
@@ -260,7 +261,7 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
     const operation = { controller: new AbortController(), progress: { collected: 0, total: null } };
     collecting = operation; emit();
     try {
-      await ensureRecipe();
+      await ensureRecipe(operation.controller.signal);
       let selected;
       if (scope === 'selected') {
         if (!Array.isArray(ids) || !ids.length || ids.length > 5000 || new Set(ids).size !== ids.length) throw new Error('Select charts to prepare.');

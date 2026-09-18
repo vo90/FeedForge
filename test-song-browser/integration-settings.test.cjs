@@ -63,13 +63,38 @@ function fixture(t, initialSettings) {
     dialog: { showSaveDialog: async (_win, request) => { calls.saves.push(request); return { canceled: false, filePath: options.savePath }; },
       showOpenDialog: async () => { calls.opens.push(true); return { canceled: false, filePaths: [options.selectedOutput] }; } },
     shell: { showItemInFolder(filename) { calls.revealed.push(filename); } }, getMainWindow: () => win, runConverter() { throw new Error('No real converter in IPC fixture.'); },
-    getConverterRecipe: async () => require('./fixture-recipe.cjs')
+    getConverterRecipe: async () => options.getConverterRecipe ? options.getConverterRecipe() : require('./fixture-recipe.cjs')
   });
   t.after(async () => { await service.close(); fs.rmSync(directory, { recursive: true, force: true }); });
   const call = (name, payload, event = trusted) => handlers.get('song-browser:' + name)(event, payload);
   const settingsPath = path.join(directory, 'song-browser', 'settings.json');
   if (initialSettings) { fs.mkdirSync(path.dirname(settingsPath), { recursive: true }); fs.writeFileSync(settingsPath, JSON.stringify(initialSettings)); }
   return { directory, libraryDir, handlers, options, calls, created, remote, info, call, settingsPath, trusted };
+}
+
+for (const operation of ['search', 'prepareBatch']) {
+  test(`cancelling ${operation} stops waiting for the shared converter recipe`, async (t) => {
+    const f = fixture(t);
+    await f.call('getState');
+    const pendingRecipe = gate();
+    f.options.getConverterRecipe = () => pendingRecipe.promise;
+    let settled = false;
+    const pending = f.call(operation, operation === 'search'
+      ? { query: 'song', filters: { hideConverted: true } }
+      : { request: { query: 'song' }, scope: 'selected', ids: ['123'] }).then((value) => { settled = true; return value; });
+    try {
+      await tick();
+      assert.equal(settled, false);
+      await f.call(operation === 'search' ? 'cancelSearch' : 'cancelPreparation');
+      await tick();
+      assert.equal(settled, true, 'Cancellation must finish while the shared recipe remains pending.');
+      assert.match((await pending).error, /Cancelled/);
+      const state = await f.call('getState');
+      assert.equal(state[operation === 'search' ? 'searchProgress' : 'preparation'], null);
+    } finally { pendingRecipe.resolve(require('./fixture-recipe.cjs')); }
+    // The shared request still succeeds and can serve a later operation.
+    assert.equal((await f.call('search', { query: 'song', filters: { hideConverted: true } })).status, 'ready');
+  });
 }
 
 test('every recovery, diagnostics and FeedBack IPC rejects foreign senders and subframes before initialization', async (t) => {
