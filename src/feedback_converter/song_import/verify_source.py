@@ -62,6 +62,7 @@ class Atom:
     hopo_origin: bool = False
     hopo_destination: bool = False
     wide_vibrato: bool = False
+    slide_in: str | None = None
 
 
 @dataclass
@@ -274,8 +275,13 @@ def songsterr(document):
                             if harmonic not in {"natural", "pinch"}:
                                 unsupported(nloc, "This harmonic type is not independently verified.")
                             fx[{"natural": "hm", "pinch": "hp"}[harmonic]] = True
-                        slide = {None: None, "shift": "shift", "legato": "legato", "upwards": "up", "downwards": "down"}
-                        if note.get("slide") not in slide:
+                        slide = {None: None, "above": None, "below": None,
+                                 "shift": "shift", "aboveshift": "shift", "belowshift": "shift",
+                                 "legato": "legato", "abovelegato": "legato", "belowlegato": "legato",
+                                 "upwards": "up", "aboveupwards": "up", "belowupwards": "up",
+                                 "downwards": "down", "abovedownwards": "down", "belowdownwards": "down"}
+                        raw_slide = note.get("slide")
+                        if raw_slide is not None and not isinstance(raw_slide, str) or raw_slide not in slide:
                             unsupported(nloc, "This slide type is not independently verified.")
                         bends = []
                         if note.get("bend"):
@@ -291,6 +297,10 @@ def songsterr(document):
                                           bool(note.get("hp"))))
                         fact["notes"].append(atoms[-1])
                         atoms[-1].wide_vibrato = bool(note.get("wideVibrato"))
+                        if raw_slide in {"above", "aboveshift", "abovelegato", "aboveupwards", "abovedownwards"}:
+                            atoms[-1].slide_in = "down"
+                        elif raw_slide in {"below", "belowshift", "belowlegato", "belowupwards", "belowdownwards"}:
+                            atoms[-1].slide_in = "up"
                     q += duration
                 if borrowed:
                     unsupported(loc, "A grace note has no independently resolvable principal note.")
@@ -465,7 +475,9 @@ def gpif(data):
                             if harmonic not in {"natural", "pinch"}:
                                 unsupported(nloc, "This GPIF harmonic is not independently verified.")
                             fx[{"natural": "hm", "pinch": "hp"}[harmonic]] = True
-                        slides = {0: None, 1: "shift", 2: "legato", 4: "down", 8: "up"}
+                        slides = {out + incoming: (kind, direction)
+                                  for out, kind in ((0, None), (1, "shift"), (2, "legato"), (4, "down"), (8, "up"))
+                                  for incoming, direction in ((0, None), (16, "up"), (32, "down"))}
                         flag = int(val("Slide")) if "Slide" in p else 0
                         if flag not in slides:
                             unsupported(nloc, "This GPIF slide combination is not independently verified.")
@@ -481,10 +493,11 @@ def gpif(data):
                                 raise ValueError(f"{nloc}: bend has no points")
                         tie = node.find("Tie")
                         atoms.append(Atom(q, duration, int(val("String")), int(val("Fret")), nloc, str(voice_slot), loc,
-                                          tie is not None and tie.get("destination") == "true", fx, bends, slides[flag], enabled("HopoOrigin"),
+                                          tie is not None and tie.get("destination") == "true", fx, bends, slides[flag][0], enabled("HopoOrigin"),
                                           enabled("HopoDestination")))
                         fact["notes"].append(atoms[-1])
                         atoms[-1].wide_vibrato = _txt(node, "Vibrato").lower() == "wide"
+                        atoms[-1].slide_in = slides[flag][1]
                     q += duration
             track.bars.append(atoms)
             track.beats.append(beat_facts)

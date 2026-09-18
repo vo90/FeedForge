@@ -74,10 +74,17 @@ def _note(raw, beat, position, duration, strings):
         else:
             raise ScoreImportError(f"Unsupported Songsterr harmonic: {harmonic}.")
     slide_raw = raw.get("slide")
-    slides = {None: None, "shift": "shift", "legato": "legato",
-              "downwards": "out_down", "upwards": "out_up"}
-    if slide_raw not in slides:
+    outgoing = {"": None, "shift": "shift", "legato": "legato",
+                "downwards": "out_down", "upwards": "out_up"}
+    # Songsterr's schema includes above/below alone and each prefix combined
+    # with an outgoing type. Above/below describe the unspecified starting fret.
+    slides = {None: (None, None), **{key: (value, None) for key, value in outgoing.items() if key}}
+    slides.update({prefix + suffix: (out, direction)
+                   for prefix, direction in (("below", "up"), ("above", "down"))
+                   for suffix, out in outgoing.items()})
+    if slide_raw is not None and not isinstance(slide_raw, str) or slide_raw not in slides:
         raise ScoreImportError(f"Unsupported Songsterr slide: {slide_raw}.")
+    slide_out, slide_in = slides[slide_raw]
     bends = []
     if raw.get("bend"):
         bend = raw["bend"]
@@ -87,7 +94,7 @@ def _note(raw, beat, position, duration, strings):
             bends.append((rational(p.get("position"), "bend position") / 60,
                           float(rational(p.get("tone"), "bend value") / 50)))
     return Note(position, duration, string, fret, bool(raw.get("tie")), effects,
-                sorted(bends), False, slides[slide_raw])
+                sorted(bends), False, slide_out, slide_in=slide_in)
 
 
 def _written_rhythm(beat, duration):

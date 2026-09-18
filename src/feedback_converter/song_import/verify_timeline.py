@@ -210,7 +210,7 @@ def expected(source, alignment):
                     result["tie_segments"] += 1
                 else:
                     event = {"start": start, "end": end, "s": atom.string, "f": atom.fret, "effects": dict(atom.effects),
-                             "curve": [], "slide_marks": [], "locations": [atom.location], "occurrence": occurrence + 1, "beat": atom.beat}
+                             "curve": [], "slide_marks": [], "incoming_marks": [], "locations": [atom.location], "occurrence": occurrence + 1, "beat": atom.beat}
                     if atom.hopo_destination or key in pending_hopos:
                         if previous is None:
                             unsupported(atom.location, "Source hammer-on/pull-off has no prior note.")
@@ -232,6 +232,8 @@ def expected(source, alignment):
                     pending_slides[key] = (event, atom.slide)
                 elif atom.slide:
                     event["slide_marks"].append((atom.slide, start, end))
+                if atom.slide_in:
+                    event["incoming_marks"].append((atom.slide_in, start))
                 if atom.hopo_origin:
                     pending_hopos[key] = event
                     event["effects"]["ln"] = True
@@ -263,6 +265,10 @@ def expected(source, alignment):
                 directions = {direction for direction, _, _ in n["slide_marks"]}
                 if len(directions) == 1:
                     row["slide_out"] = next(iter(directions))
+            if n["incoming_marks"]:
+                row["slide_in_marks"] = [{"direction": direction,
+                                          "time": round(recording.at(clock.at(destination)) - mapped_start, 6)}
+                                         for direction, destination in n["incoming_marks"]]
             if n["curve"]:
                 curve = []
                 for p in n["curve"]:

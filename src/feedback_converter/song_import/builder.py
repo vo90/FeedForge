@@ -79,6 +79,27 @@ def _retime_note(note: dict, alignment: dict, duration: float, *, chord_time: fl
             mapped.append({"direction": mark["direction"], "start": mapped_left, "end": mapped_right})
             previous_end = right
         result["slide_out_marks"] = mapped
+    if "slide_in_marks" in note:
+        marks = note["slide_in_marks"]
+        if not isinstance(marks, list):
+            raise ImportFailure("unsupported_score", "Slide-in marks must be an array of destination onsets.")
+        mapped, previous = [], -1.0
+        for mark in marks:
+            if (not isinstance(mark, dict) or set(mark) != {"direction", "time"}
+                    or not isinstance(mark.get("direction"), str) or mark["direction"] not in {"up", "down"}
+                    or isinstance(mark.get("time"), bool) or not isinstance(mark.get("time"), (int, float))
+                    or isinstance(mark["time"], float) and not math.isfinite(mark["time"])):
+                raise ImportFailure("unsupported_score", "A slide-in mark has an invalid direction or time.")
+            when = mark["time"]
+            if when < 0 or when > original_sustain or when <= previous:
+                raise ImportFailure("unsupported_score", "A slide-in mark is outside its source note or out of order.")
+            mapped_time = round(map_time(alignment, original + when) - start, 6)
+            if (mapped_time < 0 or mapped_time > round(sustain, 6) + 0.0000011
+                    or mapped and mapped_time <= mapped[-1]["time"]):
+                raise ImportFailure("alignment_failed", "Slide-in onsets cannot be represented at FeedPak timing precision.")
+            mapped.append({"direction": mark["direction"], "time": mapped_time})
+            previous = when
+        result["slide_in_marks"] = mapped
     if note.get("bnv"):
         # FeedPak bend-curve t values are relative to their note's onset.
         if nonlinear:

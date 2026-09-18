@@ -16,7 +16,7 @@ function checkedFile(root, relative, expected, maxBytes) {
 }
 
 function inspectEvidence(root, reference, outputHash) {
-  if (![1, 2].includes(reference?.version) || !DIGEST.test(reference.id || '')) throw new Error('The conversion report is unavailable.');
+  if (![1, 2, 3].includes(reference?.version) || !DIGEST.test(reference.id || '')) throw new Error('The conversion report is unavailable.');
   const filename = checkedFile(root, `records/${reference.id}.json`, reference.id, 1024 * 1024);
   const record = JSON.parse(fs.readFileSync(filename, 'utf8'));
   const report = checkedFile(root, `objects/${record.objects?.verification}`, record.objects?.verification, 16 * 1024 * 1024);

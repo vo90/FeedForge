@@ -146,13 +146,15 @@ def _note(node, position, duration, beat):
         effects["plk"] = True
     tie = node.find("Tie")
     tied = tie is not None and tie.get("destination", "false").lower() == "true"
-    slide = None
+    slide, slide_in = None, None
     if "Slide" in p:
         flags = integer(property_value(p, "Slide"), "slide flags")
         choices = {0: None, 1: "shift", 2: "legato", 4: "out_down", 8: "out_up"}
-        if flags not in choices:
+        outgoing, incoming = flags & 15, flags & 48
+        if flags < 0 or flags & ~63 or outgoing not in choices or incoming not in {0, 16, 32}:
             raise ScoreImportError(f"Unsupported slide flags: {flags}.")
-        slide = choices[flags]
+        slide = choices[outgoing]
+        slide_in = {0: None, 16: "up", 32: "down"}[incoming]
     bends = []
     if enabled(p, "Bended"):
         for offset, value in (("BendOriginOffset", "BendOriginValue"),
@@ -166,7 +168,7 @@ def _note(node, position, duration, beat):
             raise ScoreImportError("Bend has no curve values.")
         bends = sorted(set(bends))
     return Note(position, duration, string, fret, tied, effects, bends,
-                enabled(p, "HopoDestination"), slide)
+                enabled(p, "HopoDestination"), slide, slide_in=slide_in)
 
 
 def parse(path: Path) -> Score:

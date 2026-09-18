@@ -26,6 +26,25 @@ decimal places. `slide_out: up|down` remains only when all marks agree in direct
 for older consumers. A present marks array is authoritative, including an empty
 array; consumers must not also render the scalar.
 
+An incoming slide has authoritative `slide_in_marks` entries containing
+`direction: up|down` (pitch motion) and `time` seconds relative to the merged
+attack. Each point is the authored destination-segment onset, including a
+marked tied continuation. It supplies no starting fret, duration or trajectory.
+Points are independently synchronized and rounded to six decimal places; an
+onset at zero is valid, even for a zero-sustain consumer note. Ordered distinct
+points must remain distinct at this precision. An empty array means no incoming
+cues. Invalid arrays are rejected, not replaced with guessed scalar data.
+Incoming and outgoing markings can coexist; neither removes the other.
+
+Songsterr's public schema uses `below` (upward pitch motion) and `above`
+(downward), either alone or concatenated with `shift`, `legato`, `downwards` or
+`upwards`. GPIF slide flags 16 and 32 describe incoming slides from below and
+above, independently of outgoing flags 1, 2, 4 and 8. Conflicting/unknown flags
+stay unsupported. These interpretations were checked against the
+[Songsterr notation guide](https://www.songsterr.com/howtoreadtab#slideIn), its
+public application schema, and the
+[alphaTab GPIF reader](https://github.com/CoderLine/alphaTab/blob/develop/packages/alphatab/src/importer/GpifParser.ts).
+
 The performance boundary includes:
 
 - `tracks[].notes`, `chords`, and `templates`; chord children have their own
@@ -81,9 +100,10 @@ the production converter to produce expected values. A difference blocks saving;
 unsupported checks report Needs attention. In particular, an omitted notation
 sidecar currently prevents a fully checked import even if playable timing is exact.
 
-Contract and verifier version 2, in recipe version 3, add independent slide segment
-placement checks. Version 1 reports remain readable but do not establish current
-timing fidelity, and old outputs are not reused as version 2 imports.
+Contract and verifier version 3, in recipe version 3, add independent incoming-slide
+destination checks to the outgoing segment checks from contract 2. Version 1/2
+reports remain readable but do not establish current timing fidelity, and old
+outputs are not reused as version 3 imports.
 History and recovery receipts bind
 the successful check to the exact archive SHA-256. Old imports are not relabeled
 checked. Later edits leave the original report intact and mark the current file
@@ -98,7 +118,7 @@ Evidence is not silently deleted when the temporary download cache is cleaned.
 
 The report separates source fidelity, source-map versus estimated audio timing,
 and consumer capabilities. `ghost: true`, `slide_out: up|down`, and timed
-`slide_out_marks` are additive
+`slide_out_marks` and `slide_in_marks` are additive
 extensions, not a claim that every released game renderer understands them.
 Their requirement is recorded in `song_import.compatibility`.
 

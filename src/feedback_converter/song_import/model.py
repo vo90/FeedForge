@@ -46,6 +46,7 @@ class Note:
     source_id: str = ""
     beat_id: str = ""
     voice_id: str = ""
+    slide_in: str | None = None  # Pitch motion into this authored segment.
 
 
 @dataclass

@@ -174,6 +174,11 @@ def render(score: Score) -> dict:
                         output["slide_out"] = marks[0]["direction"]
                     else:
                         output.pop("slide_out", None)
+                if note.slide_in:
+                    # Only the destination segment onset is authored. Keep it
+                    # before ties merge; never infer a starting fret or length.
+                    output.setdefault("slide_in_marks", []).append({
+                        "direction": note.slide_in, "time": at(position) - output["t"]})
                 if note.effects.get("__hopo_origin"):
                     pending_hopo[link_key] = output
                     output["ln"] = True

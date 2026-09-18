@@ -18,9 +18,9 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 2
+VERSION = 3
 TIME_TOLERANCE = 0.0000011
-TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "bn"}
+TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "bn"}
 TUNINGS = {"guitar": {6: [40, 45, 50, 55, 59, 64], 7: [35, 40, 45, 50, 55, 59, 64], 8: [30, 35, 40, 45, 50, 55, 59, 64]},
            "bass": {4: [28, 33, 38, 43], 5: [23, 28, 33, 38, 43], 6: [23, 28, 33, 38, 43, 48]}}
 
@@ -118,7 +118,7 @@ def _notes(wanted, actual, check, part, duration):
         for key in ("t", "sus"):
             check.near("note_time" if key == "t" else "note_sustain", loc + "/" + key, a[key], b.get(key, 0))
         for key in TECHNIQUES:
-            if key == "slide_out_marks":
+            if key in {"slide_out_marks", "slide_in_marks"}:
                 continue
             wanted_value, actual_value = a.get(key), b.get(key)
             if wanted_value is None and (actual_value is None or actual_value is False):
@@ -128,6 +128,7 @@ def _notes(wanted, actual, check, part, duration):
             else:
                 check.equal("note_technique", loc + "/" + key, wanted_value, actual_value)
         _slide_marks(a.get("slide_out_marks", []), b, check, loc)
+        _incoming_marks(a.get("slide_in_marks", []), b, check, loc)
         curves = (a.get("bnv", []), b.get("bnv", []))
         check.equal("bend_point_count", loc + "/bnv", len(curves[0]), len(curves[1]))
         for pi, (ap, bp) in enumerate(zip(*curves)):
@@ -168,6 +169,38 @@ def _slide_marks(wanted, note, check, location):
             check.equal("slide_mark_direction", at + "/direction", expected["direction"], mark["direction"])
             check.near("slide_mark_time", at + "/start", expected["start"], left)
             check.near("slide_mark_time", at + "/end", expected["end"], right)
+
+
+def _incoming_marks(wanted, note, check, location):
+    """Check authored destination onsets, never an inferred approach trajectory."""
+    actual = note.get("slide_in_marks", [])
+    loc = location + "/slide_in_marks"
+    if not isinstance(actual, list):
+        check.fail("slide_in_shape", loc, "Slide-in marks must be an array.")
+        return
+    check.equal("slide_in_count", loc, len(wanted), len(actual))
+    previous = -1.0
+    for index, mark in enumerate(actual):
+        at = loc + f"/{index}"
+        if not isinstance(mark, dict) or set(mark) != {"direction", "time"}:
+            check.fail("slide_in_shape", at, "An incoming-slide cue has an invalid shape.")
+            continue
+        when = mark["time"]
+        if (not isinstance(mark["direction"], str) or mark["direction"] not in {"up", "down"}
+                or isinstance(when, bool) or not isinstance(when, (int, float))
+                or isinstance(when, float) and not math.isfinite(when)):
+            check.fail("slide_in_shape", at, "An incoming-slide cue has an invalid direction or time.")
+            continue
+        sustain = note.get("sus", 0)
+        if (when < 0 or when <= previous or isinstance(sustain, bool) or not isinstance(sustain, (int, float))
+                or isinstance(sustain, float) and not math.isfinite(sustain) or when > sustain + TIME_TOLERANCE):
+            check.fail("slide_in_bounds", at, "An incoming-slide cue is outside the sustain or out of order.")
+            previous = when
+            continue
+        previous = when
+        if index < len(wanted):
+            check.equal("slide_in_direction", at + "/direction", wanted[index]["direction"], mark["direction"])
+            check.near("slide_in_time", at + "/time", wanted[index]["time"], when)
 
 
 def _chords(wanted, chart, check, part):
@@ -267,7 +300,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
     check = Check()
     report = {"version": VERSION, "status": "failed", "errors": check.errors, "warnings": [], "counts": {},
               "scope": ["source_identity", "track_coverage", "physical_pitch", "note_timing", "techniques", "bend_curves",
-                        "slide_out_segment_timing", "authored_chord_groups", "beats", "meter", "sections", "tempo", "notation_beat_timing",
+                        "slide_out_segment_timing", "slide_in_destination_timing", "authored_chord_groups", "beats", "meter", "sections", "tempo", "notation_beat_timing",
                         "notation_written_rhythm", "notation_pitch_and_ties", "container_references"],
               "rounding": {"secondsDecimalPlaces": 6, "comparisonToleranceSeconds": TIME_TOLERANCE},
               "musicalQualityAssessed": False}

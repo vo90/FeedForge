@@ -80,7 +80,7 @@ async function fixture(t, options = {}) {
     const hash = (data) => crypto.createHash('sha256').update(data).digest('hex');
     const outputHash = hash(fs.readFileSync(stagingPath));
     const sourceHash = hash(fs.readFileSync(request.scorePath));
-    const contract = options.contract || 2;
+    const contract = options.contract || 3;
     const report = JSON.stringify({ version: contract, status: 'passed', sourceSha256: sourceHash }), verificationHash = hash(report);
     const record = JSON.stringify({ version: contract, outputHash, objects: { verification: verificationHash, source: sourceHash } });
     const id = hash(record);
@@ -161,29 +161,29 @@ test('verification is bound to the exact staged file before publication', async 
   assert.deepEqual(fs.readdirSync(f.outputDir), []);
 });
 
-test('scalar-only preservation contract cannot publish as a current verified conversion', async (t) => {
-  const f = await fixture(t, { contract: 1 });
+for (const contract of [1, 2]) test(`old preservation contract ${contract} cannot publish as a current verified conversion`, async (t) => {
+  const f = await fixture(t, { contract });
   f.enqueue(); await settle(f.jobs);
   assert.equal(f.jobs.snapshot()[0].state, 'failed');
   assert.match(f.jobs.snapshot()[0].error, /current source verification/);
   assert.deepEqual(fs.readdirSync(f.outputDir), []);
 });
 
-test('old reports survive recovery but do not claim current slide timing fidelity or allow reuse', async (t) => {
+for (const contract of [1, 2]) test(`old contract ${contract} reports survive recovery without current incoming-slide fidelity or reuse`, async (t) => {
   const f = await fixture(t);
   f.enqueue(); await settle(f.jobs); await f.jobs.dispose();
   const job = f.jobs.jobs[0], hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
   const oldReference = job.evidence;
   const report = JSON.parse(fs.readFileSync(path.join(f.jobs.auditRoot, 'objects', oldReference.verificationHash), 'utf8'));
-  report.version = 1;
+  report.version = contract;
   const reportBytes = JSON.stringify(report), verificationHash = hash(reportBytes);
   fs.writeFileSync(path.join(f.jobs.auditRoot, 'objects', verificationHash), reportBytes);
   const record = JSON.parse(fs.readFileSync(path.join(f.jobs.auditRoot, 'records', oldReference.id + '.json'), 'utf8'));
-  record.version = 1; record.objects.verification = verificationHash;
+  record.version = contract; record.objects.verification = verificationHash;
   const recordBytes = JSON.stringify(record), id = hash(recordBytes);
   fs.writeFileSync(path.join(f.jobs.auditRoot, 'records', id + '.json'), recordBytes);
-  job.recipe.preservationContract = 1; job.verification.version = 1;
-  job.evidence = { ...oldReference, version: 1, id, verificationHash };
+  job.recipe.preservationContract = contract; job.verification.version = contract;
+  job.evidence = { ...oldReference, version: contract, id, verificationHash };
   f.jobs._save();
   const receiptPath = path.join(f.root, job.id + '.receipt.json');
   const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8'));
@@ -199,7 +199,7 @@ test('old reports survive recovery but do not claim current slide timing fidelit
     await settle(restored);
     const fresh = restored.snapshot()[1];
     assert.equal(fresh.state, 'completed', fresh.error);
-    assert.equal(fresh.verification.version, 2);
+    assert.equal(fresh.verification.version, 3);
     assert.equal(fresh.verification.status, 'passed');
     assert.notEqual(fresh.outputPath, old.outputPath);
     assert.equal(fs.readFileSync(old.outputPath, 'utf8'), 'Synthetic FeedPak');

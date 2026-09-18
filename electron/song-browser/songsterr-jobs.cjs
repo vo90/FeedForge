@@ -92,11 +92,11 @@ class SongsterrJobs {
           if (saved.recipe?.preservationContract) {
             const checked = inspectEvidence(this.auditRoot, saved.evidence, saved.outputHash);
             const contract = saved.recipe.preservationContract;
-            if (![1, 2].includes(contract) || saved.verification?.version !== contract || saved.verification.status !== 'passed'
+            if (![1, 2, 3].includes(contract) || saved.verification?.version !== contract || saved.verification.status !== 'passed'
                 || checked.verification.version !== contract || checked.verification.status !== 'passed') throw new Error('Unverified recovery receipt.');
           }
           Object.assign(job, saved, { outputPath: output.path, state: 'completed', committed: true, message: 'FeedPak ready.',
-            error: '', pathValidation: undefined, outputVerification: saved.verification?.version === 2 && saved.verification.status === 'passed' ? 'passed' : 'not_checked', controller: new AbortController() });
+            error: '', pathValidation: undefined, outputVerification: saved.verification?.version === 3 && saved.verification.status === 'passed' ? 'passed' : 'not_checked', controller: new AbortController() });
         }
       } catch { /* Preserve interrupted job and files for an explicit retry. */ }
     }
@@ -114,7 +114,7 @@ class SongsterrJobs {
           const hash = await hashFile(output.path);
           if (hash !== job.verification.outputHash) { job.outputVerification = 'modified'; continue; }
           const checked = inspectEvidence(this.auditRoot, job.evidence, hash);
-          job.outputVerification = job.recipe?.preservationContract === 2 && checked.verification.version === 2 && checked.verification.status === 'passed' ? 'passed' : 'not_checked';
+          job.outputVerification = job.recipe?.preservationContract === 3 && checked.verification.version === 3 && checked.verification.status === 'passed' ? 'passed' : 'not_checked';
         } catch { job.outputVerification = 'not_checked'; }
       }
       this.lastOutputCheck = Date.now();
@@ -314,10 +314,10 @@ class SongsterrJobs {
     this._set(job, 'validating', { message: 'Checking the completed FeedPak…' });
     await this._run(job, ['--validate-feedpak', staging], attempt);
     const outputHash = await hashFile(staging, job.controller.signal);
-    if (result.recipe?.preservationContract !== 2 || result.verification?.version !== 2 || result.verification.status !== 'passed'
+    if (result.recipe?.preservationContract !== 3 || result.verification?.version !== 3 || result.verification.status !== 'passed'
         || result.verification.outputHash !== outputHash) throw new Error('The converter did not provide a current source verification. Update the converter and retry.');
     const checked = inspectEvidence(this.auditRoot, result.evidence, outputHash);
-    if (checked.verification.version !== 2 || checked.verification.status !== 'passed') throw new Error('Source verification did not pass.');
+    if (checked.verification.version !== 3 || checked.verification.status !== 'passed') throw new Error('Source verification did not pass.');
     if (result.scoreHash !== job.cachedScoreHash || checked.record.objects.source !== job.cachedScoreHash) throw new Error('Source verification describes a different tab.');
     Object.assign(job, { outputRelativePath: result.relativePath, outputHash,
       verification: result.verification, evidence: result.evidence, artwork: result.artwork, outputVerification: 'passed',
@@ -325,11 +325,11 @@ class SongsterrJobs {
     const identity = (j) => JSON.stringify([j.sourceKey, j.scoreHash, j.audioHash, j.recipe, j.converterRecipe, j.outputDir, j.outputRelativePath, j.outputSettings]);
     const prior = this.jobs.find((j) => j !== job && j.state === 'completed' && identity(j) === identity(job) && j.outputPath);
     let canReuse = false;
-    if (prior && prior.verification?.version === 2 && prior.verification.status === 'passed') {
+    if (prior && prior.verification?.version === 3 && prior.verification.status === 'passed') {
       try {
         const checkedPrior = inspectEvidence(this.auditRoot, prior.evidence, prior.outputHash);
         canReuse = await hashFile(prior.outputPath, job.controller.signal) === prior.outputHash
-          && checkedPrior.verification.version === 2 && checkedPrior.verification.status === 'passed';
+          && checkedPrior.verification.version === 3 && checkedPrior.verification.status === 'passed';
       } catch { /* A missing historical report does not invalidate this fresh conversion. */ }
     }
     if (canReuse) {
