@@ -9,7 +9,11 @@ from typing import Any
 SUPPORTED_TEMPLATE_FIELDS = frozenset({"artist", "title", "album", "year", "source", "parts"})
 SUPPORTED_OUTPUT_LAYOUTS = frozenset({"flat", "preserve", "artist"})
 _WINDOWS_RESERVED_NAMES = frozenset(
-    {"CON", "PRN", "AUX", "NUL", *(f"COM{index}" for index in range(1, 10)), *(f"LPT{index}" for index in range(1, 10))}
+    {
+        "CON", "PRN", "AUX", "NUL",
+        # Windows also treats these superscript suffixes as device numbers.
+        *(f"{prefix}{index}" for prefix in ("COM", "LPT") for index in "123456789¹²³"),
+    }
 )
 _TEMPLATE_FIELD_RE = re.compile(r"\{([^{}]+)\}")
 
@@ -62,7 +66,7 @@ def normalize_output_layout(layout: str | None) -> str:
 
 def safe_path_segment(value: str, fallback: str = "converted", *, max_length: int = 120) -> str:
     def clean(candidate: str) -> str:
-        normalized = unicodedata.normalize("NFKD", candidate).encode("ascii", "ignore").decode("ascii")
+        normalized = unicodedata.normalize("NFC", candidate)
         sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", normalized)
         sanitized = re.sub(r"\s+", " ", sanitized).strip().rstrip(". ")
         return sanitized[:max_length].rstrip(". ")
