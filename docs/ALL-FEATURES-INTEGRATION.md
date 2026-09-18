@@ -47,13 +47,18 @@ Process environment resolution combines verified decoder/DLL paths, the selected
 development source tree and per-import temporary folders. It retains process
 group cancellation and never changes global environment settings.
 
+Song imports can be cancelled while waiting for the shared worker limit or
+converter identity. Shutdown uses one completion barrier for song jobs, provider
+cleanup, converter processes and the stem service, including when a download is
+active before any converter has started. Repeated quit requests share that cleanup.
+
 Library duplicate checking keeps its existing disabled default and strict
 artist/title/album/year/duration matching. Broader artist/title matching is an
 explicit review option; different releases are not silently equated or deleted.
 Existing saved criteria without a matching mode retain strict behavior.
 
-Filename sanitation preserves Unicode using NFC while still rejecting Windows
-reserved names, invalid separators/control characters and unsafe trailing
+Filename sanitation preserves Unicode using NFC while making Windows reserved
+names safe and removing invalid separators/control characters and unsafe trailing
 characters. Existing converted files are not renamed by this change.
 
 Artwork and tone images use opaque local URLs restricted to registered roots.
