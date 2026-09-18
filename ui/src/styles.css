@@ -1617,6 +1617,43 @@ button:disabled {
   gap: 8px;
 }
 
+.audit-duplicate-mode {
+  display: grid;
+  gap: 6px;
+  max-width: 620px;
+}
+
+.audit-duplicate-mode small {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.audit-review-toolbar,
+.audit-result-filters,
+.audit-pagination {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.audit-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 280px;
+}
+
+.audit-search input {
+  min-width: 0;
+  width: 100%;
+}
+
+.audit-pagination {
+  justify-content: center;
+  color: var(--muted);
+}
+
 .audit-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(180px, 0.55fr);
