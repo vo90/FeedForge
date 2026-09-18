@@ -28,6 +28,8 @@ The converter specification uses this checkout's source and bundles `vgmstream-c
 
 The script builds the UI into its external staging directory. The output contains `release\win-unpacked\FeedForge Song Browser Test.exe` and a ZIP to extract before running. Keep the entire extracted folder together. Build receipt and dependency details stay outside the source checkout; no account session is included.
 
+The staged package omits UI build dependencies because Vite includes them in the renderer bundle. Before packaging, the installed TypeScript parser checks every Electron module and built renderer import: only Node/Electron built-ins and existing package-local modules are accepted, with the explicit application metadata lookup allowed. An external or unresolved dynamic import stops packaging. Electron-builder uses this staging folder as its project directory, so its dependency collector cannot fall back to the source manifest and demand another installation of the UI dependencies.
+
 Validate the frozen converter with a locally supplied PSARC and a new disposable smoke folder:
 
 ```powershell
