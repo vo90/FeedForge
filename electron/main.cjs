@@ -1,4 +1,5 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, session } = require("electron");
+const { registerSongBrowser } = require("./song-browser/index.cjs");
 const { spawn, execFileSync } = require("child_process");
 const fs = require("fs");
 const http = require("http");
@@ -21,6 +22,23 @@ const {
   sanitizeConversionResult,
   uniqueStrings
 } = require("./conversion-result.cjs");
+
+const songBrowserTest = app.isPackaged && require(path.join(app.getAppPath(), "package.json")).songBrowserTest === true;
+// Test builds have their own profile, including Chromium storage and temporary files.
+if (songBrowserTest || (!app.isPackaged && process.env.FEEDFORGE_USER_DATA)) {
+  const profile = songBrowserTest
+    ? path.join(process.env.PORTABLE_EXECUTABLE_DIR || app.getPath("appData"), "FeedForge Song Browser Data")
+    : path.resolve(process.env.FEEDFORGE_USER_DATA);
+  const temporary = path.join(profile, "temp");
+  fs.mkdirSync(temporary, { recursive: true });
+  app.setPath("userData", profile);
+  app.setPath("sessionData", profile);
+  app.setPath("temp", temporary);
+  if (!app.requestSingleInstanceLock()) { app.quit(); return; }
+  app.on("second-instance", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); }
+  });
+}
 
 let mainWindow;
 let inspectCacheRoot;
@@ -107,7 +125,7 @@ function createWindow() {
     minWidth: 1180,
     minHeight: 760,
     backgroundColor: "#090f18",
-    title: `FeedForge ${app.getVersion()}`,
+    title: `${songBrowserTest ? "FeedForge Song Browser Test" : "FeedForge"} ${app.getVersion()}`,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -117,23 +135,26 @@ function createWindow() {
   });
 
   mainWindow.once("ready-to-show", () => mainWindow.show());
+  if (songBrowserTest) mainWindow.on("page-title-updated", (event) => event.preventDefault());
+
+  const initialView = songBrowserTest || (!app.isPackaged && process.env.FEEDFORGE_START_VIEW === "songs") ? "songs" : undefined;
 
   if (!app.isPackaged && process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL + (initialView ? "#songs" : ""));
     return;
   }
 
   if (!app.isPackaged) {
     const builtIndex = path.join(app.getAppPath(), "desktop-dist", "index.html");
     if (fs.existsSync(builtIndex)) {
-      mainWindow.loadFile(builtIndex);
+      mainWindow.loadFile(builtIndex, initialView ? { hash: initialView } : {});
       return;
     }
     mainWindow.loadURL("http://127.0.0.1:5173");
     return;
   }
 
-  mainWindow.loadFile(path.join(process.resourcesPath, "app.asar", "desktop-dist", "index.html"));
+  mainWindow.loadFile(path.join(process.resourcesPath, "app.asar", "desktop-dist", "index.html"), initialView ? { hash: initialView } : {});
 }
 
 app.whenReady().then(() => {
@@ -149,8 +170,11 @@ app.whenReady().then(() => {
   });
   inspectCacheRoot = path.join(app.getPath("temp"), "feedforge-inspect-cache");
   createWindow();
+  registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, shell,
+    getMainWindow: () => mainWindow, runConverter, getConverterRecipe });
+  mainWindow.once("closed", () => app.quit());
   setTimeout(() => {
-    cleanupStalePortableArtifacts();
+    if (!songBrowserTest) cleanupStalePortableArtifacts();
     if (!inspectCacheTouched) removeDirectory(inspectCacheRoot);
   }, 2500);
 });
@@ -1031,6 +1055,7 @@ ipcMain.handle("updates:check", async () => {
 });
 
 ipcMain.handle("updates:openLatest", async (_event, url) => {
+  if (songBrowserTest) return { ok: false, error: "Use the next Song Browser test build to update this version." };
   const target = safeGithubReleaseUrl(url) || GITHUB_RELEASES_URL;
   await shell.openExternal(target);
   return { ok: true, url: target };
@@ -1042,6 +1067,8 @@ ipcMain.on("app:rendererError", (_event, payload = {}) => {
 
 async function checkForUpdates() {
   const currentVersion = app.getVersion();
+  if (songBrowserTest) return { ok: true, currentVersion, latestVersion: currentVersion,
+    updateAvailable: false, releaseUrl: "", releaseName: "Song Browser test build", publishedAt: "" };
   try {
     const release = await requestJsonHttps(GITHUB_LATEST_API_URL, 5000);
     const latestVersion = normalizeVersion(release.tag_name || release.name || "");
@@ -1916,9 +1943,9 @@ function converterCommand() {
     return { command: localExe, prefix: [], cwd: app.getAppPath() };
   }
   return {
-    command: process.platform === "win32"
+    command: (!app.isPackaged && process.env.FEEDFORGE_PYTHON) || (process.platform === "win32"
       ? path.join(app.getAppPath(), ".venv", "Scripts", "python.exe")
-      : path.join(app.getAppPath(), ".venv", "bin", "python"),
+      : path.join(app.getAppPath(), ".venv", "bin", "python")),
     prefix: ["-m", "feedback_converter.cli"],
     cwd: app.getAppPath()
   };
@@ -2130,6 +2157,16 @@ function normalizeValidationPolicy(value) {
   return String(value || "").trim().toLowerCase() === "strict" ? "strict" : "safe";
 }
 
+let songConverterRecipe;
+function getConverterRecipe() {
+  if (!songConverterRecipe) songConverterRecipe = (async () => {
+    const result = await runConverter(['--version']);
+    if (result.code !== 0 || !result.stdout.trim()) throw new Error('The converter version could not be checked.');
+    return require('./song-browser/converter-recipe.cjs').converterRecipe({ ...converterCommand(), version: result.stdout.trim().slice(0, 120) });
+  })().catch((error) => { songConverterRecipe = null; throw error; });
+  return songConverterRecipe;
+}
+
 function runConverter(args, options = {}) {
   const {
     admissionWeight = 1,
@@ -2160,7 +2197,10 @@ function runConverter(args, options = {}) {
 function runConverterProcess(args, options = {}) {
   const { command, prefix, cwd } = converterCommand();
   const audioDecoder = getAudioDecoderStatus();
-  const childEnvironment = converterEnvironment(process.env, audioDecoder, process.platform);
+  const childEnvironment = converterEnvironment(process.env, audioDecoder, process.platform, {
+    pythonSourceDirectory: app.isPackaged ? "" : path.join(app.getAppPath(), "src"),
+    temporaryDirectory: options.directory
+  });
   const diagnostics = {
     command,
     cwd,

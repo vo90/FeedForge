@@ -182,3 +182,31 @@ test("one successful preflight is reused across a four-thousand-song batch", (t)
   cache.get({}, { refresh: true });
   assert.equal(resolverCalls, 2);
 });
+
+test("song imports retain decoder DLL lookup, selected source and isolated temporary files together", () => {
+  const decoder = path.resolve("decoder-bundle");
+  const source = path.resolve("selected-worktree", "src");
+  const temporary = path.resolve("import-job", "tmp");
+  const original = { PATH: path.resolve("existing-tools"), PYTHONPATH: path.resolve("old-checkout"), TEMP: "shared-temp" };
+  const environment = converterEnvironment(original, { ready: true, toolsDirectory: decoder }, process.platform, {
+    pythonSourceDirectory: source, temporaryDirectory: temporary
+  });
+  assert.equal(environment.PATH.split(path.delimiter)[0], decoder);
+  assert.equal(environment[TOOLS_DIRECTORY_ENV], decoder);
+  assert.equal(environment[DECODER_VERIFIED_ENV], "1");
+  assert.deepEqual(environment.PYTHONPATH.split(path.delimiter), [source, original.PYTHONPATH]);
+  assert.deepEqual([environment.TEMP, environment.TMP, environment.TMPDIR], [temporary, temporary, temporary]);
+  assert.equal(environment.PYTHONDONTWRITEBYTECODE, "1");
+  assert.equal(original.TEMP, "shared-temp");
+  assert.equal(original[DECODER_VERIFIED_ENV], undefined);
+});
+
+test("Songsterr import isolation does not require a Rocksmith decoder", () => {
+  const environment = converterEnvironment({ TEMP: "original", [DECODER_VERIFIED_ENV]: "1" }, { ready: false }, process.platform, {
+    pythonSourceDirectory: "chosen-source", temporaryDirectory: "job-temp"
+  });
+  assert.equal(environment.PYTHONPATH, "chosen-source");
+  assert.equal(environment.TEMP, "job-temp");
+  assert.equal(environment[DECODER_VERIFIED_ENV], undefined);
+  assert.equal(converterEnvironment({ TEMP: "original" }, { ready: false }).TEMP, "original");
+});

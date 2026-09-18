@@ -25,6 +25,7 @@ from .converter import (
     _template_to_feedpak,
 )
 from .psarc_format.psarc import PSARC
+from .instrument_evidence import psarc_instrument_evidence
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,11 @@ class ArrangementPreview:
     chords: int
     event_count: int
     note_count: int
+    instrument_family: str | None = None
+    instrument_family_evidence: str = "unknown"
+    string_count: int | None = None
+    string_count_evidence: str = "unknown"
+    minimum_used_strings: int | None = None
 
 
 @dataclass(frozen=True)
@@ -92,6 +98,9 @@ class PsarcPreview:
     is_multi_song: bool = False
     preview_scope: str = "package"
     warnings: list[str] = field(default_factory=list)
+    source_platforms: list[str] = field(default_factory=list)
+    backing_track: str | None = None
+    backing_track_evidence: str = "unknown"
 
 
 def inspect_psarc(input_psarc: Path, *, cover_dir: Path | None = None) -> PsarcPreview:
@@ -109,6 +118,7 @@ def inspect_psarc(input_psarc: Path, *, cover_dir: Path | None = None) -> PsarcP
     lyric_count = 0
     first_song: Any | None = None
     used_ids: set[str] = set()
+    source_platforms: set[str] = set()
 
     for source_path, data in _find_sng_entries(content):
         song, xml_recovery, skip_warning = _parse_sng_with_xml_fallback(
@@ -126,6 +136,12 @@ def inspect_psarc(input_psarc: Path, *, cover_dir: Path | None = None) -> PsarcP
 
         if not getattr(song, "levels", None):
             continue
+
+        normalized_source = source_path.replace("\\", "/").lower()
+        if normalized_source.startswith("songs/bin/generic/"):
+            source_platforms.add("pc")
+        elif normalized_source.startswith("songs/bin/macos/"):
+            source_platforms.add("mac")
 
         if first_song is None:
             first_song = song
@@ -148,6 +164,7 @@ def inspect_psarc(input_psarc: Path, *, cover_dir: Path | None = None) -> PsarcP
                 chords=chord_count,
                 event_count=_arrangement_event_count(chart_counts),
                 note_count=_arrangement_note_count(chart_counts),
+                **psarc_instrument_evidence(source_path, metadata, chart),
             )
         )
         if xml_recovery is not None:
@@ -198,6 +215,7 @@ def inspect_psarc(input_psarc: Path, *, cover_dir: Path | None = None) -> PsarcP
         is_multi_song=song_count > 1,
         preview_scope="first_song" if song_count > 1 else "package",
         warnings=warnings,
+        source_platforms=sorted(source_platforms),
     )
 
 

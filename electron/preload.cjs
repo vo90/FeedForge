@@ -1,5 +1,68 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
+contextBridge.exposeInMainWorld('songsterrBrowser', {
+  getState: () => ipcRenderer.invoke('songsterr:getState'),
+  search: (request) => ipcRenderer.invoke('songsterr:search', request),
+  cancelSearch: () => ipcRenderer.invoke('songsterr:cancelSearch'),
+  enqueue: (request) => ipcRenderer.invoke('songsterr:enqueue', request),
+  retry: (request) => ipcRenderer.invoke('songsterr:retry', request),
+  cancel: (request) => ipcRenderer.invoke('songsterr:cancel', request),
+  signIn: () => ipcRenderer.invoke('songsterr:signIn'),
+  showBrowser: () => ipcRenderer.invoke('songsterr:showBrowser'),
+  chooseAudio: (request) => ipcRenderer.invoke('songsterr:chooseAudio', request),
+  useAudioUrl: (request) => ipcRenderer.invoke('songsterr:useAudioUrl', request),
+  showOutput: (request) => ipcRenderer.invoke('songsterr:showOutput', request),
+  exportReport: (request) => ipcRenderer.invoke('songsterr:exportReport', request),
+  onState: (callback) => {
+    const listener = (_event, value) => callback(value);
+    ipcRenderer.on('songsterr:state', listener);
+    return () => ipcRenderer.removeListener('songsterr:state', listener);
+  },
+});
+
+// This bridge is installed only in FeedForge's local UI, never on remote song pages.
+contextBridge.exposeInMainWorld("songBrowser", {
+  getState: () => ipcRenderer.invoke("song-browser:getState"),
+  signIn: () => ipcRenderer.invoke("song-browser:signIn"),
+  search: (request) => ipcRenderer.invoke("song-browser:search", request),
+  cancelSearch: (request) => ipcRenderer.invoke("song-browser:cancelSearch", request),
+  chooseOutput: () => ipcRenderer.invoke("song-browser:chooseOutput"),
+  setOutputSettings: (request) => ipcRenderer.invoke("song-browser:setOutputSettings", request),
+  enqueue: (request) => ipcRenderer.invoke("song-browser:enqueue", request),
+  assessResult: (request) => ipcRenderer.invoke("song-browser:assessResult", request),
+  chooseFile: (request) => ipcRenderer.invoke("song-browser:chooseFile", request),
+  prepareBatch: (request) => ipcRenderer.invoke("song-browser:prepareBatch", request),
+  cancelPreparation: () => ipcRenderer.invoke("song-browser:cancelPreparation"),
+  chooseBatch: (request) => ipcRenderer.invoke("song-browser:chooseBatch", request),
+  updateBatchPreferences: (request) => ipcRenderer.invoke("song-browser:updateBatchPreferences", request),
+  skipBatchItem: (request) => ipcRenderer.invoke("song-browser:skipBatchItem", request),
+  retryBatchItem: (request) => ipcRenderer.invoke("song-browser:retryBatchItem", request),
+  dismissBatchSuggestion: (request) => ipcRenderer.invoke("song-browser:dismissBatchSuggestion", request),
+  startBatch: (request) => ipcRenderer.invoke("song-browser:startBatch", request),
+  pauseBatch: (request) => ipcRenderer.invoke("song-browser:pauseBatch", request),
+  resumeBatch: (request) => ipcRenderer.invoke("song-browser:resumeBatch", request),
+  resolveBatchItem: (request) => ipcRenderer.invoke("song-browser:resolveBatchItem", request),
+  cancelBatch: (request) => ipcRenderer.invoke("song-browser:cancelBatch", request),
+  chooseBatchFile: (request) => ipcRenderer.invoke("song-browser:chooseBatchFile", request),
+  removeBatch: (request) => ipcRenderer.invoke("song-browser:removeBatch", request),
+  cancel: (request) => ipcRenderer.invoke("song-browser:cancel", request),
+  retry: (request) => ipcRenderer.invoke("song-browser:retry", request),
+  clearCache: (request) => ipcRenderer.invoke("song-browser:clearCache", request),
+  openCached: (request) => ipcRenderer.invoke("song-browser:openCached", request),
+  exportDiagnostics: () => ipcRenderer.invoke("song-browser:exportDiagnostics"),
+  connectFeedback: (request) => ipcRenderer.invoke("song-browser:connectFeedback", request),
+  setAutoRefresh: (request) => ipcRenderer.invoke("song-browser:setAutoRefresh", request),
+  useFeedbackFolder: () => ipcRenderer.invoke("song-browser:useFeedbackFolder"),
+  refreshFeedback: () => ipcRenderer.invoke("song-browser:refreshFeedback"),
+  showBrowser: () => ipcRenderer.invoke("song-browser:showBrowser"),
+  showOutput: (request) => ipcRenderer.invoke("song-browser:showOutput", request),
+  onState: (callback) => {
+    const listener = (_event, value) => callback(value);
+    ipcRenderer.on("song-browser:state", listener);
+    return () => ipcRenderer.removeListener("song-browser:state", listener);
+  }
+});
+
 function droppedPaths(files) {
   return Array.from(files).map((file) => webUtils.getPathForFile(file)).filter(Boolean);
 }

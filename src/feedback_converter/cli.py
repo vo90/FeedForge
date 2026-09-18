@@ -4,6 +4,7 @@ import argparse
 import json
 import multiprocessing
 import sys
+from contextlib import redirect_stdout
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
@@ -191,6 +192,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Convert PSARC CDLC archives to FeedPak packages.",
     )
     parser.add_argument("input", nargs="*", help="Input .psarc file(s).")
+    parser.add_argument("--song-import-file", help="Import a pinned tab and original audio from a local JSON request.")
+    parser.add_argument("--song-import-health", action="store_true", help="Check bundled Songsterr import dependencies without network access.")
     parser.add_argument(
         "-o",
         "--output",
@@ -345,6 +348,28 @@ def main(argv: list[str] | None = None) -> int:
     _configure_stdio()
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.song_import_health:
+        with redirect_stdout(sys.stderr):
+            from feedback_converter.song_import.runtime import runtime_health
+
+            result = runtime_health()
+        _print(json.dumps(result), stream=sys.stdout)
+        return 0 if result["ok"] else 1
+
+    if args.song_import_file:
+        try:
+            # stdout is the desktop worker protocol: exactly one JSON result.
+            # Libraries can print diagnostics despite quiet/progress options;
+            # retain that output on stderr without corrupting success/failure.
+            with redirect_stdout(sys.stderr):
+                from feedback_converter.song_import.worker import run_request_file
+
+                result = run_request_file(Path(args.song_import_file), progress=_emit_planning_progress)
+        except Exception as exc:  # noqa: BLE001
+            result = {"ok": False, "code": "import_failed", "error": str(exc)}
+        _print(json.dumps(_jsonable(result), ensure_ascii=False), stream=sys.stdout)
+        return 0 if result.get("ok") else 1
 
     if args.plan_conversion_file:
         try:

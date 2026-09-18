@@ -207,14 +207,30 @@ function resolveAudioDecoder(options = {}) {
   };
 }
 
-function converterEnvironment(baseEnvironment, decoderStatus, platform = process.platform) {
-  if (!decoderStatus?.ready || !decoderStatus.toolsDirectory) {
-    const environment = { ...(baseEnvironment || {}) };
+function converterEnvironment(baseEnvironment, decoderStatus, platform = process.platform, {
+  pythonSourceDirectory = "",
+  temporaryDirectory = ""
+} = {}) {
+  const ready = decoderStatus?.ready && decoderStatus.toolsDirectory;
+  const environment = ready
+    ? environmentWithDecoder(baseEnvironment, decoderStatus.toolsDirectory, platform)
+    : { ...(baseEnvironment || {}) };
+  if (ready) {
+    environment[DECODER_VERIFIED_ENV] = "1";
+  } else {
     delete environment[DECODER_VERIFIED_ENV];
-    return environment;
   }
-  const environment = environmentWithDecoder(baseEnvironment, decoderStatus.toolsDirectory, platform);
-  environment[DECODER_VERIFIED_ENV] = "1";
+  // Keep the selected worktree's Python source and the import job's temporary
+  // files together without losing the verified decoder's DLL search path.
+  if (pythonSourceDirectory) {
+    environment.PYTHONPATH = [pythonSourceDirectory, environment.PYTHONPATH].filter(Boolean).join(path.delimiter);
+  }
+  if (temporaryDirectory) {
+    environment.TEMP = temporaryDirectory;
+    environment.TMP = temporaryDirectory;
+    environment.TMPDIR = temporaryDirectory;
+    environment.PYTHONDONTWRITEBYTECODE = "1";
+  }
   return environment;
 }
 

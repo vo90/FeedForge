@@ -1,0 +1,977 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { EventEmitter } = require('node:events');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const vm = require('node:vm');
+const { CustomsForgeBrowser, allowedNavigation, allowedDownload, searchUrl, MAX_BYTES } = require('../electron/song-browser/browser.cjs');
+const { hostDownloadAction } = require('../electron/song-browser/host-actions.cjs');
+const { registerSongBrowser } = require('../electron/song-browser/index.cjs');
+
+class FakeContents extends EventEmitter {
+  constructor() { super(); this.url = ''; this.mainFrame = { executeJavaScript: (...args) => this.executeJavaScript(...args) }; this.responses = []; }
+  setAudioMuted(value) { this.muted = value; }
+  setWindowOpenHandler(handler) { this.openHandler = handler; }
+  getURL() { return this.url; }
+  executeJavaScript() { return Promise.resolve(this.responses.shift() || { status: 'waiting' }); }
+  send() {}
+}
+
+class FakeWindow extends EventEmitter {
+  static created = [];
+  constructor(options) {
+    super(); this.options = options; this.webContents = new FakeContents(); this.destroyed = false;
+    this.visible = false; this.focused = false; FakeWindow.created.push(this);
+  }
+  loadURL(url) { this.webContents.url = url; return Promise.resolve(); }
+  isDestroyed() { return this.destroyed; }
+  show() { this.visible = true; }
+  hide() { this.visible = false; }
+  focus() { this.focused = true; }
+  destroy() { if (!this.destroyed) { this.destroyed = true; this.emit('closed'); } }
+}
+
+class FakeDownload extends EventEmitter {
+  constructor({ url = 'https://dl.dropboxusercontent.com/s/sample/chart.psarc', filename = 'chart.psarc', total = 200 } = {}) {
+    super(); Object.assign(this, { url, filename, total, received: 0, state: 'progressing', cancelled: false });
+  }
+  getURL() { return this.url; }
+  getFilename() { return this.filename; }
+  getTotalBytes() { return this.total; }
+  getReceivedBytes() { return this.received; }
+  getState() { return this.state; }
+  setSavePath(value) { this.savePath = value; }
+  cancel() {
+    assert.notEqual(this.notifyingUpdate, true, 'Chromium must not be reentered from its updated observer');
+    this.cancelled = true; this.state = 'cancelled'; this.emit('done', {}, 'cancelled');
+  }
+  update(state = 'progressing') {
+    this.notifyingUpdate = true;
+    try { this.emit('updated', {}, state); } finally { this.notifyingUpdate = false; }
+  }
+  finish(state = 'completed') { this.state = state; this.emit('done', {}, state); }
+}
+
+class DeferredCancelDownload extends FakeDownload {
+  cancel() {
+    // Electron can acknowledge cancellation before the terminal event closes its file handle.
+    this.cancelled = true;
+    this.state = 'cancelled';
+  }
+}
+
+function event() { return { prevented: false, preventDefault() { this.prevented = true; } }; }
+
+function fixture(t) {
+  const session = new EventEmitter();
+  session.setPermissionRequestHandler = (handler) => { session.permissionRequest = handler; };
+  session.setPermissionCheckHandler = (handler) => { session.permissionCheck = handler; };
+  const connections = [];
+  const browser = new CustomsForgeBrowser({ BrowserWindow: FakeWindow, session: { fromPath: () => session },
+    profilePath: 'test-owned-profile', onConnection: (value) => connections.push(value) });
+  // The polling loop concerns remote DOM changes; lifecycle tests drive Electron events explicitly.
+  browser.driveDownload = async () => {};
+  t.after(() => browser.dispose());
+  return { browser, session, connections };
+}
+
+function begin(browser, overrides = {}) {
+  const controller = new AbortController();
+  const progress = [];
+  const attention = [];
+  const destination = 'C:\\test-owned\\download.psarc';
+  const promise = browser.download({ id: '123', supported: true }, {
+    destination, signal: controller.signal, onProgress: (value) => progress.push(value),
+    onAttention: (value) => attention.push(value), ...overrides
+  });
+  const outcome = promise.then((value) => ({ value }), (error) => ({ error }));
+  return { controller, progress, attention, destination, outcome, job: browser.active };
+}
+
+function prepareMega(job, win, browser, name = 'Song_p.psarc') {
+  job.host = 'mega';
+  win.webContents.url = 'https://mega.nz/file/fixture#fixture-key';
+  job.megaPrepared = { contents: win.webContents, documentUrl: win.webContents.url,
+    documentVersion: browser.documentVersions.get(win.webContents) || 0,
+    candidate: { id: 'fixture', label: name, platform: 'pc' } };
+}
+
+test('explicit non-MEGA filename choice rejects a different PC variant before creating any saved file', async (t) => {
+  const { browser, session } = fixture(t); let resolved = 0;
+  const run = begin(browser, { onResolvedFile: () => { resolved++; } });
+  const win = [...run.job.windows][0]; run.job.host = 'dropbox';
+  run.job.requestedChoice = { label: 'Song_v2_p.psarc', platform: 'pc' };
+  const item = new FakeDownload({ filename: 'Song_v1_p.psarc' });
+  const started = event(); session.emit('will-download', started, item, win.webContents);
+  const outcome = await run.outcome;
+  assert.equal(started.prevented, true); assert.equal(item.savePath, undefined); assert.equal(run.job.item, null);
+  assert.equal(outcome.error?.code, 'SONG_ATTENTION'); assert.equal(run.job.failure, 'needs_attention');
+  assert.equal(resolved, 0); assert.equal(item.listenerCount('done'), 0);
+});
+
+test('matching explicit filename succeeds and reports the actual observed download descriptor', async (t) => {
+  const { browser, session } = fixture(t); const resolved = [];
+  const run = begin(browser, { onResolvedFile: (file, choice) => resolved.push({ file, choice }) });
+  const win = [...run.job.windows][0]; run.job.host = 'dropbox';
+  run.job.requestedChoice = { label: 'Song_v2_p.psarc', platform: 'pc' };
+  run.job.resolvedFile = { label: 'Song_v2_p.psarc', platform: 'pc', sizeBytes: 100, versionHint: 'v2', evidence: { version: 'filename_hint' } };
+  const item = new FakeDownload({ filename: 'Song_v2_p.psarc', total: 200 });
+  const started = event(); session.emit('will-download', started, item, win.webContents);
+  assert.equal(started.prevented, false); assert.equal(item.savePath, run.destination);
+  item.received = 200; item.finish();
+  assert.equal((await run.outcome).value, run.destination); assert.equal(resolved.length, 1);
+  assert.equal(resolved[0].file.filename, 'Song_v2_p.psarc'); assert.equal(resolved[0].file.sizeBytes, 200);
+  assert.equal(resolved[0].file.platform, 'pc'); assert.equal(resolved[0].file.evidence.filename, 'observed');
+  assert.equal(resolved[0].file.evidence.sizeBytes, 'observed'); assert.equal(resolved[0].file.evidence.versionHint, 'filename_hint');
+  assert.deepEqual(resolved[0].choice, run.job.requestedChoice);
+});
+
+test('ordinary providers without an explicit file choice retain their accepted filename behavior', async (t) => {
+  const { browser, session } = fixture(t); const run = begin(browser);
+  const win = [...run.job.windows][0]; run.job.host = 'dropbox';
+  run.job.resolvedFile = { label: 'Host_display_name_p.psarc', platform: 'pc' };
+  const item = new FakeDownload({ filename: 'Actual_download_name_p.psarc' });
+  const started = event(); session.emit('will-download', started, item, win.webContents);
+  assert.equal(started.prevented, false); assert.equal(item.savePath, run.destination);
+  item.received = item.total; item.finish(); assert.equal((await run.outcome).value, run.destination);
+});
+
+test('non-MEGA chooser tokens are opaque and bind the selected row identity in its owned document', async (t) => {
+  const { browser } = fixture(t); const run = begin(browser);
+  const win = [...run.job.windows][0]; run.job.host = 'google-drive'; win.webContents.url = 'https://drive.google.com/drive/folders/fixture';
+  const target = 'document-row-7';
+  win.webContents.executeJavaScript = async () => ({ status: 'choose_file', candidates: [{ id: target, label: 'Song_v2_p.psarc', platform: 'pc' }] });
+  let captured;
+  run.job.onAttention = (value) => {
+    if (!value?.candidates) return;
+    const candidate = value.candidates[0];
+    assert.notEqual(candidate.id, target); assert.equal(candidate.targetId, undefined);
+    assert.match(candidate.id, /^[a-f0-9-]{36}$/i);
+    assert.deepEqual(browser.chooseFile({ id: candidate.id }), { ok: true });
+    captured = { ...run.job.choice };
+    run.controller.abort();
+  };
+  await CustomsForgeBrowser.prototype.driveDownload.call(browser, run.job, { id: '123' }); await run.outcome;
+  assert.deepEqual(captured, { id: target, label: 'Song_v2_p.psarc', platform: 'pc' });
+});
+
+test('non-MEGA chooser rejects a changed document URL or same-URL reload', async (t) => {
+  for (const changed of ['url', 'reload']) {
+    await t.test(changed, async (subtest) => {
+      const { browser } = fixture(subtest); const run = begin(browser);
+      const win = [...run.job.windows][0]; run.job.host = 'google-drive'; win.webContents.url = 'https://drive.google.com/drive/folders/fixture';
+      win.webContents.executeJavaScript = async () => ({ status: 'choose_file', candidates: [{ id: 'row-1', label: 'Song_p.psarc', platform: 'pc' }] });
+      let checked = false;
+      run.job.onAttention = (value) => {
+        if (!value?.candidates) return;
+        if (changed === 'url') win.webContents.url = 'https://drive.google.com/drive/folders/another';
+        else win.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false });
+        assert.throws(() => browser.chooseFile({ id: value.candidates[0].id }), /file list has changed/i);
+        assert.equal(run.job.choice, undefined); checked = true; run.controller.abort();
+      };
+      await CustomsForgeBrowser.prototype.driveDownload.call(browser, run.job, { id: '123' }); await run.outcome;
+      assert.equal(checked, true);
+    });
+  }
+});
+
+test('a replacement row in the same non-MEGA document invalidates the old opaque chooser token', async (t) => {
+  const { browser } = fixture(t); const run = begin(browser);
+  const win = [...run.job.windows][0]; run.job.host = 'google-drive'; win.webContents.url = 'https://drive.google.com/drive/folders/fixture';
+  let calls = 0, previousToken, checked = false;
+  win.webContents.executeJavaScript = async () => ({ status: 'choose_file', candidates: [{ id: ++calls === 1 ? 'old-row' : 'replacement-row', label: 'Same_p.psarc', platform: 'pc' }] });
+  run.job.onAttention = (value) => {
+    if (!value?.candidates) return;
+    if (!previousToken) { previousToken = value.candidates[0].id; return; }
+    assert.notEqual(value.candidates[0].id, previousToken);
+    assert.throws(() => browser.chooseFile({ id: previousToken }), /expired/i);
+    browser.chooseFile({ id: value.candidates[0].id });
+    assert.equal(run.job.choice.id, 'replacement-row'); checked = true; run.controller.abort();
+  };
+  await CustomsForgeBrowser.prototype.driveDownload.call(browser, run.job, { id: '123' }); await run.outcome;
+  assert.equal(checked, true); assert.equal(calls, 2);
+});
+
+test('non-MEGA action cannot run after a chosen document is replaced before the next poll', async (t) => {
+  const { browser } = fixture(t); const run = begin(browser);
+  const win = [...run.job.windows][0]; run.job.host = 'google-drive'; win.webContents.url = 'https://drive.google.com/drive/folders/fixture';
+  run.job.candidateDocument = { contents: win.webContents, url: win.webContents.url, version: browser.documentVersions.get(win.webContents) || 0 };
+  run.job.choice = { id: 'row-1', label: 'Song_p.psarc', platform: 'pc' };
+  win.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false });
+  let actions = 0; win.webContents.executeJavaScript = async () => { actions++; return { status: 'clicked' }; };
+  await CustomsForgeBrowser.prototype.driveDownload.call(browser, run.job, { id: '123' });
+  assert.ok((await run.outcome).error); assert.equal(run.job.failure, 'needs_attention'); assert.equal(actions, 0);
+});
+
+test('MEGA saves only the prepared file from its owned unchanged document', async (t) => {
+  const { browser, session } = fixture(t); const run = begin(browser);
+  const win = [...run.job.windows][0]; prepareMega(run.job, win, browser);
+  const item = new FakeDownload({ url: 'blob:https://mega.nz/fixture-blob', filename: 'Song_p.psarc' });
+  const started = event(); session.emit('will-download', started, item, win.webContents);
+  assert.equal(started.prevented, false); assert.equal(item.savePath, run.destination);
+  assert.equal(run.progress.at(-1), 95);
+  item.received = 200; item.finish();
+  assert.equal((await run.outcome).value, run.destination); assert.equal(win.destroyed, true);
+});
+
+test('MEGA rejects an unprepared Blob, a different filename, changed document and oversized file', async (t) => {
+  for (const problem of ['unprepared', 'filename', 'document', 'size', 'reload']) {
+    const { browser, session } = fixture(t); const run = begin(browser);
+    const win = [...run.job.windows][0]; prepareMega(run.job, win, browser);
+    if (problem === 'unprepared') run.job.megaPrepared = null;
+    if (problem === 'document') win.webContents.url = 'https://mega.nz/file/other#key';
+    if (problem === 'reload') win.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false });
+    const item = new FakeDownload({ url: 'blob:https://mega.nz/fixture-blob', filename: problem === 'filename' ? 'Other_p.psarc' : 'Song_p.psarc', total: problem === 'size' ? MAX_BYTES + 1 : 200 });
+    const started = event(); session.emit('will-download', started, item, win.webContents);
+    assert.equal(started.prevented, true, problem); assert.equal(item.savePath, undefined);
+    assert.ok((await run.outcome).error, problem);
+  }
+});
+
+test('another job-owned window cannot use a MEGA file preparation', async (t) => {
+  const { browser, session } = fixture(t); const run = begin(browser);
+  const win = [...run.job.windows][0]; prepareMega(run.job, win, browser);
+  const popup = browser.createWindow(run.job); popup.webContents.url = win.webContents.url;
+  const started = event(); const item = new FakeDownload({ url: 'blob:https://mega.nz/fixture-blob', filename: 'Song_p.psarc' });
+  session.emit('will-download', started, item, popup.webContents);
+  assert.equal(started.prevented, true); assert.ok((await run.outcome).error);
+});
+
+test('MEGA progress keeps percentages monotonic and repeated status does not extend a stall', async (t) => {
+  const { browser } = fixture(t); const run = begin(browser); run.job.host = 'mega';
+  const updates = []; run.job.onProgress = (percent, details) => updates.push({ percent, details });
+  browser.providerProgress(run.job, { progress: 50, phase: 'downloading' });
+  assert.equal(updates[0].percent, 47);
+  run.job.lastActivity = 123;
+  assert.equal(browser.providerProgress(run.job, { progress: 50, phase: 'downloading' }), false);
+  assert.equal(run.job.lastActivity, 123);
+  browser.providerProgress(run.job, { progress: 10, phase: 'downloading' });
+  assert.equal(updates.length, 1);
+  browser.providerProgress(run.job, { phase: 'decrypting' });
+  assert.equal(updates.at(-1).percent, 94); assert.ok(run.job.lastActivity > 123);
+  browser.providerProgress(run.job, { phase: 'saving' }); assert.equal(updates.at(-1).percent, 95);
+  run.controller.abort(); await run.outcome;
+});
+
+test('cancelling before a MEGA Blob requests provider cancellation before closing its page', async (t) => {
+  const { browser } = fixture(t); const run = begin(browser);
+  const win = [...run.job.windows][0]; prepareMega(run.job, win, browser);
+  let cancelled = 0;
+  win.webContents.executeJavaScript = async (script) => {
+    assert.match(script, /megaCancelAction/); assert.equal(win.destroyed, false); cancelled++;
+    return { status: 'clicked' };
+  };
+  run.controller.abort(); assert.ok((await run.outcome).error);
+  assert.equal(cancelled, 1); assert.equal(win.destroyed, true); assert.equal(browser.active, null);
+});
+
+test('MEGA deadlines distinguish an active transfer, a stall and a missing final save', async (t) => {
+  const { browser } = fixture(t); const run = begin(browser); const job = run.job;
+  job.host = 'mega'; job.lastActivity = 650000;
+  browser.checkDownloadDeadline(job, 0, 650001); assert.equal(job.finished, false, 'advancing MEGA transfers can outlast ten minutes');
+  job.providerSavingAt = 600000;
+  browser.checkDownloadDeadline(job, 0, 660001); assert.match(run.attention.at(-1), /not received the file/);
+  job.item = {}; job.attention = null;
+  browser.checkDownloadDeadline(job, 0, 660002); assert.equal(job.attention, null, 'saving grace never interrupts an actual DownloadItem');
+  job.item = null;
+  browser.checkDownloadDeadline(job, 0, 1250001); assert.equal(job.failure, 'timeout');
+  assert.ok((await run.outcome).error);
+});
+
+test('a stale MEGA prepare reply after a same-URL reload cannot authorize a Blob', async (t) => {
+  const { browser, session } = fixture(t);
+  browser.driveDownload = CustomsForgeBrowser.prototype.driveDownload;
+  let release, readStarted;
+  const reading = new Promise(resolve => { readStarted = resolve; });
+  browser.navigate = async (win) => {
+    win.webContents.url = 'https://mega.nz/file/fixture#key';
+    win.webContents.executeJavaScript = (script) => {
+      if (script.includes('megaCancelAction')) return Promise.resolve({ status: 'clicked' });
+      readStarted(); return new Promise(resolve => { release = resolve; });
+    };
+  };
+  const run = begin(browser); run.job.host = 'mega';
+  await reading;
+  const win = [...run.job.windows][0];
+  win.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false });
+  release({ status: 'prepared', selectedFile: { id: 'old', label: 'Song_p.psarc', platform: 'pc' } });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(run.job.megaPrepared, undefined);
+  const started = event();
+  session.emit('will-download', started, new FakeDownload({ url: 'blob:https://mega.nz/fixture', filename: 'Song_p.psarc' }), win.webContents);
+  assert.equal(started.prevented, true); assert.ok((await run.outcome).error);
+});
+
+async function settlesSoon(promise) {
+  let timer;
+  try { return await Promise.race([promise, new Promise((resolve) => { timer = setTimeout(() => resolve({ stalled: true }), 100); })]); }
+  finally { clearTimeout(timer); }
+}
+
+test('navigation permits supported HTTPS hosts and rejects lookalikes, credentials and custom schemes', () => {
+  for (const url of ['https://ignition4.customsforge.com/cdlc/123', 'https://drive.google.com/file/d/test/view',
+    'https://drive.usercontent.google.com/download', 'https://accounts.google.com/',
+    'https://www.dropbox.com/scl/fi/test/chart.psarc', 'https://dl.dropboxusercontent.com/s/test/chart.psarc',
+    'https://www.mediafire.com/file/test/chart.psarc', 'https://download1520.mediafire.com/test/chart.psarc', 'https://mega.nz/file/test']) {
+    assert.equal(allowedNavigation(url), true, url);
+  }
+  for (const url of ['https://mega.nz.evil.test/file/test', 'https://www.dropbox.com.evil.test/file',
+    'https://evildropboxusercontent.com/file', 'https://download1.mediafire.com.evil.test/file',
+    'https://drive.google.com@evil.test/file', 'https://name:secret@drive.google.com/file',
+    'https://drive.google.com:444/file', 'http://www.dropbox.com/file', 'file:///C:/private.psarc',
+    'javascript:alert(1)', 'data:text/html,hello', 'not a url']) {
+    assert.equal(allowedNavigation(url), false, url);
+  }
+});
+
+test('download guard checks final file host, PSARC extension and byte cap', () => {
+  const url = 'https://download1.mediafire.com/abc/chart.psarc';
+  assert.equal(allowedDownload(url, 'Song.PSARC', MAX_BYTES), true);
+  assert.equal(allowedDownload(url, 'Song.psarc', MAX_BYTES + 1), false);
+  for (const name of ['song.exe', 'song.psarc.exe', 'song.html', 'song.psarc ', '']) {
+    assert.equal(allowedDownload(url, name, 100), false, name);
+  }
+  assert.equal(allowedDownload('https://accounts.google.com/file', 'song.psarc', 100), false);
+  assert.equal(allowedDownload('https://ignition4.customsforge.com/file', 'song.psarc', 100), false);
+  assert.equal(allowedDownload('https://mega.nz/file/test', 'song.psarc', 100), false);
+});
+
+test('search construction encodes literal input and rejects malformed pagination', () => {
+  const query = 'Title & artist #one?extra=yes';
+  const url = new URL(searchUrl(query, 2));
+  assert.equal(url.origin, 'https://ignition4.customsforge.com');
+  assert.equal(url.searchParams.get('search'), query);
+  assert.equal(url.searchParams.has('page'), false, 'pagination uses the visible page control, not an invented endpoint parameter');
+  assert.equal(url.searchParams.size, 1);
+  assert.equal(url.hash, '');
+  for (const bad of ['', 'a', 'a'.repeat(161), {}, null]) assert.throws(() => searchUrl(bad));
+  for (const bad of [0, -1, 1.5, 10001, '2']) assert.throws(() => searchUrl('Song', bad));
+});
+
+test('search failure clears stale connection and pagination state', async (t) => {
+  const { browser } = fixture(t);
+  browser.updateConnection('connected', 'Connected to CustomsForge');
+  browser.lastSearch = { query: 'fixture', page: 2 };
+  const win = browser.ensureSearchWindow();
+  win.loadURL = () => Promise.reject(new Error('offline fixture'));
+  await assert.rejects(browser.search({ query: 'different' }), /could not be loaded/);
+  assert.equal(browser.connection.status, 'error'); assert.equal(browser.lastSearch, null);
+});
+
+test('search reads a new document while its nonessential resources are still loading', async (t) => {
+  const { browser } = fixture(t); const win = browser.ensureSearchWindow();
+  let rejectLoad, stopped = false;
+  win.webContents.stop = () => { stopped = true; };
+  win.loadURL = (url) => {
+    win.webContents.url = url;
+    win.webContents.emit('did-start-navigation', { url, isMainFrame: true, isSameDocument: false });
+    win.webContents.emit('did-navigate', {}, url);
+    win.webContents.emit('dom-ready');
+    return new Promise((_resolve, reject) => { rejectLoad = reject; });
+  };
+  win.webContents.mainFrame.executeJavaScript = async () => ({ status: 'ready', results: [{ id: '123' }], page: 1 });
+  win.webContents.executeJavaScript = () => { throw new Error('Window-level execution waits for every resource'); };
+  const pending = browser.search({ query: 'fixture' }).then(value => ({ value }), error => ({ error }));
+  try {
+    const result = await settlesSoon(pending);
+    assert.equal(result.value?.status, 'ready', 'a ready search must not wait for the window load event');
+    assert.equal(browser.connection.status, 'connected');
+    assert.equal(stopped, false); assert.equal(win.visible, false);
+  } finally { rejectLoad(new Error('Late resource failure')); await pending; }
+  assert.equal(win.webContents.listenerCount('did-navigate'), 0);
+  assert.equal(win.webContents.listenerCount('did-start-navigation'), 0);
+});
+
+test('search ignores an old document DOM-ready and rejects an aborted navigation', async (t) => {
+  const { browser } = fixture(t); const win = browser.ensureSearchWindow();
+  win.webContents.url = searchUrl('previous');
+  let rejectLoad;
+  win.loadURL = (url) => {
+    win.webContents.emit('dom-ready');
+    win.webContents.emit('did-start-navigation', { url, isMainFrame: true, isSameDocument: false });
+    win.webContents.emit('dom-ready');
+    return new Promise((_resolve, reject) => { rejectLoad = reject; });
+  };
+  win.webContents.responses.push({ status: 'ready', results: [{ id: 'stale' }], page: 1 });
+  const pending = browser.search({ query: 'different' }).then(value => ({ value }), error => ({ error }));
+  assert.equal((await settlesSoon(pending)).stalled, true);
+  rejectLoad(Object.assign(new Error('aborted'), { code: 'ERR_ABORTED', errno: -3 }));
+  const result = await pending;
+  assert.ok(result.error, 'a search abort must not expose the previous query results');
+  assert.equal(browser.connection.status, 'error');
+});
+
+test('an unchecked connection opens its first page explicitly and retains an existing login page', async (t) => {
+  const { browser } = fixture(t);
+  assert.equal(browser.connection.status, 'unknown');
+  await browser.showBrowser();
+  const win = browser.searchWindow;
+  assert.equal(win.webContents.getURL(), 'https://ignition4.customsforge.com');
+  assert.equal(win.visible, true);
+  win.webContents.url = 'https://customsforge.com/oauth/authorize';
+  win.loadURL = () => { throw new Error('Do not replace a login page'); };
+  await browser.showBrowser();
+  assert.equal(win.webContents.getURL(), 'https://customsforge.com/oauth/authorize');
+});
+
+test('search reports login and challenge steps without opening a window; explicit sign-in still opens it', async (t) => {
+  for (const status of ['login_required', 'challenge']) {
+    await t.test(status, async (subtest) => {
+      const { browser } = fixture(subtest); const win = browser.ensureSearchWindow();
+      win.webContents.responses.push({ status });
+      assert.equal((await browser.search({ query: 'fixture' })).status, status);
+      assert.equal(browser.connection.status, status === 'challenge' ? 'challenge' : 'signed_out');
+      assert.equal(win.visible, false, 'search feedback belongs in FeedForge until the user opens the browser');
+      assert.equal(win.focused, false);
+      await browser.signIn();
+      assert.equal(win.visible, true); assert.equal(win.focused, true);
+    });
+  }
+});
+
+test('ordinary login completion and later sign-out update connection from the loaded page', async (t) => {
+  const { browser } = fixture(t); const win = browser.ensureSearchWindow();
+  win.webContents.url = 'https://ignition4.customsforge.com/';
+  win.webContents.responses.push({ status: 'ready', results: [], hasNext: false, page: 1 });
+  win.webContents.emit('did-finish-load'); await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(browser.connection.status, 'connected');
+  browser.lastSearch = { query: 'fixture', page: 2 };
+  win.webContents.url = 'https://customsforge.com/oauth/authorize';
+  win.webContents.responses.push({ status: 'login_required' });
+  win.webContents.emit('did-finish-load'); await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(browser.connection.status, 'signed_out'); assert.equal(browser.lastSearch, null);
+});
+
+test('an old login-page read cannot replace the connection established by a newer search', async (t) => {
+  const { browser } = fixture(t); const win = browser.ensureSearchWindow();
+  win.webContents.url = searchUrl('fixture');
+  let resolve;
+  const oldPage = new Promise((done) => { resolve = done; });
+  win.webContents.executeJavaScript = () => oldPage;
+  const reading = browser.readConnection(win);
+  win.webContents.executeJavaScript = async () => ({ status: 'ready', results: [], page: 1 });
+  await browser.search({ query: 'fixture' });
+  resolve({ status: 'login_required' }); await reading;
+  assert.equal(browser.connection.status, 'connected');
+  assert.equal(browser.lastSearch.query, 'fixture');
+});
+
+test('connection inspection waits for the loaded page to render its table', async (t) => {
+  const { browser } = fixture(t); const win = browser.ensureSearchWindow();
+  win.webContents.url = 'https://ignition4.customsforge.com/';
+  win.webContents.responses.push({ status: 'layout_changed', results: [] }, { status: 'ready', results: [], page: 1 });
+  await browser.readConnection(win);
+  assert.equal(browser.connection.status, 'connected');
+});
+
+test('a navigation timeout cannot become success when stopping the page emits ERR_ABORTED', async (t) => {
+  const { browser } = fixture(t); const win = browser.ensureSearchWindow();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let rejectLoad;
+  win.loadURL = () => new Promise((_resolve, reject) => { rejectLoad = reject; });
+  win.webContents.stop = () => rejectLoad(Object.assign(new Error('Stopped by the timeout.'), { code: 'ERR_ABORTED', errno: -3 }));
+  const navigation = browser.navigate(win, 'https://ignition4.customsforge.com/').then(() => ({ error: null }), (error) => ({ error }));
+  t.mock.timers.tick(30000);
+  const result = await navigation;
+  assert.ok(result.error, 'a timed-out page must fail even when Chromium reports its abort first');
+});
+
+test('search waits for an incomplete table and accepts a later explicit empty result', async (t) => {
+  const { browser } = fixture(t); const win = browser.ensureSearchWindow();
+  win.webContents.responses.push({ status: 'layout_changed', results: [] }, { status: 'ready', results: [], page: 1, total: 0 });
+  const result = await browser.search({ query: 'fixture' });
+  assert.equal(result.status, 'ready'); assert.equal(result.total, 0);
+  assert.equal(browser.connection.status, 'connected');
+});
+
+test('browser profile windows deny native permissions, retain sandbox and block unsupported navigation/popups', (t) => {
+  const { browser, session } = fixture(t);
+  const win = browser.ensureSearchWindow();
+  const prefs = win.options.webPreferences;
+  assert.equal(prefs.session, session);
+  assert.equal(prefs.nodeIntegration, false);
+  assert.equal(prefs.contextIsolation, true);
+  assert.equal(prefs.sandbox, true);
+  assert.equal(prefs.webSecurity, true);
+  assert.equal(session.permissionCheck(), false);
+  let granted;
+  session.permissionRequest({}, 'media', (value) => { granted = value; });
+  assert.equal(granted, false);
+  const navigation = event();
+  win.webContents.emit('will-navigate', navigation, 'https://mega.nz.evil.test/file/test');
+  assert.equal(navigation.prevented, true);
+  const redirect = event();
+  win.webContents.emit('will-redirect', redirect, 'https://www.dropbox.com.evil.test/');
+  assert.equal(redirect.prevented, true);
+  assert.equal(win.webContents.openHandler({ url: 'https://www.dropbox.com/s/test/file' }).action, 'deny');
+  const webview = event(); win.webContents.emit('will-attach-webview', webview);
+  assert.equal(webview.prevented, true);
+});
+
+test('only the active download windows can deliver a file; unrelated and second downloads are prevented', async (t) => {
+  const { browser, session } = fixture(t);
+  const searchWindow = browser.ensureSearchWindow();
+  const transfer = begin(browser);
+  const jobWindow = [...transfer.job.windows][0];
+  const foreign = new FakeDownload(); const foreignEvent = event();
+  session.emit('will-download', foreignEvent, foreign, searchWindow.webContents);
+  assert.equal(foreignEvent.prevented, true);
+  assert.equal(foreign.savePath, undefined);
+  assert.equal(transfer.job.finished, false);
+  const item = new FakeDownload(); const accepted = event();
+  session.emit('will-download', accepted, item, jobWindow.webContents);
+  assert.equal(accepted.prevented, false);
+  assert.equal(item.savePath, transfer.destination);
+  const duplicate = new FakeDownload(); const duplicateEvent = event();
+  session.emit('will-download', duplicateEvent, duplicate, jobWindow.webContents);
+  assert.equal(duplicateEvent.prevented, true);
+  assert.equal(duplicate.savePath, undefined);
+  item.received = 100; item.update(); item.received = 200; item.finish();
+  assert.deepEqual(await transfer.outcome, { value: transfer.destination });
+  assert.deepEqual(transfer.progress, [0, 50, 100]);
+  assert.equal(browser.active, null);
+  assert.equal(jobWindow.isDestroyed(), true);
+  assert.equal(searchWindow.isDestroyed(), false);
+});
+
+test('download popups inherit sandbox and are attributed to their active job', async (t) => {
+  const { browser, session } = fixture(t);
+  const transfer = begin(browser);
+  const win = [...transfer.job.windows][0];
+  const popup = win.webContents.openHandler({ url: 'https://www.dropbox.com/s/test/chart.psarc' });
+  assert.equal(popup.action, 'allow');
+  assert.equal(popup.overrideBrowserWindowOptions.webPreferences.nodeIntegration, false);
+  assert.equal(popup.overrideBrowserWindowOptions.webPreferences.sandbox, true);
+  assert.equal(popup.overrideBrowserWindowOptions.webPreferences.session, session);
+  assert.equal(win.webContents.openHandler({ url: 'https://mega.nz.evil.test/file/test' }).action, 'deny');
+  const child = new FakeWindow(popup.overrideBrowserWindowOptions);
+  win.webContents.emit('did-create-window', child);
+  assert.ok(transfer.job.windows.has(child));
+  const item = new FakeDownload(); const downloadEvent = event();
+  session.emit('will-download', downloadEvent, item, child.webContents);
+  assert.equal(downloadEvent.prevented, false);
+  item.received = 200; item.finish();
+  assert.equal((await transfer.outcome).value, transfer.destination);
+  assert.equal(child.isDestroyed(), true);
+  assert.equal(win.isDestroyed(), true);
+});
+
+test('a blocked host redirect reports attention in FeedForge and a later download completes without showing a window', async (t) => {
+  const { browser, session } = fixture(t); const transfer = begin(browser);
+  const win = [...transfer.job.windows][0];
+  const redirect = event();
+  win.webContents.emit('will-redirect', redirect, 'https://unsupported.example/');
+  assert.equal(redirect.prevented, true, 'background operation retains navigation guards');
+  assert.deepEqual(transfer.attention, ['This destination is not supported in the first version.']);
+  assert.equal(win.visible, false, 'a transient attention state must not interrupt the main app');
+  assert.equal(win.focused, false);
+  const item = new FakeDownload();
+  session.emit('will-download', event(), item, win.webContents);
+  item.received = item.total; item.finish();
+  assert.deepEqual(await transfer.outcome, { value: transfer.destination });
+  assert.equal(win.visible, false); assert.equal(win.focused, false);
+  assert.equal(win.isDestroyed(), true);
+});
+
+test('Open browser reveals the active host popup and attention never refocuses or reopens it', async (t) => {
+  const { browser } = fixture(t); const transfer = begin(browser);
+  const win = [...transfer.job.windows][0];
+  const popup = win.webContents.openHandler({ url: 'https://www.dropbox.com/s/test/chart.psarc' });
+  const child = new FakeWindow(popup.overrideBrowserWindowOptions);
+  win.webContents.emit('did-create-window', child);
+  browser.attention(transfer.job, 'Select the file in the browser.');
+  assert.equal(win.visible, false); assert.equal(child.visible, false);
+  browser.showBrowser();
+  assert.equal(child.visible, true); assert.equal(child.focused, true);
+  assert.equal(win.visible, false);
+  child.focused = false; // The user has returned to FeedForge.
+  browser.attention(transfer.job, 'The host is still waiting.');
+  assert.equal(child.visible, true, 'keep a browser the user explicitly opened');
+  assert.equal(child.focused, false, 'new notices must not take focus back');
+  const close = event(); child.emit('close', close);
+  assert.equal(close.prevented, true); assert.equal(child.visible, false);
+  browser.attention(transfer.job, 'Another host notice.');
+  assert.equal(child.visible, false, 'a user-hidden host must stay hidden');
+  transfer.controller.abort();
+  assert.match((await transfer.outcome).error.message, /cancel/i);
+  assert.equal(win.isDestroyed(), true); assert.equal(child.isDestroyed(), true);
+});
+
+test('unexpected content from an owned window fails cleanly without accepting the file', async (t) => {
+  const { browser, session } = fixture(t);
+  const transfer = begin(browser);
+  const win = [...transfer.job.windows][0];
+  const item = new FakeDownload({ filename: 'download-helper.exe' });
+  const downloadEvent = event();
+  session.emit('will-download', downloadEvent, item, win.webContents);
+  assert.equal(downloadEvent.prevented, true);
+  assert.equal(item.savePath, undefined);
+  assert.match((await transfer.outcome).error.message, /supported PSARC/);
+  assert.equal(browser.active, null);
+  assert.equal(win.isDestroyed(), true);
+});
+
+test('interrupted downloads are cancelled and destroy all job windows', async (t) => {
+  const { browser, session } = fixture(t);
+  const transfer = begin(browser);
+  const win = [...transfer.job.windows][0];
+  const item = new FakeDownload();
+  session.emit('will-download', event(), item, win.webContents);
+  item.update('interrupted');
+  assert.match((await transfer.outcome).error.message, /interrupted/i, 'a synchronous cancelled event must not erase the interruption reason');
+  assert.equal(item.cancelled, true);
+  assert.equal(win.isDestroyed(), true);
+  assert.equal(browser.active, null);
+  assert.ok(!transfer.progress.includes(100));
+});
+
+test('received byte limit stops unknown-length downloads', async (t) => {
+  const { browser, session } = fixture(t);
+  const transfer = begin(browser);
+  const win = [...transfer.job.windows][0];
+  const item = new FakeDownload({ total: 0 });
+  session.emit('will-download', event(), item, win.webContents);
+  item.received = MAX_BYTES + 1; item.update();
+  assert.match((await transfer.outcome).error.message, /exceeds.*limit/i, 'a synchronous cancelled event must not erase the size-limit reason');
+  assert.equal(item.cancelled, true);
+  assert.ok(!transfer.progress.includes(100));
+});
+
+test('completed event rechecks final size, including bytes received after the last progress event', async (t) => {
+  const { browser, session } = fixture(t);
+  const transfer = begin(browser);
+  const win = [...transfer.job.windows][0];
+  const item = new FakeDownload({ total: 0 });
+  session.emit('will-download', event(), item, win.webContents);
+  item.received = MAX_BYTES + 1; item.finish();
+  const result = await transfer.outcome;
+  assert.ok(result.error, 'oversized completion must not enter conversion');
+  assert.ok(!transfer.progress.includes(100));
+});
+
+test('completed empty downloads never enter conversion', async (t) => {
+  const { browser, session } = fixture(t);
+  const transfer = begin(browser);
+  const win = [...transfer.job.windows][0];
+  const item = new FakeDownload({ total: 0 });
+  session.emit('will-download', event(), item, win.webContents);
+  item.finish();
+  assert.ok((await transfer.outcome).error);
+  assert.ok(!transfer.progress.includes(100));
+});
+
+test('AbortSignal settles active transfers and permits another job', async (t) => {
+  const { browser, session } = fixture(t);
+  const transfer = begin(browser);
+  const win = [...transfer.job.windows][0];
+  const item = new FakeDownload();
+  session.emit('will-download', event(), item, win.webContents);
+  transfer.controller.abort();
+  assert.match((await transfer.outcome).error.message, /cancel/i);
+  assert.equal(item.cancelled, true);
+  assert.equal(win.isDestroyed(), true);
+  assert.equal(browser.active, null);
+  const next = begin(browser);
+  next.controller.abort();
+  assert.match((await next.outcome).error.message, /cancel/i);
+});
+
+test('cancellation waits for the DownloadItem terminal event before releasing the job or its windows', async (t) => {
+  const { browser, session } = fixture(t);
+  const transfer = begin(browser);
+  const win = [...transfer.job.windows][0];
+  const item = new DeferredCancelDownload();
+  session.emit('will-download', event(), item, win.webContents);
+  transfer.controller.abort();
+  try {
+    const premature = await settlesSoon(transfer.outcome);
+    assert.equal(premature.stalled, true, 'do not release the work directory while the host may still hold its file handle');
+    assert.equal(item.cancelled, true);
+    assert.equal(browser.active, transfer.job, 'a second job must wait for the terminal event');
+    assert.equal(win.isDestroyed(), false, 'keep the owning window until the transfer has terminated');
+  } finally {
+    item.finish('cancelled');
+  }
+  const result = await transfer.outcome;
+  assert.match(result.error.message, /cancel/i);
+  assert.equal(win.isDestroyed(), true);
+  assert.equal(browser.active, null);
+});
+
+test('a popup delivered after cancellation is destroyed immediately and never added to browser ownership', async (t) => {
+  const { browser } = fixture(t);
+  const transfer = begin(browser);
+  const win = [...transfer.job.windows][0];
+  transfer.controller.abort();
+  assert.match((await transfer.outcome).error.message, /cancel/i);
+  const latePopup = new FakeWindow({});
+  win.webContents.emit('did-create-window', latePopup);
+  assert.equal(latePopup.isDestroyed(), true);
+  assert.equal(transfer.job.windows.has(latePopup), false);
+  assert.equal(browser.windows.has(latePopup), false);
+  assert.equal(latePopup.visible, false);
+});
+
+test('a popup delivered after browser disposal is destroyed even without a download job', (t) => {
+  const { browser } = fixture(t);
+  const win = browser.ensureSearchWindow();
+  browser.dispose();
+  const latePopup = new FakeWindow({});
+  win.webContents.emit('did-create-window', latePopup);
+  assert.equal(latePopup.isDestroyed(), true);
+  assert.equal(browser.windows.has(latePopup), false);
+});
+
+test('cancellation settles while the initial navigation is still pending', async (t) => {
+  const { browser } = fixture(t);
+  let finishNavigation;
+  browser.navigate = () => new Promise((resolve) => { finishNavigation = resolve; });
+  const transfer = begin(browser);
+  const win = [...transfer.job.windows][0];
+  transfer.controller.abort();
+  try {
+    const result = await settlesSoon(transfer.outcome);
+    assert.equal(result.stalled, undefined, 'cancellation must not wait for a stalled network navigation');
+    assert.match(result.error.message, /cancel/i);
+    assert.equal(win.isDestroyed(), true);
+    assert.equal(browser.active, null);
+  } finally { finishNavigation(); await transfer.outcome; }
+});
+
+test('dispose rejects a running download and removes the session download listener', async (t) => {
+  const { browser, session } = fixture(t);
+  const transfer = begin(browser);
+  const win = [...transfer.job.windows][0];
+  const item = new FakeDownload();
+  session.emit('will-download', event(), item, win.webContents);
+  browser.dispose();
+  assert.ok((await transfer.outcome).error);
+  assert.equal(item.cancelled, true);
+  assert.equal(win.isDestroyed(), true);
+  assert.equal(session.listenerCount('will-download'), 0);
+  assert.equal(browser.windows.size, 0);
+});
+
+test('a late expired-button reply cannot refresh after cancellation or disposal', async (t) => {
+  for (const stop of ['cancel', 'dispose']) {
+    await t.test(stop, async (subtest) => {
+      const { browser } = fixture(subtest); const transfer = begin(browser);
+      const win = [...transfer.job.windows][0]; let refreshes = 0;
+      win.loadURL = () => { refreshes++; return Promise.resolve(); };
+      win.webContents.executeJavaScript = async () => {
+        if (stop === 'cancel') transfer.controller.abort(); else browser.dispose();
+        return { status: 'expired' };
+      };
+      await CustomsForgeBrowser.prototype.driveDownload.call(browser, transfer.job, { id: '123' });
+      assert.ok((await transfer.outcome).error);
+      assert.equal(refreshes, 0, 'an awaited old-page result must not cause another navigation');
+    });
+  }
+});
+
+test('a download starting during a page action stops later window actions and stale attention', async (t) => {
+  const { browser, session } = fixture(t); const transfer = begin(browser);
+  const first = [...transfer.job.windows][0]; first.webContents.url = 'https://drive.google.com/file/d/fixture/view';
+  const child = new FakeWindow({}); child.webContents.url = 'https://www.dropbox.com/s/fixture/chart.psarc';
+  browser.attachWindow(child, transfer.job);
+  let laterActions = 0;
+  child.webContents.executeJavaScript = async () => { laterActions++; return { status: 'clicked' }; };
+  const item = new FakeDownload();
+  first.webContents.executeJavaScript = async () => {
+    session.emit('will-download', event(), item, first.webContents);
+    setImmediate(() => { item.received = item.total; item.finish(); });
+    return { status: 'needs_attention', error: 'Reply from the document that just initiated the transfer.' };
+  };
+  await CustomsForgeBrowser.prototype.driveDownload.call(browser, transfer.job, { id: '123' });
+  assert.equal((await transfer.outcome).value, transfer.destination);
+  assert.equal(laterActions, 0); assert.deepEqual(transfer.attention, []);
+});
+
+test('an attention callback cancelling its job cannot reopen the cancelled browser window', async (t) => {
+  const { browser } = fixture(t); const transfer = begin(browser);
+  const win = [...transfer.job.windows][0];
+  transfer.job.onAttention = () => transfer.controller.abort();
+  browser.attention(transfer.job, 'A host step needs attention.');
+  assert.equal(win.visible, false);
+  assert.ok((await transfer.outcome).error);
+});
+
+test('an expired reply from a replaced chart document cannot navigate away from its host page', async (t) => {
+  const { browser } = fixture(t); const transfer = begin(browser);
+  const win = [...transfer.job.windows][0]; let refreshes = 0;
+  win.loadURL = () => { refreshes++; return Promise.resolve(); };
+  win.webContents.executeJavaScript = async () => {
+    win.webContents.url = 'https://www.dropbox.com/s/fixture/chart.psarc';
+    setImmediate(() => transfer.controller.abort());
+    return { status: 'expired' };
+  };
+  await CustomsForgeBrowser.prototype.driveDownload.call(browser, transfer.job, { id: '123' });
+  await transfer.outcome;
+  assert.equal(refreshes, 0);
+});
+
+function hostAction({ url, body = '', title = '', link = null, buttons = [] }) {
+  const target = new URL(url);
+  const assignments = [];
+  const location = { hostname: target.hostname, href: target.href, assign: (value) => assignments.push(value) };
+  const document = { title, body: { innerText: body }, querySelector: () => link, querySelectorAll: () => buttons };
+  const result = vm.runInNewContext(`(${hostDownloadAction.toString()})()`, { location, document, URL });
+  return { result, assignments };
+}
+
+function button(label, href) {
+  const attributes = new Map();
+  return { href, innerText: label, clicked: 0, disabled: false,
+    getAttribute(name) { return attributes.get(name) || ''; }, hasAttribute(name) { return attributes.has(name); },
+    setAttribute(name, value) { attributes.set(name, value); }, getClientRects() { return [{}]; },
+    click() { this.clicked += 1; } };
+}
+
+test('Dropbox transforms only single-file share links, preserves resource keys and never rewrites folders', () => {
+  const file = hostAction({ url: 'https://www.dropbox.com/scl/fi/test/chart.psarc?rlkey=public-key&dl=0' });
+  assert.equal(file.result.status, 'clicked');
+  const output = new URL(file.assignments[0]);
+  assert.equal(output.searchParams.get('dl'), '1');
+  assert.equal(output.searchParams.get('rlkey'), 'public-key');
+  const folder = hostAction({ url: 'https://www.dropbox.com/scl/fo/test/folder?rlkey=public-key&dl=0' });
+  assert.equal(folder.result.status, 'needs_attention');
+  assert.equal(folder.assignments.length, 0);
+});
+
+test('host checks and quota messages never trigger automatic download clicks', () => {
+  for (const body of ['Verify you are human', 'Download quota exceeded', 'You need access', 'The file has been deleted']) {
+    const link = button('Download', 'https://download1.mediafire.com/file/chart.psarc');
+    const output = hostAction({ url: 'https://www.mediafire.com/file/test/', body, link });
+    assert.ok(['challenge', 'needs_attention'].includes(output.result.status), body);
+    assert.equal(link.clicked, 0);
+  }
+  const google = hostAction({ url: 'https://accounts.google.com/signin' });
+  assert.equal(google.result.status, 'login_required');
+});
+
+test('MediaFire rejects spoofed download hosts and clicks an approved link only once', () => {
+  const fake = button('Download', 'https://download1.mediafire.com.evil.test/file');
+  const rejected = hostAction({ url: 'https://www.mediafire.com/file/test/', link: fake });
+  assert.equal(rejected.result.status, 'needs_attention');
+  assert.equal(fake.clicked, 0);
+  const link = button('Download', 'https://download1.mediafire.com/file/chart.psarc');
+  assert.equal(hostAction({ url: 'https://www.mediafire.com/file/test/', link }).result.status, 'clicked');
+  assert.equal(hostAction({ url: 'https://www.mediafire.com/file/test/', link }).result.status, 'already_clicked');
+  assert.equal(link.clicked, 1);
+});
+
+test('MediaFire skips hidden and disabled controls and rejects credential-bearing download URLs', () => {
+  const states = [(link) => { link.hidden = true; }, (link) => { link.disabled = true; },
+    (link) => link.setAttribute('aria-disabled', 'true'), (link) => link.setAttribute('aria-hidden', 'true'),
+    (link) => { link.style = { visibility: 'hidden' }; }, (link) => { link.getClientRects = () => []; },
+    (link) => { link.href = 'https://private:secret@download1.mediafire.com/file/chart.psarc'; },
+    (link) => { link.href = 'https://download1.mediafire.com:8443/file/chart.psarc'; }];
+  for (const configure of states) {
+    const link = button('Download', 'https://download1.mediafire.com/file/chart.psarc'); configure(link);
+    assert.equal(hostAction({ url: 'https://www.mediafire.com/file/test/', link }).result.status, 'needs_attention');
+    assert.equal(link.clicked, 0);
+  }
+});
+
+test('Google Drive ignores aria-disabled or hidden controls and uses the next visible download', () => {
+  const disabled = button('Download'); disabled.setAttribute('aria-disabled', 'true');
+  const hidden = button('Download'); hidden.hidden = true;
+  const parent = button(''); parent.style = { display: 'none' };
+  const nested = button('Download'); nested.parentElement = parent;
+  const visible = button('Download anyway');
+  const response = hostAction({ url: 'https://drive.google.com/file/d/fixture/view', buttons: [disabled, hidden, nested, visible] });
+  assert.equal(response.result.status, 'clicked'); assert.equal(visible.clicked, 1);
+  assert.equal(disabled.clicked, 0); assert.equal(hidden.clicked, 0); assert.equal(nested.clicked, 0);
+});
+
+test('Google Drive clicks the observed Swedish download label only once and skips unusable controls', () => {
+  const disabled = button('Ladda ned'); disabled.setAttribute('aria-disabled', 'true');
+  const hidden = button('Ladda ned'); hidden.hidden = true;
+  const visible = button(''); visible.setAttribute('aria-label', 'Ladda ned');
+  const page = { url: 'https://drive.google.com/file/d/fixture/view', buttons: [disabled, hidden, visible] };
+  assert.equal(hostAction(page).result.status, 'clicked');
+  assert.equal(hostAction(page).result.status, 'already_clicked');
+  assert.equal(visible.clicked, 1);
+  assert.equal(disabled.clicked, 0); assert.equal(hidden.clicked, 0);
+});
+
+test('Google Drive rejects misleading Swedish download labels', () => {
+  const misleading = button('Ladda ned Chrome');
+  assert.equal(hostAction({ url: 'https://drive.google.com/file/d/fixture/view', buttons: [misleading] }).result.status, 'waiting');
+  assert.equal(misleading.clicked, 0);
+});
+
+test('IPC rejects foreign senders and subframes before touching local state', async () => {
+  const handlers = new Map();
+  const window = new FakeWindow({});
+  let initialized = 0;
+  const app = new EventEmitter();
+  app.getPath = () => { initialized += 1; throw new Error('Trusted request reached initialization.'); };
+  registerSongBrowser({ app, BrowserWindow: FakeWindow, session: {}, ipcMain: { handle: (name, handler) => handlers.set(name, handler) },
+    dialog: {}, shell: {}, getMainWindow: () => window, runConverter: async () => {} });
+  assert.ok(handlers.size >= 8);
+  for (const [name, handler] of handlers) {
+    await assert.rejects(handler({ sender: new FakeContents(), senderFrame: window.webContents.mainFrame }, {}), /must come from FeedForge/, name);
+    await assert.rejects(handler({ sender: window.webContents, senderFrame: {} }, {}), /must come from FeedForge/, name);
+  }
+  assert.equal(initialized, 0);
+  const accepted = await handlers.get('song-browser:getState')({ sender: window.webContents, senderFrame: window.webContents.mainFrame }, {});
+  assert.equal(initialized, 1);
+  assert.equal(accepted.ok, false);
+  assert.match(accepted.error, /Trusted request reached initialization/);
+});
+
+test('output folder selection rolls back on settings rename failure and persists a successful retry', async (t) => {
+  const tempBase = fs.realpathSync(os.tmpdir());
+  const userData = fs.mkdtempSync(path.join(tempBase, 'feedforge-output-settings-'));
+  const selected = path.join(userData, 'chosen-library');
+  fs.mkdirSync(selected);
+  const handlers = new Map();
+  const window = new FakeWindow({});
+  const session = new EventEmitter();
+  session.setPermissionRequestHandler = () => {};
+  session.setPermissionCheckHandler = () => {};
+  const app = new EventEmitter();
+  app.getPath = (name) => { assert.equal(name, 'userData'); return userData; };
+  const prompts = [];
+  const registration = registerSongBrowser({ app, BrowserWindow: FakeWindow,
+    session: { fromPath: () => session }, ipcMain: { handle: (name, handler) => handlers.set(name, handler) },
+    dialog: { showOpenDialog: async (_window, options) => {
+      prompts.push(options);
+      return { canceled: false, filePaths: [selected] };
+    } }, shell: {}, getMainWindow: () => window, runConverter: async () => {} });
+  t.after(async () => {
+    await registration.close();
+    const resolved = fs.realpathSync(userData);
+    assert.equal(path.dirname(resolved), tempBase);
+    assert.match(path.basename(resolved), /^feedforge-output-settings-/);
+    fs.rmSync(resolved, { recursive: true, force: true });
+  });
+  const trustedEvent = { sender: window.webContents, senderFrame: window.webContents.mainFrame };
+  const invoke = (name) => handlers.get(`song-browser:${name}`)(trustedEvent, {});
+  const original = await invoke('getState');
+  assert.ok(original.outputDir);
+  assert.notEqual(original.outputDir, selected);
+  const settings = path.join(userData, 'song-browser', 'settings.json');
+
+  // A directory occupying the final filename causes a real rename failure without global FS mocks.
+  // Create it after initialization so the failure tests persistence, not initial config parsing.
+  fs.mkdirSync(settings);
+  const failed = await invoke('chooseOutput');
+  assert.equal(failed.ok, false);
+  assert.equal(typeof failed.error, 'string');
+  assert.equal((await invoke('getState')).outputDir, original.outputDir);
+  assert.equal(fs.statSync(settings).isDirectory(), true);
+  assert.equal(fs.readdirSync(path.dirname(settings)).some((name) => /^settings-.*\.tmp$/.test(name)), false);
+
+  fs.rmdirSync(settings);
+  const retried = await invoke('chooseOutput');
+  assert.equal(retried.outputDir, selected);
+  assert.equal((await invoke('getState')).outputDir, selected);
+  assert.equal(JSON.parse(fs.readFileSync(settings, 'utf8')).outputDir, selected);
+  assert.equal(prompts[0].defaultPath, original.outputDir);
+  assert.equal(prompts[1].defaultPath, original.outputDir, 'retry must still start from the previous saved choice');
+});

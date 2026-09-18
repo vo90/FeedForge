@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_all, copy_metadata
 
 
 root = Path.cwd()
@@ -32,12 +33,25 @@ if os.name == 'nt':
         for name in ('ww2ogg.exe', 'oggenc.exe', 'topng.exe')
         if (tools / name).is_file()
     )
+audio_tools = Path(os.environ.get('FEEDFORGE_PACKAGE_AUDIO_TOOLS', str(tools)))
+song_binaries, song_datas, song_imports = [], [], []
+for name in ('ffmpeg', 'ffprobe', 'node'):
+    candidate = audio_tools / (name + ('.exe' if os.name == 'nt' else ''))
+    if not candidate.is_file():
+        raise RuntimeError(f'Song import packaging requires {candidate}; supply FEEDFORGE_PACKAGE_AUDIO_TOOLS.')
+    song_binaries.append((str(candidate), 'feedback_converter/tools'))
+for module in ('yt_dlp', 'yt_dlp_ejs'):
+    data, binaries, hidden = collect_all(module)
+    song_datas.extend(data); song_binaries.extend(binaries); song_imports.extend(hidden)
+for distribution in ('yt-dlp', 'yt-dlp-ejs', 'numpy', 'soundfile'):
+    song_datas.extend(copy_metadata(distribution))
+song_datas.extend((str(item), 'feedback_converter/tools/licenses') for item in (audio_tools / 'licenses').glob('*') if item.is_file())
 
 
 a = Analysis(
     [str(root / 'src' / 'feedback_converter' / 'cli.py')],
     pathex=[],
-    binaries=[(str(source), destination) for source, destination in native_tools],
+    binaries=[(str(source), destination) for source, destination in native_tools] + song_binaries,
     datas=[
         (str(tools / 'packed_codebooks.bin'), 'feedback_converter/tools'),
         (
@@ -47,8 +61,8 @@ a = Analysis(
         (str(root / 'src' / 'feedback_converter' / 'data' / 'equipment.json'), 'feedback_converter/data'),
         (str(root / 'src' / 'feedback_converter' / 'data' / 'feedback_equipment.json'), 'feedback_converter/data'),
         (str(root / 'src' / 'feedback_converter' / 'data' / 'feedpak_schemas'), 'feedback_converter/data/feedpak_schemas'),
-    ],
-    hiddenimports=[],
+    ] + song_datas,
+    hiddenimports=song_imports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
