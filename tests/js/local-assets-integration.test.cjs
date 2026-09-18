@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const vm = require("node:vm");
-const { createRequire } = require("node:module");
+const { createRequire, wrap } = require("node:module");
 const test = require("node:test");
 
 const mainPath = path.resolve(__dirname, "../../electron/main.cjs");
@@ -32,7 +32,7 @@ function loadMain(t, packaged) {
   const events = new Map();
   const ipc = new Map();
   const handlers = new Map();
-  const state = { schemes: [], windows: 0, quits: 0 };
+  const state = { schemes: [], windows: 0, quits: 0, songBrowserRegistrations: 0 };
   const electron = {
     app: {
       isPackaged: packaged, getVersion: () => "test", getAppPath: () => appRoot,
@@ -58,7 +58,20 @@ function loadMain(t, packaged) {
     }
   };
   const sandbox = {
-    require: (name) => name === "electron" ? electron : mainRequire(name),
+    require: (name) => {
+      if (name === "electron") return electron;
+      // The artwork lifecycle must not initialize browser sessions, import
+      // queues, or a real packaged profile as a side effect of this fixture.
+      if (name === "./song-browser/index.cjs") return {
+        registerSongBrowser: (options) => {
+          assert.equal(options.app, electron.app);
+          assert.equal(typeof options.runConverter, "function");
+          state.songBrowserRegistrations++;
+        }
+      };
+      if (name === path.join(appRoot, "package.json")) return { songBrowserTest: false };
+      return mainRequire(name);
+    },
     __dirname: path.dirname(mainPath), console, Buffer, Response, URL, AbortController,
     setTimeout: () => 0, clearTimeout() {},
     process: {
@@ -67,13 +80,18 @@ function loadMain(t, packaged) {
     }
   };
   vm.createContext(sandbox);
-  vm.runInContext(mainSource, sandbox, { filename: mainPath });
+  const fixtureModule = { exports: {} };
+  const fixtureHooks = "\nmodule.exports.stubInspection = (result) => { runConverter = async () => result; };\n";
+  // Electron loads main.cjs as CommonJS: an early top-level return is valid
+  // there. Keep that real scope, and expose only the fixture's converter stub.
+  const execute = vm.runInContext(wrap(mainSource + fixtureHooks), sandbox, { filename: mainPath });
+  execute(fixtureModule.exports, sandbox.require, fixtureModule, mainPath, path.dirname(mainPath));
   assert.equal(state.schemes[0].scheme, "feedforge-local");
   assert.equal(state.schemes[0].privileges.secure, true);
   assert.equal(state.windows, 0, "scheme is registered before app readiness");
   callbacks.forEach((callback) => callback());
-  vm.runInContext("runConverter = async () => globalThis.inspectionResult;", sandbox);
-  return { base, temporary, tonePath, sandbox, handlers, ipc, events, state };
+  assert.equal(state.songBrowserRegistrations, 1);
+  return { base, temporary, tonePath, stubInspection: fixtureModule.exports.stubInspection, handlers, ipc, events, state };
 }
 
 for (const packaged of [false, true]) {
@@ -81,11 +99,11 @@ for (const packaged of [false, true]) {
     const app = loadMain(t, packaged);
     const coverPath = path.join(app.temporary, "feedforge-inspect-cache", "cover.png");
     fs.writeFileSync(coverPath, "cover image");
-    app.sandbox.inspectionResult = {
+    app.stubInspection({
       stdout: JSON.stringify({ ok: true, preview: {
         cover_path: coverPath, tones: [{ definitions: [{ gear: [{ key: "FB_Mock" }] }] }]
       } }), code: 0
-    };
+    });
     const result = await app.ipc.get("converter:inspect")({}, path.join(app.base, "song.psarc"));
     const gear = result.preview.tones[0].definitions[0].gear[0];
     assert.equal(result.preview.cover_path, coverPath);
