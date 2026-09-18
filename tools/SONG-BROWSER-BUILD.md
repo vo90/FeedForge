@@ -10,12 +10,19 @@ $build = @{
     ElectronPath = 'C:\path\to\electron\dist\electron.exe'
     AudioToolsPath = 'C:\path\to\audio-tools'
     BuildRoot = 'C:\builds\song-browser-test-001'
+    DependenciesRoot = 'C:\source\FeedForge-with-installed-dependencies'
 }
 .\tools\Build-SongBrowser.ps1 @build -CheckOnly
 .\tools\Build-SongBrowser.ps1 @build
 ```
 
 For a staged build, use `-Stage Converter`, followed later by `-Stage Package` with the same paths. The package stage checks that converter source has not changed since freezing. Failed or completed stage outputs are preserved; use a new build folder for a fresh attempt. No output cleanup/reset option is provided.
+
+`DependenciesRoot` is optional and defaults to the source checkout. An external dependency checkout must have the exact same `package-lock.json`; installed direct package versions and the selected Electron version are checked against that lock. No dependencies are installed or copied into the source checkout. A generated Vite configuration and its cache stay in the external build folder, with explicit paths to the selected React and UI dependencies. Vite loads that JavaScript configuration natively, avoiding its default temporary configuration output under a nearby `node_modules`. The dependency identity is recorded in the build receipt and must match between stages. Older receipts without this identity require a new build folder.
+
+The approved source branches include `integration/feedforge-all-features` and `feat/songsterr-slide-in`. The selected audio tools directory supplies both the decoder and all its DLLs; DLL names are no longer taken from another checkout's bundled decoder version.
+
+The combined baseline's verified packaging route is currently this local Windows workflow. The normal cross-platform release workflow does not yet provision the additional Songsterr FFmpeg, FFprobe and Node inputs required by `psarc2feedpak.spec`; do not treat a local portable build as validation of those release jobs.
 
 The converter specification uses this checkout's source and bundles `vgmstream-cli.exe`, `ffmpeg.exe` and the matching decoder DLLs. The packaging configuration has a distinct name (`FeedForge Song Browser Test`), app ID (`com.feedforge.songbrowser.test`) and the `songBrowserTest: true` package marker consumed by the desktop startup code. This marker isolates its profile, opens Find songs and disables official updater operations.
 
@@ -42,3 +49,5 @@ The report folder must be new and outside the package and source directories. `-
 Add `--psarc 'C:\songs\existing.psarc'` to run the existing standalone-converter smoke against the converter inside this package. That optional step executes only the converter and places its output in the new report folder. Without `--psarc`, no packaged executable is run.
 
 This command does not launch Electron, use browser debugging or UI automation, inspect an existing account profile, contact external hosts, or test real sign-in/download/playback. `result.json` distinguishes artifact checks and simulated startup from the optional real converter test. Actual desktop behavior remains a separate manual or supported computer-use check.
+
+When using external installed dependencies, set `NODE_PATH` to that checkout's `node_modules` for the package verification command so it can load the existing `@electron/asar` and `resedit` inspection tools. The startup simulation evaluates an explicit set of packaged first-party helper modules with in-memory OS/profile/protocol stand-ins; unexpected filesystem reads, network requests and subprocesses remain blocked.

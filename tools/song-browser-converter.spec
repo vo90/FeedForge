@@ -7,7 +7,7 @@ from PyInstaller.utils.hooks import collect_all, copy_metadata
 root = Path(os.environ['FEEDFORGE_PACKAGE_SOURCE']).resolve(strict=True)
 audio_tools = Path(os.environ['FEEDFORGE_PACKAGE_AUDIO_TOOLS']).resolve(strict=True)
 tools = root / 'src' / 'feedback_converter' / 'tools'
-native_names = ['vgmstream-cli.exe', 'ffmpeg.exe', 'ffprobe.exe', 'node.exe', *[item.name for item in tools.glob('*.dll')]]
+native_names = ['vgmstream-cli.exe', 'ffmpeg.exe', 'ffprobe.exe', 'node.exe', *[item.name for item in sorted(audio_tools.glob('*.dll'))]]
 native_files = []
 for name in native_names:
     candidate = audio_tools / name

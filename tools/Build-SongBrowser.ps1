@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory = $true)][string]$ElectronPath,
     [Parameter(Mandatory = $true)][string]$AudioToolsPath,
     [Parameter(Mandatory = $true)][string]$BuildRoot,
+    [string]$DependenciesRoot,
     [ValidateSet('All', 'Converter', 'Package')][string]$Stage = 'All',
     [switch]$CheckOnly
 )
@@ -18,7 +19,7 @@ if ($buildPath.Equals($sourceRoot, [StringComparison]::OrdinalIgnoreCase) -or
     throw 'Choose a dedicated build folder outside the source checkout and filesystem root.'
 }
 $branchName = (& git -C $sourceRoot branch --show-current).Trim()
-if ($LASTEXITCODE -ne 0 -or $branchName -notin @('feat/customsforge-song-browser', 'feat/customsforge-browser-expansion', 'feat/songsterr-import')) { throw 'Build from an approved song-browser development branch.' }
+if ($LASTEXITCODE -ne 0 -or $branchName -notin @('feat/customsforge-song-browser', 'feat/customsforge-browser-expansion', 'feat/songsterr-import', 'feat/songsterr-slide-in', 'integration/feedforge-all-features')) { throw 'Build from an approved song-browser development branch.' }
 & git -C $sourceRoot merge-base --is-ancestor 804aa8c91c0cc26809ab8ef97093c0b5d7fa042c HEAD
 if ($LASTEXITCODE -ne 0) { throw 'The expected FeedForge baseline is not an ancestor of this build.' }
 $revision = (& git -C $sourceRoot rev-parse HEAD).Trim()
@@ -26,8 +27,15 @@ $pythonExe = (Resolve-Path -LiteralPath $PythonPath).Path
 $electronExe = (Resolve-Path -LiteralPath $ElectronPath).Path
 $audioPath = (Resolve-Path -LiteralPath $AudioToolsPath).Path
 $nodeExe = (Get-Command node -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
-$builderCli = Join-Path $sourceRoot 'node_modules\electron-builder\out\cli\cli.js'
-$viteCli = Join-Path $sourceRoot 'node_modules\vite\bin\vite.js'
+if (!$DependenciesRoot) { $DependenciesRoot = $sourceRoot }
+$dependencyHelper = Join-Path $PSScriptRoot 'song-browser-build-inputs.cjs'
+$dependencyJson = & $nodeExe $dependencyHelper --source $sourceRoot --dependencies $DependenciesRoot --electron $electronExe
+if ($LASTEXITCODE -ne 0) { throw 'Installed dependencies do not match this source lock file. No dependencies were installed.' }
+$dependencyInfo = $dependencyJson | ConvertFrom-Json -AsHashtable
+$builderCli = $dependencyInfo.builderCli
+$viteCli = $dependencyInfo.viteCli
+$dependencyPrefix = $dependencyInfo.dependenciesRoot.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+if ($buildPath.Equals($dependencyInfo.dependenciesRoot, [StringComparison]::OrdinalIgnoreCase) -or $buildPath.StartsWith($dependencyPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Build output must be outside the dependency checkout.' }
 foreach ($filename in @($builderCli, $viteCli, (Join-Path $audioPath 'vgmstream-cli.exe'), (Join-Path $audioPath 'ffmpeg.exe'), (Join-Path $audioPath 'ffprobe.exe'), (Join-Path $audioPath 'node.exe'))) {
     if (!(Test-Path -LiteralPath $filename -PathType Leaf)) { throw "Missing installed prerequisite: $filename" }
 }
@@ -42,19 +50,20 @@ if (Test-Path -LiteralPath $buildPath) {
     $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json -AsHashtable
     if ($receipt.kind -ne 'feedforge-song-browser-build' -or $receipt.source -ne $sourceRoot -or $receipt.branch -ne $branchName) { throw 'This build belongs to another checkout or feature.' }
     if ($receipt.python -ne $pythonExe -or $receipt.electron -ne $electronExe -or $receipt.audioTools -ne $audioPath -or $receipt.electronVersion -ne $electronVersion) { throw 'Build prerequisites differ from this build receipt. Choose a new build folder.' }
+    if (!$receipt.dependencies -or ($receipt.dependencies | ConvertTo-Json -Depth 8 -Compress) -ne ($dependencyInfo | ConvertTo-Json -Depth 8 -Compress)) { throw 'Installed dependency identity differs from this build receipt. Choose a new build folder.' }
 }
 if ($Stage -eq 'Package' -and (!$receipt -or $receipt.converter -ne 'complete')) { throw 'Complete the Converter stage in this owned build folder before packaging.' }
 if ($Stage -in @('All', 'Converter') -and (($receipt -and $receipt.converter -ne 'pending') -or (Test-Path -LiteralPath (Join-Path $buildPath 'converter-dist')) -or (Test-Path -LiteralPath (Join-Path $buildPath 'converter-work')))) { throw 'Converter output already exists. Preserve this build and choose a new folder for another build.' }
 if ($Stage -in @('All', 'Package') -and (($receipt -and $receipt.package -ne 'pending') -or (Test-Path -LiteralPath (Join-Path $buildPath 'app-stage')) -or (Test-Path -LiteralPath (Join-Path $buildPath 'release')))) { throw 'Packaging output already exists. Preserve it and choose a new build folder.' }
-[ordered]@{ source = $sourceRoot; revision = $revision; branch = $branchName; build = $buildPath; stage = $Stage; python = ($pythonInfo | ConvertFrom-Json); electron = $electronVersion; mode = $(if ($CheckOnly) { 'checked' } else { 'build' }) } | ConvertTo-Json -Depth 5
+[ordered]@{ source = $sourceRoot; revision = $revision; branch = $branchName; build = $buildPath; stage = $Stage; python = ($pythonInfo | ConvertFrom-Json); electron = $electronVersion; dependencies = $dependencyInfo; mode = $(if ($CheckOnly) { 'checked' } else { 'build' }) } | ConvertTo-Json -Depth 8
 if ($CheckOnly) { return }
 if (!$receipt) {
     New-Item -ItemType Directory -Path $buildPath | Out-Null
-    $receipt = [ordered]@{ kind = 'feedforge-song-browser-build'; source = $sourceRoot; branch = $branchName; revision = $revision; python = $pythonExe; electron = $electronExe; audioTools = $audioPath; electronVersion = $electronVersion; createdAt = [DateTime]::UtcNow.ToString('o'); converter = 'pending'; package = 'pending' }
-    $receipt | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $receiptPath -Encoding utf8
+    $receipt = [ordered]@{ kind = 'feedforge-song-browser-build'; source = $sourceRoot; branch = $branchName; revision = $revision; python = $pythonExe; electron = $electronExe; audioTools = $audioPath; electronVersion = $electronVersion; dependencies = $dependencyInfo; createdAt = [DateTime]::UtcNow.ToString('o'); converter = 'pending'; package = 'pending' }
+    $receipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $receiptPath -Encoding utf8
     $pythonInfo | Set-Content -LiteralPath (Join-Path $buildPath 'python-dependencies.json') -Encoding utf8
 }
-function Save-Receipt { $receipt | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $receiptPath -Encoding utf8 }
+function Save-Receipt { $receipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $receiptPath -Encoding utf8 }
 function Source-ConverterDigest {
     $rows = Get-ChildItem -LiteralPath (Join-Path $sourceRoot 'src\feedback_converter') -Recurse -File |
         Where-Object { $_.Extension -in @('.py', '.json', '.bin') } |
@@ -105,7 +114,10 @@ try {
         foreach ($key in @('build', 'scripts', 'dependencies', 'devDependencies')) { $manifest.Remove($key) | Out-Null }
         $manifest.name = 'feedforge-song-browser-test'; $manifest.songBrowserTest = $true
         $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $stagePath 'package.json') -Encoding utf8
-        & $nodeExe $viteCli build --outDir (Join-Path $stagePath 'desktop-dist') --emptyOutDir
+        $viteConfig = Join-Path $buildPath 'vite.config.mjs'
+        & $nodeExe $dependencyHelper --source $sourceRoot --dependencies $dependencyInfo.dependenciesRoot --electron $electronExe --vite-config $viteConfig | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'External UI build configuration failed.' }
+        & $nodeExe $viteCli build --config $viteConfig --configLoader native
         if ($LASTEXITCODE -ne 0) { throw 'The production UI build failed.' }
         & $nodeExe $builderCli --win --x64 --dir --publish never --config (Join-Path $PSScriptRoot 'song-browser-build.config.cjs')
         if ($LASTEXITCODE -ne 0) { throw 'The standalone desktop packaging failed.' }
