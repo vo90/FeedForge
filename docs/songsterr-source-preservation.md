@@ -17,7 +17,14 @@ explicit explanation; identical notes are not silently deduplicated.
 Chord templates contain the source string/fret shape. Missing chord names and
 fingers stay unknown. The importer does not invent handshapes or fingerings.
 Ghost notes remain pitched ghost notes, distinct from dead/muted notes. A
-direction-only slide is `slide_out: up|down`; no destination fret is invented.
+direction-only slide has authoritative `slide_out_marks` entries, each containing
+`direction: up|down` and `start`/`end` seconds relative to the merged note attack.
+The intervals preserve the written marked segments, including multiple tied
+segments; they do not specify slide speed or a destination fret. Each boundary
+is independently mapped through recording synchronization and rounded to six
+decimal places. `slide_out: up|down` remains only when all marks agree in direction
+for older consumers. A present marks array is authoritative, including an empty
+array; consumers must not also render the scalar.
 
 The performance boundary includes:
 
@@ -74,7 +81,10 @@ the production converter to produce expected values. A difference blocks saving;
 unsupported checks report Needs attention. In particular, an omitted notation
 sidecar currently prevents a fully checked import even if playable timing is exact.
 
-Contract version 1 is part of recipe version 3. History and recovery receipts bind
+Contract and verifier version 2, in recipe version 3, add independent slide segment
+placement checks. Version 1 reports remain readable but do not establish current
+timing fidelity, and old outputs are not reused as version 2 imports.
+History and recovery receipts bind
 the successful check to the exact archive SHA-256. Old imports are not relabeled
 checked. Later edits leave the original report intact and mark the current file
 as modified. A matching filename is never evidence of an identical conversion.
@@ -87,7 +97,8 @@ ZIP without copying the original audio, browser account state or credentials.
 Evidence is not silently deleted when the temporary download cache is cleaned.
 
 The report separates source fidelity, source-map versus estimated audio timing,
-and consumer capabilities. `ghost: true` and `slide_out: up|down` are additive
+and consumer capabilities. `ghost: true`, `slide_out: up|down`, and timed
+`slide_out_marks` are additive
 extensions, not a claim that every released game renderer understands them.
 Their requirement is recorded in `song_import.compatibility`.
 

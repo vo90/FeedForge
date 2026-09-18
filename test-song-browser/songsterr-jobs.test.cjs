@@ -80,16 +80,17 @@ async function fixture(t, options = {}) {
     const hash = (data) => crypto.createHash('sha256').update(data).digest('hex');
     const outputHash = hash(fs.readFileSync(stagingPath));
     const sourceHash = hash(fs.readFileSync(request.scorePath));
-    const report = JSON.stringify({ version: 1, status: 'passed', sourceSha256: sourceHash }), verificationHash = hash(report);
-    const record = JSON.stringify({ version: 1, outputHash, objects: { verification: verificationHash, source: sourceHash } });
+    const contract = options.contract || 2;
+    const report = JSON.stringify({ version: contract, status: 'passed', sourceSha256: sourceHash }), verificationHash = hash(report);
+    const record = JSON.stringify({ version: contract, outputHash, objects: { verification: verificationHash, source: sourceHash } });
     const id = hash(record);
     fs.mkdirSync(path.join(request.auditDir, 'objects'), { recursive: true });
     fs.mkdirSync(path.join(request.auditDir, 'records'), { recursive: true });
     fs.writeFileSync(path.join(request.auditDir, 'objects', verificationHash), report);
     fs.writeFileSync(path.join(request.auditDir, 'records', `${id}.json`), record);
     return RESPONSE({ stagingPath, relativePath: options.relativePath || 'Synthetic Artist - Synthetic Song.feedpak',
-      scoreHash: sourceHash, audioHash: 'audio-digest', recipe: { version: 3, preservationContract: 1, scoreHash: sourceHash, audioHash: 'audio-digest' },
-      verification: { version: 1, status: 'passed', outputHash }, evidence: { version: 1, id, sourceHash, verificationHash, outputHash },
+      scoreHash: sourceHash, audioHash: 'audio-digest', recipe: { version: 3, preservationContract: contract, scoreHash: sourceHash, audioHash: 'audio-digest' },
+      verification: { version: contract, status: 'passed', outputHash }, evidence: { version: contract, id, sourceHash, verificationHash, outputHash },
       warnings: [], alignment: { status: 'validated' }, coverage: { arrangements: 1 } });
   }
   const runConverter = async (args, context) => {
@@ -158,6 +159,51 @@ test('verification is bound to the exact staged file before publication', async 
   f.enqueue(); await settle(f.jobs);
   assert.equal(f.jobs.snapshot()[0].state, 'failed');
   assert.deepEqual(fs.readdirSync(f.outputDir), []);
+});
+
+test('scalar-only preservation contract cannot publish as a current verified conversion', async (t) => {
+  const f = await fixture(t, { contract: 1 });
+  f.enqueue(); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'failed');
+  assert.match(f.jobs.snapshot()[0].error, /current source verification/);
+  assert.deepEqual(fs.readdirSync(f.outputDir), []);
+});
+
+test('old reports survive recovery but do not claim current slide timing fidelity or allow reuse', async (t) => {
+  const f = await fixture(t);
+  f.enqueue(); await settle(f.jobs); await f.jobs.dispose();
+  const job = f.jobs.jobs[0], hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
+  const oldReference = job.evidence;
+  const report = JSON.parse(fs.readFileSync(path.join(f.jobs.auditRoot, 'objects', oldReference.verificationHash), 'utf8'));
+  report.version = 1;
+  const reportBytes = JSON.stringify(report), verificationHash = hash(reportBytes);
+  fs.writeFileSync(path.join(f.jobs.auditRoot, 'objects', verificationHash), reportBytes);
+  const record = JSON.parse(fs.readFileSync(path.join(f.jobs.auditRoot, 'records', oldReference.id + '.json'), 'utf8'));
+  record.version = 1; record.objects.verification = verificationHash;
+  const recordBytes = JSON.stringify(record), id = hash(recordBytes);
+  fs.writeFileSync(path.join(f.jobs.auditRoot, 'records', id + '.json'), recordBytes);
+  job.recipe.preservationContract = 1; job.verification.version = 1;
+  job.evidence = { ...oldReference, version: 1, id, verificationHash };
+  f.jobs._save();
+  const receiptPath = path.join(f.root, job.id + '.receipt.json');
+  const receipt = JSON.parse(fs.readFileSync(receiptPath, 'utf8'));
+  fs.writeFileSync(receiptPath, JSON.stringify({ ...receipt, recipe: job.recipe, verification: job.verification, evidence: job.evidence }));
+  const restored = new SongsterrJobs(f.config);
+  try {
+    await restored.ready;
+    const old = restored.snapshot()[0];
+    assert.equal(old.state, 'completed');
+    assert.equal(old.verification.status, 'not_checked');
+    assert.equal(old.hasReport, true);
+    restored.enqueue(CHART, { outputDir: f.outputDir, outputSettings: SETTINGS });
+    await settle(restored);
+    const fresh = restored.snapshot()[1];
+    assert.equal(fresh.state, 'completed', fresh.error);
+    assert.equal(fresh.verification.version, 2);
+    assert.equal(fresh.verification.status, 'passed');
+    assert.notEqual(fresh.outputPath, old.outputPath);
+    assert.equal(fs.readFileSync(old.outputPath, 'utf8'), 'Synthetic FeedPak');
+  } finally { await restored.dispose(); }
 });
 
 test('later edits retain historical report without claiming current verification', async (t) => {

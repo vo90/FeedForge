@@ -20,13 +20,14 @@ def test_evidence_is_durable_content_addressed_and_exportable(tmp_path):
                 performance={"tracks": [{"notes": [{"source_ids": ["source:1"], "f": 0}]}]},
                 synchronization={"points": [0, 2], "revisionId": 34},
                 alignment={"anchors": [{"score": 0, "audio": 1}, {"score": 2, "audio": 3}]},
-                verification={"version": 1, "status": "passed"}, archive=archive)
+                verification={"version": 2, "status": "passed"}, archive=archive)
     root = tmp_path / "evidence"
     first = save_evidence(root, **args)
     assert first == save_evidence(root, **args)
     record_file = root / "records" / (first["id"] + ".json")
     assert hashlib.sha256(record_file.read_bytes()).hexdigest() == first["id"]
     record = json.loads(record_file.read_text())
+    assert record["version"] == first["version"] == 2
     assert record["sourceMetadata"] == {"title": "Original", "songId": 12}
     assert record["members"]["manifest.yaml"] == hashlib.sha256(b"title: Original").hexdigest()
     shutil.rmtree(cache)
@@ -42,7 +43,7 @@ def test_changed_evidence_is_not_overwritten(tmp_path):
     score.write_bytes(b"source")
     root = tmp_path / "evidence"
     args = dict(score=score, metadata={}, performance=None, synchronization=None, alignment=None,
-                verification={"version": 1, "status": "incomplete"})
+                verification={"version": 2, "status": "incomplete"})
     result = save_evidence(root, **args)
     original = root / "objects" / result["sourceHash"]
     original.write_bytes(b"changed")

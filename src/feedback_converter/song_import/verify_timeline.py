@@ -210,7 +210,7 @@ def expected(source, alignment):
                     result["tie_segments"] += 1
                 else:
                     event = {"start": start, "end": end, "s": atom.string, "f": atom.fret, "effects": dict(atom.effects),
-                             "curve": [], "locations": [atom.location], "occurrence": occurrence + 1, "beat": atom.beat}
+                             "curve": [], "slide_marks": [], "locations": [atom.location], "occurrence": occurrence + 1, "beat": atom.beat}
                     if atom.hopo_destination or key in pending_hopos:
                         if previous is None:
                             unsupported(atom.location, "Source hammer-on/pull-off has no prior note.")
@@ -231,7 +231,7 @@ def expected(source, alignment):
                 if atom.slide in {"shift", "legato"}:
                     pending_slides[key] = (event, atom.slide)
                 elif atom.slide:
-                    event["effects"]["slide_out"] = atom.slide
+                    event["slide_marks"].append((atom.slide, start, end))
                 if atom.hopo_origin:
                     pending_hopos[key] = event
                     event["effects"]["ln"] = True
@@ -255,6 +255,14 @@ def expected(source, alignment):
             start, end = clock.at(n["start"]), clock.at(n["end"])
             mapped_start, mapped_end = recording.at(start), recording.at(end)
             row = {"t": mapped_start, "sus": round(mapped_end - mapped_start, 6), "s": n["s"], "f": n["f"], **n["effects"]}
+            if n["slide_marks"]:
+                row["slide_out_marks"] = [{"direction": direction,
+                                           "start": round(recording.at(clock.at(left)) - mapped_start, 6),
+                                           "end": round(recording.at(clock.at(right)) - mapped_start, 6)}
+                                          for direction, left, right in n["slide_marks"]]
+                directions = {direction for direction, _, _ in n["slide_marks"]}
+                if len(directions) == 1:
+                    row["slide_out"] = next(iter(directions))
             if n["curve"]:
                 curve = []
                 for p in n["curve"]:

@@ -163,7 +163,17 @@ def render(score: Score) -> dict:
                 if note.slide in {"shift", "legato"}:
                     pending_slide[link_key] = (output, note.slide)
                 elif note.slide in {"out_down", "out_up"}:
-                    output["slide_out"] = "down" if note.slide == "out_down" else "up"
+                    # A tied continuation may carry the marking only on its
+                    # final written segment. Keep each interval before merging
+                    # loses that boundary; it does not describe slide speed.
+                    marks = output.setdefault("slide_out_marks", [])
+                    marks.append({"direction": "down" if note.slide == "out_down" else "up",
+                                  "start": at(position) - output["t"], "end": at(end) - output["t"]})
+                    directions = {mark["direction"] for mark in marks}
+                    if len(directions) == 1:
+                        output["slide_out"] = marks[0]["direction"]
+                    else:
+                        output.pop("slide_out", None)
                 if note.effects.get("__hopo_origin"):
                     pending_hopo[link_key] = output
                     output["ln"] = True

@@ -96,6 +96,7 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
     raw = {"format": "songsterr", "songId": 12, "revisionId": 34, "title": "Copy", "artist": "Copy artist",
            "tracks": [{"id": 0, "name": "Lead Guitar", "instrumentId": 29, "tuning": [64, 59, 55, 50, 45, 40]}],
            "parts": [{"measures": measures, "automations": {"tempo": [{"measure": 0, "position": [0, 1], "bpm": 120, "type": 4}]}}]}
+    measures[0]["voices"][0]["beats"][0]["notes"][0]["slide"] = "downwards"
     score = tmp_path / "score.json"
     score.write_text(json.dumps(raw), encoding="utf-8")
     recording = tmp_path / "selected-recording.wav"
@@ -119,6 +120,8 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
                "outputSettings": {"nameTemplate": "{artist} - {title}", "outputLayout": "artist"}}
     result = worker.run_import(request)
     assert result["ok"], result
+    assert result["recipe"]["preservationContract"] == result["verification"]["version"] == result["evidence"]["version"] == 2
+    assert result["recipe"]["compatibility"] == {"version": 2, "extensions": ["slide_out", "slide_out_marks"], "status": "requires_consumer_support"}
     assert result["alignment"]["method"] == "songsterr-video-points-v1"
     assert len(result["recipe"]["alignment"]["provenance"]["mapHash"]) == 64
     assert "anchors" not in result["alignment"] and "tempos" not in result["alignment"]
@@ -130,6 +133,7 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
         chart = json.loads(archive.read(manifest["arrangements"][0]["file"]))
         assert [note["t"] for note in chart["notes"]] == pytest.approx(expected_starts)
         assert [note["sus"] for note in chart["notes"]] == pytest.approx([0.525] * 4 + [0.675] * 4)
+        assert chart["notes"][0]["slide_out_marks"] == [{"direction": "down", "start": 0, "end": .525}]
         assert [beat["time"] for beat in chart["beats"]] == pytest.approx(expected_starts)
         assert len(chart["tempos"]) == 2
         assert manifest["preview"] in archive.namelist()

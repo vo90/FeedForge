@@ -31,7 +31,8 @@ def example():
         {"t": 1, "s": 0, "f": 3, "sus": .5, "ln": True},
         {"t": 1.5, "s": 0, "f": 5, "sus": .5, "ho": True},
         {"t": 2, "s": 0, "f": 7, "sus": .5, "ghost": True},
-        {"t": 2.5, "s": 0, "f": 30, "sus": .5, "slide_out": "up"}],
+        {"t": 2.5, "s": 0, "f": 30, "sus": .5, "slide_out": "up",
+         "slide_out_marks": [{"direction": "up", "start": 0, "end": .5}]}],
         "chords": [], "templates": [], "beats": deepcopy(beats), "sections": deepcopy(sections), "tempos": deepcopy(tempos)}
     timeline = {"version": 1, "beats": beats, "sections": sections, "tempos": tempos, "time_signatures": [{"time": 1, "ts": [4, 4]}]}
     notation = {"version": 1, "instrument": "guitar", "measures": [{"idx": 1, "source_measure": 1, "t": 1,
@@ -163,7 +164,7 @@ def test_gpif_is_read_independently_from_literal_xml(tmp_path):
     source, package = example()
     chart = package["chart.json"]
     for note in chart["notes"]:
-        for key in ("ln", "ho", "ghost", "slide_out"):
+        for key in ("ln", "ho", "ghost", "slide_out", "slide_out_marks"):
             note.pop(key, None)
     for beat in package["notation.json"]["measures"][0]["staves"]["staff"]["voices"][0]["beats"]:
         for note in beat["notes"]:
