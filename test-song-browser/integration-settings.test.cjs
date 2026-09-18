@@ -11,20 +11,21 @@ const { normalizeEndpoint } = require('../electron/song-browser/feedback.cjs');
 const plain = (value) => JSON.parse(JSON.stringify(value));
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 function gate() { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; }
-function fixture(t, initialSettings) {
+function fixture(t, initialSettings, lifecycle = {}) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'feedforge-ipc-settings-'));
   const libraryDir = path.join(directory, 'fixture-library'); fs.mkdirSync(libraryDir);
-  const handlers = new Map(); const created = { browsers: [], queues: [] };
+  const handlers = new Map(), events = new Map(); const created = { browsers: [], queues: [] };
   const mainFrame = {}; const webContents = { mainFrame, send(channel, value) { if (channel === 'song-browser:state') calls.states.push(plain(value)); } };
   const win = { webContents, isDestroyed: () => false };
   const trusted = { sender: webContents, senderFrame: mainFrame };
-  const calls = { inspections: [], refreshes: [], retries: [], enqueued: [], ran: [], cleared: [], saves: [], opens: [], states: [], revealed: [] };
+  const calls = { inspections: [], refreshes: [], retries: [], enqueued: [], ran: [], cleared: [], saves: [], opens: [], states: [], revealed: [], browserDisposes: 0, queueDisposes: 0, quits: 0 };
   const options = { selectedOutput: path.join(directory, 'selected-output'), savePath: path.join(directory, 'report.json'), failSettings: false };
   const info = (url) => ({ url: normalizeEndpoint(url), libraryDir, version: '0.3.0-alpha.1', running: false });
   const remote = { inspect: async (url) => info(url), refresh: async (url) => info(url) };
   class Browser {
     constructor(value) { this.options = value; this.connection = { status: 'signed_out' }; created.browsers.push(this); }
-    signIn() { return { ok: true }; } showBrowser() { return { ok: true }; } dispose() {}
+    signIn() { return { ok: true }; } showBrowser() { return { ok: true }; }
+    dispose() { calls.browserDisposes++; return options.browserCleanup?.(); }
     search() { return { status: 'ready', results: [] }; }
   }
   class Queue {
@@ -37,7 +38,7 @@ function fixture(t, initialSettings) {
     retry(id) { calls.retries.push(id); return { ok: true, id }; }
     async clearCache(id) { calls.cleared.push(id); return { ok: true }; }
     async getCachedInput() { return path.join(directory, 'source.psarc'); }
-    async dispose() {}
+    async dispose() { calls.queueDisposes++; return options.queueCleanup?.(); }
     emit(job) { this.entries = [job]; this.options.emit(job); }
   }
   const fsProxy = { ...fs, renameSync(from, to) {
@@ -48,6 +49,7 @@ function fixture(t, initialSettings) {
   const localRequire = (name) => {
     if (name === 'node:fs') return fsProxy;
     if (name === './browser.cjs') return { CustomsForgeBrowser: Browser };
+    if (name === './songsterr-service.cjs' && lifecycle.songsterr) return { registerSongsterr: () => lifecycle.songsterr };
     if (name === './jobs.cjs') return { SongJobs: Queue, selectionForChart: require('../electron/song-browser/jobs.cjs').selectionForChart };
     if (name === './diagnostics.cjs') return { createDiagnostics };
     if (name === './feedback.cjs') return { normalizeEndpoint,
@@ -58,19 +60,76 @@ function fixture(t, initialSettings) {
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../electron/song-browser/index.cjs'), 'utf8'),
     { module, exports: module.exports, require: localRequire, process, console, setTimeout, clearTimeout, AbortController });
   const service = module.exports.registerSongBrowser({
-    app: { getPath: () => directory, getVersion: () => '0.1.40', on() {} },
+    app: { getPath: () => directory, getVersion: () => '0.1.40', on(name, callback) { events.set(name, callback); }, quit() { calls.quits++; } },
     BrowserWindow: Browser, session: {}, ipcMain: { handle(name, action) { handlers.set(name, action); } },
     dialog: { showSaveDialog: async (_win, request) => { calls.saves.push(request); return { canceled: false, filePath: options.savePath }; },
       showOpenDialog: async () => { calls.opens.push(true); return { canceled: false, filePaths: [options.selectedOutput] }; } },
     shell: { showItemInFolder(filename) { calls.revealed.push(filename); } }, getMainWindow: () => win, runConverter() { throw new Error('No real converter in IPC fixture.'); },
-    getConverterRecipe: async () => options.getConverterRecipe ? options.getConverterRecipe() : require('./fixture-recipe.cjs')
+    getConverterRecipe: async () => options.getConverterRecipe ? options.getConverterRecipe() : require('./fixture-recipe.cjs'),
+    managedLifecycle: lifecycle.managedLifecycle
   });
   t.after(async () => { await service.close(); fs.rmSync(directory, { recursive: true, force: true }); });
   const call = (name, payload, event = trusted) => handlers.get('song-browser:' + name)(event, payload);
   const settingsPath = path.join(directory, 'song-browser', 'settings.json');
   if (initialSettings) { fs.mkdirSync(path.dirname(settingsPath), { recursive: true }); fs.writeFileSync(settingsPath, JSON.stringify(initialSettings)); }
-  return { directory, libraryDir, handlers, options, calls, created, remote, info, call, settingsPath, trusted };
+  return { directory, libraryDir, handlers, options, calls, created, remote, info, call, settingsPath, trusted, service, events };
 }
+
+for (const managedLifecycle of [false, true]) {
+  test(`${managedLifecycle ? 'managed' : 'standalone'} song browser shutdown waits for download and provider cleanup exactly once`, async (t) => {
+    const download = gate(), provider = gate(); let providerCloses = 0;
+    const f = fixture(t, undefined, { managedLifecycle, songsterr: { close() { providerCloses++; return provider.promise; } } });
+    await f.call('getState');
+    f.options.queueCleanup = () => download.promise;
+    assert.equal(f.events.has('before-quit'), !managedLifecycle);
+    let settled = false, prevented = 0;
+    const closing = f.service.close();
+    closing.then(() => { settled = true; });
+    const quit = () => f.events.get('before-quit')?.({ preventDefault() { prevented++; } });
+    try {
+      assert.equal(f.service.close(), closing);
+      quit(); quit(); await tick();
+      assert.equal(settled, false);
+      assert.equal(f.calls.quits, 0);
+      assert.equal(f.calls.queueDisposes, 1);
+      assert.equal(f.calls.browserDisposes, 1);
+      assert.equal(providerCloses, 1);
+      assert.match((await f.call('search', { query: 'song' })).error, /closing/);
+      download.resolve(); await tick();
+      assert.equal(settled, false, 'Provider cleanup remains part of the shared close promise.');
+      quit(); await tick();
+      assert.equal(f.calls.quits, 0);
+    } finally { download.resolve(); provider.resolve(); }
+    await closing; await tick();
+    assert.equal(f.calls.quits, managedLifecycle ? 0 : 1);
+    assert.equal(prevented, managedLifecycle ? 0 : 3);
+    quit();
+    assert.equal(prevented, managedLifecycle ? 0 : 3);
+    assert.equal(f.service.close(), closing);
+  });
+}
+
+test('standalone shutdown drains Songsterr-only use without initializing CustomsForge', async (t) => {
+  const provider = gate(); let providerCloses = 0, prevented = 0;
+  const f = fixture(t, undefined, { songsterr: {
+    active: () => true,
+    close() { providerCloses++; return provider.promise; },
+  } });
+  const quit = () => f.events.get('before-quit')({ preventDefault() { prevented++; } });
+  try {
+    quit(); quit(); await tick();
+    assert.equal(prevented, 2);
+    assert.equal(providerCloses, 1);
+    assert.equal(f.calls.quits, 0);
+    assert.equal(f.created.browsers.length, 0);
+    assert.equal(f.created.queues.length, 0);
+  } finally { provider.resolve(); }
+  await f.service.close(); await tick();
+  assert.equal(f.calls.quits, 1);
+  quit();
+  assert.equal(prevented, 2);
+  assert.equal(providerCloses, 1);
+});
 
 for (const operation of ['search', 'prepareBatch']) {
   test(`cancelling ${operation} stops waiting for the shared converter recipe`, async (t) => {

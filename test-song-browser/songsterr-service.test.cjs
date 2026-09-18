@@ -27,6 +27,7 @@ async function fixture(t, options = {}) {
     restoreTrustedResult(chart) { this.restored.push(chart); }
     async acquire(chart, context) {
       acquisitions.push({ chart: structuredClone(chart), allowAccount: context.allowAccount, directory: context.directory });
+      if (options.acquire) return options.acquire(chart, context);
       if (options.accountOnly && !context.allowAccount) throw Object.assign(new Error('Anonymous fixture access was denied.'), { code: 'access_denied', canUseAccount: true });
       const destination = path.join(context.directory, 'fixture.songsterr.json');
       await fsp.writeFile(destination, JSON.stringify({ format: 'songsterr', songId: chart.id, fixture: true }), { flag: 'wx' });
@@ -34,7 +35,7 @@ async function fixture(t, options = {}) {
     }
     async signIn() { this.signInCalls = (this.signInCalls || 0) + 1; return { ok: true }; }
     async showBrowser() { this.showCalls = (this.showCalls || 0) + 1; return { ok: true }; }
-    async dispose() { this.disposed = true; }
+    async dispose() { this.disposed = true; this.disposeCalls = (this.disposeCalls || 0) + 1; return options.dispose?.(); }
   }
   const exports = {};
   const context = { module: { exports }, exports, require: (name) => name === './providers/songsterr/index.cjs' ? { SongsterrProvider: FakeProvider } : realRequire(name),
@@ -81,6 +82,38 @@ async function fixture(t, options = {}) {
   return { root, outputDir, providers, acquisitions, conversions, checks, emissions, dialogs, service, call, waitState, waitingJob, event,
     setSettings(value) { settings = value; }, setDialog(value) { dialogResult = value; } };
 }
+
+test('Songsterr close waits for active acquisition cancellation and delayed provider cleanup once', async (t) => {
+  let enter, releaseAcquisition, releaseProvider, signal;
+  const entered = new Promise((resolve) => { enter = resolve; });
+  const acquisition = new Promise((resolve) => { releaseAcquisition = resolve; });
+  const provider = new Promise((resolve) => { releaseProvider = resolve; });
+  const f = await fixture(t, {
+    acquire: async (_chart, context) => { signal = context.signal; enter(); await acquisition; throw new Error('Fixture acquisition cancelled.'); },
+    dispose: () => provider,
+  });
+  await f.call('search', { query: 'green lung' });
+  await f.call('enqueue', { id: SONG.id }); await entered;
+  let settled = false;
+  const closing = f.service.close();
+  closing.then(() => { settled = true; });
+  try {
+    assert.equal(f.service.close(), closing);
+    await new Promise(setImmediate);
+    assert.equal(signal.aborted, true);
+    assert.equal(f.providers[0].disposeCalls, 1);
+    assert.equal(settled, false);
+    assert.match((await f.call('enqueue', { id: SONG.id })).error, /closing/);
+    releaseProvider(); await new Promise(setImmediate);
+    assert.equal(settled, false, 'The active acquisition must settle before close completes.');
+    assert.equal(f.service.close(), closing);
+  } finally { releaseProvider(); releaseAcquisition(); }
+  await closing;
+  assert.equal(f.conversions.length, 0);
+  assert.equal(f.providers[0].disposeCalls, 1);
+  const ledger = JSON.parse(fs.readFileSync(path.join(f.root, 'songsterr', 'jobs', 'jobs.json'), 'utf8'));
+  assert.equal(ledger.jobs[0].state, 'cancelled');
+});
 
 test('Songsterr IPC rejects another renderer or subframe before initializing a profile or queue', async (t) => {
   const f = await fixture(t);

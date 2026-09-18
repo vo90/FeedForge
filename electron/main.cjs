@@ -44,6 +44,7 @@ if (songBrowserTest || (!app.isPackaged && process.env.FEEDFORGE_USER_DATA)) {
 }
 
 let mainWindow;
+let songBrowser;
 let inspectCacheRoot;
 let inspectCacheTouched = false;
 let localAssetRegistry;
@@ -182,8 +183,8 @@ app.whenReady().then(() => {
   inspectCacheRoot = path.join(app.getPath("temp"), "feedforge-inspect-cache");
   initializeLocalAssets();
   createWindow();
-  registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, shell,
-    getMainWindow: () => mainWindow, runConverter, getConverterRecipe });
+  songBrowser = registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, shell,
+    getMainWindow: () => mainWindow, runConverter, getConverterRecipe, managedLifecycle: true });
   mainWindow.once("closed", () => app.quit());
   setTimeout(() => {
     if (!songBrowserTest) cleanupStalePortableArtifacts();
@@ -198,9 +199,10 @@ app.on("before-quit", (event) => {
   appQuitCleanupStarted = true;
   logDebug("app.beforeQuit");
   void Promise.allSettled([
-    shutdownConverterProcesses(),
-    stopStemServer()
-  ]).finally(() => {
+    () => songBrowser?.close(),
+    shutdownConverterProcesses,
+    stopStemServer
+  ].map((cleanup) => Promise.resolve().then(cleanup))).finally(() => {
     if (localAssetRegistry) {
       localAssetRegistry.clear();
       protocol.unhandle(LOCAL_ASSET_SCHEME);

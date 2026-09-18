@@ -14,13 +14,14 @@ const { normalizeOutputSettings } = require('./output-settings.cjs');
 const { registerSongsterr } = require('./songsterr-service.cjs');
 const { waitForSharedOperation } = require('./shared-operation.cjs');
 
-function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, shell, getMainWindow, runConverter, getConverterRecipe = async () => null }) {
+function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, shell, getMainWindow, runConverter, getConverterRecipe = async () => null, managedLifecycle = false }) {
   let browser, jobs, outputDir, root, batches, imports, collecting = null, searching = null, recipePromise;
   let config = {}, diagnostics;
   let feedback = { status: 'disconnected', message: '' };
   let refreshPromise = null;
   let connectionGeneration = 0, connectionRequest = 0, outputGeneration = 0;
   let quitting = false;
+  let closePromise, closeFinished = false, quitRequested = false;
   const charts = new Map();
   const stages = new Map();
   const songsterr = registerSongsterr({ app, BrowserWindow, session, ipcMain, dialog, shell, getMainWindow, runConverter, getConverterRecipe,
@@ -190,7 +191,7 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
       if (!win || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) {
         throw new Error('Song Browser requests must come from FeedForge.');
       }
-      try { initialize(); return await action(payload || {}); }
+      try { if (quitting) throw new Error('Song Browser is closing.'); initialize(); return await action(payload || {}); }
       catch (error) { return { ok: false, error: String(error.message || 'The operation failed.').slice(0, 1200) }; }
     });
   }
@@ -394,15 +395,28 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
     shell.showItemInFolder(job.outputPath);
     return { ok: true };
   });
-  app.on('before-quit', (event) => {
-    if (!jobs || quitting) return;
-    event.preventDefault();
+  function close() {
+    if (closePromise) return closePromise;
     quitting = true;
     collecting?.controller.abort();
     searching?.controller.abort();
-    browser.dispose();
-    Promise.resolve(batches?.dispose?.()).finally(() => jobs.dispose()).finally(() => songsterr.close()).finally(() => app.quit()).catch(() => {});
+    // Start every cancellation even if another cleanup fails or waits for a
+    // download/process to finish. Every caller shares the same completion.
+    closePromise = Promise.allSettled([
+      () => browser?.dispose(), () => batches?.dispose(), () => jobs?.dispose(), () => songsterr.close()
+    ].map((cleanup) => Promise.resolve().then(cleanup))).then((results) => {
+      const failed = results.find((result) => result.status === 'rejected');
+      if (failed) throw failed.reason;
+    }).finally(() => { closeFinished = true; });
+    return closePromise;
+  }
+  if (!managedLifecycle) app.on('before-quit', (event) => {
+    if ((!jobs && !songsterr.active()) || closeFinished) return;
+    event.preventDefault();
+    if (quitRequested) return;
+    quitRequested = true;
+    void close().finally(() => app.quit()).catch(() => {});
   });
-  return { close: async () => { collecting?.controller.abort(); searching?.controller.abort(); await batches?.dispose(); browser?.dispose(); await jobs?.dispose(); await songsterr.close(); } };
+  return { close };
 }
 module.exports = { registerSongBrowser };

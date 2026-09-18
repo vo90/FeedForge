@@ -7,6 +7,7 @@ const { SongsterrJobs } = require('./songsterr-jobs.cjs');
 
 function registerSongsterr({ app, BrowserWindow, session, ipcMain, dialog, shell, getMainWindow, runConverter, getConverterRecipe, getSettings, validateOutput, onCompleted }) {
   let provider, jobs, searching;
+  let closing = false, closePromise;
   const results = new Map();
   const state = () => ({ jobs: jobs.snapshot(), connection: provider.connection, outputDir: getSettings().outputDir });
   const emit = () => { const win = getMainWindow(); if (jobs && win && !win.isDestroyed()) win.webContents.send('songsterr:state', state()); };
@@ -42,7 +43,7 @@ function registerSongsterr({ app, BrowserWindow, session, ipcMain, dialog, shell
     ipcMain.handle(`songsterr:${name}`, async (event, payload) => {
       const win = getMainWindow();
       if (!win || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame) throw new Error('Songsterr requests must come from FeedForge.');
-      try { initialize(); await jobs.ready; return await action(payload || {}); }
+      try { if (closing) throw new Error('Songsterr is closing.'); initialize(); await jobs.ready; if (closing) throw new Error('Songsterr is closing.'); return await action(payload || {}); }
       catch (error) { return { ok: false, code: error.code, error: String(error.message || 'The operation failed.').replace(/https?:\/\/[^\s]+/g, '[link]').slice(0, 1200) }; }
     });
   }
@@ -101,6 +102,18 @@ function registerSongsterr({ app, BrowserWindow, session, ipcMain, dialog, shell
     fs.copyFileSync(bundle, selected.filePath);
     return { ok: true };
   });
-  return { active: () => Boolean(jobs), close: async () => { searching?.abort(); await jobs?.dispose(); await provider?.dispose(); } };
+  function close() {
+    if (closePromise) return closePromise;
+    closing = true;
+    searching?.abort();
+    closePromise = Promise.allSettled([
+      () => jobs?.dispose(), () => provider?.dispose()
+    ].map((cleanup) => Promise.resolve().then(cleanup))).then((results) => {
+      const failed = results.find((result) => result.status === 'rejected');
+      if (failed) throw failed.reason;
+    });
+    return closePromise;
+  }
+  return { active: () => Boolean(jobs), close };
 }
 module.exports = { registerSongsterr };
