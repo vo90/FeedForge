@@ -41,6 +41,7 @@ import {
   normalizeValidationPolicy
 } from "./conversion-policy.mjs";
 import { createMemoryLaunchGate } from "./memory-launch-gate.mjs";
+import { filterLibraryRows, filterLibraryDuplicateGroups, libraryPage } from "./library-review.mjs";
 import {
   AUTO_SETTING,
   FALLBACK_PERFORMANCE_PROFILE,
@@ -80,7 +81,8 @@ const DEFAULT_AUDIT_CRITERIA = {
   requireLyrics: false,
   requireAuthors: false,
   requireTones: false,
-  checkDuplicates: false
+  checkDuplicates: false,
+  duplicateMatch: "strict"
 };
 const AUDIT_CRITERIA_OPTIONS = [
   { key: "requireSpecValidation", label: "Spec valid" },
@@ -2315,15 +2317,25 @@ function LibraryAuditPanel({ folder, criteria, report, busy, disabled = false, m
   const [selectedDuplicatePaths, setSelectedDuplicatePaths] = useState([]);
   const [deleteMessage, setDeleteMessage] = useState("");
   const [isDeletingDuplicates, setIsDeletingDuplicates] = useState(false);
-  const failedRows = (report?.rows || []).filter((row) => row.status !== "pass");
-  const previewRows = failedRows.slice(0, 8);
-  const duplicateGroups = report?.duplicates || [];
+  const [query, setQuery] = useState("");
+  const [resultFilter, setResultFilter] = useState("all");
+  const [page, setPage] = useState(0);
+  const duplicatesChecked = report?.criteria?.checkDuplicates === true;
+  const broadDuplicates = report?.criteria?.duplicateMatch === "artist-title";
+  const filteredRows = useMemo(() => filterLibraryRows(report, { query, filter: resultFilter }), [report, query, resultFilter]);
+  const resultPage = libraryPage(filteredRows, page);
+  const duplicateGroups = useMemo(() => filterLibraryDuplicateGroups(report?.duplicates, query), [report, query]);
   const selectedSet = new Set(selectedDuplicatePaths);
 
   useEffect(() => {
     setSelectedDuplicatePaths([]);
     setDeleteMessage("");
-  }, [report?.jsonPath]);
+    setPage(0);
+  }, [report, query, resultFilter]);
+
+  useEffect(() => {
+    if (!duplicatesChecked && resultFilter === "duplicates") setResultFilter("all");
+  }, [duplicatesChecked, resultFilter]);
 
   function toggleDuplicatePath(filePath, checked) {
     setSelectedDuplicatePaths((current) => {
@@ -2342,6 +2354,7 @@ function LibraryAuditPanel({ folder, criteria, report, busy, disabled = false, m
     setDeleteMessage("");
     try {
       const result = await onDeleteFiles(selectedDuplicatePaths);
+      if (result.deleted > 0) await onRun();
       setDeleteMessage(result.ok ? `Moved ${result.deleted || 0} file${result.deleted === 1 ? "" : "s"} to the Recycle Bin.` : result.error || "Some files could not be deleted.");
       if (result.ok) setSelectedDuplicatePaths([]);
     } catch (error) {
@@ -2381,6 +2394,18 @@ function LibraryAuditPanel({ folder, criteria, report, busy, disabled = false, m
             </label>
           ))}
         </div>
+        <label className="audit-duplicate-mode">
+          <span>Duplicate matching</span>
+          <select value={criteria.duplicateMatch === "artist-title" ? "artist-title" : "strict"}
+            onChange={(event) => onChangeCriterion("duplicateMatch", event.target.value)}
+            disabled={!criteria.checkDuplicates || busy || disabled}>
+            <option value="strict">Artist, title, album, year and duration</option>
+            <option value="artist-title">Artist and title — review all versions</option>
+          </select>
+          <small>{criteria.duplicateMatch === "artist-title"
+            ? "Broader matches can include different releases or recordings. Compare them before choosing what to keep."
+            : "Matches use normalized metadata and duration rounded to five seconds."} Run audit to apply changed checks.</small>
+        </label>
 
         {report?.ok === false && <div className="error-box"><AlertTriangle size={17} /> {report.error || "Library audit failed."}</div>}
 
@@ -2389,7 +2414,7 @@ function LibraryAuditPanel({ folder, criteria, report, busy, disabled = false, m
             <div className="audit-summary">
               <Metric label="FeedPaks scanned" value={report.total || 0} />
               <Metric label="Passed" value={report.passed || 0} />
-              <Metric label="Needs work" value={report.needsWork || 0} />
+              <Metric label="Needs attention" value={report.needsWork || 0} />
               <Metric label="Duplicate groups" value={report.duplicateGroups || 0} tone={report.duplicateGroups ? "warn" : ""} />
             </div>
             <div className="audit-actions">
@@ -2399,30 +2424,49 @@ function LibraryAuditPanel({ folder, criteria, report, busy, disabled = false, m
                 <button className="ghost" onClick={() => api.openAuditReport(report.jsonPath)} disabled={!report.jsonPath}>Open JSON</button>
               </div>
             </div>
+            <div className="audit-review-toolbar">
+              <label className="audit-search"><Search size={17} /><input type="search" aria-label="Search library results"
+                placeholder="Search artist, song, album or filename" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
+              <div className="audit-result-filters" aria-label="Library result filters">
+                {[{ id: "all", label: "All" }, { id: "duplicates", label: "Duplicates" }, { id: "issues", label: "Needs attention" }].map((filter) => (
+                  <button type="button" className={resultFilter === filter.id ? "active" : "ghost"} key={filter.id}
+                    aria-pressed={resultFilter === filter.id} disabled={filter.id === "duplicates" && !duplicatesChecked}
+                    onClick={() => setResultFilter(filter.id)}>{filter.label}</button>
+                ))}
+              </div>
+              <span className="muted-text">{filteredRows.length} of {report.total || 0} files</span>
+            </div>
             <div className="audit-results">
-              {failedRows.length === 0 ? (
-                <div className="empty compact">No missing items found for the selected criteria.</div>
+              {filteredRows.length === 0 ? (
+                <div className="empty compact">No files match this search and filter.</div>
               ) : (
-                previewRows.map((row) => (
+                resultPage.rows.map((row) => (
                   <div className="audit-row" key={row.filePath}>
                     <div>
                       <strong>{row.title || basename(row.filePath)}</strong>
-                      <span>{row.artist || "Unknown Artist"} / {row.relativePath}</span>
+                      <span>{row.artist || "Unknown Artist"}{row.album ? ` / ${row.album}` : ""} / {row.relativePath}</span>
                     </div>
                     <div className="audit-missing">
                       {(row.missing || []).map((issue) => <b key={issue}>{issue}</b>)}
+                      {row.status === "pass" && <span>Passed</span>}
+                      <button type="button" className="ghost" onClick={() => api.showFileInFolder(row.filePath)}><FolderOpen size={15} /> Show file</button>
                     </div>
                   </div>
                 ))
               )}
-              {failedRows.length > previewRows.length && <span className="muted-text">Showing first {previewRows.length} of {failedRows.length}. Open the CSV for the full report.</span>}
+              {resultPage.pages > 1 && <div className="audit-pagination">
+                <button type="button" className="ghost" disabled={resultPage.page === 0} onClick={() => setPage(resultPage.page - 1)}>Previous</button>
+                <span>Page {resultPage.page + 1} of {resultPage.pages}</span>
+                <button type="button" className="ghost" disabled={resultPage.page + 1 >= resultPage.pages} onClick={() => setPage(resultPage.page + 1)}>Next</button>
+              </div>}
             </div>
-            {criteria.checkDuplicates && (
+            {duplicatesChecked && resultFilter !== "issues" && (
               <div className="duplicate-results">
                 <div className="duplicate-head">
                   <div>
-                    <strong>Duplicate songs</strong>
-                    <span>{duplicateGroups.length ? `${duplicateGroups.length} group${duplicateGroups.length === 1 ? "" : "s"} found. FeedForge recommends one file per group, but you decide what to keep.` : "No duplicates found by metadata."}</span>
+                    <strong>{broadDuplicates ? "Versions to compare" : "Duplicate songs"}</strong>
+                    <span>{duplicateGroups.length ? `${duplicateGroups.length} matching group${duplicateGroups.length === 1 ? "" : "s"}. The suggested keep has the most arrangements, stems and credits; you decide what to keep.` : "No duplicate groups match this search."}</span>
+                    {broadDuplicates && <span>Matched by artist and title only. Album, year and recording length may differ.</span>}
                   </div>
                   <button className="danger" onClick={deleteSelectedDuplicates} disabled={!selectedDuplicatePaths.length || isDeletingDuplicates || busy || disabled}>
                     {isDeletingDuplicates ? <RotateCw className="spin" size={16} /> : <XCircle size={16} />}
@@ -2434,7 +2478,7 @@ function LibraryAuditPanel({ folder, criteria, report, busy, disabled = false, m
                   <div className="duplicate-group" key={group.key}>
                     <div className="duplicate-title">
                       <strong>{group.artist || "Unknown Artist"} - {group.title || "Untitled"}</strong>
-                      <span>{group.album || "No album"} {group.year ? ` / ${group.year}` : ""}</span>
+                      <span>{group.count} files</span>
                     </div>
                     <div className="duplicate-files">
                       {group.files.map((file) => (
@@ -2443,15 +2487,16 @@ function LibraryAuditPanel({ folder, criteria, report, busy, disabled = false, m
                             type="checkbox"
                             checked={selectedSet.has(file.filePath)}
                             onChange={(event) => toggleDuplicatePath(file.filePath, event.target.checked)}
-                            disabled={file.recommended}
+                            disabled={file.recommended || busy || disabled || isDeletingDuplicates}
                           />
                           <div>
-                            <strong>{basename(file.filePath)} {file.recommended && <b>Recommended keep</b>}</strong>
-                            <span>{file.relativePath}</span>
+                            <strong>{basename(file.filePath)} {file.recommended && <b>Suggested keep</b>}</strong>
+                            <span>{file.album || "No album"}{file.year ? ` / ${file.year}` : ""} · {file.relativePath}</span>
                           </div>
                           <div className="duplicate-stats">
                             <span>{file.arrangements || 0} arrangements</span>
                             <span>{file.stems || 0} stems</span>
+                            {Number.isFinite(Number(file.duration)) && file.duration != null && <span>{Math.round(Number(file.duration))} s</span>}
                             <span>{formatBytes(file.size || 0)}</span>
                           </div>
                           <button type="button" className="ghost" onClick={(event) => { event.preventDefault(); api.showFileInFolder(file.filePath); }}>

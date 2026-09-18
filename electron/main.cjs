@@ -13,6 +13,7 @@ const {
   detectPerformanceProfile
 } = require("./performance-profile.cjs");
 const { createConcurrencyLimiter } = require("./concurrency-limiter.cjs");
+const { duplicateAuditKey, duplicateGroupsFromAuditRows, normalizeDuplicateMatch } = require("./library-audit.cjs");
 const {
   converterEnvironment,
   createAudioDecoderStatusCache
@@ -2590,11 +2591,13 @@ async function inspectFeedpakForAudit(root, filePath, criteria) {
     filePath,
     relativePath,
     status: missing.length ? "needs-work" : "pass",
-    duplicateKey: duplicateAuditKey(preview),
+    duplicateKey: duplicateAuditKey(preview, criteria.duplicateMatch),
     title: String(preview.title || ""),
     artist: String(preview.artist || ""),
     album: String(preview.album || ""),
     year: String(preview.year || ""),
+    duration: preview.duration,
+    size: safeFileSize(filePath),
     arrangements: arrangements.length,
     stems: stems.length,
     stemIds: [...stemIds].filter(Boolean).sort(),
@@ -2608,78 +2611,6 @@ async function inspectFeedpakForAudit(root, filePath, criteria) {
 
 function countAuditToneDefinitions(tones) {
   return (tones || []).reduce((total, arrangement) => total + ((arrangement.definitions || []).length), 0);
-}
-
-function duplicateGroupsFromAuditRows(rows) {
-  const grouped = new Map();
-  for (const row of rows) {
-    if (row.status === "error" || !row.duplicateKey) continue;
-    const list = grouped.get(row.duplicateKey) || [];
-    list.push(row);
-    grouped.set(row.duplicateKey, list);
-  }
-  return [...grouped.values()]
-    .filter((files) => files.length > 1)
-    .map((files) => {
-      const sorted = [...files].sort((left, right) => scoreDuplicateCandidate(right) - scoreDuplicateCandidate(left));
-      const first = sorted[0];
-      return {
-        key: first.duplicateKey,
-        artist: first.artist,
-        title: first.title,
-        album: first.album,
-        year: first.year,
-        count: sorted.length,
-        files: sorted.map((row, index) => ({
-          filePath: row.filePath,
-          relativePath: row.relativePath,
-          size: safeFileSize(row.filePath),
-          stems: row.stems,
-          stemIds: row.stemIds,
-          arrangements: row.arrangements,
-          authors: row.authors,
-          status: row.status,
-          missing: row.missing,
-          recommended: index === 0,
-          score: scoreDuplicateCandidate(row)
-        }))
-      };
-    })
-    .sort((left, right) => `${left.artist} ${left.title}`.localeCompare(`${right.artist} ${right.title}`, undefined, { sensitivity: "base" }));
-}
-
-function duplicateAuditKey(preview) {
-  const title = normalizeDuplicateText(preview.title);
-  const artist = normalizeDuplicateText(preview.artist);
-  if (!title || !artist || artist === "unknown artist") return "";
-  const album = normalizeDuplicateText(preview.album);
-  const year = String(preview.year || "").trim();
-  const durationBucket = Number.isFinite(Number(preview.duration)) ? String(Math.round(Number(preview.duration) / 5) * 5) : "";
-  return [artist, title, album, year, durationBucket].join("|");
-}
-
-function normalizeDuplicateText(value) {
-  return String(value || "")
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/['’`]/g, "")
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\b(remaster(?:ed)?|deluxe|explicit|clean|version|mono|stereo)\b/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function scoreDuplicateCandidate(row) {
-  let score = 0;
-  score += Number(row.arrangements || 0) * 10;
-  score += Number(row.stems || 0) * 3;
-  score += (row.authors || []).length * 5;
-  score += (row.stemIds || []).includes("full") ? 10 : 0;
-  score -= (row.missing || []).length * 2;
-  score += safeFileSize(row.filePath) / (1024 * 1024 * 100);
-  return score;
 }
 
 function safeFileSize(filePath) {
@@ -2701,7 +2632,8 @@ function normalizeAuditCriteria(criteria) {
     requireLyrics: criteria.requireLyrics === true,
     requireAuthors: criteria.requireAuthors === true,
     requireTones: criteria.requireTones === true,
-    checkDuplicates: criteria.checkDuplicates === true
+    checkDuplicates: criteria.checkDuplicates === true,
+    duplicateMatch: normalizeDuplicateMatch(criteria.duplicateMatch)
   };
 }
 
