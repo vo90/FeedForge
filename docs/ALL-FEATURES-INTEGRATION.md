@@ -87,7 +87,7 @@ external fixtures are not configured; those skips are not game-rendering proof.
 The isolated portable Windows builder supports this branch and an explicit
 existing dependency checkout using `-DependenciesRoot`. It requires a matching
 lockfile and installed package versions, produces output outside source, and
-does not install dependencies. See [the build instructions](SONG-BROWSER-BUILD.md).
+does not install dependencies. See [the build instructions](../tools/SONG-BROWSER-BUILD.md).
 
 The real-file acceptance checks rebuild cached Rats using both this integration
 and the pinned latest Songsterr branch, independently verify the result against
