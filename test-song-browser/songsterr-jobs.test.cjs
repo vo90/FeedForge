@@ -117,6 +117,26 @@ async function fixture(t, options = {}) {
     enqueue: (chart = CHART) => jobs.enqueue(chart, { outputDir, outputSettings: SETTINGS }) };
 }
 
+test('Songsterr cancellation stops waiting for a shared converter recipe without cancelling it for the next song', async (t) => {
+  const f = await fixture(t);
+  const entered = deferred(), recipe = deferred();
+  f.jobs.getConverterRecipe = () => { entered.resolve(); return recipe.promise; };
+  const first = f.enqueue();
+  await entered.promise;
+  let cancelled = false;
+  const cancellation = f.jobs.cancel(first.id).then(() => { cancelled = true; });
+  try {
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(cancelled, true, 'Cancellation must finish while the shared recipe remains pending.');
+    await cancellation;
+    assert.equal(f.jobs.snapshot()[0].state, 'cancelled');
+    assert.equal(f.acquisitions.length, 0);
+    assert.equal(f.calls.length, 0);
+  } finally { recipe.resolve({ version: 'test' }); }
+  f.enqueue({ ...CHART, id: '124' }); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[1].state, 'completed');
+});
+
 test('Songsterr pauses for missing audio and reuses the approved score on retry', async (t) => {
   const f = await fixture(t, { missingAudio: true });
   const queued = f.enqueue();
