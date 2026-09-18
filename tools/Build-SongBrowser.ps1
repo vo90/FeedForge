@@ -111,7 +111,7 @@ try {
         Copy-Item -LiteralPath (Join-Path $sourceRoot 'electron') -Destination $stagePath -Recurse
         if (Test-Path -LiteralPath (Join-Path $sourceRoot 'LICENSE')) { Copy-Item -LiteralPath (Join-Path $sourceRoot 'LICENSE') -Destination $stagePath }
         $manifest = Get-Content -LiteralPath (Join-Path $sourceRoot 'package.json') -Raw | ConvertFrom-Json -AsHashtable
-        foreach ($key in @('build', 'scripts', 'dependencies', 'devDependencies')) { $manifest.Remove($key) | Out-Null }
+        foreach ($key in @('build', 'scripts', 'dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies', 'bundledDependencies')) { $manifest.Remove($key) | Out-Null }
         $manifest.name = 'feedforge-song-browser-test'; $manifest.songBrowserTest = $true
         $manifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $stagePath 'package.json') -Encoding utf8
         $viteConfig = Join-Path $buildPath 'vite.config.mjs'
@@ -119,7 +119,12 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'External UI build configuration failed.' }
         & $nodeExe $viteCli build --config $viteConfig --configLoader native
         if ($LASTEXITCODE -ne 0) { throw 'The production UI build failed.' }
-        & $nodeExe $builderCli --win --x64 --dir --publish never --config (Join-Path $PSScriptRoot 'song-browser-build.config.cjs')
+        $runtimeDependencies = & $nodeExe (Join-Path $PSScriptRoot 'song-browser-runtime-dependencies.cjs') $stagePath $dependencyInfo.dependenciesRoot
+        if ($LASTEXITCODE -ne 0) { throw 'Staged runtime dependencies are not self-contained. No dependency installation was attempted.' }
+        $receipt.runtimeDependencies = $runtimeDependencies | ConvertFrom-Json -AsHashtable; Save-Receipt
+        # Keep the collector rooted in the runtime-only package. Otherwise it
+        # falls back to the source package and searches for UI build dependencies.
+        & $nodeExe $builderCli --projectDir $stagePath --win --x64 --dir --publish never --config (Join-Path $PSScriptRoot 'song-browser-build.config.cjs')
         if ($LASTEXITCODE -ne 0) { throw 'The standalone desktop packaging failed.' }
         $portableFolder = Join-Path $buildPath 'release\win-unpacked'
         $appExe = Join-Path $portableFolder 'FeedForge Song Browser Test.exe'
