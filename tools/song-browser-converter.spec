@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 """Standalone test converter; all generated output is supplied by the build script."""
 import os
+from importlib.metadata import distribution as installed_distribution
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_all, copy_metadata
 
@@ -21,6 +22,14 @@ for module in ('yt_dlp', 'yt_dlp_ejs', 'imageio_ffmpeg'):
     song_datas.extend(data); song_binaries.extend(binaries); song_imports.extend(hidden)
 for distribution in ('yt-dlp', 'yt-dlp-ejs', 'numpy', 'soundfile', 'imageio-ffmpeg', 'yt-dlp-getpot-wpc'):
     song_datas.extend(copy_metadata(distribution))
+# yt-dlp's namespace finder enumerates physical files, not PyInstaller's PYZ.
+# Keep the hidden import below for dependencies and also ship the provider source.
+provider = installed_distribution('yt-dlp-getpot-wpc')
+provider_sources = [item for item in provider.files or ()
+                    if item.as_posix().startswith('yt_dlp_plugins/') and item.suffix == '.py']
+if not provider_sources:
+    raise RuntimeError('The installed yt-dlp audio provider has no discoverable source files.')
+song_datas.extend((str(provider.locate_file(item)), str(item.parent)) for item in provider_sources)
 song_datas.extend((str(item), 'feedback_converter/tools/licenses') for item in (audio_tools / 'licenses').glob('*') if item.is_file())
 
 a = Analysis(
