@@ -44,6 +44,23 @@ test('a different dependency checkout lock is rejected', () => {
   assert.throws(() => inspectDependencies(f.source, f.dependencies, f.electron), /exact source lock/);
 });
 
+test('release metadata changes can reuse the identical full dependency graph', () => {
+  const f = fixture();
+  const manifest = JSON.parse(fs.readFileSync(path.join(f.source, 'package.json')));
+  const lock = JSON.parse(fs.readFileSync(path.join(f.source, 'package-lock.json')));
+  manifest.version = '2.0.1';
+  lock.version = '2.0.1';
+  lock.packages[''].version = '2.0.1';
+  lock.packages[''].license = 'MIT';
+  f.write(path.join(f.source, 'package.json'), manifest);
+  f.write(path.join(f.source, 'package-lock.json'), lock);
+  const inputs = inspectDependencies(f.source, f.dependencies, f.electron);
+  assert.notEqual(inputs.lockHash, inputs.dependencyLockHash);
+  lock.packages['node_modules/vite/node_modules/example'] = { version: '1.0.0', integrity: 'changed' };
+  f.write(path.join(f.source, 'package-lock.json'), lock);
+  assert.throws(() => inspectDependencies(f.source, f.dependencies, f.electron), /exact source lock dependency graph/);
+});
+
 test('stale installed package versions and a different Electron runtime are rejected', () => {
   const f = fixture();
   f.write(path.join(f.dependencies, 'node_modules/react/package.json'), { name: 'react', version: '18.0.0' });

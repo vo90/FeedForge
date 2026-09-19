@@ -13,6 +13,7 @@ import yaml
 from PIL import Image
 
 from ..feedpak_validator import require_valid_feedpak
+from ..difficulty import ensure_difficulty
 from ..output_naming import output_path, safe_path_segment
 from .alignment import map_time
 from .audio import ImportFailure
@@ -205,6 +206,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             chart["tempos"] = timeline["tempos"]
         if timeline.get("time_signatures"):
             chart["time_signatures"] = timeline["time_signatures"]
+        if settings.get("generateDifficulty") is True:
+            ensure_difficulty(chart, duration=duration)
         relative_file = f"arrangements/{ident}.json"
         _write_json(package / relative_file, chart)
         kind = "bass" if track["instrument"] == "bass" else str(track.get("role") or "guitar")

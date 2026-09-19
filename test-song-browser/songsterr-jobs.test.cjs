@@ -137,6 +137,19 @@ test('Songsterr cancellation stops waiting for a shared converter recipe without
   assert.equal(f.jobs.snapshot()[1].state, 'completed');
 });
 
+test('generated difficulty remains an explicit importer setting and changes the reuse identity', async t => {
+  const f = await fixture(t);
+  f.enqueue(); await settle(f.jobs);
+  assert.equal(f.requests[0].outputSettings.generateDifficulty, undefined);
+  f.jobs.enqueue(CHART, { outputDir: f.outputDir, outputSettings: { ...SETTINGS, generateDifficulty: true } });
+  await settle(f.jobs);
+  assert.equal(f.requests[1].outputSettings.generateDifficulty, true);
+  const jobs = f.jobs.snapshot();
+  assert.equal(jobs[0].state, 'completed');
+  assert.equal(jobs[1].state, 'completed');
+  assert.notEqual(jobs[0].outputPath, jobs[1].outputPath);
+});
+
 test('Songsterr pauses for missing audio and reuses the approved score on retry', async (t) => {
   const f = await fixture(t, { missingAudio: true });
   const queued = f.enqueue();

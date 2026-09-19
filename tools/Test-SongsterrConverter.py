@@ -100,7 +100,8 @@ def main() -> int:
                "converterHash": converter_hash, "offlineInputs": True}
     (root / "ownership.json").write_text(json.dumps(receipt, indent=2), encoding="utf-8")
     environment = dict(os.environ)
-    for key in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "NODE_PATH", "NODE_OPTIONS"):
+    for key in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "NODE_PATH", "NODE_OPTIONS",
+                "IMAGEIO_FFMPEG_EXE", "SONGSTERR_NODE_PATH", "FEEDFORGE_TOOLS_DIR"):
         environment.pop(key, None)
     environment["PATH"] = str(Path(environment.get("SystemRoot", r"C:\Windows")) / "System32")
     environment["PYTHONNOUSERSITE"] = "1"
@@ -125,6 +126,17 @@ def main() -> int:
         assert all(health["modules"][name]["available"] for name in ("numpy", "soundfile", "yt_dlp", "yt_dlp_ejs"))
         assert all(health["tools"][name] for name in ("ffmpeg", "ffprobe", "jsRuntime"))
         report["health"] = health
+        editor_request = root / "editor-request.json"
+        editor_request.write_text(json.dumps({"action": "health"}), encoding="utf-8")
+        editor = run("editor-health", ["songsterr", str(editor_request)])
+        assert editor.get("ok") and editor["result"]["ok"], editor
+        assert editor["result"]["engine"] == "songsterr-editor"
+        assert all(item["available"] for item in editor["result"]["dependencies"].values())
+        assert editor["result"]["browserTokenProvider"]["registered"], "Bundled audio fallback must register with yt-dlp."
+        editor_ffmpeg = Path(editor["result"]["ffmpeg"]["path"]).resolve(strict=True)
+        assert editor_ffmpeg.is_relative_to(converter.parent), "Editor FFmpeg must be bundled."
+        assert editor["result"]["ffmpeg"]["usable"]
+        report["editorHealth"] = editor["result"]
         tool_root = converter.parent / "_internal" / "feedback_converter" / "tools"
         report["toolVersions"] = {}
         for name, option in (("ffmpeg", "-version"), ("ffprobe", "-version"), ("node", "--version")):

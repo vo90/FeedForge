@@ -16,10 +16,10 @@ for name in native_names:
     native_files.append((str(candidate), 'feedback_converter/tools'))
 
 song_datas, song_binaries, song_imports = [], [], []
-for module in ('yt_dlp', 'yt_dlp_ejs'):
+for module in ('yt_dlp', 'yt_dlp_ejs', 'imageio_ffmpeg'):
     data, binaries, hidden = collect_all(module)
     song_datas.extend(data); song_binaries.extend(binaries); song_imports.extend(hidden)
-for distribution in ('yt-dlp', 'yt-dlp-ejs', 'numpy', 'soundfile'):
+for distribution in ('yt-dlp', 'yt-dlp-ejs', 'numpy', 'soundfile', 'imageio-ffmpeg', 'yt-dlp-getpot-wpc'):
     song_datas.extend(copy_metadata(distribution))
 song_datas.extend((str(item), 'feedback_converter/tools/licenses') for item in (audio_tools / 'licenses').glob('*') if item.is_file())
 
@@ -34,7 +34,7 @@ a = Analysis(
         (str(root / 'src' / 'feedback_converter' / 'data' / 'feedback_equipment.json'), 'feedback_converter/data'),
         (str(root / 'src' / 'feedback_converter' / 'data' / 'feedpak_schemas'), 'feedback_converter/data/feedpak_schemas'),
     ] + song_datas,
-    hiddenimports=song_imports, hookspath=[], hooksconfig={}, runtime_hooks=[],
+    hiddenimports=song_imports + ['yt_dlp_plugins.extractor.getpot_wpc'], hookspath=[], hooksconfig={}, runtime_hooks=[],
     excludes=[], noarchive=False, optimize=0,
 )
 pyz = PYZ(a.pure)

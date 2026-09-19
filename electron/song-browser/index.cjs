@@ -110,7 +110,7 @@ function registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, she
       // missing shared folder is never exposed or admitted for new work.
       jobs = new SongJobs({ root: path.join(root, 'jobs'), outputDir: outputDir || legacyOutputDir, outputSettings: config.sharedOutputSettings || null,
         download: (chart, options) => browser.download(chart, options), runConverter, emit,
-        findReusable: ({ chart, sourceHash, recipe, requirements, signal, outputDir, outputSettings, sourceFilename }) => imports.find(chart, { sourceHash, recipe, requirements, signal, outputDir, outputSettings, sourceFilename }),
+        findReusable: ({ chart, sourceHash, recipe, requirements, signal, outputDir, outputSettings, sourceFilename, conversionSettings }) => imports.find(chart, { sourceHash, recipe, requirements, signal, outputDir, outputSettings, sourceFilename, conversionSettings }),
         onCompleted: (entry) => { imports.record(entry); browser.filteredSnapshot = null; } });
       browser.decorateCharts = async (charts, request, signal) => {
         if (!request.filters?.hideConverted) return charts;

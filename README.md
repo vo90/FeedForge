@@ -24,6 +24,39 @@ FeedForge helps you inspect, validate, edit, organize, and maintain FeedPak
 song libraries. It includes package details, metadata and stem tools, library
 auditing, duplicate checks, and optional local stem separation.
 
+Create FeedPaks from either **Songsterr** links or **Rocksmith / PSARC** files.
+
+Guitar and bass exports include phrase-based dynamic difficulty (DD). Existing
+PSARC difficulty levels are preserved; charts without them, including Songsterr
+imports, receive up to four progressively denser levels per phrase automatically.
+The highest level retains every original note and chord. Generated levels keep
+chords and techniques intact rather than rewriting fingerings. Use FeedBack's
+difficulty control during play to select a level; automatic performance-based
+adjustment depends on the game's difficulty features/plugins. Drum charts are
+unchanged. Previously exported packages need reconversion to receive generated DD.
+Both workflows feed the same Library & editor, package validator, and output folder.
+Home provides the source actions and files opened during the current session.
+
+### Songsterr creation
+
+1. Open **From Songsterr**, paste one or more HTTPS tab links, and choose **Read links**.
+   Links for different parts of the same song are grouped together.
+2. Select guitar, bass, or drum arrangements; edit their names and roles, release
+   details, cover art, and synchronized lyrics. You can import an LRC file or use
+   **Search again** to retry lyric providers. Advanced options include chart offset.
+3. Choose local audio or use the linked video, select an output folder, then create
+   one package or the batch. Existing filenames receive a numbered suffix.
+   Confirm whether to include separated stems before conversion starts.
+4. Review per-song results or open the new packages in **Library & editor** to
+   inspect, edit, organize, or manage stems. Batch stop finishes the current song.
+
+Online metadata, artwork, lyrics, and video downloads depend on their providers.
+Local audio is available when video downloading fails. Only chartable instrument
+types can be selected. Songsterr drafts survive navigation within the session.
+
+See [integration and feature parity](docs/songsterr-integration.md) and
+[desktop design](docs/ui-redesign.md) for architecture, verification, and known limits.
+
 ## Windows, macOS, and Linux
 
 Download the latest Windows x64 portable app, macOS Apple Silicon DMG/ZIP, or
@@ -39,6 +72,12 @@ Linux x64 AppImage from the [latest release](https://github.com/balki97/FeedForg
 
 Optional local stem separation requires Python 3.11 or newer.
 
+Before PSARC or Songsterr conversion, FeedForge checks the selected stem server.
+You can continue with the full mix only, enable splitting in Settings, or open
+Tools · stems to install/start the local server. Both sources use the same model
+and stem selection. If separation fails during conversion, the result shows the
+warning and retains the full mix.
+
 ## Support
 
 For bug reports, include the debug log:
@@ -48,6 +87,25 @@ Windows: %APPDATA%\FeedForge\logs\feedforge-debug.log
 macOS:   ~/Library/Application Support/FeedForge/logs/feedforge-debug.log
 Linux:   ~/.config/FeedForge/logs/feedforge-debug.log
 ```
+
+## Development and packaging
+
+Source lives in `src/` (converter), `electron/` (desktop shell), and `ui/`.
+Regression tests live in `tests/`; maintenance and launch scripts live in `tools/`.
+
+Install dependencies with `python -m pip install -e ".[dev]"` and `npm ci`.
+Run `npm test` and `npm run build` before packaging.
+Use `npm run release:win`, `release:mac`, or `release:linux` for a local release.
+Finished downloads are written to `release/`. Successful packaging removes
+superseded FeedForge downloads of the same artifact type; failed builds retain
+the previous release. `build/`, `dist/`, `desktop-dist/`, and `release/` are
+generated and ignored by Git. Keep conversion results in `outputs/` or outside
+the repository.
+
+Run `npm run clean -- --dry-run` to preview cleanup, then `npm run clean`
+to remove generated build folders, unpacked releases, and Python caches.
+Release downloads and `SHA256SUMS.txt` are retained, as are source files,
+dependencies, local decoder tools, and conversion outputs.
 
 ## License
 

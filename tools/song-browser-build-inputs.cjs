@@ -21,7 +21,20 @@ function inspectDependencies(source, dependencies, electron) {
     assert.deepEqual(lock.packages[''][field] || {}, manifest[field] || {}, `Source ${field} differ from its lock file.`);
   }
   const lockHash = hash(lockPath);
-  assert.equal(hash(path.join(dependenciesRoot, 'package-lock.json')), lockHash, 'Installed dependency checkout must use the exact source lock file.');
+  const dependencyLockPath = path.join(dependenciesRoot, 'package-lock.json');
+  const dependencyLockHash = hash(dependencyLockPath);
+  // A release version/license change does not change installed dependencies.
+  // Compare the complete locked graph, including integrities and nested packages.
+  const dependencyGraph = (value) => {
+    const result = structuredClone(value);
+    delete result.version;
+    if (result.packages?.['']) {
+      delete result.packages[''].version;
+      delete result.packages[''].license;
+    }
+    return result;
+  };
+  assert.deepEqual(dependencyGraph(json(dependencyLockPath)), dependencyGraph(lock), 'Installed dependency checkout must use the exact source lock dependency graph.');
   const nodeModules = fs.realpathSync(path.join(dependenciesRoot, 'node_modules'));
   const packages = {};
   for (const name of Object.keys({ ...manifest.dependencies, ...manifest.devDependencies }).sort()) {
@@ -34,7 +47,7 @@ function inspectDependencies(source, dependencies, electron) {
   const electronVersion = fs.readFileSync(path.join(path.dirname(electronExe), 'version'), 'utf8').trim();
   assert.equal(electronVersion, packages.electron, 'Selected Electron runtime differs from the locked package.');
   const inputs = {
-    sourceRoot, dependenciesRoot, nodeModules, lockHash, packages, electronVersion,
+    sourceRoot, dependenciesRoot, nodeModules, lockHash, dependencyLockHash, packages, electronVersion,
     viteCli: file(path.join(nodeModules, 'vite', 'bin', 'vite.js')),
     builderCli: file(path.join(nodeModules, 'electron-builder', 'out', 'cli', 'cli.js')),
     reactPlugin: file(path.join(nodeModules, '@vitejs', 'plugin-react', 'dist', 'index.js')),

@@ -243,6 +243,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Do not export tone definitions or rig metadata.",
     )
     parser.add_argument(
+        "--generate-difficulty",
+        action="store_true",
+        help="Generate practice difficulty when authored multi-level difficulty is absent; preserves full notes but replaces single-level phrases.",
+    )
+    parser.add_argument(
         "--b-standard-to-7-string",
         action="store_true",
         help="Convert six-string B-standard arrangements to seven-string standard charts.",
@@ -346,6 +351,22 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     _configure_stdio()
+    command_args = list(sys.argv[1:] if argv is None else argv)
+    if command_args and command_args[0] == "songsterr":
+        try:
+            from feedback_converter.songsterr_cli import dispatch
+            if len(command_args) != 2:
+                raise ValueError("Usage: psarc2feedpak songsterr request.json")
+            request = json.loads(Path(command_args[1]).read_text(encoding="utf-8"))
+            # stdout is the desktop protocol, including for third-party tools
+            # used by the independent Songsterr editor engine.
+            with redirect_stdout(sys.stderr):
+                result = dispatch(request)
+            _print(json.dumps({"ok": True, "result": result}, ensure_ascii=False))
+            return 0
+        except Exception as exc:
+            _print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
+            return 1
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -503,6 +524,7 @@ def main(argv: list[str] | None = None) -> int:
                 keep_workdir=args.keep_workdir,
                 include_tones=not args.no_tones,
                 b_standard_to_7_string=args.b_standard_to_7_string,
+                generate_difficulty=args.generate_difficulty,
                 separate_stems=args.separate_stems,
                 demucs_url=args.demucs_url,
                 demucs_api_key=args.demucs_api_key,
@@ -545,6 +567,7 @@ def main(argv: list[str] | None = None) -> int:
         keep_workdir=args.keep_workdir,
         include_tones=not args.no_tones,
         b_standard_to_7_string=args.b_standard_to_7_string,
+        generate_difficulty=args.generate_difficulty,
         separate_stems=args.separate_stems,
         demucs_url=args.demucs_url,
         demucs_api_key=args.demucs_api_key,

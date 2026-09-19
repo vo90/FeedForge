@@ -100,6 +100,26 @@ window.addEventListener("unhandledrejection", (event) => {
 });
 
 contextBridge.exposeInMainWorld("feedbackConverter", {
+  songsterr: {
+    analyze: url => ipcRenderer.invoke("songsterr-editor:analyze", url),
+    preview: payload => ipcRenderer.invoke("songsterr-editor:preview", payload),
+    searchVideos: payload => ipcRenderer.invoke("songsterr-editor:search", payload),
+    create: payload => ipcRenderer.invoke("songsterr-editor:create", payload),
+    createBatch: payloads => ipcRenderer.invoke("songsterr-editor:batch", payloads),
+    findLyrics: payload => ipcRenderer.invoke("songsterr-editor:lyrics", payload),
+    importLrc: () => ipcRenderer.invoke("songsterr-editor:lrc"),
+    pickCover: () => ipcRenderer.invoke("songsterr-editor:cover"),
+    pickAudio: () => ipcRenderer.invoke("dialog:pickAudioStem", {}),
+    pickOutput: () => ipcRenderer.invoke("dialog:pickOutput", {}),
+    defaults: () => ipcRenderer.invoke("songsterr-editor:defaults"),
+    reveal: file => ipcRenderer.invoke("files:showInFolder", file),
+    cancel: () => ipcRenderer.invoke("songsterr-editor:cancel"),
+    onProgress: callback => {
+      const listener = (_event, value) => callback(value);
+      ipcRenderer.on("songsterr-editor:progress", listener);
+      return () => ipcRenderer.removeListener("songsterr-editor:progress", listener);
+    }
+  },
   pickPsarc: (options) => ipcRenderer.invoke("dialog:pickPsarc", options),
   pickFolder: (options) => ipcRenderer.invoke("dialog:pickFolder", options),
   pickFolderWithRoot: (options) => ipcRenderer.invoke("dialog:pickFolderWithRoot", options),
@@ -138,6 +158,7 @@ contextBridge.exposeInMainWorld("feedbackConverter", {
   showFileInFolder: (filePath) => ipcRenderer.invoke("files:showInFolder", filePath),
   deleteFiles: (filePaths) => ipcRenderer.invoke("files:delete", filePaths),
   getStemServerStatus: () => ipcRenderer.invoke("stemServer:status"),
+  checkStemServer: options => ipcRenderer.invoke("stemServer:check", options),
   getStemServerModels: (options) => ipcRenderer.invoke("stemServer:models", options),
   startStemServer: (options) => ipcRenderer.invoke("stemServer:start", options),
   stopStemServer: () => ipcRenderer.invoke("stemServer:stop"),

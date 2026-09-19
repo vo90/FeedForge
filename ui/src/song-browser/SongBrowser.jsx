@@ -7,6 +7,7 @@ import { getSearchSession } from "./search-session.mjs";
 import { BatchPanel } from './BatchPanel.jsx';
 import { FileCandidateDetails } from './FileCandidateDetails.jsx';
 import { createResultAssessmentSession } from './result-assessment-session.mjs';
+import { outputSettingsKey as serializeOutputSettings } from './output-settings.mjs';
 
 const FINISHED = new Set(["completed", "done", "failed", "error", "cancelled", "canceled", "parked"]);
 const selectionSessions = new WeakMap();
@@ -182,10 +183,7 @@ export function CustomsForgeBrowser({ api: providedApi, onReview, outputSettings
   const busyRef = useRef(new Set());
   const mounted = useRef(false);
   const outputSettingsSync = useRef({ api: null, key: '', failed: false, promise: Promise.resolve() });
-  const outputSettingsKey = outputSettings ? JSON.stringify({
-    ...(typeof outputSettings.outputDir === 'string' && outputSettings.outputDir ? { outputDir: outputSettings.outputDir } : {}),
-    outputLayout: outputSettings.outputLayout || 'flat', nameTemplate: outputSettings.nameTemplate ?? '{source}',
-  }) : '';
+  const outputSettingsKey = serializeOutputSettings(outputSettings);
 
   function synchronizeOutputSettings(retry = false) {
     const previous = outputSettingsSync.current;

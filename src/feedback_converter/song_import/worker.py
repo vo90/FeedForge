@@ -113,6 +113,9 @@ def run_import(request: dict, progress=None) -> dict:
         summary["outputHash"] = evidence["outputHash"]
         summary["timing"] = "source_map" if alignment.get("method") == "songsterr-video-points-v1" else "estimated"
         summary["compatibility"] = recipe["compatibility"]
+        if (request.get("outputSettings") or {}).get("generateDifficulty") is True:
+            summary["generatedDifficulty"] = {"requested": True, "sourceAuthored": False,
+                                               "verificationScope": "full-source-chart"}
         if verification.get("status") != "passed":
             unsupported = verification.get("status") == "unsupported"
             return {"ok": False, "code": "needs_attention" if unsupported else "verification_failed",
@@ -125,6 +128,8 @@ def run_import(request: dict, progress=None) -> dict:
                 "verification": summary, "evidence": evidence,
                 "artwork": {key: artwork[key] for key in ("status", "album", "year", "message", "reason") if key in artwork},
                 "warnings": list(performance.get("warnings", [])) + result["warnings"] +
+                            (["Practice difficulty was requested. Source verification covers the full chart; generated levels are not source-authored."]
+                             if (request.get("outputSettings") or {}).get("generateDifficulty") is True else []) +
                             (["Timing was imported from Songsterr for this tab revision and recording."]
                              if alignment.get("method") == "songsterr-video-points-v1" else
                              ["Songsterr audio matching is experimental; this recording passed the current automatic checks."])}

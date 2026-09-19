@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "feedforge"
-version = "0.1.42"
+version = "2.0.1"
 description = "Desktop toolkit for FeedPak files for the FeedBack game."
 readme = "README.md"
 license = "MIT"
@@ -17,7 +17,9 @@ dependencies = [
     "PyYAML>=6",
     "soundfile>=0.12",
     "numpy>=1.26,<3",
-    "yt-dlp[default]>=2026.3.17",
+    "yt-dlp[default]>=2026.7.4",
+    "yt-dlp-getpot-wpc==1.1.2",
+    "imageio-ffmpeg",
 ]
 
 [project.optional-dependencies]
@@ -44,3 +46,4 @@ feedback_converter = ["tools/*", "data/*.json", "data/feedpak_schemas/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]

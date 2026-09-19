@@ -108,3 +108,21 @@ def test_duplicate_source_levels_with_one_difficulty_still_omit_phrases():
 
     assert chart["phrases"] == []
     assert chart["notes"] == [{"t": 1.0, "s": 0, "f": 5}]
+
+
+def test_psarc_generated_difficulty_is_opt_in_and_preserves_authored_multi_level():
+    single = _song(_level(difficulty=0, fret=3))
+    faithful = converter._song_to_arrangement(single, "songs/bin/generic/example_lead.sng", {}, include_tones=False)
+    details = []
+    generated = converter._song_to_arrangement(single, "songs/bin/generic/example_lead.sng", {},
+                                               include_tones=False, generate_difficulty=True,
+                                               conversion_details=details)
+    assert "phrases" not in faithful
+    assert generated["notes"] == faithful["notes"]
+    assert generated["ext"]["generatedDifficulty"]["sourceAuthored"] is False
+    assert any(item.category == "requested-transformation" for item in details)
+    multi = _song(_level(difficulty=0, fret=3), _level(difficulty=2, fret=8), max_difficulty=2)
+    source = converter._song_to_arrangement(multi, "example_lead.sng", {}, include_tones=False)
+    requested = converter._song_to_arrangement(multi, "example_lead.sng", {}, include_tones=False,
+                                               generate_difficulty=True)
+    assert requested == source

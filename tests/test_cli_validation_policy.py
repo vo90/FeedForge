@@ -15,6 +15,8 @@ def test_cli_validation_policy_is_strict_by_default_and_accepts_safe() -> None:
 
     assert parser.parse_args(["song.psarc"]).validation_policy == "strict"
     assert parser.parse_args(["song.psarc", "--validation-policy", "safe"]).validation_policy == "safe"
+    assert parser.parse_args(["song.psarc"]).generate_difficulty is False
+    assert parser.parse_args(["song.psarc", "--generate-difficulty"]).generate_difficulty is True
 
 
 def test_conversion_result_protocol_distinguishes_publishable_chart_warnings() -> None:

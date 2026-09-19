@@ -11,7 +11,7 @@ const { EventEmitter } = require('node:events');
 const { spawn } = require('node:child_process');
 
 const PRODUCT = 'FeedForge Song Browser Test';
-const REQUIRED_MODULES = ['main.cjs', 'preload.cjs', ...['index', 'browser', 'dom', 'host-actions', 'jobs', 'diagnostics', 'feedback'].map((name) => `song-browser/${name}.cjs`)];
+const REQUIRED_MODULES = ['main.cjs', 'preload.cjs', 'services/songsterr.cjs', 'services/core-response.cjs', 'services/stem-preflight.cjs', ...['index', 'browser', 'dom', 'host-actions', 'jobs', 'diagnostics', 'feedback', 'songsterr-jobs', 'publication'].map((name) => `song-browser/${name}.cjs`)];
 const STARTUP_MODULES = new Set(['performance-profile.cjs', 'concurrency-limiter.cjs', 'audio-dependency.cjs', 'conversion-result.cjs', 'converter-args.cjs', 'local-assets.cjs', 'library-audit.cjs']);
 const digest = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 const cleanKey = (value) => value.replace(/\\/g, '/').replace(/^\/+/, '');
@@ -66,11 +66,11 @@ async function verifyStartupHooks({ source, metadata, archive, converter, report
   const forbidden = [], handlers = new Map();
   const moduleCache = new Map(), schemes = new Map(), protocolHandlers = new Map();
   const assetDirectories = new Set([
-    path.join(profile, 'temp', 'feedforge-inspect-cache'),
+    path.join(profile, 'temp', 'feedforge-inspect-cache-1'),
     path.join(archive, 'assets', 'tone-equipment'),
     path.join(path.dirname(archive), 'tone-equipment'),
   ]);
-  let locks = 0, registrations = 0, converterRunner;
+  let locks = 0, registrations = 0, editorRegistrations = 0, converterRunner;
   const deny = (name) => (..._args) => { forbidden.push(name); throw new Error(`Verification blocked unexpected ${name}.`); };
   const ownedVirtual = (filename) => {
     const resolved = path.resolve(filename);
@@ -127,7 +127,7 @@ async function verifyStartupHooks({ source, metadata, archive, converter, report
       registerSchemesAsPrivileged: (values) => {
         assert.equal(values.length, 1);
         assert.equal(values[0].scheme, 'feedforge-local');
-        assert.deepEqual(JSON.parse(JSON.stringify(values[0].privileges)), { standard: true, secure: true, supportFetchAPI: true });
+        assert.deepEqual(JSON.parse(JSON.stringify(values[0].privileges)), { standard: true, secure: true, supportFetchAPI: true, stream: true });
         schemes.set(values[0].scheme, values[0].privileges);
       },
       handle: (scheme, handler) => {
@@ -146,8 +146,17 @@ async function verifyStartupHooks({ source, metadata, archive, converter, report
     if (name === 'child_process') return { spawn: deny('child process'), spawnSync: deny('child process'), execFileSync: deny('child process') };
     if (name === 'os') return { availableParallelism: () => 4, cpus: () => Array(4).fill({}), totalmem: () => 8 * 1024 ** 3, freemem: () => 4 * 1024 ** 3 };
     if (name === 'crypto') return { randomUUID: () => '00000000-0000-4000-8000-000000000001' };
+    if (name === 'stream') return { Readable: { toWeb: deny('unrequested media stream') } };
     if (name === path.join(archive, 'package.json')) return metadata;
     if (name === './song-browser/index.cjs') return { registerSongBrowser(options) { registrations += 1; converterRunner = options.runConverter; } };
+    if (name === './services/songsterr.cjs') return { registerSongsterr(options) {
+      editorRegistrations += 1;
+      assert.equal(options.runConverter, converterRunner, 'Both workflows must share guarded converter admission.');
+      assert.equal(options.managedLifecycle, true, 'The editor must join coordinated application shutdown.');
+      assert.equal(typeof options.localAssets?.registerMedia, 'function', 'The editor must use scoped preview audio.');
+      assert.equal(options.window(), windows[0]);
+      return { close: deny('editor shutdown during normal startup') };
+    } };
     if (name.startsWith('./') && STARTUP_MODULES.has(name.slice(2))) {
       const key = name.slice(2);
       assert.equal(typeof moduleSources[key], 'string', `Packaged startup dependency missing: ${key}`);
@@ -185,6 +194,7 @@ async function verifyStartupHooks({ source, metadata, archive, converter, report
   windows[0].emit('page-title-updated', { preventDefault() { titleProtected = true; } });
   assert.ok(titleProtected, 'The page title must preserve the distinct test window title.');
   assert.equal(registrations, 1);
+  assert.equal(editorRegistrations, 1);
   assert.equal(typeof converterRunner, 'function');
   for (const timer of timers) await timer();
   if (moduleCache.has('local-assets.cjs')) {

@@ -71,13 +71,20 @@ function loadMain(t, packaged, options = {}) {
           return { close: () => { state.browserCloses++; return closeSongBrowser(); } };
         }
       };
+      if (name === "./services/songsterr.cjs") return {
+        registerSongsterr: settings => {
+          assert.equal(settings.managedLifecycle, true);
+          assert.equal(typeof settings.localAssets.registerMedia, "function");
+          return { close: options.closeSongsterrEditor || (() => Promise.resolve()) };
+        }
+      };
       if (name === path.join(appRoot, "package.json")) return { songBrowserTest: false };
       return mainRequire(name);
     },
     __dirname: path.dirname(mainPath), console, Buffer, Response, URL, AbortController,
     setTimeout: () => 0, clearTimeout() {},
     process: {
-      env: {}, platform: process.platform, arch: process.arch, resourcesPath: resources,
+      env: {}, platform: process.platform, arch: process.arch, pid: process.pid, resourcesPath: resources,
       on() {}, constrainedMemory: () => 0
     }
   };
@@ -100,6 +107,21 @@ function loadMain(t, packaged, options = {}) {
 
 function gate() { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; }
 const tick = () => new Promise(setImmediate);
+
+test('main shutdown also waits for the manual editor cleanup with no converter child', async t => {
+  const cleanup = gate();
+  let closes = 0;
+  const app = loadMain(t, false, { closeSongsterrEditor: () => { closes++; return cleanup.promise; } });
+  try {
+    app.events.get('before-quit')({ preventDefault() {} });
+    app.events.get('before-quit')({ preventDefault() {} });
+    await tick();
+    assert.equal(closes, 1);
+    assert.equal(app.state.quits, 0);
+  } finally { cleanup.resolve(); }
+  await tick();
+  assert.equal(app.state.quits, 1);
+});
 
 test('main shutdown waits for song cleanup with no converter child and blocks repeated quit requests', async (t) => {
   const download = gate();
@@ -141,7 +163,7 @@ test('main shutdown waits for converter cancellation and stem cleanup after song
 for (const packaged of [false, true]) {
   test(`${packaged ? "packaged" : "development"} inspection serves cover/tone URLs and retires them on shutdown`, async (t) => {
     const app = loadMain(t, packaged);
-    const coverPath = path.join(app.temporary, "feedforge-inspect-cache", "cover.png");
+    const coverPath = path.join(app.temporary, `feedforge-inspect-cache-${process.pid}`, "cover.png");
     fs.writeFileSync(coverPath, "cover image");
     app.stubInspection({
       stdout: JSON.stringify({ ok: true, preview: {
@@ -171,7 +193,7 @@ for (const packaged of [false, true]) {
 }
 
 test("renderer image bindings consume protocol URLs instead of native file URLs", () => {
-  const source = fs.readFileSync(path.resolve(__dirname, "../../ui/src/main.jsx"), "utf8");
+  const source = fs.readFileSync(path.resolve(__dirname, "../../ui/src/WorkspacePanels.jsx"), "utf8");
   assert.match(source, /const cover = preview\?\.cover_url \|\| null;/);
   assert.match(source, /<img src=\{gear\.asset_url\}/);
   assert.doesNotMatch(source, /file:\/\/\/\$\{(?:preview\.?\??\.cover_path|gear\.asset_path)/);

@@ -5,7 +5,8 @@ const fs = require("fs");
 const http = require("http");
 const https = require("https");
 const path = require("path");
-const { DEFAULT_SCHEME: LOCAL_ASSET_SCHEME, LocalAssetRegistry, contentTypeForImage } = require("./local-assets.cjs");
+const { DEFAULT_SCHEME: LOCAL_ASSET_SCHEME, LocalAssetRegistry, localAssetResponse } = require("./local-assets.cjs");
+const { registerSongsterr } = require("./services/songsterr.cjs");
 const { redactConverterArgs } = require("./converter-args.cjs");
 const {
   clampRequestedWorkers,
@@ -45,6 +46,7 @@ if (songBrowserTest || (!app.isPackaged && process.env.FEEDFORGE_USER_DATA)) {
 
 let mainWindow;
 let songBrowser;
+let songsterrEditor;
 let inspectCacheRoot;
 let inspectCacheTouched = false;
 let localAssetRegistry;
@@ -71,7 +73,7 @@ const STEM_SERVER_LOG_LINES = 80;
 protocol.registerSchemesAsPrivileged([
   {
     scheme: LOCAL_ASSET_SCHEME,
-    privileges: { standard: true, secure: true, supportFetchAPI: true }
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
   }
 ]);
 
@@ -180,11 +182,14 @@ app.whenReady().then(() => {
     platform: process.platform,
     arch: process.arch
   });
-  inspectCacheRoot = path.join(app.getPath("temp"), "feedforge-inspect-cache");
+  inspectCacheRoot = path.join(app.getPath("temp"), `feedforge-inspect-cache-${process.pid}`);
   initializeLocalAssets();
   createWindow();
   songBrowser = registerSongBrowser({ app, BrowserWindow, session, ipcMain, dialog, shell,
     getMainWindow: () => mainWindow, runConverter, getConverterRecipe, managedLifecycle: true });
+  songsterrEditor = registerSongsterr({ app, ipcMain, dialog, window: () => mainWindow, runConverter,
+    terminateChildProcessTree, logDebug, removeTemporaryDirectory, managedLifecycle: true,
+    localAssets: localAssetRegistry });
   mainWindow.once("closed", () => app.quit());
   setTimeout(() => {
     if (!songBrowserTest) cleanupStalePortableArtifacts();
@@ -200,6 +205,7 @@ app.on("before-quit", (event) => {
   logDebug("app.beforeQuit");
   void Promise.allSettled([
     () => songBrowser?.close(),
+    () => songsterrEditor?.close(),
     shutdownConverterProcesses,
     stopStemServer
   ].map((cleanup) => Promise.resolve().then(cleanup))).finally(() => {
@@ -248,7 +254,7 @@ ipcMain.handle("dialog:pickPsarc", async (_event, options = {}) => {
 
 ipcMain.handle("dialog:pickFolder", async (_event, options = {}) => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: "Choose a CDLC folder",
+    title: "Choose a PSARC or FeedPak folder",
     defaultPath: validDefaultPath(options.defaultPath),
     properties: ["openDirectory"]
   });
@@ -260,7 +266,7 @@ ipcMain.handle("dialog:pickFolder", async (_event, options = {}) => {
 
 ipcMain.handle("dialog:pickFolderWithRoot", async (_event, options = {}) => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: "Choose a CDLC folder",
+    title: "Choose a PSARC or FeedPak folder",
     defaultPath: validDefaultPath(options.defaultPath),
     properties: ["openDirectory"]
   });
@@ -735,6 +741,7 @@ ipcMain.handle("converter:convert", async (event, payload = {}) => {
   if (payload.outputPath) args.push("-o", payload.outputPath);
   if (payload.overwrite) args.push("--overwrite");
   if (payload.bStandardTo7String) args.push("--b-standard-to-7-string");
+  if (payload.generateDifficulty === true) args.push("--generate-difficulty");
   if (payload.separateStems) args.push("--separate-stems");
   if (payload.demucsUrl) args.push("--demucs-url", payload.demucsUrl);
   if (payload.demucsApiKey) args.push("--demucs-api-key", payload.demucsApiKey);
@@ -978,6 +985,9 @@ ipcMain.handle("dialog:pickAudioStem", async (_event, options = {}) => {
 ipcMain.handle("stemServer:status", async () => {
   return stemServerStatus();
 });
+
+ipcMain.handle("stemServer:check", (_event, options = {}) =>
+  require("./services/stem-preflight.cjs").checkStemServer(options, requestJson));
 
 ipcMain.handle("stemServer:models", async (_event, options = {}) => {
   const installRoot = demucsInstallRoot(options.installDir);
@@ -1860,9 +1870,10 @@ function appendStemServerLog(chunk) {
   logDebug("stemServer.output", { tail: tail(text, 2000) });
 }
 
-function requestJson(url, timeoutMs) {
+function requestJson(url, timeoutMs, headers = {}) {
   return new Promise((resolve) => {
-    const request = http.get(url, { timeout: timeoutMs }, (response) => {
+    const transport = new URL(url).protocol === "https:" ? https : http;
+    const request = transport.get(url, { timeout: timeoutMs, headers }, (response) => {
       let body = "";
       response.setEncoding("utf8");
       response.on("data", (chunk) => { body += chunk; });
@@ -2216,7 +2227,7 @@ function runConverter(args, options = {}) {
 function runConverterProcess(args, options = {}) {
   const { command, prefix, cwd } = converterCommand();
   const audioDecoder = getAudioDecoderStatus();
-  const childEnvironment = converterEnvironment(process.env, audioDecoder, process.platform, {
+  const childEnvironment = converterEnvironment({ ...process.env, ...options.env }, audioDecoder, process.platform, {
     pythonSourceDirectory: app.isPackaged ? "" : path.join(app.getAppPath(), "src"),
     temporaryDirectory: options.directory
   });
@@ -2246,6 +2257,8 @@ function runConverterProcess(args, options = {}) {
     });
     child.feedforgeProcessGroup = useProcessGroup;
     activeConverterChildren.add(child);
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
     if (typeof options.onSpawn === "function") options.onSpawn(child);
     let stdout = "";
     let stderr = "";
@@ -2270,7 +2283,7 @@ function runConverterProcess(args, options = {}) {
       logDebug("converter.process.close", {
         code,
         durationMs: Date.now() - startedAt,
-        stdoutTail: tail(stdout),
+        stdoutTail: options.logOutput === false ? "[structured response omitted]" : tail(stdout),
         stderrTail: tail(stderr),
         diagnostics
       });
@@ -2764,22 +2777,7 @@ function initializeLocalAssets() {
     allowedRoots: [inspectCacheRoot, ...toneAssetRoots()]
   });
   protocol.handle(LOCAL_ASSET_SCHEME, async (request) => {
-    const filePath = localAssetRegistry?.resolve(request.url);
-    const contentType = filePath ? contentTypeForImage(filePath) : null;
-    if (!filePath || !contentType) return new Response("Not found", { status: 404 });
-    try {
-      const content = await fs.promises.readFile(filePath);
-      return new Response(content, {
-        headers: {
-          "Content-Type": contentType,
-          "Cache-Control": "private, max-age=3600",
-          "X-Content-Type-Options": "nosniff"
-        }
-      });
-    } catch (error) {
-      logDebug("localAsset.readFailed", { filePath, error: errorToLog(error) });
-      return new Response("Not found", { status: 404 });
-    }
+    return localAssetResponse(localAssetRegistry, request);
   });
 }
 
@@ -2841,7 +2839,7 @@ function isConverterProtocolLine(line) {
 function createInspectionFolder(inputPath) {
   inspectCacheTouched = true;
   if (!inspectCacheRoot) {
-    inspectCacheRoot = path.join(app.getPath("temp"), "feedforge-inspect-cache");
+    inspectCacheRoot = path.join(app.getPath("temp"), `feedforge-inspect-cache-${process.pid}`);
   }
   fs.mkdirSync(inspectCacheRoot, { recursive: true });
   const safeName = path.basename(inputPath, path.extname(inputPath)).replace(/[^a-z0-9._-]+/gi, "_").slice(0, 80) || "song";

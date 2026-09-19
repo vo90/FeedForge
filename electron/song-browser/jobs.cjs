@@ -723,7 +723,8 @@ class SongJobs {
     }
     const staging = path.join(directory, "converted.feedpak");
     this._set(job, "converting", { message: "Converting with FeedForge.", progress: 0 });
-    const conversion = await this._converter(job, [input, "-o", staging]);
+    const conversion = await this._converter(job, [input, "-o", staging,
+      ...(job.outputSettings?.generateDifficulty === true ? ["--generate-difficulty"] : [])]);
     if (!conversion || conversion.code !== 0) throw new Error(`Conversion failed: ${text(conversion?.stderr || conversion?.stdout || "FeedForge could not convert this chart", 400)}`);
     check(job);
     const outputStat = await fsp.lstat(staging);
@@ -749,7 +750,8 @@ class SongJobs {
   async _duplicate(job) {
     const currentRoot = await fsp.realpath(job.outputDir);
     const expectedFolder = path.resolve(currentRoot, path.dirname(job.outputRelativePath || '.'));
-    const lookup = { chart: job.chart, sourceHash: job.sourceHash, recipe: job.recipe, requirements: { ...job.selection, platform: 'any' }, signal: job.controller.signal };
+    const lookup = { chart: job.chart, sourceHash: job.sourceHash, recipe: job.recipe, requirements: { ...job.selection, platform: 'any' },
+      conversionSettings: { generateDifficulty: job.outputSettings?.generateDifficulty === true }, signal: job.controller.signal };
     if (this.findReusable) {
       const saved = await this.findReusable({ ...lookup, outputDir: job.outputDir, outputSettings: job.outputSettings,
         sourceFilename: job.outputSettings?.nameTemplate.toLowerCase().includes('{source}') ? job.resolvedFile?.filename : undefined });
@@ -760,6 +762,7 @@ class SongJobs {
     candidates.sort((a, b) => Number(matchesOutput(job, b, expectedFolder)) - Number(matchesOutput(job, a, expectedFolder)));
     for (const previous of candidates) {
       if (previous === job || previous.state !== "completed" || previous.sourceHash !== job.sourceHash || !previous.outputPath || !HASH.test(previous.outputHash || "")) continue;
+      if ((previous.outputSettings?.generateDifficulty === true) !== (job.outputSettings?.generateDifficulty === true)) continue;
       if (!reuseDecision(previous, { chart: job.chart, requirements: { ...job.selection, platform: 'any' }, requestedChoice: job.requestedChoice, recipe: job.recipe, sourceHash: job.sourceHash }).reusable) continue;
       try {
         const stat = await fsp.lstat(previous.outputPath);

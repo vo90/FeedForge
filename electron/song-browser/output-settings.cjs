@@ -17,7 +17,8 @@ function normalizeOutputSettings(value = {}) {
   for (const match of nameTemplate.matchAll(/\{([^{}]+)\}/g)) {
     if (!FIELDS.has(match[1].toLowerCase())) throw new Error(`Unknown output naming field: {${match[1]}}. Choose a template in FeedForge Settings.`);
   }
-  return { outputLayout, nameTemplate };
+  // Absence and false retain the existing source-preserving recipe identity.
+  return { outputLayout, nameTemplate, ...(value.generateDifficulty === true ? { generateDifficulty: true } : {}) };
 }
 
 function validSegment(value) {

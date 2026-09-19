@@ -26,6 +26,7 @@ import soundfile as sf
 import yaml
 
 from .bend_curves import normalize_sng_bend_curve
+from .difficulty import ensure_difficulty
 from .feedpak_validator import (
     FeedpakValidationError,
     FeedpakValidationResult,
@@ -373,6 +374,7 @@ def convert_psarc_songs(
     keep_workdir: bool = False,
     include_tones: bool = True,
     b_standard_to_7_string: bool = False,
+    generate_difficulty: bool = False,
     separate_stems: bool = False,
     demucs_url: str | None = None,
     demucs_api_key: str | None = None,
@@ -449,6 +451,7 @@ def convert_psarc_songs(
                 keep_workdir=keep_workdir,
                 include_tones=include_tones,
                 b_standard_to_7_string=b_standard_to_7_string,
+                generate_difficulty=generate_difficulty,
                 separate_stems=separate_stems,
                 demucs_url=demucs_url,
                 demucs_api_key=demucs_api_key,
@@ -1150,6 +1153,7 @@ def convert_psarc(
     keep_workdir: bool = False,
     include_tones: bool = True,
     b_standard_to_7_string: bool = False,
+    generate_difficulty: bool = False,
     separate_stems: bool = False,
     demucs_url: str | None = None,
     demucs_api_key: str | None = None,
@@ -1275,6 +1279,7 @@ def convert_psarc(
                 include_tones=include_tones,
                 cent_offset=cent_offset,
                 arrangement_id=arr_id,
+                generate_difficulty=generate_difficulty,
                 conversion_details=conversion_details,
             )
         except ValueError as exc:
@@ -2318,14 +2323,23 @@ def _content_has_full_mix_audio(
     *,
     content_index: PsarcContentIndex | None = None,
 ) -> bool:
+    return bool(_full_mix_audio_candidates(content, content_index=content_index))
+
+
+def _full_mix_audio_candidates(
+    content: dict[str, bytes],
+    *,
+    content_index: PsarcContentIndex | None = None,
+) -> list[tuple[str, bytes]]:
+    """Use identical audio eligibility for preflight, conversion, and export."""
     preview_paths = {
-        path
-        for path, _data in _preview_audio_candidates(content, content_index=content_index)
+        path for path, _data in _preview_audio_candidates(content, content_index=content_index)
     }
-    return any(
-        path.lower().endswith(AUDIO_SUFFIXES) and path not in preview_paths and bool(data)
+    return [
+        (path, data)
         for path, data in content.items()
-    )
+        if path.lower().endswith(AUDIO_SUFFIXES) and path not in preview_paths and data
+    ]
 
 
 def _validate_song_audio_entries(
@@ -3221,6 +3235,7 @@ def _song_to_arrangement(
     metadata: dict[str, Any],
     *,
     include_tones: bool = True,
+    generate_difficulty: bool = False,
     cent_offset: float = 0.0,
     arrangement_id: str | None = None,
     conversion_details: list[ConversionDetail] | None = None,
@@ -3265,6 +3280,12 @@ def _song_to_arrangement(
     source_identity = _source_identity_for_arrangement(source_path, metadata)
     if source_identity:
         arrangement["ext"] = {"source": source_identity}
+    if generate_difficulty and ensure_difficulty(arrangement, duration=getattr(song.metadata, "songLength", 0)):
+        if conversion_details is not None:
+            conversion_details.append(ConversionDetail(
+                f"Generated practice difficulty for {arrangement['name']}; full source notes were preserved.",
+                category="requested-transformation",
+            ))
     arrangement["stats"] = {
         "events": _arrangement_event_count(arrangement),
         "notes": _arrangement_note_count(arrangement),
@@ -4379,13 +4400,7 @@ def _copy_audio(
     demucs_model: str | None = None,
     demucs_stems: list[str] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, str] | None]:
-    preview_paths = {path for path, _data in _preview_audio_candidates(content)}
-    audio = [
-        (path, data)
-        for path, data in content.items()
-        if path.lower().endswith((".wem", ".ogg", ".wav", ".mp3", ".flac", ".opus"))
-        and path not in preview_paths
-    ]
+    audio = _full_mix_audio_candidates(content)
     if not audio:
         raise ValueError(
             "No audio file found in PSARC. This appears to be a charts-only package, such as an RS1 "
@@ -4554,7 +4569,10 @@ def _write_preview_from_full_mix(source: Path, target: Path) -> bool:
                 format="OGG",
                 subtype="VORBIS",
             ) as preview:
-                preview.write(samples)
+                # Keep native Vorbis writes bounded, as in the full-mix encoder.
+                # A whole 30-second clip can overflow its Windows stack.
+                for offset in range(0, len(samples), 65536):
+                    preview.write(samples[offset:offset + 65536])
         return target.stat().st_size >= 1024 and target.read_bytes().startswith(b"OggS")
     except Exception:  # noqa: BLE001
         target.unlink(missing_ok=True)
@@ -4578,11 +4596,21 @@ def _preview_audio_candidates(
         preview_banks,
         content_index=content_index,
     )
+    # Some CDLCs reuse the full-length WEM in their preview bank. A main-bank
+    # reference takes precedence; create a short preview from the full mix.
+    main_banks = [
+        path for path in content
+        if path.replace("\\", "/").lower().endswith(".bnk")
+        and path not in preview_banks
+    ]
+    full_mix_paths = _wem_paths_for_banks(content, main_banks, content_index=content_index)
     return [
         (path, data)
         for path, data in content.items()
-        if path in wem_paths
-        or (path.lower().endswith((".wem", ".ogg", ".wav", ".mp3", ".flac", ".opus")) and "preview" in Path(path).stem.lower())
+        if path not in full_mix_paths and (
+            path in wem_paths
+            or (path.lower().endswith(AUDIO_SUFFIXES) and "preview" in Path(path).stem.lower())
+        )
     ]
 
 
@@ -4594,13 +4622,7 @@ def _export_audio_from_content(
     overwrite: bool,
     metadata: dict[str, Any] | None = None,
 ) -> Path:
-    preview_paths = {path for path, _data in _preview_audio_candidates(content)}
-    audio = [
-        (path, data)
-        for path, data in content.items()
-        if path.lower().endswith((".wem", ".ogg", ".wav", ".mp3", ".flac", ".opus"))
-        and path not in preview_paths
-    ]
+    audio = _full_mix_audio_candidates(content)
     if not audio:
         raise ValueError("No audio file found in PSARC.")
 
@@ -5638,18 +5660,8 @@ def _write_json(path: Path, data: Any) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 
-def _write_manifest(path: Path, manifest: dict[str, Any]) -> None:
-    path.write_text(
-        yaml.safe_dump(manifest, sort_keys=False, allow_unicode=True),
-        encoding="utf-8",
-    )
-
-
-def _zip_dir(source: Path, target: Path) -> None:
-    with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for file in sorted(source.rglob("*")):
-            if file.is_file():
-                zf.write(file, file.relative_to(source).as_posix())
+# Compatibility names retained for the editor and existing integrations.
+from .package_io import write_manifest as _write_manifest, write_archive as _zip_dir
 
 
 def _commit_zip_dir(source: Path, target: Path) -> None:

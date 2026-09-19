@@ -15,6 +15,7 @@ import yaml
 from .converter import (
     ConversionWarning,
     _codec_for_audio_path,
+    _commit_directory,
     _commit_zip_dir,
     _maybe_separate_stems,
     _safe_output_stem,
@@ -39,7 +40,7 @@ class FeedpakAudioExportResult:
 
 
 METADATA_FIELDS = ("title", "artist", "album", "year", "duration", "language")
-AUTHOR_ROLES = {"charter", "creator", "arranger", "author", "contributor"}
+AUTHOR_ROLES = {"charter", "creator", "arranger", "author", "contributor", "transcriber"}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 AUDIO_SUFFIXES = {".ogg", ".wav", ".mp3", ".flac", ".opus"}
 
@@ -172,7 +173,11 @@ def update_feedpak(
         validation = require_valid_feedpak(package_dir)
         for warning in validation.warnings:
             warnings.append(ConversionWarning(f"FeedPak spec validation warning: {warning}"))
-        _write_package(package_dir, target, overwrite=overwrite or target.resolve() == input_path.resolve())
+        retained_backup = _write_package(package_dir, target, overwrite=overwrite or target.resolve() == input_path.resolve())
+        if retained_backup is not None:
+            warnings.append(ConversionWarning(
+                f"FeedPak was saved, but its previous output backup could not be removed: {retained_backup}"
+            ))
 
     return FeedpakEditResult(output_path=target, warnings=warnings, validation=validation)
 
@@ -252,7 +257,7 @@ def _extract_zip(input_path: Path, package_dir: Path) -> None:
             zf.extract(member, package_dir)
 
 
-def _write_package(package_dir: Path, target: Path, *, overwrite: bool) -> None:
+def _write_package(package_dir: Path, target: Path, *, overwrite: bool) -> Path | None:
     if target.exists():
         if not overwrite:
             raise FileExistsError(f"Output already exists: {target}")
@@ -261,13 +266,18 @@ def _write_package(package_dir: Path, target: Path, *, overwrite: bool) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.suffix.lower() == ".feedpak":
         _commit_zip_dir(package_dir, target)
-    else:
-        if target.exists():
-            if target.is_dir():
-                shutil.rmtree(target)
-            else:
-                target.unlink()
-        shutil.copytree(package_dir, target)
+        return None
+    if target.exists() and not target.is_dir():
+        raise NotADirectoryError(f"FeedPak directory output path is not a directory: {target}")
+    # The editor's working copy may live on another volume. Finish copying to
+    # a private sibling before replacing anything in the destination.
+    staged = Path(tempfile.mkdtemp(prefix=f".{target.name}.staged-", dir=target.parent))
+    try:
+        shutil.copytree(package_dir, staged, dirs_exist_ok=True)
+        return _commit_directory(staged, target)
+    finally:
+        if staged.exists():
+            shutil.rmtree(staged, ignore_errors=True)
 
 
 def _select_stem_for_export(manifest: dict[str, Any], stem_id: str) -> dict[str, Any]:
@@ -365,7 +375,7 @@ def _arrangement_payloads(package_dir: Path, manifest: dict[str, Any]) -> list[t
     rows = []
     for entry in manifest.get("arrangements") or []:
         if isinstance(entry, dict):
-            rows.append((entry, _read_json(package_dir / str(entry.get("file") or ""))))
+            rows.append((entry, _read_json(package_dir / str(entry.get("file") or entry.get("drum_tab") or ""))))
     return rows
 
 
@@ -373,7 +383,7 @@ def _arrangement_payloads_from_zip(zf: zipfile.ZipFile, manifest: dict[str, Any]
     rows = []
     for entry in manifest.get("arrangements") or []:
         if isinstance(entry, dict):
-            rows.append((entry, _read_json_from_zip(zf, str(entry.get("file") or ""))))
+            rows.append((entry, _read_json_from_zip(zf, str(entry.get("file") or entry.get("drum_tab") or ""))))
     return rows
 
 
@@ -392,7 +402,7 @@ def _arrangement_previews(payloads: list[tuple[dict[str, Any], Any]]) -> list[di
                 "chords": 0,
                 "note_count": entry.get("note_count") or _event_count(data),
                 "event_count": entry.get("event_count") or _event_count(data),
-                "file": entry.get("file") or "",
+                "file": entry.get("file") or entry.get("drum_tab") or "",
                 **feedpak_instrument_evidence(entry, data),
             }
         )
@@ -574,6 +584,8 @@ def _event_count(data: Any) -> int:
         return 0
     if isinstance(data.get("notes"), list):
         return len(data["notes"])
+    if isinstance(data.get("hits"), list):
+        return len(data["hits"])
     if isinstance(data.get("events"), list):
         return len(data["events"])
     if isinstance(data.get("levels"), list):

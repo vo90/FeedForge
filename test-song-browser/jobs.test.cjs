@@ -192,6 +192,35 @@ test('import-backed reuse prefers existing settings and source names after job h
   assert.deepEqual(await fsp.readFile(first.outputPath), FEEDPAK);
 });
 
+test('difficulty opt-in changes converted bytes and cannot reuse earlier default bytes from history or the import index', async t => {
+  const settings = { outputLayout: 'flat', nameTemplate: '{source}' };
+  const f = await fixture(t, { outputSettings: settings, useImportIndex: true, runConverter: async (args, _context, normal) => {
+    if (args[0] !== '--plan-conversion-file') return normal(args);
+    const request = JSON.parse(await fsp.readFile(args[1], 'utf8'));
+    const inputPath = request.items[0].inputPath;
+    return { code: 0, stdout: JSON.stringify({ ok: true, items: [{ ok: true, inputPath, sourceSize: PSARC.length,
+      outputs: [{ path: path.join(request.outputDir, 'Song.feedpak') }] }] }) };
+  } });
+  const chart = { ...CHART, resolvedFile: { filename: 'Song_p.psarc', platform: 'pc' } };
+  const first = await f.result(f.manager.enqueue(chart).id);
+  assert.equal(first.state, 'completed');
+  f.manager.outputSettings = { ...settings, generateDifficulty: true };
+  const second = await f.result(f.manager.enqueue(chart).id);
+  assert.equal(second.state, 'completed');
+  assert.equal(second.duplicateOf, undefined);
+  assert.notEqual(second.outputPath, first.outputPath);
+  const conversions = f.calls.filter(args => args[1] === '-o');
+  assert.equal(conversions.length, 2);
+  assert.equal(conversions[0].includes('--generate-difficulty'), false);
+  assert.equal(conversions[1].includes('--generate-difficulty'), true);
+  // Keep only the default archive in the persistent index, beyond job history.
+  f.manager.jobs = [];
+  f.imports.records = f.imports.records.filter(record => record.id === first.id);
+  const third = await f.result(f.manager.enqueue(chart).id);
+  assert.equal(third.state, 'completed');
+  assert.equal(f.calls.filter(args => args[1] === '-o').length, 3);
+});
+
 test("converts, validates, saves without stems and persists only bounded public metadata", async (t) => {
   const f = await fixture(t);
   const job = f.manager.enqueue({ ...CHART, creator: "Someone https://host.test/token?secret=yes", url: "https://host.test/private-token", cookie: "secret-cookie" });

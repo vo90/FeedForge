@@ -180,7 +180,7 @@ class ImportIndex {
     return null;
   }
 
-  async assess(input, { outputDir, outputSettings, sourceFilename, preferences = {}, requirements, requestedChoice, recipe, sourceHash, reviewAnother = false, signal, jobId } = {}) {
+  async assess(input, { outputDir, outputSettings, sourceFilename, conversionSettings, preferences = {}, requirements, requestedChoice, recipe, sourceHash, reviewAnother = false, signal, jobId } = {}) {
     if (signal?.aborted) throw Object.assign(new Error("Import verification cancelled."), { code: "ABORT_ERR" });
     const chart = sanitizeChart(input);
     const exactSource = HASH.test(sourceHash || "");
@@ -198,10 +198,13 @@ class ImportIndex {
         requestedChoice: requestedChoice ?? input.requestedChoice ?? preferences.choice, recipe: recipe ?? input.recipe,
         sourceHash, reviewAnother });
       if (result.reusable) {
-        if (!await this.verify(record, { signal })) result = decision("missing_output");
+        if (conversionSettings && (record.outputSettings?.generateDifficulty === true) !== (conversionSettings.generateDifficulty === true)) {
+          result = { reusable: false, code: 'other_conversion_settings', reason: 'The saved file uses different conversion settings.' };
+        }
+        else if (!await this.verify(record, { signal })) result = decision("missing_output");
         else if (outputDir && !sameDirectory(path.dirname(record.outputPath), outputDir)
           && !(record.outputSettings?.outputLayout === 'artist' && sameDirectory(path.dirname(path.dirname(record.outputPath)), outputDir))) result = decision("other_folder");
-        else if (outputSettings && JSON.stringify(record.outputSettings) !== JSON.stringify(normalizeOutputSettings(outputSettings))) result = { reusable: false, code: 'other_output_settings', reason: 'The saved file uses different output naming or folder settings.' };
+        else if (outputSettings && JSON.stringify(record.outputSettings) !== JSON.stringify(normalizeOutputSettings(outputSettings))) result = { reusable: false, code: 'other_output_settings', reason: 'The saved file uses different conversion or output settings.' };
         else return describe(result, record);
       }
       // A latest candidate's reason is useful; a known missing output or another

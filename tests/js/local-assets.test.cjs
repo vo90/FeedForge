@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { LocalAssetRegistry, contentTypeForImage } = require("../../electron/local-assets.cjs");
+const { LocalAssetRegistry, contentTypeForImage, localAssetResponse } = require("../../electron/local-assets.cjs");
 
 function fixture(t) {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "feedforge-local-assets-"));
@@ -86,4 +86,30 @@ test("supported image MIME types exclude active SVG and text", () => {
   assert.equal(contentTypeForImage("cover.webp"), "image/webp");
   assert.equal(contentTypeForImage("cover.svg"), null);
   assert.equal(contentTypeForImage("notes.txt"), null);
+});
+
+test('audio requires explicit preview ownership and supports seeking without exposing local paths', async t => {
+  const { allowed, outside, registry } = fixture(t);
+  const audio = path.join(allowed, 'full.ogg');
+  fs.writeFileSync(audio, '0123456789');
+  fs.writeFileSync(path.join(outside, 'full.ogg'), 'private');
+  assert.equal(registry.register(audio), null);
+  assert.equal(registry.registerMedia(allowed, path.join(outside, 'full.ogg')), null);
+  const url = registry.registerMedia(allowed, audio);
+  assert.match(url, /^feedforge-local:\/\/asset\/[a-f0-9]{32}$/);
+  for (const [range, body, contentRange] of [['bytes=3-6', '3456', 'bytes 3-6/10'], ['bytes=-3', '789', 'bytes 7-9/10'], ['bytes=8-', '89', 'bytes 8-9/10']]) {
+    const result = await localAssetResponse(registry, { url, headers: new Headers({ range }) });
+    assert.equal(result.status, 206);
+    assert.equal(result.headers.get('content-range'), contentRange);
+    assert.equal(result.headers.get('content-type'), 'audio/ogg');
+    assert.equal(await result.text(), body);
+  }
+  for (const range of ['bytes=99-', 'bytes=0-1,3-4', 'bytes=-0', 'bytes=-']) {
+    assert.equal((await localAssetResponse(registry, { url, headers: new Headers({ range }) })).status, 416);
+  }
+  const head = await localAssetResponse(registry, { url, method: 'HEAD' });
+  assert.equal(head.headers.get('content-length'), '10');
+  assert.equal(await head.text(), '');
+  registry.revokeDirectory(allowed);
+  assert.equal((await localAssetResponse(registry, { url })).status, 404);
 });

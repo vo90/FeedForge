@@ -67,6 +67,23 @@ def test_unvalidated_sync_cannot_build(tmp_path):
         build_feedpak(performance, audio, {}, job, output_dir=tmp_path / "out")
 
 
+def test_builder_difficulty_is_optional_and_keeps_full_chart_and_notation(tmp_path):
+    performance, audio, alignment, job = inputs(tmp_path)
+    second = tmp_path / "generated-job"
+    second.mkdir()
+    faithful = build_feedpak(performance, audio, alignment, job, output_dir=tmp_path / "out")
+    generated = build_feedpak(performance, audio, alignment, second, output_dir=tmp_path / "out",
+                              output_settings={"generateDifficulty": True})
+    with zipfile.ZipFile(faithful["stagingPath"]) as a, zipfile.ZipFile(generated["stagingPath"]) as b:
+        original = json.loads(a.read("arrangements/guitar.json"))
+        practice = json.loads(b.read("arrangements/guitar.json"))
+        assert "phrases" not in original
+        assert practice["notes"] == original["notes"]
+        assert practice["beats"] == original["beats"]
+        assert practice["ext"]["generatedDifficulty"]["sourceAuthored"] is False
+        assert a.read("song_timeline.json") == b.read("song_timeline.json")
+
+
 def test_builder_rejects_invalid_zero_based_downbeats(tmp_path):
     from feedback_converter.feedpak_validator import FeedpakValidationError
 

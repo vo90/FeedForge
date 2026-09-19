@@ -44,6 +44,8 @@ function runner(f, inspect = () => {}, change = (result) => result) {
 
 test('output settings preserve the normal Source filename default and supported template fields', () => {
   assert.deepEqual(normalizeOutputSettings(), { outputLayout: 'flat', nameTemplate: '{source}' });
+  assert.deepEqual(normalizeOutputSettings({ generateDifficulty: false }), normalizeOutputSettings());
+  assert.deepEqual(normalizeOutputSettings({ generateDifficulty: true }), { outputLayout: 'flat', nameTemplate: '{source}', generateDifficulty: true });
   assert.deepEqual(normalizeOutputSettings({ outputLayout: 'preserve', nameTemplate: '', outputDir: 'ignored', backingTrack: 'ignored' }), { outputLayout: 'preserve', nameTemplate: '{source}' });
   for (const outputLayout of ['flat', 'preserve', 'artist']) {
     const settings = { outputLayout, nameTemplate: '{ARTIST} - {title} - {album} - {year} - {parts} - {source}' };

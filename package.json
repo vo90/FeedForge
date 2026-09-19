@@ -1,6 +1,6 @@
 {
   "name": "feedforge",
-  "version": "0.1.42",
+  "version": "2.0.1",
   "private": true,
   "description": "Desktop toolkit for FeedPak files for the FeedBack game.",
   "author": "FeedForge Contributors",
@@ -8,7 +8,7 @@
   "main": "electron/main.cjs",
   "desktopName": "FeedForge.desktop",
   "scripts": {
-    "test": "node --test tests/js/*.test.cjs ui/src/*.test.mjs test-song-browser/*.test.cjs",
+    "test": "node --test tests/js/*.test.cjs ui/src/*.test.mjs test-song-browser/*.test.cjs tests/*.cjs && node tests/test_lyrics.mjs",
     "test:python": "python -m pytest tests test-song-browser/instrument_evidence_test.py",
     "test:song-browser": "node --test test-song-browser/*.test.cjs",
     "test:song-browser:electron": "node test-song-browser/electron-runner.cjs",
@@ -25,7 +25,8 @@
     "release:win": "npm run converter:pack && npm run electron:pack",
     "release:mac": "npm run converter:pack && npm run electron:pack:mac",
     "release:linux": "npm run converter:pack && npm run electron:pack:linux",
-    "lint:ui": "vite build"
+    "lint:ui": "vite build",
+    "clean": "node tools/clean-build.cjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
