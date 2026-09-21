@@ -24,6 +24,15 @@ FeedForge helps you inspect, validate, edit, organize, and maintain FeedPak
 song libraries. It includes package details, metadata and stem tools, library
 auditing, duplicate checks, and optional local stem separation.
 
+### Scan your local song library
+
+Open **Library**, choose the folder FeedBack uses for FeedPak files, and select
+**Scan library**. FeedForge searches that folder recursively and shows every
+song it finds. Duplicate checking is enabled by default and compares normalized
+artist and title metadata. Potential duplicates are review-only until you
+explicitly select files and confirm moving them to the operating system's
+Recycle Bin or Trash.
+
 ## Windows, macOS, and Linux
 
 Download the latest Windows x64 portable app, macOS Apple Silicon DMG/ZIP, or

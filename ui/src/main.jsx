@@ -12,6 +12,7 @@ import {
   Guitar,
   ImageIcon,
   Info,
+  LibraryBig,
   Play,
   Plus,
   Power,
@@ -51,7 +52,7 @@ const DEFAULT_AUDIT_CRITERIA = {
   requireLyrics: false,
   requireAuthors: false,
   requireTones: false,
-  checkDuplicates: false
+  checkDuplicates: true
 };
 const AUDIT_CRITERIA_OPTIONS = [
   { key: "requireSpecValidation", label: "Spec valid" },
@@ -121,7 +122,7 @@ function App() {
   const [updateInfo, setUpdateInfo] = useState(null);
   const [appVersion, setAppVersion] = useState("");
   const [auditFolder, setAuditFolder] = useState(() => initialSettingsRef.current.auditFolder || "");
-  const [auditCriteria, setAuditCriteria] = useState(() => normalizeAuditCriteria(initialSettingsRef.current.auditCriteria));
+  const [auditCriteria, setAuditCriteria] = useState(() => normalizeAuditCriteria(initialSettingsRef.current.auditCriteria, initialSettingsRef.current.librarySettingsVersion));
   const [auditReport, setAuditReport] = useState(null);
   const [isAuditingLibrary, setIsAuditingLibrary] = useState(false);
   const [conversionWorkers, setConversionWorkers] = useState(() => normalizeAutoNumberSetting(initialSettingsRef.current.conversionWorkers, DEFAULT_CONVERSION_WORKERS));
@@ -146,7 +147,7 @@ function App() {
   }, [items]);
 
   useEffect(() => {
-    writeSettings({ outputDir, outputLayout, outputNameFormat, outputNameTemplate, lastSourcePath, bStandardTo7String, separateStems, conversionWorkers, demucsUrl, demucsInstallDir, pythonPath, demucsModel, demucsDevice, demucsStemJobs, demucsStems, auditFolder, auditCriteria, performanceSettingsVersion: 2 });
+    writeSettings({ outputDir, outputLayout, outputNameFormat, outputNameTemplate, lastSourcePath, bStandardTo7String, separateStems, conversionWorkers, demucsUrl, demucsInstallDir, pythonPath, demucsModel, demucsDevice, demucsStemJobs, demucsStems, auditFolder, auditCriteria, performanceSettingsVersion: 2, librarySettingsVersion: 1 });
   }, [outputDir, outputLayout, outputNameFormat, outputNameTemplate, lastSourcePath, bStandardTo7String, separateStems, conversionWorkers, demucsUrl, demucsInstallDir, pythonPath, demucsModel, demucsDevice, demucsStemJobs, demucsStems, auditFolder, auditCriteria]);
 
   useEffect(() => {
@@ -532,18 +533,24 @@ function App() {
 
   async function chooseAuditFolder() {
     const folder = await api.pickAuditFolder({ defaultPath: auditFolder || outputDir || lastSourcePath || undefined });
-    if (folder) setAuditFolder(folder);
+    if (folder) {
+      if (normalizePathKey(folder) !== normalizePathKey(auditFolder)) setAuditReport(null);
+      setAuditFolder(folder);
+    }
   }
 
   async function runLibraryAudit() {
-    if (!auditFolder || isAuditingLibrary) return;
+    if (!auditFolder || isAuditingLibrary) return null;
     setIsAuditingLibrary(true);
     setAuditReport(null);
     try {
       const report = await api.auditFeedpakLibrary({ root: auditFolder, criteria: auditCriteria, workers: 3 });
       setAuditReport(report);
+      return report;
     } catch (error) {
-      setAuditReport({ ok: false, error: error?.message || "Library audit failed." });
+      const report = { ok: false, error: error?.message || "Library audit failed." };
+      setAuditReport(report);
+      return report;
     } finally {
       setIsAuditingLibrary(false);
     }
@@ -551,6 +558,7 @@ function App() {
 
   function updateAuditCriterion(key, value) {
     setAuditCriteria((current) => ({ ...current, [key]: value }));
+    setAuditReport(null);
   }
 
   function rememberSourcePath(filePath) {
@@ -1003,6 +1011,8 @@ function App() {
 
   const viewMeta = activeView === "stems"
     ? { title: "Stem splitting", description: "Local Demucs or remote stem server setup." }
+    : activeView === "library"
+      ? { title: "Song library", description: "See every installed FeedPak and review duplicate songs." }
     : activeView === "settings"
     ? { title: "Settings", description: "Conversion defaults and diagnostics." }
     : activeView === "feedpak"
@@ -1031,6 +1041,10 @@ function App() {
           <button className={activeView === "feedpak" ? "active" : ""} onClick={() => setActiveView("feedpak")}>
             <FileMusic size={18} />
             <span>Edit FeedPaks</span>
+          </button>
+          <button className={activeView === "library" ? "active" : ""} onClick={() => setActiveView("library")}>
+            <LibraryBig size={18} />
+            <span>Library</span>
           </button>
           <button className={activeView === "settings" ? "active" : ""} onClick={() => { setActiveView("settings"); if (settingsSection === "stems") setSettingsSection("conversion"); }}>
             <SlidersHorizontal size={18} />
@@ -1073,10 +1087,12 @@ function App() {
                 <small>{headerStemStatusLabel(separateStems, stemServerStatus, isStartingStemServer, stemServerMatchesSelectedConfig)}</small>
               </span>
             </button>
-            <button className="primary" onClick={convertQueue} disabled={!items.length || isConverting}>
-              {isConverting ? <RotateCw className="spin" size={18} /> : <Download size={18} />}
-              Convert queue{isConverting ? ` (${effectiveConversionWorkers}x)` : ""}
-            </button>
+            {activeView !== "library" && (
+              <button className="primary" onClick={convertQueue} disabled={!items.length || isConverting}>
+                {isConverting ? <RotateCw className="spin" size={18} /> : <Download size={18} />}
+                Convert queue{isConverting ? ` (${effectiveConversionWorkers}x)` : ""}
+              </button>
+            )}
             {isConverting && (
               <button className="danger" onClick={stopConversion} disabled={isStopping}>
                 <Square size={17} />
@@ -1089,10 +1105,22 @@ function App() {
         <section className="toolbar">
           <div className="search">
             <Search size={17} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search title, artist, or album" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={activeView === "library" ? "Search your song library" : "Search title, artist, or album"} />
           </div>
-          <button onClick={chooseFiles}><Plus size={17} /> Add files</button>
-          <button onClick={chooseFolder}><FolderOpen size={17} /> Add folder</button>
+          {activeView === "library" ? (
+            <>
+              <button onClick={chooseAuditFolder} disabled={isAuditingLibrary}><FolderOpen size={17} /> Choose library</button>
+              <button className="primary" onClick={runLibraryAudit} disabled={!auditFolder || isAuditingLibrary}>
+                {isAuditingLibrary ? <RotateCw className="spin" size={17} /> : <Search size={17} />}
+                {isAuditingLibrary ? "Scanning" : "Scan library"}
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={chooseFiles}><Plus size={17} /> Add files</button>
+              <button onClick={chooseFolder}><FolderOpen size={17} /> Add folder</button>
+            </>
+          )}
         </section>
 
         {updateInfo?.updateAvailable && (
@@ -1112,7 +1140,20 @@ function App() {
           <ConversionProgress progress={conversionProgress} isConverting={isConverting} />
         )}
 
-        {activeView === "settings" || activeView === "stems" ? (
+        {activeView === "library" ? (
+          <section className="library-page">
+            <LibraryAuditPanel
+              folder={auditFolder}
+              criteria={auditCriteria}
+              report={auditReport}
+              busy={isAuditingLibrary}
+              query={query}
+              onChooseFolder={chooseAuditFolder}
+              onRun={runLibraryAudit}
+              onChangeCriterion={updateAuditCriterion}
+            />
+          </section>
+        ) : activeView === "settings" || activeView === "stems" ? (
           <section className={`settings-page ${activeView === "stems" ? "settings-page-full" : ""}`}>
             {activeView === "settings" && (
               <div className="settings-nav" aria-label="Settings sections">
@@ -1378,18 +1419,9 @@ function App() {
                 <div className="settings-card-head">
                   <div>
                     <h2>Diagnostics</h2>
-                    <p>Logs, stem server output, and library checks.</p>
+                    <p>Logs and live stem server output.</p>
                   </div>
                 </div>
-                <LibraryAuditPanel
-                  folder={auditFolder}
-                  criteria={auditCriteria}
-                  report={auditReport}
-                  busy={isAuditingLibrary}
-                  onChooseFolder={chooseAuditFolder}
-                  onRun={runLibraryAudit}
-                  onChangeCriterion={updateAuditCriterion}
-                />
                 <div className="diagnostics-panel standalone">
                   <div className="diagnostics-head">
                     <div>
@@ -1726,19 +1758,34 @@ function Metric({ label, value, tone = "" }) {
   );
 }
 
-function LibraryAuditPanel({ folder, criteria, report, busy, onChooseFolder, onRun, onChangeCriterion }) {
+function LibraryAuditPanel({ folder, criteria, report, busy, query, onChooseFolder, onRun, onChangeCriterion }) {
   const [selectedDuplicatePaths, setSelectedDuplicatePaths] = useState([]);
   const [deleteMessage, setDeleteMessage] = useState("");
   const [isDeletingDuplicates, setIsDeletingDuplicates] = useState(false);
-  const failedRows = (report?.rows || []).filter((row) => row.status !== "pass");
-  const previewRows = failedRows.slice(0, 8);
+  const [resultFilter, setResultFilter] = useState("all");
+  const rows = report?.rows || [];
   const duplicateGroups = report?.duplicates || [];
   const selectedSet = new Set(selectedDuplicatePaths);
+  const duplicatePaths = useMemo(() => new Set(duplicateGroups.flatMap((group) => group.files.map((file) => file.filePath))), [duplicateGroups]);
+  const filteredRows = useMemo(() => {
+    const needle = String(query || "").trim().toLowerCase();
+    return [...rows]
+      .filter((row) => {
+        if (resultFilter === "duplicates" && !duplicatePaths.has(row.filePath)) return false;
+        if (resultFilter === "issues" && row.status === "pass") return false;
+        if (!needle) return true;
+        return `${row.title || ""} ${row.artist || ""} ${row.album || ""} ${row.relativePath || ""}`.toLowerCase().includes(needle);
+      })
+      .sort((left, right) => `${left.artist} ${left.title}`.localeCompare(`${right.artist} ${right.title}`, undefined, { sensitivity: "base" }));
+  }, [rows, duplicatePaths, query, resultFilter]);
 
   useEffect(() => {
     setSelectedDuplicatePaths([]);
-    setDeleteMessage("");
   }, [report?.jsonPath]);
+
+  useEffect(() => {
+    if (!criteria.checkDuplicates && resultFilter === "duplicates") setResultFilter("all");
+  }, [criteria.checkDuplicates, resultFilter]);
 
   function toggleDuplicatePath(filePath, checked) {
     setSelectedDuplicatePaths((current) => {
@@ -1750,15 +1797,18 @@ function LibraryAuditPanel({ folder, criteria, report, busy, onChooseFolder, onR
   }
 
   async function deleteSelectedDuplicates() {
-    if (!selectedDuplicatePaths.length || isDeletingDuplicates) return;
+    if (!selectedDuplicatePaths.length || isDeletingDuplicates || busy) return;
     const ok = window.confirm(`Move ${selectedDuplicatePaths.length} selected FeedPak file${selectedDuplicatePaths.length === 1 ? "" : "s"} to the Recycle Bin?`);
     if (!ok) return;
     setIsDeletingDuplicates(true);
     setDeleteMessage("");
     try {
       const result = await api.deleteFiles(selectedDuplicatePaths);
-      setDeleteMessage(result.ok ? `Moved ${result.deleted || 0} file${result.deleted === 1 ? "" : "s"} to the Recycle Bin.` : result.error || "Some files could not be deleted.");
-      if (result.ok) setSelectedDuplicatePaths([]);
+      if (result.deleted > 0) {
+        setSelectedDuplicatePaths([]);
+        await onRun();
+      }
+      setDeleteMessage(result.ok ? `Moved ${result.deleted || 0} file${result.deleted === 1 ? "" : "s"} to the Recycle Bin and refreshed the library.` : result.error || "Some files could not be deleted.");
     } catch (error) {
       setDeleteMessage(error?.message || "Delete failed.");
     } finally {
@@ -1767,79 +1817,70 @@ function LibraryAuditPanel({ folder, criteria, report, busy, onChooseFolder, onR
   }
 
   return (
-    <div className="diagnostics-panel audit-panel">
-      <div className="diagnostics-head">
+    <div className="diagnostics-panel audit-panel library-panel">
+      <div className="diagnostics-head library-head">
         <div>
-          <strong>Library audit</strong>
-          <span>{folder || "Choose a folder of FeedPak files to scan recursively."}</span>
+          <strong>FeedPak library</strong>
+          <span>{folder || "Choose the folder FeedBack uses for your FeedPak files."}</span>
         </div>
         <div>
-          <button className="ghost" onClick={onChooseFolder} disabled={busy}><FolderOpen size={16} /> Folder</button>
+          <button className="ghost" onClick={onChooseFolder} disabled={busy}><FolderOpen size={16} /> Choose folder</button>
           <button onClick={onRun} disabled={busy || !folder}>
-            {busy ? <RotateCw className="spin" size={16} /> : <Check size={16} />}
-            {busy ? "Scanning" : "Run audit"}
+            {busy ? <RotateCw className="spin" size={16} /> : <Search size={16} />}
+            {busy ? "Scanning" : report?.ok ? "Rescan" : "Scan library"}
           </button>
         </div>
       </div>
 
       <div className="audit-body">
-        <div className="audit-criteria">
-          {AUDIT_CRITERIA_OPTIONS.map((option) => (
-            <label key={option.key} className={`audit-criterion ${criteria[option.key] ? "active" : ""}`}>
-              <input
-                type="checkbox"
-                checked={!!criteria[option.key]}
-                onChange={(event) => onChangeCriterion(option.key, event.target.checked)}
-                disabled={busy}
-              />
-              <span>{option.label}</span>
-            </label>
-          ))}
+        <div className="library-checks-head">
+          <div>
+            <strong>Checks</strong>
+            <span>Duplicates compare normalized artist and title. The other checks mark packages that may need attention.</span>
+          </div>
+          <div className="audit-criteria">
+            {AUDIT_CRITERIA_OPTIONS.map((option) => (
+              <label key={option.key} className={`audit-criterion ${criteria[option.key] ? "active" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={!!criteria[option.key]}
+                  onChange={(event) => onChangeCriterion(option.key, event.target.checked)}
+                  disabled={busy}
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
         </div>
 
-        {report?.ok === false && <div className="error-box"><AlertTriangle size={17} /> {report.error || "Library audit failed."}</div>}
+        {report?.ok === false && <div className="error-box"><AlertTriangle size={17} /> {report.error || "Library scan failed."}</div>}
+        {!report && (
+          <div className="library-empty-state">
+            <LibraryBig size={34} />
+            <div>
+              <strong>{folder ? "Ready to scan your library" : "Choose your FeedPak folder"}</strong>
+              <span>{folder ? "The scan reads package metadata only and does not change your files." : "FeedForge will recursively find every .feedpak file inside it."}</span>
+            </div>
+          </div>
+        )}
 
         {report?.ok && (
           <>
             <div className="audit-summary">
-              <Metric label="FeedPaks scanned" value={report.total || 0} />
-              <Metric label="Passed" value={report.passed || 0} />
-              <Metric label="Needs work" value={report.needsWork || 0} />
+              <Metric label="Songs found" value={report.total || 0} />
+              <Metric label="Healthy" value={report.passed || 0} />
+              <Metric label="Needs attention" value={report.needsWork || 0} />
               <Metric label="Duplicate groups" value={report.duplicateGroups || 0} tone={report.duplicateGroups ? "warn" : ""} />
             </div>
-            <div className="audit-actions">
-              <span>{report.csvPath ? `Report saved: ${basename(report.csvPath)}` : "Report saved after scan."}</span>
-              <div>
-                <button className="ghost" onClick={() => api.openAuditReport(report.csvPath)} disabled={!report.csvPath}>Open CSV</button>
-                <button className="ghost" onClick={() => api.openAuditReport(report.jsonPath)} disabled={!report.jsonPath}>Open JSON</button>
-              </div>
-            </div>
-            <div className="audit-results">
-              {failedRows.length === 0 ? (
-                <div className="empty compact">No missing items found for the selected criteria.</div>
-              ) : (
-                previewRows.map((row) => (
-                  <div className="audit-row" key={row.filePath}>
-                    <div>
-                      <strong>{row.title || basename(row.filePath)}</strong>
-                      <span>{row.artist || "Unknown Artist"} / {row.relativePath}</span>
-                    </div>
-                    <div className="audit-missing">
-                      {(row.missing || []).map((issue) => <b key={issue}>{issue}</b>)}
-                    </div>
-                  </div>
-                ))
-              )}
-              {failedRows.length > previewRows.length && <span className="muted-text">Showing first {previewRows.length} of {failedRows.length}. Open the CSV for the full report.</span>}
-            </div>
+
             {criteria.checkDuplicates && (
               <div className="duplicate-results">
                 <div className="duplicate-head">
                   <div>
                     <strong>Duplicate songs</strong>
-                    <span>{duplicateGroups.length ? `${duplicateGroups.length} group${duplicateGroups.length === 1 ? "" : "s"} found. FeedForge recommends one file per group, but you decide what to keep.` : "No duplicates found by metadata."}</span>
+                    <span>{duplicateGroups.length ? `${duplicateGroups.length} group${duplicateGroups.length === 1 ? "" : "s"} found. The suggested keep is the package with the most arrangements, stems, and credits.` : "No duplicate artist/title pairs found."}</span>
                   </div>
-                  <button className="danger" onClick={deleteSelectedDuplicates} disabled={!selectedDuplicatePaths.length || isDeletingDuplicates}>
+                  <button className="danger" onClick={deleteSelectedDuplicates} disabled={!selectedDuplicatePaths.length || isDeletingDuplicates || busy}>
                     {isDeletingDuplicates ? <RotateCw className="spin" size={16} /> : <XCircle size={16} />}
                     Move selected to Recycle Bin
                   </button>
@@ -1849,7 +1890,7 @@ function LibraryAuditPanel({ folder, criteria, report, busy, onChooseFolder, onR
                   <div className="duplicate-group" key={group.key}>
                     <div className="duplicate-title">
                       <strong>{group.artist || "Unknown Artist"} - {group.title || "Untitled"}</strong>
-                      <span>{group.album || "No album"} {group.year ? ` / ${group.year}` : ""}</span>
+                      <span>{group.count} files</span>
                     </div>
                     <div className="duplicate-files">
                       {group.files.map((file) => (
@@ -1861,8 +1902,8 @@ function LibraryAuditPanel({ folder, criteria, report, busy, onChooseFolder, onR
                             disabled={file.recommended}
                           />
                           <div>
-                            <strong>{basename(file.filePath)} {file.recommended && <b>Recommended keep</b>}</strong>
-                            <span>{file.relativePath}</span>
+                            <strong>{basename(file.filePath)} {file.recommended && <b>Suggested keep</b>}</strong>
+                            <span>{file.album || "No album"}{file.year ? ` / ${file.year}` : ""} · {file.relativePath}</span>
                           </div>
                           <div className="duplicate-stats">
                             <span>{file.arrangements || 0} arrangements</span>
@@ -1870,7 +1911,7 @@ function LibraryAuditPanel({ folder, criteria, report, busy, onChooseFolder, onR
                             <span>{formatBytes(file.size || 0)}</span>
                           </div>
                           <button type="button" className="ghost" onClick={(event) => { event.preventDefault(); api.showFileInFolder(file.filePath); }}>
-                            <FolderOpen size={15} /> Folder
+                            <FolderOpen size={15} /> Show file
                           </button>
                         </label>
                       ))}
@@ -1879,6 +1920,55 @@ function LibraryAuditPanel({ folder, criteria, report, busy, onChooseFolder, onR
                 ))}
               </div>
             )}
+
+            <div className="library-inventory">
+              <div className="library-inventory-head">
+                <div>
+                  <strong>Your songs</strong>
+                  <span>{filteredRows.length === rows.length ? `${rows.length} FeedPak${rows.length === 1 ? "" : "s"}` : `${filteredRows.length} of ${rows.length} shown`}</span>
+                </div>
+                <div className="filter-pills library-filter-pills" aria-label="Library filter">
+                  <button className={resultFilter === "all" ? "active" : ""} onClick={() => setResultFilter("all")}>All</button>
+                  <button className={resultFilter === "duplicates" ? "active" : ""} onClick={() => setResultFilter("duplicates")} disabled={!criteria.checkDuplicates}>Duplicates</button>
+                  <button className={resultFilter === "issues" ? "active" : ""} onClick={() => setResultFilter("issues")}>Needs attention</button>
+                </div>
+              </div>
+              <div className="library-song-list">
+                {filteredRows.length === 0 ? (
+                  <div className="empty compact">{rows.length ? "No songs match the current search and filter." : "No .feedpak files were found in this folder."}</div>
+                ) : filteredRows.map((row) => (
+                  <div className={`library-song-row ${row.status}`} key={row.filePath}>
+                    <div className="library-song-main">
+                      <strong>{row.title || basename(row.filePath)}</strong>
+                      <span>{row.artist || "Unknown Artist"}</span>
+                    </div>
+                    <div className="library-song-release">
+                      <strong>{row.album || "No album"}</strong>
+                      <span>{row.year || "Year unknown"}{row.duration ? ` · ${duration(row.duration)}` : ""}</span>
+                    </div>
+                    <div className="library-song-stats">
+                      <span>{row.arrangements || 0} arrangements</span>
+                      <span>{row.stems || 0} stems</span>
+                      <span>{formatBytes(row.size || 0)}</span>
+                    </div>
+                    <div className="library-song-status">
+                      {duplicatePaths.has(row.filePath) && <b className="duplicate-badge">Duplicate</b>}
+                      {row.status === "pass" ? <b className="healthy-badge">Healthy</b> : (row.missing || []).map((issue) => <b key={issue}>{issue}</b>)}
+                    </div>
+                    <div className="library-song-path" title={row.filePath}>{row.relativePath}</div>
+                    <button type="button" className="ghost" onClick={() => api.showFileInFolder(row.filePath)}><FolderOpen size={15} /> Show file</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="audit-actions">
+              <span>{report.csvPath ? `Reports saved as ${basename(report.csvPath)} and ${basename(report.jsonPath)}` : "Reports are saved after each scan."}</span>
+              <div>
+                <button className="ghost" onClick={() => api.openAuditReport(report.csvPath)} disabled={!report.csvPath}>Open CSV</button>
+                <button className="ghost" onClick={() => api.openAuditReport(report.jsonPath)} disabled={!report.jsonPath}>Open JSON</button>
+              </div>
+            </div>
           </>
         )}
       </div>
@@ -3117,8 +3207,10 @@ function readSettings() {
   }
 }
 
-function normalizeAuditCriteria(value) {
-  return { ...DEFAULT_AUDIT_CRITERIA, ...(value && typeof value === "object" ? value : {}) };
+function normalizeAuditCriteria(value, settingsVersion = 1) {
+  const normalized = { ...DEFAULT_AUDIT_CRITERIA, ...(value && typeof value === "object" ? value : {}) };
+  if (Number(settingsVersion || 0) < 1) normalized.checkDuplicates = true;
+  return normalized;
 }
 
 function writeSettings(settings) {
