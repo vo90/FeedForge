@@ -25,18 +25,51 @@ test('timing request uses one anonymous fixed-origin read for the exact revision
   assert.equal(requests[0].options.credentials, 'omit');
   assert.equal(requests[0].options.redirect, 'error');
   assert.deepEqual(requests[0].options.headers, { Accept: 'application/json' });
+  assert.equal(result.selectionEvidence.policy, 'primary-before-alternative');
+  assert.deepEqual(result.selectionEvidence.response, [ENTRY]);
 });
 
 test('selection never borrows another song, revision, video, mix or problematic map', () => {
   for (const changed of [
     { songId: '124' }, { revisionId: '457' }, { videoId: 'zzzzzzzzzzz' },
-    { feature: 'backing' }, { feature: 'solo' }, { feature: undefined }, { tracks: [0] }, { tracks: [] },
+    { feature: 'backing' }, { feature: 'solo' }, { feature: undefined }, { tracks: [0] }, { tracks: [] }, { trackHashes: [] },
     { status: 'processing' }, { status: 'failed' }, { problematic: true }, { problematic: {} },
     { problematic: [] }, { problematic: 'false' },
   ]) assert.equal(selectSynchronization([{ ...ENTRY, ...changed }], ID).status, 'unavailable', JSON.stringify(changed));
   for (const problematic of [null, false, undefined]) {
     assert.equal(selectSynchronization([{ ...ENTRY, problematic, feature: 'alternative' }], ID).status, 'done');
   }
+});
+
+test('the primary map outranks alternatives for the identical recording, independent of response order', () => {
+  const alternative = { ...ENTRY, feature: 'alternative', points: [0, 0.75, 2, 3] };
+  for (const entries of [[alternative, ENTRY], [ENTRY, alternative]]) {
+    const result = selectSynchronization(entries, ID);
+    assert.equal(result.status, 'done'); assert.equal(result.feature, null);
+    assert.deepEqual(result.points, ENTRY.points);
+  }
+  assert.equal(selectSynchronization([{ ...alternative, points: null }, ENTRY], ID).status, 'done');
+  assert.equal(selectSynchronization([{ ...ENTRY, points: null }, alternative], ID).reasonCode, 'invalid_points');
+  for (const changed of [{ status: 'pending' }, { problematic: true }, { tracks: [0] }, { trackHashes: ['part'] }]) {
+    assert.equal(selectSynchronization([{ ...ENTRY, ...changed }, alternative], ID).status, 'unavailable');
+  }
+});
+
+test('alternative selection stays bound to the chosen video and rejects conflicting alternatives', () => {
+  const alternative = { ...ENTRY, feature: 'alternative' };
+  const differentPrimary = { ...ENTRY, videoId: 'zzzzzzzzzzz' };
+  const result = selectSynchronization([differentPrimary, alternative], ID);
+  assert.equal(result.status, 'done'); assert.equal(result.feature, 'alternative');
+  assert.deepEqual(result.points, alternative.points);
+  assert.equal(selectSynchronization([alternative, { ...alternative, points: [0, 1, 2] }], ID).reasonCode, 'ambiguous');
+});
+
+test('failed selections retain response evidence without making the result usable', async () => {
+  const entries = [ENTRY, { ...ENTRY, points: [0, 1, 2] }];
+  const result = await retrieveSynchronization(ID, { fetch: async () => response(entries) });
+  assert.equal(result.reasonCode, 'ambiguous');
+  assert.deepEqual(result.selectionEvidence.response, entries);
+  assert.equal(result.points, undefined);
 });
 
 test('conflicting eligible maps are ambiguous; equivalent duplicates are order-independent', () => {

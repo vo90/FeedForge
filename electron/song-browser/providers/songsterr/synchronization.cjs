@@ -44,8 +44,16 @@ function selectSynchronization(entries, identity) {
   const videoEntries = entries.filter((entry) => entry.videoId === identity.videoId);
   const matching = videoEntries.filter((entry) => numeric(entry.songId) === identity.songId && numeric(entry.revisionId) === identity.revisionId);
   if (videoEntries.length && !matching.length) return unavailableSynchronization(identity, 'identity_mismatch');
-  const eligible = matching.filter((entry) => entry.status === 'done' && (entry.feature === null || entry.feature === 'alternative')
-    && entry.tracks == null && (entry.problematic == null || entry.problematic === false));
+  // The public player's ordinary video/load and switchType(main) paths select
+  // the primary (!feature) entry. An alternative may share its video ID while
+  // retaining an older/different map. It must not compete with that primary.
+  // Never replace an unusable primary with an alternative implicitly, or pick
+  // between conflicting primaries by response order. Keep exact-video binding.
+  const primary = matching.filter((entry) => entry.feature === null);
+  const candidates = primary.length ? primary : matching.filter((entry) => entry.feature === 'alternative');
+  const eligible = candidates.filter((entry) => entry.status === 'done'
+    && entry.tracks == null && entry.trackHashes == null && (entry.problematic == null || entry.problematic === false));
+  if (primary.length && eligible.length !== primary.length) return unavailableSynchronization(identity);
   if (!eligible.length) return unavailableSynchronization(identity);
   let points;
   for (const entry of eligible) {
@@ -101,7 +109,11 @@ async function retrieveSynchronization(identity, { fetch, signal, timeoutMs = 15
       let entries;
       try { entries = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
       catch { throw failure('invalid_response', 'Timing response is not JSON.'); }
-      return selectSynchronization(entries, identity);
+      const selected = selectSynchronization(entries, identity);
+      // Preserve the bounded anonymous response alongside the selected map so
+      // a failed or completed import can reproduce the selection independently.
+      // The Python reader hashes/uses only the selected musical map fields.
+      return { ...selected, selectionEvidence: { version: 1, policy: 'primary-before-alternative', response: entries } };
     };
     // Attach timeout/cancellation handlers before invoking an injected or
     // synchronous transport, which can itself abort the caller immediately.
