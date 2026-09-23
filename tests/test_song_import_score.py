@@ -152,7 +152,7 @@ def test_midbar_tempo_applies_to_notes_and_sustains(tmp_path):
 
 def test_raw_midbar_tempo_and_tie_share_one_timeline(tmp_path):
     data = raw_score([measure(beat(3, duration=(1, 2)), beat(3, duration=(1, 2), tie=True))])
-    data["parts"][0]["automations"]["tempo"].append({"measure": 0, "position": [1, 2], "bpm": 60})
+    data["parts"][0]["automations"]["tempo"].append({"measure": 0, "position": 1920, "bpm": 60})
     result = import_json(tmp_path, data)
     assert len(result["tracks"][0]["notes"]) == 1
     assert result["tracks"][0]["notes"][0]["sus"] == 3
@@ -269,7 +269,7 @@ def test_grouped_on_beat_grace_keeps_original_beat_span_with_repeat_and_tempo_ch
     grace2 = {**beat(3, duration=(1, 32)), "graceNote": "onBeat"}
     data = raw_score([measure(grace1, grace2, beat(4, duration=(1, 2)),
                               beat(6, duration=(1, 2)), repeatStart=True, repeat=2)])
-    data["parts"][0]["automations"]["tempo"].append({"measure": 0, "position": [1, 2], "bpm": 60})
+    data["parts"][0]["automations"]["tempo"].append({"measure": 0, "position": 1920, "bpm": 60})
     result = import_json(tmp_path, data)
     notes = result["tracks"][0]["notes"]
     # Songsterr limits the complete group to its average encoded duration.

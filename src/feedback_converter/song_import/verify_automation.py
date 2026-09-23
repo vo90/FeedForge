@@ -19,9 +19,10 @@ def expand(auto, bars, events, loc):
     original = {boundaries[b] + q: bpm for (b, q), bpm in events.items()}
     result = dict(original)
     if enabled and any(t.get("linear") for t in auto.get("tempo", [])):
-        if holds or any(t.get("position") not in (None, 0, [0, 1]) for t in auto["tempo"]):
+        if holds:
             unsupported(loc, "Combined tempo automation is not independently verified.")
-        destinations = {boundaries[integer(t["measure"], loc)] for t in auto["tempo"] if t.get("linear")}
+        destinations = {boundaries[integer(t["measure"], loc)] + fraction(t.get('position', 0), loc) / 960
+                        for t in auto["tempo"] if t.get("linear")}
         points = sorted(original.items())
         for (start, a), (end, b) in zip(points, points[1:]):
             if end in destinations:
@@ -45,7 +46,7 @@ def expand(auto, bars, events, loc):
         choices = [t for t in original if t <= start]
         if not choices:
             raise ValueError(loc + ": missing fermata base tempo")
-        candidates = [(boundaries[integer(t['measure'], loc)] + fraction(t.get('position', 0), loc) * 4, t)
+        candidates = [(boundaries[integer(t['measure'], loc)] + fraction(t.get('position', 0), loc) / 960, t)
                       for t in auto.get('tempo', [])]
         raw = sorted((x for x in candidates if x[0] <= start), key=lambda x: x[0])[-1][1]
         raw_rate = fraction(raw['bpm'], loc)

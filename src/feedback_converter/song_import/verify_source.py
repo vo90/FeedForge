@@ -370,7 +370,7 @@ def songsterr(document):
             if tempo.get("linear") is not None and type(tempo["linear"]) is not bool:
                 raise ValueError(loc + ": invalid linear flag")
             bi = integer(tempo["measure"], loc)
-            q = fraction(tempo.get("position", 0), loc) * 4
+            q = fraction(tempo.get("position", 0), loc) / 960
             bpm = fraction(tempo["bpm"], loc) * F(4, integer(tempo.get("type", 4), loc))
             if tempo.get("dotted") is not None and type(tempo["dotted"]) is not bool:
                 raise ValueError(loc + ": invalid dotted tempo")

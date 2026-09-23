@@ -22,9 +22,9 @@ def performed_tempos(automations, measures, events):
     by_time = {starts[bar] + position: bpm for (bar, position), bpm in events.items()}
     ramps = [t for t in automations.get("tempo", []) if t.get("linear")]
     if gradual and ramps:
-        if fermatas or any(t.get("position") not in (None, 0, [0, 1]) for t in automations["tempo"]):
-            raise ScoreImportError("Combined fermata/ramp or nonzero legacy tempo positions need additional interpretation.")
-        linear = {starts[integer(t["measure"], "ramp measure")] for t in ramps}
+        if fermatas:
+            raise ScoreImportError("Combined fermata/ramp automation needs additional interpretation.")
+        linear = {starts[integer(t["measure"], "ramp measure")] + rational(t.get('position', 0)) / 960 for t in ramps}
         times = sorted(by_time)
         for left, right in zip(times, times[1:]):
             if right not in linear:
@@ -56,7 +56,7 @@ def performed_tempos(automations, measures, events):
             raise ScoreImportError("Fermata has no explicit preceding tempo.")
         # Qr/ei round the authored BPM before converting its note unit. The
         # generated hold/restoration events copy type but not the dotted flag.
-        raw_tempos = {starts[integer(t['measure'], 'tempo measure')] + rational(t.get('position', 0)) * 4: t
+        raw_tempos = {starts[integer(t['measure'], 'tempo measure')] + rational(t.get('position', 0)) / 960: t
                       for t in automations.get('tempo', [])}
         raw = raw_tempos[max(t for t in raw_tempos if t <= at)]
         authored_bpm = rational(raw['bpm'], 'tempo')

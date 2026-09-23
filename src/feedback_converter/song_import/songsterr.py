@@ -236,8 +236,9 @@ def parse(document: dict, *, track_indices=None) -> Score:
                 raise ScoreImportError("Tempo references a missing measure.")
             if tempo.get("linear") is not None and type(tempo["linear"]) is not bool:
                 raise ScoreImportError("Invalid linear tempo flag.")
-            # Songsterr's exact duration and position fractions are whole-note units.
-            position = rational(tempo.get("position", 0), "tempo position") * 4
+            # Tempo automation uses static ticks (960 per quarter), unlike
+            # beat.duration's whole-note fractions. Fractional ticks are valid.
+            position = rational(tempo.get("position", 0), "tempo position") / 960
             bpm = float(rational(tempo.get("bpm"), "tempo"))
             unit = integer(tempo.get("type", 4), "tempo note value")
             if unit <= 0:

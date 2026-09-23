@@ -96,7 +96,7 @@ def test_tied_chord_repeats_keep_each_authored_onset_and_outgoing_segment(tmp_pa
 def test_tempo_and_nonlinear_alignment_map_each_incoming_destination(tmp_path):
     document = raw_score([measure(beat(5, duration=(1, 4)), beat(5, duration=(1, 4), tie=True, slide="below"),
         beat(5, duration=(1, 4), tie=True, slide="above"), beat(5, duration=(1, 4), tie=True, slide="below"))])
-    document["parts"][0]["automations"]["tempo"].append({"measure": 0, "position": [1, 2], "bpm": 60})
+    document["parts"][0]["automations"]["tempo"].append({"measure": 0, "position": 1920, "bpm": 60})
     note = import_json(tmp_path, document)["tracks"][0]["notes"][0]
     assert [m["time"] for m in note["slide_in_marks"]] == [.5, 1, 2]
     alignment = {"mapping": "piecewise-linear", "anchors": [
