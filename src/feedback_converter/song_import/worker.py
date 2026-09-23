@@ -78,7 +78,7 @@ def run_import(request: dict, progress=None) -> dict:
         audio = prepare_audio(request.get("audio"), job, tools=resolve_tools(request.get("tools") or {}))
         alignment = _choose_alignment(performance, audio, request, progress)
         alignment_recipe = {key: alignment[key] for key in
-                            ("method", "offset", "scale", "mapping", "provenance") if key in alignment}
+                            ("method", "offset", "scale", "mapping", "provenance", "terminalSustains") if key in alignment}
         alignment_recipe.setdefault("method", VERSION)
         recipe = {"version": 8, "preservationContract": CONTRACT_VERSION, "source": "songsterr", "songId": metadata.get("songId"),
                   "revisionId": metadata.get("revisionId"), "scoreHash": score_hash, "audioHash": audio["hash"],
@@ -122,6 +122,8 @@ def run_import(request: dict, progress=None) -> dict:
         summary["outputHash"] = evidence["outputHash"]
         summary["timing"] = "source_map" if alignment.get("method") == "songsterr-video-points-v1" else "estimated"
         summary["compatibility"] = recipe["compatibility"]
+        if verification.get("adjustments"):
+            summary["adjustments"] = verification["adjustments"]
         if (request.get("outputSettings") or {}).get("generateDifficulty") is True:
             summary["generatedDifficulty"] = {"requested": True, "sourceAuthored": False,
                                                "verificationScope": "full-source-chart"}

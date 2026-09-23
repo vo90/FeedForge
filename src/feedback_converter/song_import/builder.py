@@ -18,6 +18,7 @@ from ..output_naming import output_path, safe_path_segment
 from .alignment import map_time
 from .audio import ImportFailure
 from .synchronization import source_time_scale
+from .terminal_sustains import allowed as terminal_sustains_allowed, trim_held_note
 
 
 def _tuning_offsets(track: dict) -> list[int]:
@@ -53,9 +54,10 @@ def _retime_note(note: dict, alignment: dict, duration: float, *, chord_time: fl
                else original_sustain * float(alignment["scale"]))
     # Match the completed archive's microsecond timing precision. Check the
     # actual serialized onset/sustain as well as the unrounded source map;
-    # never clip a note or let the old 50 ms allowance hide missing audio.
+    # Only the explicit final-sustain policy may shorten a held tail; the old
+    # 50 ms allowance must never hide missing attacks or technique events.
     archived_end = round(start, 6) + round(sustain, 6)
-    if max(start + sustain, archived_end) > duration + 0.0000011:
+    if max(start + sustain, archived_end) > duration + 0.0000011 and not terminal_sustains_allowed(alignment, duration):
         raise ImportFailure("alignment_failed", "The matched tab contains notes outside the recording.",
                             {"mappedNoteEnd": start + sustain, "archivedNoteEnd": archived_end,
                              "audioDuration": duration})
@@ -130,6 +132,13 @@ def _retime_note(note: dict, alignment: dict, duration: float, *, chord_time: fl
             result["bnv"] = [{**point, "t": round(map_time(alignment, original + float(point["t"])) - start, 6)} for point in curve]
         else:
             result["bnv"] = [{**point, "t": round(float(point["t"]) * float(alignment["scale"]), 6)} for point in note["bnv"]]
+    if terminal_sustains_allowed(alignment, duration):
+        # Chord children inherit their attack from the chord. Supply it for the
+        # policy check without changing the archived representation.
+        adjusted, _ = trim_held_note({**result, "t": round(start, 6)}, duration)
+        if "t" not in result:
+            adjusted.pop("t")
+        result = adjusted
     return result
 
 
@@ -185,7 +194,7 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         timeline[key] = _timeline_items(performance.get(key, []), alignment, duration)
     if alignment.get("mapping") == "piecewise-linear" and alignment.get("tempos"):
         timeline["tempos"] = [deepcopy(item) for item in alignment["tempos"] if 0 <= item["time"] <= duration]
-    arrangements = []
+    arrangements, sustain_adjustments = [], []
     used = set()
     for index, track in enumerate(performance.get("tracks", [])):
         if track.get("instrument") not in {"guitar", "bass"}:
@@ -213,6 +222,19 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             chart["tempos"] = timeline["tempos"]
         if timeline.get("time_signatures"):
             chart["time_signatures"] = timeline["time_signatures"]
+        if terminal_sustains_allowed(alignment, duration):
+            # The evidence describes individual strings, including chord members
+            # and tied notes, independently of chord/template grouping.
+            originals = [(n, n["t"]) for n in track.get("notes", [])]
+            originals += [(n, n.get("t", c["t"])) for c in track.get("chords", []) for n in c.get("notes", [])]
+            for note, start in originals:
+                left = map_time(alignment, start)
+                sustain = round(map_time(alignment, start + note.get("sus", 0)) - left, 6)
+                if left + sustain > duration + 0.0000011:
+                    exported = round(math.floor(duration * 1_000_000) / 1_000_000 - left, 6)
+                    sustain_adjustments.append({"trackId": track["id"], "string": note["s"], "fret": note["f"],
+                                                "audioStart": round(left, 6), "originalDuration": sustain,
+                                                "exportedDuration": exported, "trimmedSeconds": round(sustain - exported, 6)})
         if settings.get("generateDifficulty") is True:
             ensure_difficulty(chart, duration=duration)
         relative_file = f"arrangements/{ident}.json"
@@ -257,6 +279,13 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         shutil.copyfile(source_path, package / original)
         _write_json(package / "import/compatibility.json", compatibility)
         manifest.setdefault("song_import", {}).update(sourceFile=original, compatibilityFile="import/compatibility.json")
+    if sustain_adjustments:
+        if source_path is None:
+            raise ImportFailure("unsupported_score", "Sustain adjustments require the retained original tab.")
+        detail = {**alignment["terminalSustains"], "notes": sustain_adjustments}
+        _write_json(package / "import/sustain-adjustments.json", detail)
+        manifest.setdefault("song_import", {}).update(terminalSustains=alignment["terminalSustains"],
+                                                       adjustmentsFile="import/sustain-adjustments.json")
     if artwork and artwork.get("status") == "matched" and artwork.get("path"):
         with Image.open(artwork["path"]) as cover:
             extension = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}[cover.format]

@@ -8,6 +8,7 @@ the complete applied alignment alongside this bounded, JSON-serializable report.
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import math
 from pathlib import Path, PurePosixPath
@@ -18,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 9
+VERSION = 10
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "bn", "pkd"}
 TUNINGS = {"guitar": {6: [40, 45, 50, 55, 59, 64], 7: [35, 40, 45, 50, 55, 59, 64], 8: [30, 35, 40, 45, 50, 55, 59, 64]},
@@ -252,7 +253,7 @@ def _compatibility_report(report, score_path, source, check):
         check.fail("compatibility", "import/compatibility", "The compatibility report is incomplete.")
         return
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
-    check.equal("compatibility_version", "import/compatibility", 9, report.get("version"))
+    check.equal("compatibility_version", "import/compatibility", 10, report.get("version"))
     check.equal("compatibility_status", "import/compatibility", "limitations" if rows else "compatible", report.get("status"))
     target = report.get("target", {})
     check.equal("compatibility_target", "import/compatibility", "1.16.0", target.get("feedpak"))
@@ -363,6 +364,78 @@ def _notation(archive, arrangement, wanted, check):
                     check.fail("invented_notation_note", loc + f"/notes/{ni}/" + key, "A notation note property absent from the source was introduced.")
 
 
+def _terminal_adjustments(wanted, alignment, recipe, archive, duration, source, check):
+    """Recompute permitted changes from independent source facts, never from the ledger.
+
+    Kept separate from the producer's trim helper so a wrong sustain or missing
+    gesture cannot validate itself just by being listed in its own report.
+    """
+    policy = alignment.get("terminalSustains")
+    if not policy:
+        if recipe.get("terminalSustains") or recipe.get("adjustmentsFile"):
+            check.fail("unexpected_adjustments", "import", "The package declares adjustments absent from its verified recording map.")
+        return None
+    required = {"version": 1, "policy": "trim-final-sustain-v1", "audioDuration": duration}
+    if (policy != required or recipe.get("terminalSustains") != required
+            or recipe.get("preservationContract", 0) < 10 or source.format != "songsterr"
+            or alignment.get("method") != "songsterr-video-points-v1" or alignment.get("mapping") != "piecewise-linear"):
+        check.fail("adjustment_policy", "import", "The final-sustain policy or recording identity is invalid.")
+        return None
+    cutoff = math.floor(duration * 1_000_000) / 1_000_000
+    changes = []
+    for part in wanted["parts"]:
+        for item in part["notes"]:
+            note = item["note"]
+            start, sustain = note["t"], note.get("sus", 0)
+            if start < 0 or start >= duration:
+                check.fail("adjustment_attack", item["locations"][0], "A new attack lies outside the recording; it cannot be trimmed.")
+                continue
+            if start + sustain <= duration + TIME_TOLERANCE:
+                continue
+            shortened = round(cutoff - start, 6)
+            curve = note.get("bnv", [])
+            if any(p["t"] > shortened + TIME_TOLERANCE for p in curve):
+                earlier = [p for p in curve if p["t"] <= shortened]
+                later = [p for p in curve if p["t"] > shortened]
+                if not earlier or any(abs(p["v"] - earlier[-1]["v"]) > 1e-10 for p in later):
+                    check.fail("adjustment_technique", item["locations"][0], "The audio boundary crosses a changing bend curve.")
+                    continue
+                curve = earlier + ([{"t": shortened, "v": earlier[-1]["v"]}] if earlier[-1]["t"] < shortened else [])
+            if (shortened <= 0
+                    or any(k in note and note[k] is not None and note[k] != -1 for k in ("sl", "slu"))
+                    or note.get("slide_out") and not note.get("slide_out_marks")
+                    or note.get("bn") and not note.get("bnv")
+                    or any(p["end"] > shortened + TIME_TOLERANCE for p in note.get("slide_out_marks", []))
+                    or any(p["time"] > shortened + TIME_TOLERANCE for p in note.get("slide_in_marks", []))):
+                check.fail("adjustment_technique", item["locations"][0], "Shortening this note would change an authored bend or slide.")
+                continue
+            changes.append({"trackId": part["source"].id, "string": note["s"], "fret": note["f"],
+                            "audioStart": round(start, 6), "originalDuration": round(sustain, 6),
+                            "exportedDuration": shortened, "trimmedSeconds": round(sustain - shortened, 6)})
+            note["sus"] = shortened
+            if "bnv" in note:
+                note["bnv"] = curve
+    if not changes:
+        check.fail("empty_adjustments", "import", "The package declares sustain adjustments without affected source notes.")
+    detail = _json(archive, recipe.get("adjustmentsFile", ""), check)
+    check.equal("adjustment_header", "import/adjustments", required, {k:v for k,v in detail.items() if k != "notes"})
+    recorded = detail.get("notes")
+    if not isinstance(recorded, list) or any(not isinstance(n, dict) for n in recorded):
+        check.fail("adjustment_entries", "import/adjustments", "The adjustment ledger has invalid entries.")
+        return None
+    key = lambda n:(str(n.get("trackId")), n.get("string", -1), n.get("audioStart", -1), n.get("fret", -1))
+    check.equal("adjustment_count", "import/adjustments", len(changes), len(recorded))
+    for index, (a,b) in enumerate(zip(sorted(changes,key=key),sorted(recorded,key=key))):
+        where = f"import/adjustments/notes/{index}"
+        check.equal("adjustment_fields", where, sorted(a), sorted(b))
+        for field, value in a.items():
+            if field in {"trackId", "string", "fret"}:
+                check.equal("adjustment_identity", where + "/" + field, value, b.get(field))
+            else:
+                check.near("adjustment_value", where + "/" + field, value, b.get(field))
+    return {"terminalSustains": len(changes), "maxShorteningSeconds": max((n["trimmedSeconds"] for n in changes), default=0)}
+
+
 def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: dict | None = None) -> dict:
     """Compare an immutable raw score with a completed staged FeedPak.
 
@@ -438,7 +511,23 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             duration = manifest.get("duration")
             if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration <= 0:
                 raise ValueError("manifest/duration: invalid audio duration")
-            if alignment.get("provenance", {}).get("terminalBeyondAudio") == "silent_notation_only":
+            adjustments = _terminal_adjustments(wanted, alignment, recipe, z, duration, source, check)
+            if adjustments:
+                report["adjustments"] = adjustments
+                # An adjustment must use the real packaged audio boundary, not
+                # an invented manifest duration that happens to excuse a cut.
+                import soundfile as sf
+                full = [stem for stem in manifest.get("stems", []) if stem.get("id") == "full"]
+                if len(full) != 1:
+                    check.fail("adjustment_audio", "manifest/stems", "A final sustain needs one full recording.")
+                else:
+                    try:
+                        info = sf.info(io.BytesIO(z.read(full[0]["file"])))
+                        check.near("adjustment_audio_duration", "manifest/duration", info.frames / info.samplerate,
+                                   duration, 1 / info.samplerate + TIME_TOLERANCE)
+                    except (RuntimeError, ValueError) as exc:
+                        check.fail("adjustment_audio", "audio", str(exc))
+            if alignment.get("provenance", {}).get("terminalBeyondAudio") in {"silent_notation_only", "recorded_sustain_adjustments"} or adjustments:
                 anchors = alignment.get("anchors", [])
                 if (alignment.get("mapping") != "piecewise-linear"
                         or alignment.get("provenance", {}).get("terminalBoundary") not in {"explicit", "songsterr-last-interval"}

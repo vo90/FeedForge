@@ -46,7 +46,8 @@ export function SongsterrJob({ job, api, action, busy }) {
     {active ? <progress className="sb-progress" aria-label={`${job.title}: ${LABELS[job.state]}`} /> : null}
     <p>{job.error || job.message}</p>
     {job.revisionId ? <small>Approved revision {job.revisionId}</small> : null}
-    {job.state === 'completed' ? <p>{job.verification?.status === 'passed' ? 'Conversion checked against the source tab.' : job.verification?.status === 'modified' ? 'This file has changed since conversion. The report describes the original import.' : 'Source verification is unavailable for this file.'}</p> : null}
+    {job.state === 'completed' ? <p>{job.verification?.status === 'passed' ? job.verification?.adjustments?.terminalSustains ? 'Conversion checked against the source tab and recorded sustain adjustments.' : 'Conversion checked against the source tab.' : job.verification?.status === 'modified' ? 'This file has changed since conversion. The report describes the original import.' : 'Source verification is unavailable for this file.'}</p> : null}
+    {job.state === 'completed' && job.verification?.adjustments?.terminalSustains ? <p>{job.verification.adjustments.terminalSustains} final {job.verification.adjustments.terminalSustains === 1 ? 'sustain' : 'sustains'} shortened to the audio ending. Original durations are saved with the tab.</p> : null}
     {job.verification?.timing ? <small>{job.verification.timing === 'source_map' ? 'Timing: Songsterr recording map.' : 'Timing: automatic estimate.'}</small> : null}
     {job.verification?.compatibility?.status === 'requires_consumer_support' ? <p>Ghost-note or directional-slide symbols need a FeedBack version that supports them. Their original meaning is preserved in this file.</p> : null}
     {job.artwork ? <p>{job.artwork.status === 'matched' ? `Album cover: ${job.artwork.album || 'matched album'}.` : 'Album cover unavailable or uncertain. You can add an image in Edit FeedPaks.'}</p> : null}

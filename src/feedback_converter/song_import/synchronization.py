@@ -12,6 +12,7 @@ import math
 import re
 
 from .audio import ImportFailure
+from .terminal_sustains import policy_for, trim_held_note
 
 VERSION = "songsterr-video-points-v1"
 MAX_MEASURES = 20_000
@@ -123,7 +124,8 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
         # The public player repeats the last interval until every progression
         # boundary exists (video/putPointsIntoPlayer). These are trailing
         # boundaries only, never replacements for absent interior entries.
-        # All playable events must still fit the actual recording below.
+        # Attacks and pitch gestures must still fit the actual recording;
+        # held tails use the separately recorded final-sustain policy below.
         interval = points[-1] - points[-2]
         points = [*points, *(points[-1] + interval * i for i in range(1, inferred_count + 1))]
     if len(points) != len(measures) + 1:
@@ -133,7 +135,7 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
     silent_terminal = points[-1] > duration + 0.05
     # Supplied or source-rule trailing boundaries can include written silence
     # past the recording. Every playable attack, sustain and bend is checked
-    # below; only the nonplayable grid may stop at the recording boundary.
+    # below; shortening a held tail requires an explicit adjustment record.
     anchors = []
     previous_end, previous_quarter = 0.0, 0.0
     tempo_points = timeline.get("tempoPoints") or []
@@ -172,7 +174,7 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
         bpm = tempo_points[bisect_right(tempo_times, time) - 1]["bpm"] / source_time_scale(result, time)
         tempos.append({"time": map_source_time(result, time, allow_negative=True), "bpm": bpm})
     # Keep a tempo at the recording origin when source anchors describe silent
-    # pre-roll. No playable note or sustain is ever clipped into the recording.
+    # pre-roll. A playable attack before the recording is never shifted into it.
     mapped_tempos = []
     for tempo in tempos:
         item = {**tempo, "time": max(0.0, tempo["time"])}
@@ -193,7 +195,7 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
                               "sourceSyncInferredTerminalBoundary": inferred_terminal,
                               "sourceSyncInferredBoundaryCount": inferred_count,
                               "sourceSyncSilentTerminalExtension": silent_terminal}})
-    checked = 0
+    checked, trimmed = 0, 0
     for track in performance.get("tracks", []):
         notes = [(note, note.get("t")) for note in track.get("notes", [])]
         notes += [(note, note.get("t", chord.get("t"))) for chord in track.get("chords", []) for note in chord.get("notes", [])]
@@ -208,15 +210,29 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
                 _unavailable("note_outside_map")
             if mapped_start < 0:
                 _unavailable("negative_note_time")
-            # Only allow serialization-scale rounding, not a 50 ms musical
-            # overrun that the independent completed-package verifier rejects.
-            if mapped_end > duration + 0.0000011:
+            if mapped_start >= duration:
                 _unavailable("note_outside_recording", mappedNoteEnd=mapped_end, audioDuration=duration)
             for point in note.get("bnv", []):
                 if (not isinstance(point, dict) or not _number(point.get("t")) or not _number(point.get("v"))
                         or point["t"] < 0 or point["t"] > sustain + _EPSILON):
                     _unavailable("invalid_bend_timing")
+            if mapped_end > duration + 0.0000011:
+                mapped = {**note, "t": round(mapped_start, 6), "sus": round(mapped_end - mapped_start, 6)}
+                for key, coordinates in (("bnv", ("t",)), ("slide_out_marks", ("start", "end")), ("slide_in_marks", ("time",))):
+                    if key in mapped:
+                        mapped[key] = [{**p, **{k: round(_mapped_value(result, start + p[k]) - mapped_start, 6) for k in coordinates}}
+                                       for p in mapped[key]]
+                try:
+                    _, adjustment = trim_held_note(mapped, duration)
+                except ImportFailure as exc:
+                    _unavailable("terminal_technique_outside_recording", mappedNoteEnd=mapped_end, audioDuration=duration, message=str(exc))
+                trimmed += adjustment is not None
             checked += 1
     if not checked:
         _unavailable("no_playable_notes")
+    if trimmed:
+        result["terminalSustains"] = policy_for(duration)
+        result["diagnostics"]["shortenedFinalSustains"] = trimmed
+        if silent_terminal:
+            result["provenance"]["terminalBeyondAudio"] = "recorded_sustain_adjustments"
     return result

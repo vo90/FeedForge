@@ -36,8 +36,10 @@ Songsterr's player extends incomplete maps by repeating the final known interval
 until it has enough boundaries. FeedForge follows this source-defined trailing
 rule only with at least two supplied points, records the inference count, and
 checks every playable event against the actual recording. It never fills missing
-interior entries. Trailing written silence may exceed the audio; attacks and
-sustains may not. See `songsterr-silent-terminal.md` for the current evidence.
+interior entries. Trailing written silence may exceed the audio; attacks may not.
+Contract 10 permits explicitly recorded shortening of final held sustains, while
+retaining the original tab. See `songsterr-silent-terminal.md` for map evidence
+and `songsterr-terminal-sustains.md` for the precise adjustment policy.
 
 Negative initial points can describe silent score pre-roll before recording time
 zero. They are retained during validation. Negative nonplayable timeline markers

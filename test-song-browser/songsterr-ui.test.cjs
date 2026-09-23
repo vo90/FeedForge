@@ -41,6 +41,14 @@ test('conversion fidelity, audio timing and artwork have separate honest outcome
   assert.doesNotMatch(checked + modified, /library doctor|repair.*required/i);
 });
 
+test('recorded sustain adjustments are visible without claiming exact source durations', () => {
+  const html = job({ state: 'completed', verification: { status: 'passed', adjustments: { terminalSustains: 5 } } });
+  assert.match(html, /5 final sustains shortened to the audio ending/);
+  assert.match(html, /Original durations are saved with the tab/);
+  assert.match(html, /source tab and recorded sustain adjustments/);
+  assert.doesNotMatch(job({ state: 'completed', verification: { status: 'passed' } }), /sustains shortened/);
+});
+
 test('arrangement diagnostics do not imply a completed or partial import', () => {
   const html = render(compiled.exports.CompatibilityDetails, { report: { findingCount: 0, findings: [],
     arrangements: [{ trackIndex: 3, name: 'Bass', status: 'score_ready' }, { trackIndex: 8, name: 'Lead', status: 'blocked', message: 'Unresolved tie.' }] } });

@@ -1,5 +1,9 @@
 # Explicit silent terminal boundaries
 
+Contract 10 additionally permits recorded final-sustain adjustments under the
+narrow policy in `songsterr-terminal-sustains.md`. The rules below describe the
+original silent-grid exception.
+
 A source timing map may end the final written bar after the recording ends.
 This does not invalidate an otherwise complete recording if only silent notation
 extends beyond it. The supplied map is retained unchanged; no note, attack,

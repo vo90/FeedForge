@@ -1,5 +1,8 @@
 # Consistent recording-end checks
 
+This describes the original strict boundary fix. Contract 10 adds the explicit,
+independently verified held-tail exception in `songsterr-terminal-sustains.md`.
+
 The Hotel California Solo benchmark reached final verification after the source
 map and builder allowed playable sustains up to 50 ms beyond the recording.
 The independent verifier correctly rejected those notes. This was an alignment

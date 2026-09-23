@@ -95,20 +95,23 @@ def test_explicit_silent_trailing_bars_are_retained_without_clipping_playable_ev
 
 @pytest.mark.parametrize('overrun', [.00001, .02, .049])
 @pytest.mark.parametrize('chord', [False, True])
-def test_short_audio_overrun_is_an_alignment_error_before_archive_verification(overrun, chord):
+def test_short_final_sustain_overrun_is_recorded_but_unapproved_maps_still_fail(overrun, chord):
     performance = render(score_fixture())
     note = performance['tracks'][0]['notes'][0]
+    note.pop('bnv', None)
+    note.pop('bn', None)
     # The fixture's mapped tie ends at 4.25 seconds; the remaining bars are
-    # silence. Even an otherwise tiny missing piece must not shorten the tie.
+    # silence. The approved source map can shorten its constant held tail;
+    # an old/unmarked alignment cannot silently do the same.
     alignment = align(performance)
     if chord:
         start = note['t']
         note = {k: v for k, v in note.items() if k != 't'}
         performance['tracks'][0]['notes'] = []
         performance['tracks'][0]['chords'] = [{'t': start, 'notes': [note]}]
-    error = unavailable('note_outside_recording',
-                        lambda: align(performance, audio=audio_fixture(4.25 - overrun)))
-    assert error.diagnostics['mappedNoteEnd'] == pytest.approx(4.25)
+    adjusted = align(performance, audio=audio_fixture(4.25 - overrun))
+    assert adjusted['terminalSustains']['policy'] == 'trim-final-sustain-v1'
+    assert _retime_note(note, adjusted, 4.25 - overrun, chord_time=1 if chord else None)['sus'] == pytest.approx(3 - overrun)
     with pytest.raises(ImportFailure) as caught:
         _retime_note(note, alignment, 4.25 - overrun, chord_time=1 if chord else None)
     assert caught.value.code == 'alignment_failed'
@@ -210,13 +213,13 @@ def test_official_single_terminal_extension_is_marked_and_audio_bounded():
     assert silent["anchors"][-1]["audio"] == 6.25
     assert silent["provenance"]["terminalBeyondAudio"] == "silent_notation_only"
     assert _retime_note(render(score_fixture())["tracks"][0]["notes"][0], silent, 5)["sus"] == 3
-    unavailable("note_outside_recording", lambda: align(points=(.25, 3.25), audio=audio_fixture(4.6)))
+    unavailable('terminal_technique_outside_recording', lambda: align(points=(.25,3.25), audio=audio_fixture(4.6)))
     explicit = align(points=(.25, 3.25, 6.25), audio=audio_fixture(5))
     assert explicit['anchors'] == silent['anchors']
     assert explicit['provenance']['terminalBoundary'] == 'explicit'
     assert explicit['provenance']['terminalBeyondAudio'] == 'silent_notation_only'
-    unavailable('note_outside_recording', lambda: align(points=(.25, 3.25, 6.25), audio=audio_fixture(4.6)))
-    unavailable('note_outside_recording', lambda: align(points=(.25, 5.25, 6.25), audio=audio_fixture(5)))
+    unavailable('terminal_technique_outside_recording', lambda: align(points=(.25,3.25,6.25), audio=audio_fixture(4.6)))
+    unavailable('terminal_technique_outside_recording', lambda: align(points=(.25, 5.25, 6.25), audio=audio_fixture(5)))
     unavailable("point_count_mismatch", lambda: align(points=(.25,)))
     with pytest.raises(ImportFailure, match="cover"):
         map_time(result, 4.1)

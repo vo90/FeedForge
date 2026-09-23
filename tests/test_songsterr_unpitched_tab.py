@@ -115,7 +115,7 @@ def test_packaged_tab_is_independently_verified_and_corruption_is_rejected(tmp_p
     performance = load_performance(path)
     alignment = {'status': 'validated', 'offset': 0, 'scale': 1}
     result = build_feedpak(performance, audio, alignment, job, output_dir=tmp_path / 'library',
-                          source_path=path, compatibility=performance['compatibilityReport'], recipe={'preservationContract': 9})
+                          source_path=path, compatibility=performance['compatibilityReport'], recipe={'preservationContract': 10})
     archive = Path(result['stagingPath'])
     assert validate_feedpak(archive).ok
     verified = verify_import(path, archive, alignment)
