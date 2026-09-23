@@ -16,7 +16,7 @@ function checkedFile(root, relative, expected, maxBytes) {
 }
 
 function inspectEvidence(root, reference, outputHash) {
-  if (![1, 2, 3, 4, 5, 6].includes(reference?.version) || !DIGEST.test(reference.id || '')) throw new Error('The conversion report is unavailable.');
+  if (![1, 2, 3, 4, 5, 6, 7].includes(reference?.version) || !DIGEST.test(reference.id || '')) throw new Error('The conversion report is unavailable.');
   const filename = checkedFile(root, `records/${reference.id}.json`, reference.id, 1024 * 1024);
   const record = JSON.parse(fs.readFileSync(filename, 'utf8'));
   const report = checkedFile(root, `objects/${record.objects?.verification}`, record.objects?.verification, 16 * 1024 * 1024);
@@ -82,8 +82,8 @@ function compatibilityBacklog(root) {
     // independent package verification under the current contract.
     let checked;
     try { checked = inspectEvidence(root, reference); } catch { unreadable++; continue; }
-    if (checked.verification.version === 6 && checked.verification.status === 'passed' && reference.version === 6
-        && report.version >= 6 && DIGEST.test(checked.record.outputHash || '')) {
+    if (checked.verification.version === 7 && checked.verification.status === 'passed' && reference.version === 7
+        && report.version >= 7 && DIGEST.test(checked.record.outputHash || '')) {
       const active = new Set(report.findings.map(f => JSON.stringify([f.feature, f.category, f.impact])));
       for (const [key, finding] of history.get(sourceKey) || []) {
         if (!active.has(key)) resolved.push({ ...finding, ...identity, sourceKey, reportId: reference.id,
