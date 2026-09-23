@@ -19,6 +19,16 @@ const render = (Component, props) => renderToStaticMarkup(React.createElement(Co
 const job = (change) => render(SongsterrJob, { job: { ...base, ...change }, api: {}, action() {}, busy: false });
 const buttonText = (html) => [...html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map((match) => match[1].replace(/<[^>]*>/g, '').trim());
 
+test('completed imports distinguish limitations without implying a failed or fully supported chart', () => {
+  assert.match(job({ state: 'completed', compatibility: { status: 'limitations' } }), /Ready with limitations/);
+  assert.doesNotMatch(job({ state: 'failed', compatibility: { status: 'limitations' } }), /Ready with limitations/);
+  const html = render(compiled.exports.CompatibilityDetails, { report: { findingCount: 1, findings: [
+    { feature: '<script>future</script>', category: 'converter_gap', arrangement: 'Lead', measure: 5, beat: 2, value: '<img>', message: 'Not rendered.' }
+  ] } });
+  assert.match(html, /Measure 5/); assert.match(html, /beat 2/);
+  assert.match(html, /&lt;script&gt;/); assert.doesNotMatch(html, /<script|<img/);
+});
+
 test('conversion fidelity, audio timing and artwork have separate honest outcomes', () => {
   const checked = job({ state: 'completed', verification: { status: 'passed', timing: 'estimated' }, artwork: { status: 'unavailable' } });
   assert.match(checked, /checked against the source tab/);

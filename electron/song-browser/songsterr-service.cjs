@@ -102,6 +102,16 @@ function registerSongsterr({ app, BrowserWindow, session, ipcMain, dialog, shell
     fs.copyFileSync(bundle, selected.filePath);
     return { ok: true };
   });
+  handler('compatibilityDetails', ({ id }) => jobs.compatibilityDetails(String(id)));
+  handler('compatibilityList', () => jobs.compatibilityList());
+  handler('exportCompatibility', async () => {
+    const report = jobs.compatibilityList();
+    const selected = await dialog.showSaveDialog(getMainWindow(), { title: 'Save compatibility list',
+      defaultPath: 'FeedForge compatibility list.json', filters: [{ name: 'Compatibility list', extensions: ['json'] }] });
+    if (selected.canceled || !selected.filePath) return { cancelled: true };
+    fs.writeFileSync(selected.filePath, JSON.stringify(report, null, 2));
+    return { ok: true };
+  });
   function close() {
     if (closePromise) return closePromise;
     closing = true;

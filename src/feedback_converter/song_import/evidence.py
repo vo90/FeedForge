@@ -12,7 +12,7 @@ from pathlib import Path
 import uuid
 import zipfile
 
-CONTRACT_VERSION = 3
+CONTRACT_VERSION = 4
 MAX_OBJECT_BYTES = 128 * 1024 * 1024
 
 
@@ -40,7 +40,8 @@ def _immutable(path: Path, data: bytes) -> None:
 
 def save_evidence(root: Path, *, score: Path, metadata: dict, performance: dict | None,
                   synchronization: dict | None, alignment: dict | None,
-                  verification: dict, archive: Path | None = None, artwork: dict | None = None) -> dict:
+                  verification: dict, archive: Path | None = None, artwork: dict | None = None,
+                  compatibility: dict | None = None) -> dict:
     root = Path(root)
     objects: dict[str, bytes] = {}
 
@@ -53,6 +54,8 @@ def save_evidence(root: Path, *, score: Path, metadata: dict, performance: dict 
         return digest
 
     refs = {"source": add(score.read_bytes()), "verification": add(_json(verification))}
+    if compatibility:
+        refs["compatibility"] = add(_json(compatibility))
     if performance:
         # Original bytes are already retained verbatim; avoid a second copy of
         # the source envelope while keeping event lineage and coverage.

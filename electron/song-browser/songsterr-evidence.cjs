@@ -16,7 +16,7 @@ function checkedFile(root, relative, expected, maxBytes) {
 }
 
 function inspectEvidence(root, reference, outputHash) {
-  if (![1, 2, 3].includes(reference?.version) || !DIGEST.test(reference.id || '')) throw new Error('The conversion report is unavailable.');
+  if (![1, 2, 3, 4].includes(reference?.version) || !DIGEST.test(reference.id || '')) throw new Error('The conversion report is unavailable.');
   const filename = checkedFile(root, `records/${reference.id}.json`, reference.id, 1024 * 1024);
   const record = JSON.parse(fs.readFileSync(filename, 'utf8'));
   const report = checkedFile(root, `objects/${record.objects?.verification}`, record.objects?.verification, 16 * 1024 * 1024);
@@ -31,4 +31,49 @@ function reportBundle(root, reference) {
   inspectEvidence(root, reference);
   return checkedFile(root, `records/${reference.id}.zip`, reference.bundleHash, 256 * 1024 * 1024);
 }
-module.exports = { inspectEvidence, reportBundle };
+function compatibilityReport(root, reference) {
+  const { record } = inspectEvidence(root, reference);
+  if (!record.objects.compatibility) return null;
+  const file = checkedFile(root, `objects/${record.objects.compatibility}`, record.objects.compatibility, 64 * 1024 * 1024);
+  const report = JSON.parse(fs.readFileSync(file, 'utf8'));
+  if (!Number.isInteger(report.version) || !Array.isArray(report.findings)) throw new Error('The compatibility report is invalid.');
+  return report;
+}
+
+// Derived from durable evidence, not the bounded job history. The latest
+// assessment of a song/revision replaces earlier attempts in the working list.
+function compatibilityBacklog(root) {
+  const latest = new Map(); let unreadable = 0;
+  const directory = path.join(root, 'records');
+  if (!fs.existsSync(directory)) return { version: 1, groups: [], unreadable };
+  for (const name of fs.readdirSync(directory)) {
+    if (!/^[a-f0-9]{64}\.json$/.test(name)) continue;
+    try {
+      const id = name.slice(0, -5), file = checkedFile(root, `records/${name}`, id, 1024 * 1024);
+      const record = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (!record.objects?.compatibility) continue;
+      const reference = { version: record.version, id, verificationHash: record.objects.verification, sourceHash: record.objects.source };
+      const report = compatibilityReport(root, reference);
+      const identity = record.sourceMetadata || {};
+      const key = identity.songId && identity.revisionId ? `${identity.songId}:${identity.revisionId}` : record.objects.source;
+      const previous = latest.get(key), time = fs.statSync(file).mtimeMs;
+      if (!previous || report.version > previous.report.version || report.version === previous.report.version && time > previous.time)
+        latest.set(key, { report, time, identity, reference });
+    } catch { unreadable++; }
+  }
+  const groups = new Map();
+  for (const [sourceKey, { report, identity, reference }] of latest) {
+    for (const finding of report.findings) {
+      const key = JSON.stringify([finding.feature, finding.category, finding.impact]);
+      if (!groups.has(key)) groups.set(key, { feature: finding.feature, category: finding.category, impact: finding.impact,
+        message: finding.message, occurrences: 0, songs: new Map(), examples: [] });
+      const group = groups.get(key); group.occurrences++;
+      group.songs.set(sourceKey, { ...identity, sourceKey, reportId: reference.id });
+      if (group.examples.length < 10) group.examples.push({ ...finding, ...identity, reportId: reference.id });
+    }
+  }
+  return { version: 1, assessedRevisions: latest.size, unreadable,
+    groups: [...groups.values()].map(g => ({ ...g, affectedSongs: g.songs.size, songs: [...g.songs.values()] }))
+      .sort((a, b) => b.affectedSongs - a.affectedSongs || a.feature.localeCompare(b.feature)) };
+}
+module.exports = { inspectEvidence, reportBundle, compatibilityReport, compatibilityBacklog };

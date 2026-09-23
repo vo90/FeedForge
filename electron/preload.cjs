@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('songsterrBrowser', {
   useAudioUrl: (request) => ipcRenderer.invoke('songsterr:useAudioUrl', request),
   showOutput: (request) => ipcRenderer.invoke('songsterr:showOutput', request),
   exportReport: (request) => ipcRenderer.invoke('songsterr:exportReport', request),
+  compatibilityDetails: (request) => ipcRenderer.invoke('songsterr:compatibilityDetails', request),
+  compatibilityList: () => ipcRenderer.invoke('songsterr:compatibilityList'),
+  exportCompatibility: () => ipcRenderer.invoke('songsterr:exportCompatibility'),
   onState: (callback) => {
     const listener = (_event, value) => callback(value);
     ipcRenderer.on('songsterr:state', listener);

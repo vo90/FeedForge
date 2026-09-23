@@ -162,7 +162,8 @@ def _timeline_items(items: list, alignment: dict, duration: float) -> list:
 
 def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Path,
                   *, output_dir: Path, output_settings: dict | None = None, recipe: dict | None = None,
-                  artwork: dict | None = None) -> dict:
+                  artwork: dict | None = None, source_path: Path | None = None,
+                  compatibility: dict | None = None) -> dict:
     """Only write inside directory. Publishing/collision handling belongs to the app."""
     if alignment.get("status") != "validated":
         raise ImportFailure("alignment_failed", "The recording has not passed synchronization checks.")
@@ -244,6 +245,12 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             pass
     if recipe:
         manifest["song_import"] = {**recipe, "coverage": coverage}
+    if source_path is not None:
+        original = "import/source" + source_path.suffix.lower()
+        (package / "import").mkdir()
+        shutil.copyfile(source_path, package / original)
+        _write_json(package / "import/compatibility.json", compatibility)
+        manifest.setdefault("song_import", {}).update(sourceFile=original, compatibilityFile="import/compatibility.json")
     if artwork and artwork.get("status") == "matched" and artwork.get("path"):
         with Image.open(artwork["path"]) as cover:
             extension = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}[cover.format]

@@ -25,4 +25,9 @@
 .st-audio-input label { font-size:12px; }
 .st-audio-input input { width:100%; box-sizing:border-box; }
 .st-empty { padding:60px 20px; border:1px dashed #2c4055; border-radius:12px; text-align:center; color:#9dacc0; }
+.st-compatibility-list { margin:18px 0; padding:16px; border:1px solid #2c4055; border-radius:10px; }
+.st-compatibility { overflow-wrap:anywhere; font-size:13px; }
+.st-compatibility > ul { padding-left:18px; max-height:480px; overflow:auto; }
+.st-compatibility li { margin-bottom:16px; }
+.st-compatibility p { margin:6px 0; }
 @media(max-width:950px) { .st-results-layout { grid-template-columns:1fr; } .st-browser .sb-output,.st-results-heading { flex-wrap:wrap; } }

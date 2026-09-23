@@ -6,13 +6,35 @@ const searchMemory = new WeakMap();
 const LABELS = { queued: 'Queued', resolving: 'Checking revision', downloading: 'Retrieving tab', audio: 'Preparing audio', aligning: 'Aligning audio', converting: 'Creating FeedPak', validating: 'Validating', saving: 'Saving', completed: 'FeedPak ready', needs_audio: 'Audio needed', needs_login: 'Sign in needed', needs_attention: 'Needs attention', alignment_failed: 'Audio could not be aligned', failed: 'Failed', cancelled: 'Cancelled' };
 function errorText(value) { return typeof value === 'string' ? value : value?.message || value?.error || 'The operation failed. Please try again.'; }
 
+const CATEGORY = { unknown_semantics: 'Needs interpretation', converter_gap: 'Converter support', game_representation: 'Game representation', game_limitation: 'Game limitation', source_structure: 'Source structure', conversion_check: 'Conversion check' };
+export function CompatibilityDetails({ report }) {
+  if (!report) return null;
+  return <div className="st-compatibility"><p>{report.findingCount || 0} compatibility findings. Original information is retained; retention does not mean the game displays or scores it.</p>
+    <ul>{report.findings.map((item, i) => <li key={i}><strong>{item.feature}</strong> · {CATEGORY[item.category] || item.category}
+      <p>{[item.arrangement, item.measure && `Measure ${item.measure}`, item.beat && `beat ${item.beat}`, item.note && `note ${item.note}`].filter(Boolean).join(' · ')}</p>
+      <p>{item.message}</p><small>Source value: {JSON.stringify(item.value)}{item.valueTruncated ? '… (full value in saved source)' : ''}</small></li>)}</ul>
+    {report.findingCount > report.findings.length ? <p>Showing the first {report.findings.length} findings. Save the conversion report for the complete recorded list.</p> : null}
+  </div>;
+}
+
+export function CompatibilityList({ report }) {
+  return <div className="st-compatibility"><p>Latest assessment per song revision. Repeated attempts are counted once.</p>
+    {report.unreadable ? <p role="alert">{report.unreadable} saved reports could not be read.</p> : null}
+    {!report.groups.length ? <p>No recorded compatibility gaps.</p> : <ul>{report.groups.map((group, i) => <li key={i}>
+      <strong>{group.feature}</strong> · {CATEGORY[group.category] || group.category}<p>{group.affectedSongs} affected song revisions · {group.occurrences} occurrences</p>
+      <p>{group.message}</p><details><summary>Examples</summary><ul>{group.examples.map((row, j) => <li key={j}>{row.artist} — {row.title}, {row.arrangement}{row.measure ? `, measure ${row.measure}` : ''}</li>)}</ul></details>
+    </li>)}</ul>}
+  </div>;
+}
+
 export function SongsterrJob({ job, api, action, busy }) {
   const [url, setUrl] = useState('');
+  const [compatibility, setCompatibility] = useState(null);
   const active = ACTIVE.has(job.state);
   const needsAudio = ['needs_audio', 'alignment_failed'].includes(job.state);
   return <li className={`sb-job ${job.state === 'completed' ? 'sb-job-completed' : ''}`}>
     <div className="sb-job-top"><div className="sb-job-heading"><strong>{job.title}</strong><span>{job.artist}</span></div>
-      <span className="sb-job-status">{active ? <LoaderCircle className="sb-spin" size={14} /> : job.state === 'completed' ? <Check size={14} /> : job.state !== 'cancelled' ? <AlertTriangle size={14} /> : null}{LABELS[job.state] || job.state}</span></div>
+      <span className="sb-job-status">{active ? <LoaderCircle className="sb-spin" size={14} /> : job.state === 'completed' ? <Check size={14} /> : job.state !== 'cancelled' ? <AlertTriangle size={14} /> : null}{job.state === 'completed' && job.compatibility?.status === 'limitations' ? 'Ready with limitations' : LABELS[job.state] || job.state}</span></div>
     {active ? <progress className="sb-progress" aria-label={`${job.title}: ${LABELS[job.state]}`} /> : null}
     <p>{job.error || job.message}</p>
     {job.revisionId ? <small>Approved revision {job.revisionId}</small> : null}
@@ -38,10 +60,12 @@ export function SongsterrJob({ job, api, action, busy }) {
       <small>The account route creates an unpublished copy so Songsterr can export the tab.</small>
     </div> : null}
     <div className="sb-job-controls">
+      {job.compatibility && api.compatibilityDetails ? <button className="sb-text-button" disabled={busy} onClick={() => action(async () => { const result = await api.compatibilityDetails({ id: job.id }); if (result?.ok === false) return result; setCompatibility(result); })}>View compatibility details</button> : null}
       {job.hasReport && api.exportReport ? <button className="sb-text-button" disabled={busy} onClick={() => action(() => api.exportReport({ id: job.id }))}>Save conversion report</button> : null}
       {job.canRetry && !needsAudio && job.state !== 'needs_login' ? <button className="sb-text-button" disabled={busy} onClick={() => action(() => api.retry({ id: job.id }))}>Retry import</button> : null}
       {job.canCancel ? <button className="sb-text-button" disabled={busy} onClick={() => action(() => api.cancel({ id: job.id }))}>Cancel</button> : null}
     </div>
+    <CompatibilityDetails report={compatibility} />
     {job.warnings?.length ? <details><summary>Import notes</summary><ul>{job.warnings.map((warning, index) => <li key={index}>{typeof warning === 'string' ? warning : `${warning.location ? warning.location + ': ' : ''}${warning.message}`}</li>)}</ul></details> : null}
   </li>;
 }
@@ -54,6 +78,7 @@ export default function SongsterrBrowser({ api: providedApi, outputApi: provided
   const [query, setQuery] = useState(saved?.query || ''), [results, setResults] = useState(saved?.results || []), [searched, setSearched] = useState(saved?.searched || false);
   const [sort, setSort] = useState(saved?.sort || 'relevance'), [searching, setSearching] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [searchNotice, setSearchNotice] = useState(saved?.searchNotice || '');
+  const [compatibilityList, setCompatibilityList] = useState(null);
   const searchGeneration = useRef(0), mounted = useRef(false), settingsSync = useRef(Promise.resolve());
   const settingsKey = JSON.stringify(outputSettings || {});
   useEffect(() => { if (api) searchMemory.set(api, { query, results, searched, sort, searchNotice }); }, [api, query, results, searched, sort, searchNotice]);
@@ -120,6 +145,10 @@ export default function SongsterrBrowser({ api: providedApi, outputApi: provided
       <div className="sb-job-controls"><button className="sb-button" disabled={!api || busy} onClick={() => action(() => api.showBrowser())}>Open Songsterr</button><button className="sb-button" disabled={!api || busy} onClick={() => action(() => api.signIn())}>Songsterr sign in</button></div></header>
     <div className="sb-output"><FolderOpen size={20} /><div><strong>FeedForge output folder</strong><p>{outputDir || 'Choose an output folder in Settings.'}</p><small>Uses the filename and folder layout from Settings.</small></div><button className="sb-button" onClick={onOpenOutputSettings}>Open Settings</button></div>
     <p className="st-experimental">Songsterr import is experimental. The latest approved revision and audio timing are checked before saving.</p>
+    {api?.compatibilityList ? <details className="st-compatibility-list"><summary>Import compatibility</summary><p>Recorded features that need converter improvements or additional game support.</p>
+      <button className="sb-button" disabled={busy} onClick={() => action(async () => { const result = await api.compatibilityList(); if (result?.ok === false) return result; setCompatibilityList(result); })}>Load compatibility list</button>
+      <button className="sb-button" disabled={busy} onClick={() => action(() => api.exportCompatibility())}>Save compatibility list</button>
+      {compatibilityList ? <CompatibilityList report={compatibilityList} /> : null}</details> : null}
     {!api ? <p role="alert" className="sb-error">Songsterr import is available in the desktop app.</p> : null}
     {error ? <p role="alert" className="sb-error"><AlertTriangle size={18} />{error}</p> : null}
     <form className="st-search" onSubmit={search}><label htmlFor="songsterr-query">Search by artist or song title</label><div className="st-search-row"><input id="songsterr-query" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Artist or song title" minLength={2} maxLength={160} /><button className="sb-button sb-primary" disabled={!api || searching || !query.trim()}>{searching ? <LoaderCircle size={18} className="sb-spin" /> : <Search size={18} />}Search</button>{searching ? <button type="button" className="sb-button" onClick={() => { searchGeneration.current++; api.cancelSearch(); setSearching(false); }}>Cancel</button> : null}</div></form>

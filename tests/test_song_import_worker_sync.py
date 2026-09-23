@@ -120,7 +120,7 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
                "outputSettings": {"nameTemplate": "{artist} - {title}", "outputLayout": "artist"}}
     result = worker.run_import(request)
     assert result["ok"], result
-    assert result["recipe"]["preservationContract"] == result["verification"]["version"] == result["evidence"]["version"] == 3
+    assert result["recipe"]["preservationContract"] == result["verification"]["version"] == result["evidence"]["version"] == 4
     assert result["recipe"]["compatibility"] == {"version": 3, "extensions": ["slide_in_marks", "slide_out", "slide_out_marks"], "status": "requires_consumer_support"}
     assert result["alignment"]["method"] == "songsterr-video-points-v1"
     assert len(result["recipe"]["alignment"]["provenance"]["mapHash"]) == 64
@@ -130,6 +130,8 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
     assert validate_feedpak(Path(result["stagingPath"])).ok
     with zipfile.ZipFile(result["stagingPath"]) as archive:
         manifest = yaml.safe_load(archive.read("manifest.yaml"))
+        assert archive.read(manifest['song_import']['sourceFile']) == score.read_bytes()
+        assert json.loads(archive.read(manifest['song_import']['compatibilityFile']))['status'] == 'compatible'
         chart = json.loads(archive.read(manifest["arrangements"][0]["file"]))
         assert [note["t"] for note in chart["notes"]] == pytest.approx(expected_starts)
         assert [note["sus"] for note in chart["notes"]] == pytest.approx([0.525] * 4 + [0.675] * 4)

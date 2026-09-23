@@ -23,7 +23,18 @@ def load_performance(path: Path | str, metadata: dict | None = None) -> dict:
             document = json.loads(path.read_text(encoding="utf-8-sig"))
         except (ValueError, UnicodeError) as exc:
             raise ScoreImportError("Invalid Songsterr score JSON.") from exc
-        score = parse(document)
+        from .compatibility import inspect_songsterr, add_finding
+        report = inspect_songsterr(document)
+        try:
+            if report["status"] == "blocked":
+                examples = ", ".join(dict.fromkeys(row["feature"] for row in report["findings"]))
+                raise ScoreImportError("Conversion needs support for " + examples[:600] + ". See compatibility details.")
+            score = parse(document)
+        except ScoreImportError as exc:
+            if report["status"] != "blocked":
+                add_finding(report, feature="interpretation", category="conversion_check", impact="blocking", message=str(exc))
+            exc.compatibility = report
+            raise
     elif path.suffix.lower() in {".gp", ".gpif", ".xml"}:
         from .gpif import parse
         score = parse(path)
@@ -35,4 +46,13 @@ def load_performance(path: Path | str, metadata: dict | None = None) -> dict:
                 setattr(score, field, str(metadata[field]).strip())
         score.source.update({key: metadata[key] for key in
                              ("songId", "revisionId", "url", "approved", "approval", "provider") if key in metadata})
-    return render(score)
+    try:
+        performance = render(score)
+    except ScoreImportError as exc:
+        if path.suffix.lower() == ".json":
+            add_finding(report, feature="timeline", category="conversion_check", impact="blocking", message=str(exc))
+            exc.compatibility = report
+        raise
+    if path.suffix.lower() == ".json":
+        performance["compatibilityReport"] = report
+    return performance

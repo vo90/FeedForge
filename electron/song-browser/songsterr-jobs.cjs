@@ -5,7 +5,7 @@ const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { publishFeedpak } = require('./publication.cjs');
 const { normalizeOutputSettings } = require('./output-settings.cjs');
-const { inspectEvidence, reportBundle } = require('./songsterr-evidence.cjs');
+const { inspectEvidence, reportBundle, compatibilityReport, compatibilityBacklog } = require('./songsterr-evidence.cjs');
 const { waitForSharedOperation } = require('./shared-operation.cjs');
 const { unavailableSynchronization, synchronizationSummary, audioVideo } = require('./providers/songsterr/synchronization.cjs');
 const WAITING = new Set(['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed']);
@@ -93,11 +93,11 @@ class SongsterrJobs {
           if (saved.recipe?.preservationContract) {
             const checked = inspectEvidence(this.auditRoot, saved.evidence, saved.outputHash);
             const contract = saved.recipe.preservationContract;
-            if (![1, 2, 3].includes(contract) || saved.verification?.version !== contract || saved.verification.status !== 'passed'
+            if (![1, 2, 3, 4].includes(contract) || saved.verification?.version !== contract || saved.verification.status !== 'passed'
                 || checked.verification.version !== contract || checked.verification.status !== 'passed') throw new Error('Unverified recovery receipt.');
           }
           Object.assign(job, saved, { outputPath: output.path, state: 'completed', committed: true, message: 'FeedPak ready.',
-            error: '', pathValidation: undefined, outputVerification: saved.verification?.version === 3 && saved.verification.status === 'passed' ? 'passed' : 'not_checked', controller: new AbortController() });
+            error: '', pathValidation: undefined, outputVerification: saved.verification?.version === 4 && saved.verification.status === 'passed' ? 'passed' : 'not_checked', controller: new AbortController() });
         }
       } catch { /* Preserve interrupted job and files for an explicit retry. */ }
     }
@@ -115,7 +115,7 @@ class SongsterrJobs {
           const hash = await hashFile(output.path);
           if (hash !== job.verification.outputHash) { job.outputVerification = 'modified'; continue; }
           const checked = inspectEvidence(this.auditRoot, job.evidence, hash);
-          job.outputVerification = job.recipe?.preservationContract === 3 && checked.verification.version === 3 && checked.verification.status === 'passed' ? 'passed' : 'not_checked';
+          job.outputVerification = job.recipe?.preservationContract === 4 && checked.verification.version === 4 && checked.verification.status === 'passed' ? 'passed' : 'not_checked';
         } catch { job.outputVerification = 'not_checked'; }
       }
       this.lastOutputCheck = Date.now();
@@ -127,6 +127,13 @@ class SongsterrJobs {
     if (!job) throw new Error('The import no longer exists.');
     return reportBundle(this.auditRoot, job.evidence);
   }
+  compatibilityDetails(id) {
+    const job = this.jobs.find(entry => entry.id === id);
+    if (!job?.evidence) throw new Error('This import has no saved report.');
+    const report = compatibilityReport(this.auditRoot, job.evidence);
+    return report ? { ...report, findings: report.findings.slice(0, 200), displayedLimit: 200 } : null;
+  }
+  compatibilityList() { return compatibilityBacklog(this.auditRoot); }
   async _cleanAttempts(job) {
     const directory = path.join(this.root, job.id);
     if (!UUID.test(job.id) || path.dirname(directory) !== this.root || !fs.existsSync(directory) || fs.lstatSync(directory).isSymbolicLink()) return;
@@ -154,7 +161,7 @@ class SongsterrJobs {
       outputAvailable: job.state === 'completed' && Boolean(job.outputPath && fs.existsSync(job.outputPath)),
       warnings: job.warnings, alignment: job.alignment, coverage: job.coverage, synchronization: job.synchronizationSummary,
       verification: job.verification ? { ...job.verification, status: job.state === 'completed' ? job.outputVerification || 'not_checked' : job.verification.status } : undefined,
-      artwork: job.artwork, hasReport: Boolean(job.evidence),
+      artwork: job.artwork, compatibility: job.compatibility, hasReport: Boolean(job.evidence),
       canRetry: WAITING.has(job.state) || job.state === 'failed' || job.state === 'cancelled',
       canRetryAudio: job.state === 'needs_audio' && !job.audio && Boolean(job.scorePath) && typeof this.provider.findAudio === 'function',
       canUseAccount: job.canUseAccount === true,
@@ -215,7 +222,7 @@ class SongsterrJobs {
           const code = job.controller.signal.aborted ? 'cancelled' : error.code;
           job.canUseAccount = error.canUseAccount === true;
           if (error.pathValidation) job.pathValidation = error.pathValidation;
-          for (const key of ['verification', 'evidence', 'warnings']) if (error[key]) job[key] = error[key];
+          for (const key of ['verification', 'evidence', 'warnings', 'compatibility']) if (error[key]) job[key] = error[key];
           if (code === 'alignment_failed' && error.alignment && typeof error.alignment === 'object' && !Array.isArray(error.alignment)) job.alignment = error.alignment;
           this._set(job, WAITING.has(code) || code === 'cancelled' ? code : 'failed', { error: code === 'cancelled' ? '' : clean(error.message), message: code === 'cancelled' ? 'Cancelled.' : '' });
         } finally {
@@ -250,7 +257,7 @@ class SongsterrJobs {
       if (timedOut) throw timeoutError();
       if (typeof result?.stdout !== 'string' || result.stdout.length > 4 * 1024 * 1024) throw new Error('The converter returned an invalid response.');
       let parsed; try { parsed = JSON.parse(result.stdout); } catch { throw new Error('The converter returned an unreadable response.'); }
-      if (result.code !== 0 || parsed.ok !== true) throw Object.assign(new Error(clean(parsed.error) || 'Conversion failed.'), { code: parsed.code, alignment: parsed.alignment, verification: parsed.verification, evidence: parsed.evidence, warnings: parsed.warnings });
+      if (result.code !== 0 || parsed.ok !== true) throw Object.assign(new Error(clean(parsed.error) || 'Conversion failed.'), { code: parsed.code, alignment: parsed.alignment, verification: parsed.verification, evidence: parsed.evidence, warnings: parsed.warnings, compatibility: parsed.compatibility });
       return parsed;
     } catch (error) {
       check(job);
@@ -329,22 +336,22 @@ class SongsterrJobs {
     this._set(job, 'validating', { message: 'Checking the completed FeedPak…' });
     await this._run(job, ['--validate-feedpak', staging], attempt);
     const outputHash = await hashFile(staging, job.controller.signal);
-    if (result.recipe?.preservationContract !== 3 || result.verification?.version !== 3 || result.verification.status !== 'passed'
+    if (result.recipe?.preservationContract !== 4 || result.verification?.version !== 4 || result.verification.status !== 'passed'
         || result.verification.outputHash !== outputHash) throw new Error('The converter did not provide a current source verification. Update the converter and retry.');
     const checked = inspectEvidence(this.auditRoot, result.evidence, outputHash);
-    if (checked.verification.version !== 3 || checked.verification.status !== 'passed') throw new Error('Source verification did not pass.');
+    if (checked.verification.version !== 4 || checked.verification.status !== 'passed') throw new Error('Source verification did not pass.');
     if (result.scoreHash !== job.cachedScoreHash || checked.record.objects.source !== job.cachedScoreHash) throw new Error('Source verification describes a different tab.');
     Object.assign(job, { outputRelativePath: result.relativePath, outputHash,
-      verification: result.verification, evidence: result.evidence, artwork: result.artwork, outputVerification: 'passed',
+      verification: result.verification, evidence: result.evidence, artwork: result.artwork, compatibility: result.compatibility, outputVerification: 'passed',
       scoreHash: result.scoreHash, audioHash: result.audioHash, recipe: result.recipe, alignment: result.alignment, coverage: result.coverage, warnings: result.warnings });
     const identity = (j) => JSON.stringify([j.sourceKey, j.scoreHash, j.audioHash, j.recipe, j.converterRecipe, j.outputDir, j.outputRelativePath, j.outputSettings]);
     const prior = this.jobs.find((j) => j !== job && j.state === 'completed' && identity(j) === identity(job) && j.outputPath);
     let canReuse = false;
-    if (prior && prior.verification?.version === 3 && prior.verification.status === 'passed') {
+    if (prior && prior.verification?.version === 4 && prior.verification.status === 'passed') {
       try {
         const checkedPrior = inspectEvidence(this.auditRoot, prior.evidence, prior.outputHash);
         canReuse = await hashFile(prior.outputPath, job.controller.signal) === prior.outputHash
-          && checkedPrior.verification.version === 3 && checkedPrior.verification.status === 'passed';
+          && checkedPrior.verification.version === 4 && checkedPrior.verification.status === 'passed';
       } catch { /* A missing historical report does not invalidate this fresh conversion. */ }
     }
     if (canReuse) {

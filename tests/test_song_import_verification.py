@@ -72,6 +72,19 @@ def test_hand_calculated_source_and_archive_pass_without_converter(tmp_path):
     assert report["musicalQualityAssessed"] is False
 
 
+@pytest.mark.parametrize('corrupt', [False, True])
+def test_original_source_in_contract_four_must_match_exact_bytes(tmp_path, corrupt):
+    source, package = example()
+    package['manifest.yaml']['song_import'] = {'preservationContract': 4, 'sourceFile': 'import/source.json',
+                                              'compatibilityFile': 'import/compatibility.json'}
+    package['import/source.json'] = {} if corrupt else source
+    package['import/compatibility.json'] = {'version': 1, 'status': 'compatible', 'findings': []}
+    result = verify(tmp_path, source, package)
+    assert result['status'] == ('failed' if corrupt else 'passed'), result
+    if corrupt:
+        assert 'retained_source' in {e['code'] for e in result['errors']}
+
+
 @pytest.mark.parametrize("fault,code", [
     ("remove", "note_count"), ("duplicate", "note_count"), ("fret", "note_f"), ("string", "note_s"),
     ("time", "note_time"), ("sustain", "note_sustain"), ("ghost", "note_technique"), ("slide", "note_technique"),

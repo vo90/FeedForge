@@ -18,7 +18,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 3
+VERSION = 4
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "bn"}
 TUNINGS = {"guitar": {6: [40, 45, 50, 55, 59, 64], 7: [35, 40, 45, 50, 55, 59, 64], 8: [30, 35, 40, 45, 50, 55, 59, 64]},
@@ -341,6 +341,15 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             manifest = yaml.safe_load(z.read("manifest.yaml"))
             _finite(manifest, "manifest", check)
             recipe = manifest.get("song_import", {})
+            if recipe.get("preservationContract", 0) >= 4:
+                original = recipe.get("sourceFile")
+                if original not in names or z.getinfo(original).file_size > 80 * 1024 * 1024:
+                    check.fail("retained_source", "import", "The original source is missing or too large.")
+                else:
+                    check.equal("retained_source", original, report["sourceSha256"], hashlib.sha256(z.read(original)).hexdigest())
+                compatibility = _json(z, recipe.get("compatibilityFile", ""), check)
+                if compatibility.get("status") not in {"compatible", "limitations"}:
+                    check.fail("compatibility", "import/compatibility", "A blocked or invalid compatibility report cannot be published.")
             if isinstance(recipe, dict):
                 if recipe.get("scoreHash"):
                     check.equal("source_hash", "manifest/song_import/scoreHash", report["sourceSha256"], recipe["scoreHash"])
