@@ -6,7 +6,7 @@ parser and independent verifier still validate every supported representation.
 from copy import deepcopy
 import json
 
-VERSION = 4
+VERSION = 5
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -19,6 +19,10 @@ KNOWN = {
     "bend": {"points", "tone"}, "bend_point": {"position", "tone"},
 }
 KNOWN["measure"].add("doubleBarline")
+KNOWN["measure"].add("clef")
+KNOWN["beat"].update({"slapping", "popping", "upArpeggio", "downArpeggio"})
+KNOWN["tempo"].add("dotted")
+KNOWN["bend_point"].add("precisePosition")
 KNOWN["tempo"].add("text")
 KNOWN["beat"].update({"chord", "upStroke", "downStroke", "pickStroke", "wahwah", "brushStroke", "arpeggio", "vibratoWithTremoloBar"})
 KNOWN["note"].update({"leftHandVibrato", "pickScrape", "vibratoWithTremoloBar"})

@@ -33,6 +33,35 @@ Legacy `upStroke: 1` means a downward brush, and `downStroke: 1` an upward
 brush, with duration 30 and shift 100. Other legacy values are not guessed.
 The independent `pickStroke` field describes ordinary picking direction.
 
+Legacy arpeggios without modern strum data follow the public audio worker's
+`ws` / `ao` path: `upArpeggio` spreads from the high string and
+`downArpeggio` from the low string. An integer value v (1–8) gives a spacing
+of 4 / (13 × 2^(8−v)) quarters. This is different from the editor validator's
+optional migration to duration 240; applying that migration to a captured old
+tab would change its existing playback. Explicit modern arpeggio/brush data
+takes precedence, matching the performer. Conflicting legacy markings stay
+unsupported. Tick quantization and synthesizer note-off adjustments are not
+copied into the authored rational clock.
+
+The single undotted whole-rest glyph (`type: 1`, duration 1/1, rest-only
+notes) occupies the complete current measure, including irregular meters.
+Ordinary overflowing notes/rest sequences are not shortened. Written whole-rest
+notation and the original source remain unchanged.
+
+Bends with `precisePosition` on every point use those percent coordinates
+instead of the old 0–60 coordinates. Source ordering is validated; equal
+positions take the last authored value, and the last point is held through
+the remaining sustain. Mixed precision, out-of-range or reversed coordinates
+are rejected. These remain finger bends, separate from tremolo-bar gestures.
+
+Beat-level `slapping` and `popping` map to the existing slap/pop chart flags
+and notation annotations. Explicit supported clefs are carried into measure
+staff overrides without transposing physical notes. Dotted tempo units multiply
+their ordinary quarter-note rate by 3/2.
+
+These mappings use preservation/verifier contract 6 and compatibility inventory
+5. Older evidence remains readable but cannot satisfy a current verified import.
+
 Staccato shortens the performed duration to half, with Songsterr's 1/128 whole
 note minimum. Written duration is unchanged. Cases where that floor would
 extend the note, or a linked technique depends on its former endpoint, require

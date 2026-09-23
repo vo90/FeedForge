@@ -6,12 +6,15 @@ All offsets remain rational until the audio clock is applied.
 from fractions import Fraction as F
 
 from .model import ScoreImportError, integer, rational
+from .songsterr_fields import whole_measure_rest
 
 
 def voice_timing(beats, bar_length):
     lengths = [rational(b.get("duration"), "beat duration") * 4 for b in beats]
     if any(d <= 0 for d in lengths):
         raise ScoreImportError("Invalid beat duration.")
+    if whole_measure_rest(beats):
+        return [(F(0), bar_length, F(0))]
     output, position, index = [], F(0), 0
     while index < len(beats):
         principal = index
@@ -52,9 +55,19 @@ def strum_offsets(beat):
     """Return source-note-index offsets and explicit direction, never a guessed strum."""
     sources = [key for key in ("brushStroke", "arpeggio") if beat.get(key) is not None]
     legacy = [key for key in ("upStroke", "downStroke") if beat.get(key)]
+    old_arps = [key for key in ("upArpeggio", "downArpeggio") if beat.get(key)]
+    old_step = None
+    if old_arps and not sources:
+        if len(old_arps) != 1 or legacy:
+            raise ScoreImportError("Conflicting legacy arpeggio and brush data.")
+        value = integer(beat[old_arps[0]], "legacy arpeggio")
+        if not 1 <= value <= 8:
+            raise ScoreImportError("Legacy arpeggio duration needs additional interpretation.")
+        old_step = F(4, 13 * 2 ** (8 - value))
+        direction = "up" if old_arps[0] == "upArpeggio" else "down"
     if len(sources) > 1 or len(legacy) > 1:
         raise ScoreImportError("Conflicting authored strum directions.")
-    if not sources and not legacy:
+    if not sources and not legacy and old_step is None:
         return {}, None
     if sources:
         stroke = beat[sources[0]]
@@ -62,10 +75,12 @@ def strum_offsets(beat):
             raise ScoreImportError("Unrecognized strum timing data.")
         direction = stroke["direction"]
         duration, shift = rational(stroke["duration"], "strum duration"), integer(stroke["shift"], "strum shift")
-    else:
+    elif old_step is None:
         if integer(beat[legacy[0]], "legacy strum") != 1:
             raise ScoreImportError("Legacy strum duration needs additional interpretation.")
         direction, duration, shift = ("down" if legacy[0] == "upStroke" else "up"), F(30), 100
+    else:
+        duration, shift = F(0), 100
     if direction not in ("up", "down") or not 0 <= duration <= 960 or not 0 <= shift <= 100:
         raise ScoreImportError("Invalid authored strum timing.")
     if legacy and sources:
@@ -87,7 +102,7 @@ def strum_offsets(beat):
     if beat.get("graceNote"):
         raise ScoreImportError("Combined grace and strum timing needs additional support.")
     cap = min(960, int(rational(beat["duration"], "strum beat duration") * 1920))
-    step = F(min(duration, cap)) / (480 * count)
+    step = old_step if old_step is not None else F(min(duration, cap)) / (480 * count)
     span = step * (count - 1)
     advance = span * F(100 - shift, 100)
     offsets = {i: (step * (rank if direction == "up" else count - 1 - rank)) - advance

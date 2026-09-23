@@ -90,6 +90,7 @@ class Part:
     # Independent notation facts: every written voice/beat, including rests.
     beats: list = field(default_factory=list)
     notation_unavailable: list = field(default_factory=list)
+    clefs: list = field(default_factory=list)
 
 
 @dataclass
@@ -147,6 +148,11 @@ def _endings(raw, loc):
 
 def _songsterr_beat_clock(beats, measure_length, location):
     lengths = [4 * fraction(b["duration"], location) for b in beats]
+    if (len(beats) == 1 and beats[0].get("rest") is True and beats[0].get("type") == 1
+            and lengths == [F(4)] and not any(beats[0].get(k) for k in ("dots", "tuplet", "graceNote"))
+            and isinstance(beats[0].get("notes"), list)
+            and all(n.get("rest") is True for n in beats[0]["notes"])):
+        return [[F(0), measure_length, F(0)]]
     starts, position = [], F(0)
     for beat, length in zip(beats, lengths):
         if length <= 0:
@@ -190,9 +196,19 @@ def _songsterr_beat_clock(beats, measure_length, location):
 def _songsterr_strum(beat, location):
     options = [beat[k] for k in ("brushStroke", "arpeggio") if beat.get(k) is not None]
     legacy = [k for k in ("upStroke", "downStroke") if beat.get(k)]
+    old = [k for k in ("upArpeggio", "downArpeggio") if beat.get(k)]
+    legacy_interval = None
+    if old and not options:
+        if len(old) != 1 or legacy:
+            unsupported(location, "Conflicting old arpeggio markings.")
+        value = integer(beat[old[0]], location)
+        if value < 1 or value > 8:
+            unsupported(location, "Unverified old arpeggio duration.")
+        legacy_interval = F(2) ** (value - 6) / 13
+        direction = {"upArpeggio": "up", "downArpeggio": "down"}[old[0]]
     if len(options) > 1 or len(legacy) > 1:
         unsupported(location, "Conflicting strum markings.")
-    if not options and not legacy:
+    if not options and not legacy and legacy_interval is None:
         return {}, None
     if options:
         stroke = options[0]
@@ -200,8 +216,10 @@ def _songsterr_strum(beat, location):
             unsupported(location, "Unknown strum fields.")
         direction = stroke["direction"]
         amount, shift = fraction(stroke["duration"], location), integer(stroke["shift"], location)
-    else:
+    elif legacy_interval is None:
         direction, amount, shift = ("down" if legacy[0] == "upStroke" else "up"), F(30), 100
+    else:
+        amount, shift = F(0), 100
     if legacy and (integer(beat[legacy[0]], location) != 1 or direction != ("down" if legacy[0] == "upStroke" else "up")):
         unsupported(location, "Unverified legacy strum value.")
     if direction not in ("up", "down") or amount < 0 or amount > 960 or not 0 <= shift <= 100:
@@ -216,7 +234,7 @@ def _songsterr_strum(beat, location):
         unsupported(location, "Combined grace/tie and strum requires additional verification.")
     capped = min(amount, 960, (fraction(beat["duration"], location) * 1920).__floor__())
     ordered = sorted(notes, key=lambda item: item[1]["string"], reverse=direction == "down")
-    interval = F(capped) / (len(notes) * 480)
+    interval = legacy_interval if legacy_interval is not None else F(capped) / (len(notes) * 480)
     first = -interval * (len(notes) - 1) * F(100 - shift, 100)
     return {index: first + rank * interval for rank, (index, _) in enumerate(ordered)}, direction
 
@@ -244,7 +262,7 @@ def songsterr(document):
         if len(signature) != 2 or min(signature) < 1:
             raise ValueError(f"{loc}: invalid meter")
         for b in samples:
-            _active_unknown(b, {"voices", "signature", "rest", "marker", "repeat", "repeatStart", "alternateEnding", "tripletFeel"},
+            _active_unknown(b, {"voices", "signature", "rest", "marker", "repeat", "repeatStart", "alternateEnding", "tripletFeel", "clef"},
                             {"width", "id", "index", "doubleBarline", "keySignature"}, loc, ignored)
             if b.get("tripletFeel") not in (None, "off"):
                 unsupported(loc + "/tripletFeel", "Swing timing is not independently verified.")
@@ -259,12 +277,16 @@ def songsterr(document):
         _active_unknown(automations, {"tempo"}, {"volume", "balance"}, f"parts/{pi}/automations", ignored)
         for tempo in automations.get("tempo", []):
             loc = f"parts/{pi}/automations/tempo"
-            _active_unknown(tempo, {"measure", "position", "bpm", "type", "linear"}, {"text"}, loc, ignored)
+            _active_unknown(tempo, {"measure", "position", "bpm", "type", "linear", "dotted"}, {"text"}, loc, ignored)
             if tempo.get("linear"):
                 unsupported(loc, "Linear tempo ramps are not independently verified.")
             bi = integer(tempo["measure"], loc)
             q = fraction(tempo.get("position", 0), loc) * 4
             bpm = fraction(tempo["bpm"], loc) * F(4, integer(tempo.get("type", 4), loc))
+            if tempo.get("dotted") is not None and type(tempo["dotted"]) is not bool:
+                raise ValueError(loc + ": invalid dotted tempo")
+            if tempo.get("dotted"):
+                bpm *= F(3, 2)
             if not 0 <= bi < count or not 0 <= q < bars[bi].length or bpm <= 0:
                 raise ValueError(f"{loc}: invalid tempo coordinate")
             if q in bars[bi].tempos and bars[bi].tempos[q] != bpm:
@@ -274,7 +296,7 @@ def songsterr(document):
     note_keys = {"string", "fret", "tie", "rest", "dead", "vibrato", "wideVibrato", "ghost", "accentuated",
                  "tap", "tapping", "hp", "harmonic", "harmonicFret", "slide", "bend", "leftHandVibrato", "staccato"}
     beat_keys = {"duration", "notes", "rest", "type", "dots", "tuplet", "tupletStart", "tupletStop", "graceNote",
-                 "palmMute", "letRing", "tremolo", "tap", "tapping", "slap", "pop", "vibrato", "wideVibrato", "text", "velocity", "gradualVelocity", "chord", "pickStroke", "wahwah", "brushStroke", "arpeggio", "upStroke", "downStroke"}
+                 "palmMute", "letRing", "tremolo", "tap", "tapping", "slap", "pop", "slapping", "popping", "vibrato", "wideVibrato", "text", "velocity", "gradualVelocity", "chord", "pickStroke", "wahwah", "brushStroke", "arpeggio", "upStroke", "downStroke", "upArpeggio", "downArpeggio"}
     for pi, (meta, raw) in enumerate(zip(metadata, raw_parts)):
         tid = str(meta.get("id", pi))
         name = str(meta.get("name") or meta.get("title") or meta.get("instrument") or f"Track {pi + 1}")
@@ -285,6 +307,10 @@ def songsterr(document):
         tuning = [integer(v) for v in reversed(raw.get("tuning") or meta["tuning"])]
         track = Part(tid, name, kind, tuning, integer(raw.get("capo", meta.get("capo", 0))), [], [])
         for bi, bar in enumerate(raw["measures"]):
+            clef = bar.get("clef")
+            if clef not in (None, "G2", "F4", "C3", "C4", "neutral"):
+                unsupported(f"parts/{pi}/measures/{bi}/clef", "Unknown source clef.")
+            track.clefs.append(clef or (track.clefs[-1] if track.clefs else None))
             atoms, beat_facts = [], []
             for vi, voice in enumerate(bar["voices"]):
                 _active_unknown(voice, {"beats", "rest"}, {"id"}, f"parts/{pi}/measures/{bi}/voices/{vi}", ignored)
@@ -292,6 +318,9 @@ def songsterr(document):
                 for bti, beat in enumerate(voice["beats"]):
                     loc = f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}"
                     _active_unknown(beat, beat_keys, {"beamStart", "beamStop", "id"}, loc, ignored)
+                    for key in ("slapping", "popping"):
+                        if key in beat and not isinstance(beat[key], bool):
+                            raise ValueError(loc + ": invalid " + key + " flag")
                     label = beat.get("chord", {})
                     if not isinstance(label, dict) or set(label) - {"text", "width"} or not isinstance(label.get("text", ""), str):
                         unsupported(loc + "/chord", "Unverified authored chord label.")
@@ -311,7 +340,7 @@ def songsterr(document):
                     ratio = F(4, denominator) * (2 - F(1, 2 ** dots)) / written_duration if denominator and denominator > 0 else F(1)
                     written = {"dur": denominator, "dot": dots, "tu": [ratio.numerator, ratio.denominator] if ratio != 1 else None}
                     for field, output in {"velocity": "dyn", "vibrato": "vib", "wideVibrato": "vibw", "palmMute": "pm",
-                                          "letRing": "lr", "tap": "tap", "tapping": "tap", "slap": "slap", "pop": "pop"}.items():
+                                          "letRing": "lr", "tap": "tap", "tapping": "tap", "slap": "slap", "pop": "pop", "slapping": "slap", "popping": "pop"}.items():
                         if beat.get(field):
                             written[output] = beat[field]
                     if beat.get("text"):
@@ -352,7 +381,7 @@ def songsterr(document):
                             if note.get(key):
                                 fx[out] = True
                         for key, out in {"palmMute": "pm", "letRing": "lr", "tremolo": "tr", "tap": "tp", "tapping": "tp",
-                                         "slap": "slp", "pop": "plk", "vibrato": "vb", "wideVibrato": "vb"}.items():
+                                         "slap": "slp", "pop": "plk", "slapping": "slp", "popping": "plk", "vibrato": "vb", "wideVibrato": "vb"}.items():
                             if beat.get(key):
                                 fx[out] = True
                         harmonic = note.get("harmonic")
@@ -374,9 +403,22 @@ def songsterr(document):
                         if note.get("bend"):
                             _active_unknown(note["bend"], {"points", "tone"}, set(), nloc + "/bend", ignored)
                             for point in note["bend"]["points"]:
-                                _active_unknown(point, {"position", "tone"}, set(), nloc + "/bend/points", ignored)
-                            bends = [(fraction(p["position"], nloc) / 60, fraction(p["tone"], nloc) / 50)
-                                     for p in note["bend"]["points"]]
+                                _active_unknown(point, {"position", "precisePosition", "tone"}, set(), nloc + "/bend/points", ignored)
+                            points = note["bend"]["points"]
+                            precision_count = sum("precisePosition" in p for p in points)
+                            if precision_count not in (0, len(points)):
+                                raise ValueError(nloc + ": incomplete precise bend coordinates")
+                            coords = [fraction(p["precisePosition"], nloc) / 100 if precision_count
+                                      else fraction(p["position"], nloc) / 60 for p in points]
+                            coarse = [fraction(p["position"], nloc) for p in points]
+                            values = [fraction(p["tone"], nloc) / 50 for p in points]
+                            if (coords != sorted(coords) or coarse != sorted(coarse)
+                                    or any(not 0 <= p <= 1 for p in coords)
+                                    or any(not 0 <= p <= 60 for p in coarse)
+                                    or any(not 0 <= v <= 8 for v in values)):
+                                raise ValueError(nloc + ": invalid bend coordinates")
+                            # Independent last-value selection at duplicate coordinates.
+                            bends = list(dict(zip(coords, values)).items())
                             if not bends:
                                 raise ValueError(f"{nloc}: missing bend points")
                         attack = q + offsets.get(ni, F(0))
