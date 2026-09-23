@@ -509,7 +509,7 @@ def songsterr(document):
                         if attack < 0 or length <= 0:
                             unsupported(nloc, "Strum crosses an unresolved timing boundary.")
                         if note.get("staccato"):
-                            if note["staccato"] is not True or any(note.get(k) for k in ("tie", "hp", "slide", "bend")):
+                            if note["staccato"] is not True or note.get("tie"):
                                 unsupported(nloc, "Linked staccato is not independently verified.")
                             reduced = max(length / 2, F(1, 32))
                             if reduced > length:
