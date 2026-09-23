@@ -85,7 +85,10 @@ def _note(raw, beat, position, duration, strings):
         if beat.get(source):
             effects[target] = True
     if raw.get("staccato"):
-        if raw["staccato"] is not True or any(raw.get(k) for k in ("tie", "hp", "slide", "bend")):
+        # The source performer shortens the sounding interval before applying
+        # bends/slides/hammer gestures. These can coexist; a tied segment still
+        # needs separate treatment because ties are folded before staccato.
+        if raw["staccato"] is not True or raw.get("tie"):
             raise ScoreImportError("Linked or malformed staccato needs additional timing support.")
         shortened = max(duration / 2, Fraction(1, 32))
         if shortened > duration:
