@@ -71,12 +71,14 @@ def test_before_grace_group_shares_budget(tmp_path):
     assert [float(n.q)/2 for n in read_source(source).parts[0].bars[0]] == [0, .375, .4375, .5]
 
 
-def test_recording_start_grace_is_not_clipped_or_changed_to_onbeat(tmp_path):
+def test_recording_start_grace_follows_source_fallback_and_keeps_written_mark(tmp_path):
     source = raw_score([measure({**beat(4, duration=(1, 16)), "graceNote": "beforeBeat"}, beat())])
-    with pytest.raises(ScoreImportError, match="boundary"):
-        import_json(tmp_path, source)
-    with pytest.raises(ValueError, match="boundary"):
-        read_source(source)
+    original = deepcopy(source)
+    track = import_json(tmp_path, source)['tracks'][0]
+    assert [n['t'] for n in track['notes']] == [0, .125]
+    assert [float(n.q)/2 for n in read_source(source).parts[0].bars[0]] == [0, .125]
+    assert track['notation']['measures'][0]['staves']['staff']['voices'][0]['beats'][0]['grace'] == 'a'
+    assert source == original
 
 
 @pytest.mark.parametrize("enabled,expected", [(True, [60, 75, 90, 105, 120]), (False, [60, 120])])

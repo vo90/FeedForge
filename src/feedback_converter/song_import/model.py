@@ -143,7 +143,10 @@ def validate_score(score: Score) -> None:
         for bi, notes in enumerate(track.bars):
             for note in notes:
                 count += 1
-                if (note.position < 0 or note.duration <= 0
+                leading_grace = (note.effects.get("__leading_grace") is True and bi > 0
+                                 and -score.measures[bi - 1].length <= note.position < 0
+                                 and note.position + note.duration <= 0)
+                if (note.position < 0 and not leading_grace or note.duration <= 0
                         or note.position + note.duration > score.measures[bi].length
                         or not 0 <= note.string < len(track.tuning) or not 0 <= note.fret <= 48):
                     raise ScoreImportError(f"Invalid note in {track.name}, measure {bi + 1}.")

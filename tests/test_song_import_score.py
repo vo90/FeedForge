@@ -278,14 +278,12 @@ def test_grouped_on_beat_grace_keeps_original_beat_span_with_repeat_and_tempo_ch
     assert result["duration"] == 6
 
 
-@pytest.mark.parametrize("case", ["beforeBeat", "unknown", "no_target", "rest_target", "equal_target", "short_target"])
+@pytest.mark.parametrize("case", ["unknown", "no_target", "equal_target", "short_target"])
 def test_unsupported_or_unbounded_grace_timing_is_rejected(tmp_path, case):
     grace = {**beat(2, duration=(1, 16)), "graceNote": "onBeat"}
     target = beat(4, duration=(1, 1))
-    if case in ("beforeBeat", "unknown"):
+    if case == "unknown":
         grace["graceNote"] = case
-    elif case == "rest_target":
-        target["notes"] = [{"rest": True}]
     elif case == "equal_target":
         target["duration"] = [1, 16]
     elif case == "short_target":

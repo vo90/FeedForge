@@ -295,6 +295,7 @@ def expected(source, alignment):
                                        "end": recording.at(clock.at(origin + beat["q"] + beat["length"])),
                                        "quarter": beat["written_q"], "length": beat["length"], "rest": beat["rest"],
                                        "notation": beat["notation"], "notes": [notation_notes[(occurrence, n.location)] for n in beat["notes"]]})
+        rendered.sort(key=lambda item: (item["note"]["t"], item["note"]["s"]))
         result["parts"].append({"source": part, "notes": rendered, "notation_beats": notation_beats, "notation_measures": measure_facts})
     result["score_duration"] = float(clock.at(clock.quarters))
     result["mapped_end"] = recording.at(clock.at(clock.quarters))

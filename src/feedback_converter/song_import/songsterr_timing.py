@@ -17,12 +17,13 @@ FEELS = {f"{prefix}{unit}": (F(4, unit), first, second)
 FEELS = {key + "th": value for key, value in FEELS.items()}
 
 
-def measure_timing(measure, bar_length, feel):
+def measure_timing(measure, bar_length, feel, previous=None, initial=False):
     """Swing exemptions are shared by all voices of this source part."""
     if any(not isinstance(v, dict) or not isinstance(v.get("beats"), list) for v in measure["voices"]):
         raise ScoreImportError("Missing Songsterr beat data.")
     if feel in (None, "off"):
-        return [voice_timing(v["beats"], bar_length) for v in measure["voices"]]
+        return [voice_timing(v["beats"], bar_length, previous=(previous or {}).get(vi), initial=initial)
+                for vi, v in enumerate(measure["voices"])]
     if feel not in FEELS:
         raise ScoreImportError("Unknown authored swing feel.")
     step, first, second = FEELS[feel]
@@ -38,7 +39,7 @@ def measure_timing(measure, bar_length, feel):
                 cursor += length
         voices.append((rows, cursor))
     clocks = []
-    for voice, (rows, total) in zip(measure["voices"], voices):
+    for vi, (voice, (rows, total)) in enumerate(zip(measure["voices"], voices)):
         def swung(q):
             pair = q // (2 * step)
             if pair in excluded or (pair + 1) * 2 * step > total:
@@ -48,17 +49,56 @@ def measure_timing(measure, bar_length, feel):
             return start + (local * first if local <= step else step * first + (local - step) * second)
         lengths = [length if b.get("graceNote") else swung(q + length) - swung(q)
                    for b, (q, length) in zip(voice["beats"], rows)]
-        clocks.append(voice_timing(voice["beats"], bar_length, lengths))
+        clocks.append(voice_timing(voice["beats"], bar_length, lengths, previous=(previous or {}).get(vi), initial=initial))
     return clocks
 
 
-def voice_timing(beats, bar_length, performed_lengths=None):
+def part_timing(measures, lengths):
+    """Resolve written-neighbour grace borrowing before constructing notes."""
+    clocks, previous, feel = [], {}, "off"
+    for bi, (measure, length) in enumerate(zip(measures, lengths)):
+        if not isinstance(measure, dict) or not isinstance(measure.get('voices'), list):
+            raise ScoreImportError("Missing Songsterr voices.")
+        feel = measure.get("tripletFeel") or feel
+        try:
+            values = measure_timing(measure, length, feel, previous, initial=bi == 0)
+        except ScoreImportError as exc:
+            exc.source_location = {'measure': bi + 1}
+            raise
+        clocks.append(values)
+        previous = {vi: (v["beats"], values[vi], length) for vi, v in enumerate(measure["voices"])
+                    if v["beats"]}
+    return clocks
+
+
+def voice_timing(beats, bar_length, performed_lengths=None, *, previous=None, initial=False):
     written_lengths = [rational(b.get("duration"), "beat duration") * 4 for b in beats]
     lengths = performed_lengths if performed_lengths is not None else written_lengths
     if any(d <= 0 for d in lengths):
         raise ScoreImportError("Invalid beat duration.")
     if whole_measure_rest(beats):
         return [(F(0), bar_length, F(0))]
+    if beats and beats[0].get("graceNote") == "beforeBeat":
+        if initial:
+            # The public clock treats a before-beat group with no preceding
+            # beat at score start as on-beat. Keep the written mark unchanged.
+            count = next((i for i, b in enumerate(beats) if not b.get("graceNote")), len(beats))
+            if any(b.get("graceNote") != "beforeBeat" for b in beats[:count]):
+                raise ScoreImportError("Mixed initial grace group needs additional support.")
+            normalized = [{**b, "graceNote": "onBeat"} if i < count else b for i, b in enumerate(beats)]
+            return voice_timing(normalized, bar_length, lengths)
+        if previous:
+            old_beats, old_clock, old_length = previous
+            if old_beats[-1].get("graceNote"):
+                raise ScoreImportError("Adjacent cross-bar grace groups need additional support.")
+            start, duration, written = old_clock[-1]
+            available = old_length - start
+            if available <= 0:
+                raise ScoreImportError("Cross-bar grace has no preceding time budget.")
+            prefix = {"duration": [available.numerator, available.denominator * 4], "notes": []}
+            combined = voice_timing([prefix, *beats], available + bar_length, [available, *lengths])
+            old_clock[-1] = (start, min(duration, combined[0][1]), written)
+            return [(p - available, d, w - available) for p, d, w in combined[1:]]
     output, position, written_position, index = [], F(0), F(0), 0
     while index < len(beats):
         principal = index
@@ -73,27 +113,29 @@ def voice_timing(beats, bar_length, performed_lengths=None):
             raise ScoreImportError("An on-beat grace note has no following note.")
         if before and (not output or beats[index - 1].get("graceNote")):
             raise ScoreImportError("Before-beat grace crossing a measure or recording boundary needs additional support.")
-        if before and index >= 2 and beats[index - 2].get("graceNote"):
-            raise ScoreImportError("Grace groups sharing a principal need additional timing support.")
         end = position + lengths[principal] if principal < len(beats) else position
         if end > bar_length:
             raise ScoreImportError("Voice exceeds its authored measure; it was not shortened.")
         offset = F(0)
         if principal > index:
             group = beats[index:principal]
-            if any(b.get("rest") or not any(not n.get("rest") for n in b.get("notes", []))
-                   for b in beats[index:principal if before else principal + 1]):
-                raise ScoreImportError("An on-beat grace note needs a following pitched note.")
+            # The source clock allocates grace time to beats, including rests.
+            # A grace rest can deliberately delay the following attack.
             dots = max(integer(b.get("dots", 0), "grace dots") for b in group)
             if not 0 <= dots <= 4:
                 raise ScoreImportError("Invalid grace dot count.")
             reserved = F(1, 8 if dots >= 2 else 4 if dots == 1 else 2)
-            available = output[-1][1] if before else bar_length - position if principal == len(beats) - 1 else lengths[principal]
+            # All source group budgets are calculated before grace durations
+            # are subtracted. A previous on-beat group must not shrink the
+            # budget a later before-beat group receives from that principal.
+            available = lengths[index - 1] if before else bar_length - position if principal == len(beats) - 1 else lengths[principal]
             total = sum(lengths[index:principal], F(0))
             budget = min(available * (1 - reserved), total / len(group))
             used = budget if total > budget else total
             if before:
                 previous = output[-1]
+                if previous[1] <= used:
+                    raise ScoreImportError("Grace groups consume their shared principal; no repair was applied.")
                 output[-1] = (previous[0], previous[1] - used, previous[2])
             for gi in range(index, principal):
                 length = budget / len(group) if total > budget else lengths[gi]
@@ -159,8 +201,8 @@ def strum_offsets(beat):
         return {}, direction
     if any(n.get("tie") for n in beat["notes"]):
         raise ScoreImportError("A strum containing tied notes needs additional timing support.")
-    if beat.get("graceNote"):
-        raise ScoreImportError("Combined grace and strum timing needs additional support.")
+    # Explicit spreading follows grace allocation. The source cap uses the
+    # written beat duration; callers still reject nonpositive sounding notes.
     cap = min(960, int(rational(beat["duration"], "strum beat duration") * 1920))
     step = old_step if old_step is not None else F(min(duration, cap)) / (480 * count)
     span = step * (count - 1)

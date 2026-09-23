@@ -9,7 +9,7 @@ from fractions import Fraction
 
 from .inventory import FeatureInventory
 from .model import Measure, Note, Score, ScoreImportError, Track, WrittenBeat, WrittenVoice, integer, rational
-from .songsterr_timing import measure_timing, strum_offsets, FEELS
+from .songsterr_timing import part_timing, strum_offsets, FEELS
 from .songsterr_fields import bend_points
 from .songsterr_automation import performed_tempos
 
@@ -300,6 +300,7 @@ def parse(document: dict, *, track_indices=None) -> Score:
         track_bars = []
         written_bars = []
         feel = "off"
+        part_clocks = part_timing(part["measures"], [m.length for m in measures])
         for bi, measure in enumerate(part["measures"]):
             inventory.inspect(measure, "Songsterr measure", f"$.parts[{index}].measures[{bi}]",
                               playable={"signature", "voices", "rest", "repeat", "repeatStart", "alternateEnding", "marker", "direction", "directions", "fromDirection", "fermata", "freeTime", "tripletFeel"},
@@ -316,7 +317,7 @@ def parse(document: dict, *, track_indices=None) -> Score:
             written_voices = []
             feel = measure.get("tripletFeel") or feel
             try:
-                measure_clocks = measure_timing(measure, measures[bi].length, feel)
+                measure_clocks = part_clocks[bi]
             except ScoreImportError as exc:
                 exc.source_location = {"measure": bi + 1, "location": f"parts/{index}/measures/{bi}"}
                 raise
@@ -368,7 +369,10 @@ def parse(document: dict, *, track_indices=None) -> Score:
                                 inventory.inspect(point, "Songsterr bend point", f"{source_id}.bend.points[{point_index}]", playable={"position", "precisePosition", "tone"}, strict=True)
                         if not note.get("rest"):
                             offset = offsets.get(note_index, Fraction(0))
-                            if position + offset < 0 or duration <= offset:
+                            boundary_grace = position < 0 and grace == "beforeBeat" and bi > 0
+                            if boundary_grace and any(m.repeat_count or m.endings for m in measures):
+                                raise ScoreImportError("Cross-bar grace across repeated notation needs additional traversal support.")
+                            if (position + offset < 0 and not boundary_grace) or duration <= offset:
                                 raise ScoreImportError("The authored strum crosses a measure boundary or consumes a note; additional timing support is required.")
                             try:
                                 parsed = _note(note, beat, position + offset, duration - offset, len(tuning))
@@ -379,6 +383,8 @@ def parse(document: dict, *, track_indices=None) -> Score:
                             if strum_direction and "pkd" not in parsed.effects:
                                 parsed.effects["pkd"] = 1 if strum_direction == "up" else 0
                             parsed.source_id, parsed.beat_id, parsed.voice_id = source_id, beat_id, str(vi)
+                            if boundary_grace:
+                                parsed.effects["__leading_grace"] = True
                             bar_notes.append(parsed)
                             written_beat.notes.append(parsed)
                     written_beat.rest = not written_beat.notes
