@@ -146,46 +146,104 @@ def _endings(raw, loc):
     return frozenset(i + 1 for i in range(16) if mask & (1 << i))
 
 
-def _songsterr_beat_clock(beats, measure_length, location):
-    lengths = [4 * fraction(b["duration"], location) for b in beats]
+def _songsterr_swing_lengths(bar, feel, location):
+    original = [[fraction(b["duration"], location) * 4 for b in v["beats"]] for v in bar["voices"]]
+    if feel in (None, "off"):
+        return original
+    patterns = {"8th": (F(1, 2), F(2, 3)), "16th": (F(1, 4), F(2, 3)),
+                "dotted8th": (F(1, 2), F(3, 4)), "dotted16th": (F(1, 4), F(3, 4)),
+                "scottish8th": (F(1, 2), F(1, 4)), "scottish16th": (F(1, 4), F(1, 4))}
+    if feel not in patterns:
+        unsupported(location, "Unknown swing feel.")
+    half, ratio = patterns[feel]
+    disabled, rows = set(), []
+    for voice, lengths in zip(bar["voices"], original):
+        starts, cursor = [], F(0)
+        for beat, length in zip(voice["beats"], lengths):
+            starts.append(cursor)
+            if not beat.get("graceNote"):
+                if length % half != 0 or feel in ("8th", "16th") and beat.get("tuplet") == 2:
+                    disabled.add(cursor // (half * 2))
+                cursor += length
+        rows.append((starts, cursor))
+    output = []
+    for voice, durations, (starts, end) in zip(bar["voices"], original, rows):
+        def mapped(q):
+            pair, remainder = divmod(q, half * 2)
+            if pair in disabled or (pair + 1) * half * 2 > end:
+                return q
+            left = pair * half * 2
+            if remainder <= half:
+                return left + remainder * 2 * ratio
+            return left + half * 2 * ratio + (remainder - half) * 2 * (1 - ratio)
+        output.append([d if b.get("graceNote") else mapped(q + d) - mapped(q)
+                       for b, q, d in zip(voice["beats"], starts, durations)])
+    return output
+
+
+def _songsterr_beat_clock(beats, measure_length, location, performed_lengths=None):
+    written = [4 * fraction(b["duration"], location) for b in beats]
+    lengths = performed_lengths if performed_lengths is not None else written
     if (len(beats) == 1 and beats[0].get("rest") is True and beats[0].get("type") == 1
             and lengths == [F(4)] and not any(beats[0].get(k) for k in ("dots", "tuplet", "graceNote"))
             and isinstance(beats[0].get("notes"), list)
             and all(n.get("rest") is True for n in beats[0]["notes"])):
         return [[F(0), measure_length, F(0)]]
-    starts, position = [], F(0)
+    starts, written_starts, position, written_position = [], [], F(0), F(0)
     for beat, length in zip(beats, lengths):
         if length <= 0:
             raise ValueError(location + ": invalid written duration")
         starts.append(position)
+        written_starts.append(written_position)
         if not beat.get("graceNote"):
             position += length
+            written_position += written[len(starts) - 1]
     if position > measure_length:
         raise ValueError(location + ": overfull written voice")
-    times = [[start, length, start] for start, length in zip(starts, lengths)]
+    times = [[start, length, w] for start, length, w in zip(starts, lengths, written_starts)]
     pending = []
-    for index, beat in enumerate(beats):
+    for index, beat in enumerate([*beats, {}]):
         if beat.get("graceNote"):
-            if beat["graceNote"] != "onBeat":
+            if beat["graceNote"] not in ("onBeat", "beforeBeat"):
                 unsupported(location, "This grace-note timing is not independently verified.")
             pending.append(index)
             continue
         if not pending:
             continue
-        if any(beats[i].get("rest") or not any(not n.get("rest") for n in beats[i].get("notes", [])) for i in [*pending, index]):
+        kind = beats[pending[0]]["graceNote"]
+        if any(beats[i]["graceNote"] != kind for i in pending):
+            unsupported(location, "Mixed grace group is not independently verified.")
+        before = kind == "beforeBeat"
+        if before:
+            principal = pending[0] - 1
+            if principal < 0 or beats[principal].get("graceNote"):
+                unsupported(location, "Before-beat grace crosses an unresolved boundary.")
+            if principal > 0 and beats[principal - 1].get("graceNote"):
+                unsupported(location, "Shared-principal grace timing is not independently verified.")
+        else:
+            principal = index
+            if principal >= len(beats):
+                unsupported(location, "A grace note has no independently resolvable principal note.")
+        tested = pending if before else [*pending, principal]
+        if any(beats[i].get("rest") or not any(not n.get("rest") for n in beats[i].get("notes", [])) for i in tested):
             raise ValueError(location + ": grace group has no pitched principal")
         dots = max(integer(beats[i].get("dots", 0), location) for i in pending)
-        principal_available = measure_length - starts[index] if index + 1 == len(beats) else lengths[index]
+        principal_available = (times[principal][1] if before else
+                               measure_length - starts[principal] if principal + 1 == len(beats) else lengths[principal])
         fraction_available = F(7, 8) if dots >= 2 else F(3, 4) if dots == 1 else F(1, 2)
         total = sum((lengths[i] for i in pending), F(0))
         maximum = min(total / len(pending), principal_available * fraction_available)
         used = F(0)
+        budget = min(total, maximum)
+        anchor = starts[pending[0]] if before else starts[principal]
         for i in pending:
             length = maximum / len(pending) if total > maximum else lengths[i]
-            times[i] = [starts[index] + used, length, starts[index]]
+            times[i] = [anchor + used - (budget if before else 0), length, written_starts[pending[0]]]
             used += length
-        times[index] = [starts[index] + used, lengths[index] - used, starts[index]]
-        if times[index][1] <= 0:
+        times[principal][1] -= used
+        if not before:
+            times[principal][0] += used
+        if times[principal][1] <= 0:
             raise ValueError(location + ": grace group consumes principal")
         pending.clear()
     if pending:
@@ -264,22 +322,22 @@ def songsterr(document):
         for b in samples:
             _active_unknown(b, {"voices", "signature", "rest", "marker", "repeat", "repeatStart", "alternateEnding", "tripletFeel", "clef"},
                             {"width", "id", "index", "doubleBarline", "keySignature"}, loc, ignored)
-            if b.get("tripletFeel") not in (None, "off"):
-                unsupported(loc + "/tripletFeel", "Swing timing is not independently verified.")
         markers = [b["marker"] for b in samples if b.get("marker")]
         names = {str(m.get("text", "")) if isinstance(m, dict) else str(m) for m in markers}
         if len(names) > 1:
             unsupported(loc + "/marker", "Source tracks have different section markers.")
         bars.append(Bar(signature, any(b.get("repeatStart") for b in samples), next(iter(repeats), 0),
                         next(iter(endings), frozenset()), next(iter(names), "")))
+    all_clocks = []
     for pi, raw in enumerate(raw_parts):
         automations = raw.get("automations", {})
-        _active_unknown(automations, {"tempo"}, {"volume", "balance"}, f"parts/{pi}/automations", ignored)
+        _active_unknown(automations, {"tempo", "gradualTempo", "fermata"}, {"volume", "balance"}, f"parts/{pi}/automations", ignored)
+        part_events = {}
         for tempo in automations.get("tempo", []):
             loc = f"parts/{pi}/automations/tempo"
             _active_unknown(tempo, {"measure", "position", "bpm", "type", "linear", "dotted"}, {"text"}, loc, ignored)
-            if tempo.get("linear"):
-                unsupported(loc, "Linear tempo ramps are not independently verified.")
+            if tempo.get("linear") is not None and type(tempo["linear"]) is not bool:
+                raise ValueError(loc + ": invalid linear flag")
             bi = integer(tempo["measure"], loc)
             q = fraction(tempo.get("position", 0), loc) * 4
             bpm = fraction(tempo["bpm"], loc) * F(4, integer(tempo.get("type", 4), loc))
@@ -289,9 +347,26 @@ def songsterr(document):
                 bpm *= F(3, 2)
             if not 0 <= bi < count or not 0 <= q < bars[bi].length or bpm <= 0:
                 raise ValueError(f"{loc}: invalid tempo coordinate")
+            if (bi, q) in part_events and part_events[bi, q] != bpm:
+                raise ValueError(loc + ": conflicting source tempo events")
+            part_events[bi, q] = bpm
+        from .verify_automation import expand
+        expanded = expand(automations, bars, part_events, f"parts/{pi}/automations")
+        all_clocks.append(expanded)
+        for (bi, q), bpm in expanded.items():
             if q in bars[bi].tempos and bars[bi].tempos[q] != bpm:
                 unsupported(loc, "Source tracks disagree about tempo.")
             bars[bi].tempos[q] = bpm
+    if any(p.get("automations", {}).get("gradualTempo") or p.get("automations", {}).get("fermata") for p in raw_parts):
+        points = sorted(set().union(*(c.keys() for c in all_clocks)))
+        for point in points:
+            rates = []
+            for clock in all_clocks:
+                before = [q for q in clock if q <= point]
+                if before:
+                    rates.append(clock[max(before)])
+            if len(set(rates)) > 1:
+                unsupported("automations", "Tracks have different performed tempo automation.")
     parts, excluded = [], []
     note_keys = {"string", "fret", "tie", "rest", "dead", "vibrato", "wideVibrato", "ghost", "accentuated",
                  "tap", "tapping", "hp", "harmonic", "harmonicFret", "slide", "bend", "leftHandVibrato", "staccato"}
@@ -306,7 +381,10 @@ def songsterr(document):
             continue
         tuning = [integer(v) for v in reversed(raw.get("tuning") or meta["tuning"])]
         track = Part(tid, name, kind, tuning, integer(raw.get("capo", meta.get("capo", 0))), [], [])
+        feel = "off"
         for bi, bar in enumerate(raw["measures"]):
+            feel = bar.get("tripletFeel") or feel
+            lengths_by_voice = _songsterr_swing_lengths(bar, feel, f"parts/{pi}/measures/{bi}")
             clef = bar.get("clef")
             if clef not in (None, "G2", "F4", "C3", "C4", "neutral"):
                 unsupported(f"parts/{pi}/measures/{bi}/clef", "Unknown source clef.")
@@ -314,7 +392,7 @@ def songsterr(document):
             atoms, beat_facts = [], []
             for vi, voice in enumerate(bar["voices"]):
                 _active_unknown(voice, {"beats", "rest"}, {"id"}, f"parts/{pi}/measures/{bi}/voices/{vi}", ignored)
-                times = _songsterr_beat_clock(voice["beats"], bars[bi].length, f"parts/{pi}/measures/{bi}/voices/{vi}")
+                times = _songsterr_beat_clock(voice["beats"], bars[bi].length, f"parts/{pi}/measures/{bi}/voices/{vi}", lengths_by_voice[vi])
                 for bti, beat in enumerate(voice["beats"]):
                     loc = f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}"
                     _active_unknown(beat, beat_keys, {"beamStart", "beamStop", "id"}, loc, ignored)
@@ -350,14 +428,14 @@ def songsterr(document):
                             unsupported(loc, "This gradual dynamic is not independently verified.")
                         written["cre" if beat["gradualVelocity"] == "crescendo" else "dec"] = True
                     grace = beat.get("graceNote")
-                    if grace not in (None, "onBeat"):
+                    if grace not in (None, "onBeat", "beforeBeat"):
                         unsupported(loc, "This grace-note timing is not independently verified.")
                     if duration <= 0:
                         raise ValueError(f"{loc}: nonpositive performed beat duration")
                     fact = {"q": q, "length": duration, "voice": str(vi), "location": loc, "written_q": written_q,
                             "rest": not any(not n.get("rest") for n in beat["notes"]), "notation": written, "notes": [], "chord_label": label.get("text", "")}
                     if grace:
-                        fact["notation"]["grace"] = "p"
+                        fact["notation"]["grace"] = "a" if grace == "beforeBeat" else "p"
                     beat_facts.append(fact)
                     for ni, note in enumerate(beat["notes"]):
                         nloc = loc + f"/notes/{ni}"

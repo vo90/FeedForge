@@ -9,8 +9,9 @@ from fractions import Fraction
 
 from .inventory import FeatureInventory
 from .model import Measure, Note, Score, ScoreImportError, Track, WrittenBeat, WrittenVoice, integer, rational
-from .songsterr_timing import voice_timing, strum_offsets
+from .songsterr_timing import measure_timing, strum_offsets, FEELS
 from .songsterr_fields import bend_points
+from .songsterr_automation import performed_tempos
 
 
 def _instrument(meta):
@@ -196,8 +197,8 @@ def parse(document: dict) -> Score:
         for m in candidates:
             if any(m.get(key) for key in ("direction", "directions", "fromDirection", "fermata", "freeTime")):
                 raise ScoreImportError("Songsterr navigation/free time requires additional support.")
-            if m.get("tripletFeel") not in (None, "off"):
-                raise ScoreImportError("Swing/triplet feel is not supported yet.")
+            if m.get("tripletFeel") not in (None, "off", *FEELS):
+                raise ScoreImportError("Unknown authored swing feel.")
         repeat_values = {integer(m["repeat"], "repeat count") for m in candidates if "repeat" in m}
         if len(repeat_values) > 1:
             raise ScoreImportError("Tracks disagree about the repeat count.")
@@ -209,12 +210,14 @@ def parse(document: dict) -> Score:
         measures.append(Measure(n, d, Fraction(4 * n, d), any(m.get("repeatStart") for m in candidates),
                                 next(iter(repeat_values), 0), next(iter(ending_values), frozenset()), section))
     tempo_events = {}
+    part_clocks = []
     for part_index, part in enumerate(parts):
         automations = part.get("automations", {})
         if not isinstance(automations, dict):
             raise ScoreImportError("Invalid Songsterr automation data.")
         inventory.inspect(automations, "Songsterr automations", f"$.parts[{part_index}].automations",
-                          playable={"tempo"}, retained={"volume", "balance"}, strict=True)
+                          playable={"tempo", "fermata", "gradualTempo"}, retained={"volume", "balance"}, strict=True)
+        part_events = {}
         for tempo_index, tempo in enumerate(automations.get("tempo", [])):
             inventory.inspect(tempo, "Songsterr tempo", f"$.parts[{part_index}].automations.tempo[{tempo_index}]",
                               playable={"measure", "position", "bpm", "type", "linear", "dotted"}, retained={"text"}, strict=True)
@@ -223,8 +226,8 @@ def parse(document: dict) -> Score:
             bar = integer(tempo.get("measure"), "tempo measure")
             if not 0 <= bar < count:
                 raise ScoreImportError("Tempo references a missing measure.")
-            if tempo.get("linear"):
-                raise ScoreImportError("Linear tempo ramps require additional support.")
+            if tempo.get("linear") is not None and type(tempo["linear"]) is not bool:
+                raise ScoreImportError("Invalid linear tempo flag.")
             # Songsterr's exact duration and position fractions are whole-note units.
             position = rational(tempo.get("position", 0), "tempo position") * 4
             bpm = float(rational(tempo.get("bpm"), "tempo"))
@@ -237,9 +240,28 @@ def parse(document: dict) -> Score:
             if tempo.get("dotted") is True:
                 bpm *= 1.5
             key = (bar, position)
+            if key in part_events and part_events[key] != bpm:
+                raise ScoreImportError("Conflicting tempo events at the same position.")
+            part_events[key] = bpm
+        part_events = performed_tempos(automations, measures, part_events)
+        part_clocks.append(part_events)
+        for key, bpm in part_events.items():
             if key in tempo_events and tempo_events[key] != bpm:
                 raise ScoreImportError("Tracks disagree about tempo.")
             tempo_events[key] = bpm
+    if any(p.get("automations", {}).get("gradualTempo") or p.get("automations", {}).get("fermata") for p in parts):
+        clocks = []
+        for events in part_clocks:
+            if not events:
+                continue
+            changes, prior = [], None
+            for point, bpm in sorted(events.items()):
+                if bpm != prior:
+                    changes.append((point, bpm))
+                prior = bpm
+            clocks.append(changes)
+        if clocks and any(clock != clocks[0] for clock in clocks[1:]):
+            raise ScoreImportError("Tracks disagree about the performed tempo automation.")
     for (bar, position), bpm in tempo_events.items():
         measures[bar].tempos.append((position, bpm))
     tracks = []
@@ -266,6 +288,7 @@ def parse(document: dict) -> Score:
         name = str(meta.get("name") or meta.get("title") or meta.get("instrument") or f"Track {index + 1}")
         track_bars = []
         written_bars = []
+        feel = "off"
         for bi, measure in enumerate(part["measures"]):
             inventory.inspect(measure, "Songsterr measure", f"$.parts[{index}].measures[{bi}]",
                               playable={"signature", "voices", "rest", "repeat", "repeatStart", "alternateEnding", "marker", "direction", "directions", "fromDirection", "fermata", "freeTime", "tripletFeel"},
@@ -280,10 +303,12 @@ def parse(document: dict) -> Score:
                 raise ScoreImportError(f"Missing voices in {name}, measure {bi + 1}.")
             bar_notes = []
             written_voices = []
+            feel = measure.get("tripletFeel") or feel
+            measure_clocks = measure_timing(measure, measures[bi].length, feel)
             for vi, voice in enumerate(measure["voices"]):
                 if not isinstance(voice, dict) or not isinstance(voice.get("beats"), list):
                     raise ScoreImportError("Missing Songsterr beat data.")
-                timings = voice_timing(voice["beats"], measures[bi].length)
+                timings = measure_clocks[vi]
                 voice_id = f"songsterr:{index}:{bi}:{vi}"
                 inventory.inspect(voice, "Songsterr voice", voice_id, playable={"beats", "rest"}, strict=True)
                 written_voice = WrittenVoice(voice_id, source_index=vi)
@@ -301,7 +326,7 @@ def parse(document: dict) -> Score:
                     if any(beat.get(k) for k in ("grace", "graceNotes", "tremoloBar", "stroke", "whammy")):
                         raise ScoreImportError("Unsupported Songsterr beat technique.")
                     grace = beat.get("graceNote")
-                    if grace not in (None, "onBeat"):
+                    if grace not in (None, "onBeat", "beforeBeat"):
                         raise ScoreImportError(f"Songsterr grace note type {grace!r} is unsupported in {name}, measure {bi + 1}.")
                     if "duration" not in beat:
                         raise ScoreImportError("Missing exact Songsterr beat duration.")
@@ -313,7 +338,7 @@ def parse(document: dict) -> Score:
                     denominator, dots, tuplet = _written_rhythm(beat, written_duration)
                     written_beat = WrittenBeat(beat_id, position, duration, rest=bool(beat.get("rest")),
                                                denominator=denominator, dots=dots, tuplet=tuplet,
-                                               grace="p" if grace else "", annotations=_annotations(beat),
+                                               grace=("a" if grace == "beforeBeat" else "p") if grace else "", annotations=_annotations(beat),
                                                written_duration=written_duration, written_position=written_position)
                     written_beat.chord_label = _chord_label(beat)
                     for note_index, note in enumerate(beat["notes"]):
