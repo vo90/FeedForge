@@ -6,6 +6,7 @@ parser and independent verifier still validate every supported representation.
 from copy import deepcopy
 import json
 import math
+from .songsterr_harmonics import exact_natural
 
 VERSION = 6
 TARGET = {"feedpak": "1.16.0", "notation": 1,
@@ -96,6 +97,8 @@ def inspect_songsterr(document, *, track_indices=None):
                         message="Expected a source object.", location=path, value=obj, **coordinates)
             return
         for key, value in obj.items():
+            if scope == "note" and key == "harmonicFret" and exact_natural(obj):
+                continue
             if scope == "tempo" and key == "visible" and isinstance(value, bool):
                 add_finding(report, feature="tempo.visible", category="game_limitation", impact="display_or_expression",
                             message="Tempo-label visibility is retained in the source. The numeric tempo and playback timing are unchanged.",

@@ -64,6 +64,7 @@ class Atom:
     wide_vibrato: bool = False
     slide_in: str | None = None
     staccato: bool = False
+    pitch_offset: int = 0
 
 
 @dataclass
@@ -503,12 +504,23 @@ def songsterr(document):
                             if beat.get(key):
                                 fx[out] = True
                         harmonic = note.get("harmonic")
+                        harmonic_shift = 0
                         touch = note.get("harmonicFret")
                         if touch is not None and (type(touch) not in (int, float) or fraction(touch, nloc) < 0):
                             raise ValueError(nloc + ": invalid harmonic fret")
-                        if touch and harmonic is not None:
+                        # Independent lookup: absolute overtone above the open
+                        # string, not an ordinary fretted fundamental.
+                        nodes = {4: 28, 5: 24, 7: 19, 9: 28, 12: 12, 16: 28, 19: 19}
+                        natural = (harmonic == 'natural' and note.get('harmonicData') is None
+                                   and note.get('fret') in nodes and not isinstance(note.get('fret'), bool)
+                                   and (touch is None or touch == note['fret']))
+                        if touch and harmonic is not None and not natural:
                             unsupported(nloc, "Harmonic-fret pitch interpretation is not independently verified.")
                         if harmonic:
+                            if harmonic == 'natural':
+                                if not natural:
+                                    unsupported(nloc, 'Natural harmonic node is not independently representable.')
+                                harmonic_shift = nodes[note['fret']] - note['fret']
                             if harmonic not in {"natural", "pinch"}:
                                 unsupported(nloc, "This harmonic type is not independently verified.")
                             fx[{"natural": "hm", "pinch": "hp"}[harmonic]] = True
@@ -557,6 +569,7 @@ def songsterr(document):
                                           bool(note.get("hp"))))
                         fact["notes"].append(atoms[-1])
                         atoms[-1].staccato = note.get("staccato") is True
+                        atoms[-1].pitch_offset = harmonic_shift
                         atoms[-1].wide_vibrato = bool(note.get("wideVibrato")) or note.get("leftHandVibrato") == "wide"
                         if raw_slide in {"above", "aboveshift", "abovelegato", "aboveupwards", "abovedownwards"}:
                             atoms[-1].slide_in = "down"

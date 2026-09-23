@@ -244,7 +244,7 @@ def expected(source, alignment):
                     pending_hopos[key] = event
                     event["effects"]["ln"] = True
                 state[key] = event
-                written_note = {"midi": part.tuning[atom.string] + part.capo + atom.fret,
+                written_note = {"midi": part.tuning[atom.string] + part.capo + atom.fret + atom.pitch_offset,
                                 "str": atom.string, "fret": atom.fret, "tied": atom.tie}
                 for raw_key, out_key in {"mt": "dead", "ghost": "ghost", "vb": "vib", "ac": "ac", "tp": "tp"}.items():
                     if atom.effects.get(raw_key):

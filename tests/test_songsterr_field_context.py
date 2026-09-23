@@ -34,6 +34,7 @@ def test_inactive_touch_position_does_not_turn_an_ordinary_note_into_a_harmonic(
     assert source == original
     assert verified
     source['parts'][0]['measures'][0]['voices'][0]['beats'][0]['notes'][0]['harmonic'] = 'natural'
+    source['parts'][0]['measures'][0]['voices'][0]['beats'][0]['notes'][0]['harmonicFret'] = 3.2
     assert inspect_songsterr(source)['status'] == 'blocked'
     with pytest.raises(Exception, match='harmonicFret'):
         parse(source)
