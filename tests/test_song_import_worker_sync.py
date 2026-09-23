@@ -145,3 +145,41 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
     retried = worker.run_import(changed)
     assert retried["ok"], retried
     assert retried["recipe"]["alignment"]["provenance"]["mapHash"] != result["recipe"]["alignment"]["provenance"]["mapHash"]
+
+
+@pytest.mark.parametrize('supplied_points', [[0, 2], [0, 2, 4, 6, 8, 10]])
+def test_completed_package_verifies_several_silent_trailing_bars(tmp_path, monkeypatch, supplied_points):
+    video_id = 'abcdefghijk'
+    raw = {'format': 'songsterr', 'songId': 12, 'revisionId': 34, 'title': 'Tail', 'artist': 'Artist',
+        'tracks': [{'id': 0, 'name': 'Lead', 'instrumentId': 29, 'tuning': [64, 59, 55, 50, 45, 40]}],
+        'parts': [{'automations': {'tempo': [{'measure': 0, 'position': 0, 'bpm': 120}]}, 'measures': [
+            {'signature': [4, 4], 'voices': [{'beats': [{'type': 1, 'duration': [1, 1], 'notes': [{'string': 5, 'fret': 3}]}]}]},
+            *[{'signature': [4, 4], 'voices': [{'beats': [{'type': 1, 'duration': [1, 1], 'rest': True, 'notes': [{'rest': True}]}]}]} for _ in range(4)]
+        ]}]}
+    score = tmp_path / 'score.json'
+    score.write_text(json.dumps(raw), encoding='utf-8')
+    recording = tmp_path / 'recording.wav'
+    samples = np.zeros(22050 * 3)
+    samples[:22050 * 2] = .2 * np.sin(2 * np.pi * 440 * np.arange(22050 * 2) / 22050)
+    sf.write(recording, samples, 22050)
+    monkeypatch.setattr(audio_module, '_public_url', lambda url: url)
+    monkeypatch.setattr(audio_module, '_download_youtube', lambda url, directory, tools:
+        (recording, {'kind': 'youtube', 'videoId': video_id, 'url': url}))
+    monkeypatch.setattr(worker, 'align_audio', lambda *args, **kwargs: pytest.fail('must use the source map'))
+    result = worker.run_import({'scorePath': str(score), 'audio': {'kind': 'url', 'url': f'https://www.youtube.com/watch?v={video_id}'},
+        'metadata': {'songId': '12', 'revisionId': '34', 'approval': 'approved'}, 'artworkLookup': False,
+        'synchronization': {'version': 1, 'source': 'songsterr-video-points', 'songId': '12', 'revisionId': '34',
+            'videoId': video_id, 'status': 'done', 'feature': None, 'points': supplied_points},
+        'workDir': str(tmp_path / 'work'), 'outputDir': str(tmp_path / 'library')})
+    assert result['ok'], result
+    assert result['verification']['status'] == 'passed'
+    with zipfile.ZipFile(result['stagingPath']) as archive:
+        manifest = yaml.safe_load(archive.read('manifest.yaml'))
+        chart = json.loads(archive.read(manifest['arrangements'][0]['file']))
+        notation = json.loads(archive.read(manifest['arrangements'][0]['notation']))
+        assert manifest['duration'] == pytest.approx(3)
+        assert len(chart['notes']) == 1
+        assert chart['notes'][0]['t'] == 0 and chart['notes'][0]['sus'] == 2
+        assert len(notation['measures']) == 5
+        assert notation['measures'][-1]['t'] == 8 and notation['measures'][-1]['duration_seconds'] == 2
+        assert all(b['time'] <= 3 for b in chart['beats'])
