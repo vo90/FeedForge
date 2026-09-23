@@ -6,13 +6,19 @@ const searchMemory = new WeakMap();
 const LABELS = { queued: 'Queued', resolving: 'Checking revision', downloading: 'Retrieving tab', audio: 'Preparing audio', aligning: 'Aligning audio', converting: 'Creating FeedPak', validating: 'Validating', saving: 'Saving', completed: 'FeedPak ready', needs_audio: 'Audio needed', needs_login: 'Sign in needed', needs_attention: 'Needs attention', alignment_failed: 'Audio could not be aligned', failed: 'Failed', cancelled: 'Cancelled' };
 function errorText(value) { return typeof value === 'string' ? value : value?.message || value?.error || 'The operation failed. Please try again.'; }
 
-const CATEGORY = { unknown_semantics: 'Needs interpretation', converter_gap: 'Converter support', game_representation: 'Game representation', game_limitation: 'Game limitation', source_structure: 'Source structure', conversion_check: 'Conversion check' };
+const CATEGORY = { unknown_semantics: 'Needs interpretation', source_interpretation: 'Needs interpretation', converter_gap: 'Converter support', game_representation: 'Game representation', game_limitation: 'Game limitation', source_structure: 'Source structure', conversion_check: 'Conversion check', audio_alignment: 'Audio alignment' };
+const WORK = { decision_required: 'Design decision needed', technical_work: 'Conversion work needed', display_limitation: 'Display limitation', fixed_verified: 'Resolved and verified' };
 export function CompatibilityDetails({ report }) {
   if (!report) return null;
   return <div className="st-compatibility"><p>{report.findingCount || 0} compatibility findings. Original information is retained; retention does not mean the game displays or scores it.</p>
+    {report.arrangements?.length ? <details open><summary>Arrangement checks</summary>
+      <p>Every requested arrangement must pass before a FeedPak is saved. A passed score check still needs audio alignment and final file verification.</p>
+      <ul>{report.arrangements.map(item => <li key={item.trackIndex}><strong>{item.name}</strong> · {item.status === 'score_ready' ? 'Score check passed' : 'Needs attention'}
+        {item.message ? <p>{item.message}</p> : item.blockingFeatures?.length ? <p>{item.blockingFeatures.join(', ')}</p> : null}</li>)}</ul>
+    </details> : null}
     <ul>{report.findings.map((item, i) => <li key={i}><strong>{item.feature}</strong> · {CATEGORY[item.category] || item.category}
       <p>{[item.arrangement, item.measure && `Measure ${item.measure}`, item.beat && `beat ${item.beat}`, item.note && `note ${item.note}`].filter(Boolean).join(' · ')}</p>
-      <p>{item.message}</p><small>Source value: {JSON.stringify(item.value)}{item.valueTruncated ? '… (full value in saved source)' : ''}</small></li>)}</ul>
+      <p>{item.message}</p>{item.workStatus ? <p>{WORK[item.workStatus] || item.workStatus}</p> : null}<small>Source value: {JSON.stringify(item.value)}{item.valueTruncated ? '… (full value in saved source)' : ''}</small></li>)}</ul>
     {report.findingCount > report.findings.length ? <p>Showing the first {report.findings.length} findings. Save the conversion report for the complete recorded list.</p> : null}
   </div>;
 }
@@ -21,9 +27,10 @@ export function CompatibilityList({ report }) {
   return <div className="st-compatibility"><p>Latest assessment per song revision. Repeated attempts are counted once.</p>
     {report.unreadable ? <p role="alert">{report.unreadable} saved reports could not be read.</p> : null}
     {!report.groups.length ? <p>No recorded compatibility gaps.</p> : <ul>{report.groups.map((group, i) => <li key={i}>
-      <strong>{group.feature}</strong> · {CATEGORY[group.category] || group.category}<p>{group.affectedSongs} affected song revisions · {group.occurrences} occurrences</p>
+      <strong>{group.feature}</strong> · {CATEGORY[group.category] || group.category}<p>{WORK[group.workStatus] || group.workStatus}</p><p>{group.affectedSongs} affected song revisions · {group.occurrences} occurrences</p>
       <p>{group.message}</p><details><summary>Examples</summary><ul>{group.examples.map((row, j) => <li key={j}>{row.artist} — {row.title}, {row.arrangement}{row.measure ? `, measure ${row.measure}` : ''}</li>)}</ul></details>
     </li>)}</ul>}
+    {report.resolved?.length ? <details><summary>{report.resolved.length} previously recorded gaps resolved and verified</summary><ul>{report.resolved.map((item, i) => <li key={i}>{item.artist} — {item.title}: {item.feature}</li>)}</ul></details> : null}
   </div>;
 }
 

@@ -163,7 +163,7 @@ def _chord_label(beat):
     return chord["text"]
 
 
-def parse(document: dict) -> Score:
+def parse(document: dict, *, track_indices=None) -> Score:
     if not isinstance(document, dict) or document.get("format") != "songsterr":
         raise ScoreImportError("Expected a complete Songsterr score envelope.")
     metadata, parts = document.get("tracks"), document.get("parts")
@@ -275,7 +275,7 @@ def parse(document: dict) -> Score:
                           retained={"views", "difficulty", "hash", "isEmpty"})
         inventory.inspect(part, "Songsterr part", f"$.parts[{index}]", playable={"measures", "tuning", "automations", "capo"},
                           retained={"name", "balance", "volume", "frets", "strings", "instrumentId", "instrument", "newLyrics", "withLyrics", "tuningFlat", "partId", "version", "songId", "revisionId"})
-        if not instrument:
+        if not instrument or track_indices is not None and index not in track_indices:
             warnings.append(f"Excluded non-guitar/bass track: {meta.get('name') or meta.get('instrument') or index}.")
             excluded.append({"id": str(meta.get("id", index)),
                              "name": str(meta.get("name") or meta.get("title") or meta.get("instrument") or f"Track {index + 1}"),
@@ -304,7 +304,11 @@ def parse(document: dict) -> Score:
             bar_notes = []
             written_voices = []
             feel = measure.get("tripletFeel") or feel
-            measure_clocks = measure_timing(measure, measures[bi].length, feel)
+            try:
+                measure_clocks = measure_timing(measure, measures[bi].length, feel)
+            except ScoreImportError as exc:
+                exc.source_location = {"measure": bi + 1, "location": f"parts/{index}/measures/{bi}"}
+                raise
             for vi, voice in enumerate(measure["voices"]):
                 if not isinstance(voice, dict) or not isinstance(voice.get("beats"), list):
                     raise ScoreImportError("Missing Songsterr beat data.")
@@ -355,7 +359,12 @@ def parse(document: dict) -> Score:
                             offset = offsets.get(note_index, Fraction(0))
                             if position + offset < 0 or duration <= offset:
                                 raise ScoreImportError("The authored strum crosses a measure boundary or consumes a note; additional timing support is required.")
-                            parsed = _note(note, beat, position + offset, duration - offset, len(tuning))
+                            try:
+                                parsed = _note(note, beat, position + offset, duration - offset, len(tuning))
+                            except ScoreImportError as exc:
+                                exc.source_location = {"measure": bi + 1, "voice": vi + 1, "beat": beat_index + 1,
+                                    "note": note_index + 1, "location": f"parts/{index}/measures/{bi}/voices/{vi}/beats/{beat_index}/notes/{note_index}"}
+                                raise
                             if strum_direction and "pkd" not in parsed.effects:
                                 parsed.effects["pkd"] = 1 if strum_direction == "up" else 0
                             parsed.source_id, parsed.beat_id, parsed.voice_id = source_id, beat_id, str(vi)

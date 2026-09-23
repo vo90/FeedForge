@@ -156,9 +156,12 @@ def run_import(request: dict, progress=None) -> dict:
             if compatibility is None:
                 compatibility = new_report(request.get("metadata"))
                 add_finding(compatibility, feature="import_check", category="conversion_check", impact="blocking", message=failed["error"])
+            if failed["code"] == "alignment_failed":
+                add_finding(compatibility, feature="audio.alignment", category="audio_alignment", impact="blocking",
+                            message=failed["error"], location="audio", value=failed.get("alignment"))
             failed["compatibility"] = compatibility_summary(compatibility)
             failed["evidence"] = save_evidence(audit_root, score=score, metadata=request.get("metadata") or {},
-                                               performance=performance, synchronization=request.get("synchronization"), alignment=alignment,
+                                               performance=performance, synchronization=request.get("synchronization"), alignment=alignment or failed.get("alignment"),
                                                verification={"version": CONTRACT_VERSION, "status": "incomplete", "code": failed["code"]},
                                                compatibility=compatibility)
         except (OSError, ValueError, TypeError):

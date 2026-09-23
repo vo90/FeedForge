@@ -43,7 +43,7 @@ function compatibilityReport(root, reference) {
 // Derived from durable evidence, not the bounded job history. The latest
 // assessment of a song/revision replaces earlier attempts in the working list.
 function compatibilityBacklog(root) {
-  const latest = new Map(); let unreadable = 0;
+  const latest = new Map(), history = new Map(); let unreadable = 0;
   const directory = path.join(root, 'records');
   if (!fs.existsSync(directory)) return { version: 1, groups: [], unreadable };
   for (const name of fs.readdirSync(directory)) {
@@ -57,22 +57,41 @@ function compatibilityBacklog(root) {
       const identity = record.sourceMetadata || {};
       const key = identity.songId && identity.revisionId ? `${identity.songId}:${identity.revisionId}` : record.objects.source;
       const previous = latest.get(key), time = fs.statSync(file).mtimeMs;
+      if (!history.has(key)) history.set(key, new Map());
+      for (const finding of report.findings) {
+        const featureKey = JSON.stringify([finding.feature, finding.category, finding.impact]);
+        history.get(key).set(featureKey, finding);
+      }
       if (!previous || report.version > previous.report.version || report.version === previous.report.version && time > previous.time)
         latest.set(key, { report, time, identity, reference });
     } catch { unreadable++; }
   }
-  const groups = new Map();
+  const groups = new Map(), resolved = [];
   for (const [sourceKey, { report, identity, reference }] of latest) {
     for (const finding of report.findings) {
       const key = JSON.stringify([finding.feature, finding.category, finding.impact]);
       if (!groups.has(key)) groups.set(key, { feature: finding.feature, category: finding.category, impact: finding.impact,
-        message: finding.message, occurrences: 0, songs: new Map(), examples: [] });
+        message: finding.message, workStatus: finding.workStatus || (finding.impact === 'display_or_expression' ? 'display_limitation' : 'technical_work'),
+        decisionId: finding.decisionId, occurrences: 0, songs: new Map(), examples: [] });
       const group = groups.get(key); group.occurrences++;
       group.songs.set(sourceKey, { ...identity, sourceKey, reportId: reference.id });
-      if (group.examples.length < 10) group.examples.push({ ...finding, ...identity, reportId: reference.id });
+      if (group.examples.length < 10) group.examples.push({ ...finding, ...identity, reportId: reference.id, sourceHash: reference.sourceHash, assessmentVersion: report.version });
+    }
+    // Disappearance from a preflight is not proof of a fixed conversion.
+    // Resolve historical gaps only after this exact revision has a passing
+    // independent package verification under the current contract.
+    let checked;
+    try { checked = inspectEvidence(root, reference); } catch { unreadable++; continue; }
+    if (checked.verification.version === 6 && checked.verification.status === 'passed' && reference.version === 6
+        && report.version >= 6 && DIGEST.test(checked.record.outputHash || '')) {
+      const active = new Set(report.findings.map(f => JSON.stringify([f.feature, f.category, f.impact])));
+      for (const [key, finding] of history.get(sourceKey) || []) {
+        if (!active.has(key)) resolved.push({ ...finding, ...identity, sourceKey, reportId: reference.id,
+          sourceHash: reference.sourceHash, assessmentVersion: report.version, workStatus: 'fixed_verified' });
+      }
     }
   }
-  return { version: 1, assessedRevisions: latest.size, unreadable,
+  return { version: 2, assessedRevisions: latest.size, unreadable, resolved,
     groups: [...groups.values()].map(g => ({ ...g, affectedSongs: g.songs.size, songs: [...g.songs.values()] }))
       .sort((a, b) => b.affectedSongs - a.affectedSongs || a.feature.localeCompare(b.feature)) };
 }
