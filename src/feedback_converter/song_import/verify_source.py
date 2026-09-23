@@ -181,9 +181,42 @@ def _songsterr_swing_lengths(bar, feel, location):
     return output
 
 
-def _songsterr_beat_clock(beats, measure_length, location, performed_lengths=None):
+def _songsterr_beat_clock(beats, measure_length, location, performed_lengths=None, *, preceding=None, initial=False):
     written = [4 * fraction(b["duration"], location) for b in beats]
     lengths = performed_lengths if performed_lengths is not None else written
+    if beats and beats[0].get("graceNote") == "beforeBeat":
+        leading = 0
+        while leading < len(beats) and beats[leading].get("graceNote"):
+            if beats[leading]["graceNote"] != "beforeBeat":
+                unsupported(location, "Mixed leading grace types.")
+            leading += 1
+        if initial:
+            copied = [{**b, 'graceNote': 'onBeat'} if i < leading else b for i, b in enumerate(beats)]
+            return _songsterr_beat_clock(copied, measure_length, location, lengths)
+        if preceding:
+            old_source, old_times, old_limit = preceding
+            if old_source[-1].get('graceNote'):
+                unsupported(location, "Cross-boundary shared grace principal.")
+            remaining = old_limit - old_times[-1][0]
+            if remaining <= 0:
+                unsupported(location, "No preceding grace budget.")
+            # Derive the leading group's duration directly, independently of
+            # the production parser's prefixed-beat calculation.
+            dotted = max(integer(b.get('dots', 0), location) for b in beats[:leading])
+            if not 0 <= dotted <= 4:
+                raise ValueError(location + ': invalid grace dots')
+            reserve = F(7, 8) if dotted >= 2 else F(3, 4) if dotted == 1 else F(1, 2)
+            total = sum(lengths[:leading], F(0))
+            budget = min(total, total / leading, remaining * reserve)
+            allocated = ([budget / leading] * leading if total > budget else lengths[:leading])
+            cursor = -sum(allocated, F(0))
+            head = []
+            for length in allocated:
+                head.append([cursor, length, F(0)])
+                cursor += length
+            old_times[-1][1] = min(old_times[-1][1], remaining - sum(allocated, F(0)))
+            tail = _songsterr_beat_clock(beats[leading:], measure_length, location, lengths[leading:])
+            return head + tail
     if (len(beats) == 1 and beats[0].get("rest") is True and beats[0].get("type") == 1
             and lengths == [F(4)] and not any(beats[0].get(k) for k in ("dots", "tuplet", "graceNote"))
             and isinstance(beats[0].get("notes"), list)
@@ -218,17 +251,12 @@ def _songsterr_beat_clock(beats, measure_length, location, performed_lengths=Non
             principal = pending[0] - 1
             if principal < 0 or beats[principal].get("graceNote"):
                 unsupported(location, "Before-beat grace crosses an unresolved boundary.")
-            if principal > 0 and beats[principal - 1].get("graceNote"):
-                unsupported(location, "Shared-principal grace timing is not independently verified.")
         else:
             principal = index
             if principal >= len(beats):
                 unsupported(location, "A grace note has no independently resolvable principal note.")
-        tested = pending if before else [*pending, principal]
-        if any(beats[i].get("rest") or not any(not n.get("rest") for n in beats[i].get("notes", [])) for i in tested):
-            raise ValueError(location + ": grace group has no pitched principal")
         dots = max(integer(beats[i].get("dots", 0), location) for i in pending)
-        principal_available = (times[principal][1] if before else
+        principal_available = (lengths[principal] if before else
                                measure_length - starts[principal] if principal + 1 == len(beats) else lengths[principal])
         fraction_available = F(7, 8) if dots >= 2 else F(3, 4) if dots == 1 else F(1, 2)
         total = sum((lengths[i] for i in pending), F(0))
@@ -288,7 +316,7 @@ def _songsterr_strum(beat, location):
         raise ValueError(location + ": duplicate string in strum")
     if any(any(n.get(k) for k in ("bend", "hp", "slide", "leftSlide", "rightSlide")) for _, n in notes) or len(notes) < 2:
         return {}, direction
-    if beat.get("graceNote") or any(n.get("tie") for _, n in notes):
+    if any(n.get("tie") for _, n in notes):
         unsupported(location, "Combined grace/tie and strum requires additional verification.")
     capped = min(amount, 960, (fraction(beat["duration"], location) * 1920).__floor__())
     ordered = sorted(notes, key=lambda item: item[1]["string"], reverse=direction == "down")
@@ -383,6 +411,15 @@ def songsterr(document):
             continue
         tuning = [integer(v) for v in reversed(raw.get("tuning") or meta["tuning"])]
         track = Part(tid, name, kind, tuning, integer(raw.get("capo", meta.get("capo", 0))), [], [])
+        all_times, previous, feel = [], {}, "off"
+        for bi, bar in enumerate(raw['measures']):
+            feel = bar.get('tripletFeel') or feel
+            durations = _songsterr_swing_lengths(bar, feel, f'parts/{pi}/measures/{bi}')
+            values = [_songsterr_beat_clock(v['beats'], bars[bi].length, f'parts/{pi}/measures/{bi}/voices/{vi}',
+                                           durations[vi], preceding=previous.get(vi), initial=bi == 0)
+                      for vi, v in enumerate(bar['voices'])]
+            all_times.append(values)
+            previous = {vi: (v['beats'], values[vi], bars[bi].length) for vi, v in enumerate(bar['voices']) if v['beats']}
         feel = "off"
         for bi, bar in enumerate(raw["measures"]):
             feel = bar.get("tripletFeel") or feel
@@ -394,7 +431,7 @@ def songsterr(document):
             atoms, beat_facts = [], []
             for vi, voice in enumerate(bar["voices"]):
                 _active_unknown(voice, {"beats", "rest"}, {"id"}, f"parts/{pi}/measures/{bi}/voices/{vi}", ignored)
-                times = _songsterr_beat_clock(voice["beats"], bars[bi].length, f"parts/{pi}/measures/{bi}/voices/{vi}", lengths_by_voice[vi])
+                times = all_times[bi][vi]
                 for bti, beat in enumerate(voice["beats"]):
                     loc = f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}"
                     _active_unknown(beat, beat_keys, {"beamStart", "beamStop", "id"}, loc, ignored)
@@ -506,7 +543,10 @@ def songsterr(document):
                                 raise ValueError(f"{nloc}: missing bend points")
                         attack = q + offsets.get(ni, F(0))
                         length = q + duration - attack
-                        if attack < 0 or length <= 0:
+                        cross_bar = attack < 0 and beat.get('graceNote') == 'beforeBeat' and bi > 0
+                        if cross_bar and any(b.repeat_count or b.endings for b in bars):
+                            unsupported(nloc, "Cross-bar grace with repeated source traversal is not verified.")
+                        if (attack < 0 and not cross_bar) or length <= 0:
                             unsupported(nloc, "Strum crosses an unresolved timing boundary.")
                         if note.get("staccato"):
                             if note["staccato"] is not True or note.get("tie"):

@@ -185,6 +185,9 @@ def render(score: Score) -> dict:
                 previous_note[link_key] = (output, end)
         if pending_slide or pending_hopo:
             raise ScoreImportError(f"A linked technique has no destination in {track.name}.")
+        # A written leading grace may sound in the preceding measure. Voices
+        # remain independent while resolving links; transport is chronological.
+        rendered.sort(key=lambda note: (note["t"], note["s"]))
         if not rendered:
             warnings.append(f"Skipped empty arrangement: {track.name}.")
             source["excludedTracks"].append({"id": track.id, "name": track.name,
