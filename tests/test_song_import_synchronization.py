@@ -93,6 +93,41 @@ def test_explicit_silent_trailing_bars_are_retained_without_clipping_playable_ev
     assert _retime_note(performance['tracks'][0]['notes'][0],result,4)['sus'] == 2
 
 
+@pytest.mark.parametrize('overrun', [.00001, .02, .049])
+@pytest.mark.parametrize('chord', [False, True])
+def test_short_audio_overrun_is_an_alignment_error_before_archive_verification(overrun, chord):
+    performance = render(score_fixture())
+    note = performance['tracks'][0]['notes'][0]
+    # The fixture's mapped tie ends at 4.25 seconds; the remaining bars are
+    # silence. Even an otherwise tiny missing piece must not shorten the tie.
+    alignment = align(performance)
+    if chord:
+        start = note['t']
+        note = {k: v for k, v in note.items() if k != 't'}
+        performance['tracks'][0]['notes'] = []
+        performance['tracks'][0]['chords'] = [{'t': start, 'notes': [note]}]
+    error = unavailable('note_outside_recording',
+                        lambda: align(performance, audio=audio_fixture(4.25 - overrun)))
+    assert error.diagnostics['mappedNoteEnd'] == pytest.approx(4.25)
+    with pytest.raises(ImportFailure) as caught:
+        _retime_note(note, alignment, 4.25 - overrun, chord_time=1 if chord else None)
+    assert caught.value.code == 'alignment_failed'
+    assert caught.value.diagnostics['audioDuration'] == pytest.approx(4.25 - overrun)
+    # The affine fallback must enforce the same output boundary.
+    with pytest.raises(ImportFailure) as caught:
+        _retime_note({'t': 1.25, 'sus': 3, 's': 0, 'f': 3},
+                     {'offset': 0, 'scale': 1}, 4.25 - overrun)
+    assert caught.value.code == 'alignment_failed'
+
+
+def test_note_at_exact_audio_end_retains_onset_sustain_and_bend_values():
+    performance = render(score_fixture())
+    alignment = align(performance, audio=audio_fixture(4.25))
+    mapped = _retime_note(performance['tracks'][0]['notes'][0], alignment, 4.25)
+    assert (mapped['t'], mapped['sus']) == (1.25, 3)
+    assert mapped['bnv'] == [{'t': 0, 'v': 0}, {'t': 1, 'v': 1}, {'t': 3, 'v': 2}]
+
+
 def test_sustain_bend_breakpoints_chord_notes_and_all_timeline_events_share_one_map():
     performance = render(score_fixture())
     result = align(performance)

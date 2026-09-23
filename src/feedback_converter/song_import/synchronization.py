@@ -208,8 +208,10 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
                 _unavailable("note_outside_map")
             if mapped_start < 0:
                 _unavailable("negative_note_time")
-            if mapped_end > duration + 0.05:
-                _unavailable("note_outside_recording")
+            # Only allow serialization-scale rounding, not a 50 ms musical
+            # overrun that the independent completed-package verifier rejects.
+            if mapped_end > duration + 0.0000011:
+                _unavailable("note_outside_recording", mappedNoteEnd=mapped_end, audioDuration=duration)
             for point in note.get("bnv", []):
                 if (not isinstance(point, dict) or not _number(point.get("t")) or not _number(point.get("v"))
                         or point["t"] < 0 or point["t"] > sustain + _EPSILON):
