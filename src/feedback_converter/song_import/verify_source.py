@@ -65,6 +65,7 @@ class Atom:
     slide_in: str | None = None
     staccato: bool = False
     pitch_offset: int = 0
+    attack_offset: F = F(0)
 
 
 @dataclass
@@ -303,7 +304,7 @@ def _songsterr_strum(beat, location):
         if not isinstance(stroke, dict) or set(stroke) != {"direction", "duration", "shift"}:
             unsupported(location, "Unknown strum fields.")
         direction = stroke["direction"]
-        amount, shift = fraction(stroke["duration"], location), integer(stroke["shift"], location)
+        amount, shift = fraction(stroke["duration"], location), fraction(stroke["shift"], location)
     elif legacy_interval is None:
         direction, amount, shift = ("down" if legacy[0] == "upStroke" else "up"), F(30), 100
     else:
@@ -318,8 +319,6 @@ def _songsterr_strum(beat, location):
         raise ValueError(location + ": duplicate string in strum")
     if any(any(n.get(k) for k in ("bend", "hp", "slide", "leftSlide", "rightSlide")) for _, n in notes) or len(notes) < 2:
         return {}, direction
-    if any(n.get("tie") for _, n in notes):
-        unsupported(location, "Combined grace/tie and strum requires additional verification.")
     capped = min(amount, 960, (fraction(beat["duration"], location) * 1920).__floor__())
     ordered = sorted(notes, key=lambda item: item[1]["string"], reverse=direction == "down")
     interval = legacy_interval if legacy_interval is not None else F(capped) / (len(notes) * 480)
@@ -554,22 +553,22 @@ def songsterr(document):
                             bends = list(dict(zip(coords, values)).items())
                             if not bends:
                                 raise ValueError(f"{nloc}: missing bend points")
-                        attack = q + offsets.get(ni, F(0))
-                        length = q + duration - attack
-                        cross_bar = attack < 0 and beat.get('graceNote') == 'beforeBeat' and bi > 0
+                        offset = offsets.get(ni, F(0))
+                        cross_bar = q < 0 and beat.get('graceNote') == 'beforeBeat' and bi > 0
                         if cross_bar and any(b.repeat_count or b.endings for b in bars):
                             unsupported(nloc, "Cross-bar grace with repeated source traversal is not verified.")
-                        if (attack < 0 and not cross_bar) or length <= 0:
+                        if bi == 0 and q + offset < 0:
                             unsupported(nloc, "Strum crosses an unresolved timing boundary.")
                         if note.get("staccato"):
                             if note["staccato"] is not True:
                                 raise ValueError(nloc + ': malformed staccato')
-                        atoms.append(Atom(attack, length, len(tuning) - 1 - integer(note["string"], nloc), integer(note["fret"], nloc),
+                        atoms.append(Atom(q, duration, len(tuning) - 1 - integer(note["string"], nloc), integer(note["fret"], nloc),
                                           nloc, str(vi), loc, bool(note.get("tie")), fx, sorted(bends), slide[note.get("slide")],
                                           bool(note.get("hp"))))
                         fact["notes"].append(atoms[-1])
                         atoms[-1].staccato = note.get("staccato") is True
                         atoms[-1].pitch_offset = harmonic_shift
+                        atoms[-1].attack_offset = offset
                         atoms[-1].wide_vibrato = bool(note.get("wideVibrato")) or note.get("leftHandVibrato") == "wide"
                         if raw_slide in {"above", "aboveshift", "abovelegato", "aboveupwards", "abovedownwards"}:
                             atoms[-1].slide_in = "down"

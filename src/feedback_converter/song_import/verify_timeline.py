@@ -205,11 +205,11 @@ def expected(source, alignment):
                         unsupported(atom.location, "Source tie does not identify a continuous prior note; it has not been repaired.")
                     event = previous
                     event["end"] = end
-                    event["effects"].update(atom.effects)
+                    event["effects"].update({k: v for k, v in atom.effects.items() if k != "pkd"})
                     event["locations"].append(atom.location)
                     result["tie_segments"] += 1
                 else:
-                    event = {"start": start, "end": end, "s": atom.string, "f": atom.fret, "effects": dict(atom.effects),
+                    event = {"start": start + atom.attack_offset, "end": end, "s": atom.string, "f": atom.fret, "effects": dict(atom.effects),
                              "curve": [], "slide_marks": [], "incoming_marks": [], "locations": [atom.location], "occurrence": occurrence + 1, "beat": atom.beat,
                              "staccato": atom.staccato, "any_staccato": False, "pitch_gesture": False}
                     if atom.hopo_destination or key in pending_hopos:
@@ -266,6 +266,8 @@ def expected(source, alignment):
                 if sound_end > n["end"]:
                     unsupported(n["locations"][0], "Staccato minimum exceeds authored duration.")
             start, end = clock.at(n["start"]), clock.at(sound_end)
+            if n["start"] < 0 or sound_end <= n["start"]:
+                unsupported(n["locations"][0], "Strum exceeds its sounding interval; no attack or endpoint was repaired.")
             mapped_start, mapped_end = recording.at(start), recording.at(end)
             row = {"t": mapped_start, "sus": round(mapped_end - mapped_start, 6), "s": n["s"], "f": n["f"], **n["effects"]}
             if n["slide_marks"]:

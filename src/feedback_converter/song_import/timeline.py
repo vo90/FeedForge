@@ -134,12 +134,15 @@ def render(score: Score) -> dict:
                     output = prior[0]
                     articulation = articulations[id(output)]
                     articulation["segments"] += 1
-                    output.update(effects)
+                    output.update({k: v for k, v in effects.items() if k != "pkd"})
                     if note.source_id:
                         output.setdefault("source_ids", []).append(note.source_id)
                 else:
-                    output = {"t": at(position), "s": note.string, "f": note.fret,
-                              "sus": at(end) - at(position), **effects}
+                    attack = position + note.attack_offset
+                    if attack < 0:
+                        raise ScoreImportError("An authored strum begins before the score; no attack was clipped.")
+                    output = {"t": at(attack), "s": note.string, "f": note.fret,
+                              "sus": at(end) - at(attack), **effects}
                     if note.source_id:
                         output["source_ids"] = [note.source_id]
                     if note.hopo or link_key in pending_hopo:
@@ -148,7 +151,7 @@ def render(score: Score) -> dict:
                         output["ho" if note.fret > prior[0]["f"] else "po"] = True
                         pending_hopo.pop(link_key, None)
                     rendered.append(output)
-                    articulation = {"start": position, "origin_staccato": note.staccato,
+                    articulation = {"start": attack, "origin_staccato": note.staccato,
                                     "staccato": False, "pitch_gesture": False, "segments": 1}
                     articulations[id(output)] = articulation
                     if note.beat_id:
@@ -201,6 +204,8 @@ def render(score: Score) -> dict:
                 previous_note[link_key] = (output, end)
         if pending_slide or pending_hopo:
             raise ScoreImportError(f"A linked technique has no destination in {track.name}.")
+        if any(n["sus"] <= 0 for n in rendered):
+            raise ScoreImportError(f"An authored strum consumes a sounding note in {track.name}; no duration was repaired.")
         # A written leading grace may sound in the preceding measure. Voices
         # remain independent while resolving links; transport is chronological.
         rendered.sort(key=lambda note: (note["t"], note["s"]))

@@ -369,10 +369,10 @@ def parse(document: dict, *, track_indices=None) -> Score:
                             boundary_grace = position < 0 and grace == "beforeBeat" and bi > 0
                             if boundary_grace and any(m.repeat_count or m.endings for m in measures):
                                 raise ScoreImportError("Cross-bar grace across repeated notation needs additional traversal support.")
-                            if (position + offset < 0 and not boundary_grace) or duration <= offset:
-                                raise ScoreImportError("The authored strum crosses a measure boundary or consumes a note; additional timing support is required.")
+                            if bi == 0 and position + offset < 0:
+                                raise ScoreImportError("The authored strum begins before the score; its recording-start placement needs review.")
                             try:
-                                parsed = _note(note, beat, position + offset, duration - offset, len(tuning))
+                                parsed = _note(note, beat, position, duration, len(tuning))
                             except ScoreImportError as exc:
                                 exc.source_location = {"measure": bi + 1, "voice": vi + 1, "beat": beat_index + 1,
                                     "note": note_index + 1, "location": f"parts/{index}/measures/{bi}/voices/{vi}/beats/{beat_index}/notes/{note_index}"}
@@ -380,6 +380,7 @@ def parse(document: dict, *, track_indices=None) -> Score:
                             if strum_direction and "pkd" not in parsed.effects:
                                 parsed.effects["pkd"] = 1 if strum_direction == "up" else 0
                             parsed.source_id, parsed.beat_id, parsed.voice_id = source_id, beat_id, str(vi)
+                            parsed.attack_offset = offset
                             if boundary_grace:
                                 parsed.effects["__leading_grace"] = True
                             bar_notes.append(parsed)

@@ -176,7 +176,7 @@ def strum_offsets(beat):
         if not isinstance(stroke, dict) or set(stroke) != {"direction", "duration", "shift"}:
             raise ScoreImportError("Unrecognized strum timing data.")
         direction = stroke["direction"]
-        duration, shift = rational(stroke["duration"], "strum duration"), integer(stroke["shift"], "strum shift")
+        duration, shift = rational(stroke["duration"], "strum duration"), rational(stroke["shift"], "strum shift")
     elif old_step is None:
         if integer(beat[legacy[0]], "legacy strum") != 1:
             raise ScoreImportError("Legacy strum duration needs additional interpretation.")
@@ -199,8 +199,6 @@ def strum_offsets(beat):
     count = len(ordered)
     if count < 2:
         return {}, direction
-    if any(n.get("tie") for n in beat["notes"]):
-        raise ScoreImportError("A strum containing tied notes needs additional timing support.")
     # Explicit spreading follows grace allocation. The source cap uses the
     # written beat duration; callers still reject nonpositive sounding notes.
     cap = min(960, int(rational(beat["duration"], "strum beat duration") * 1920))
