@@ -14,7 +14,7 @@ KNOWN = {
     "voice": {"beats", "rest"},
     "beat": set("duration notes rest palmMute tremolo tap tapping slap pop vibrato wideVibrato letRing graceNote grace graceNotes tremoloBar stroke whammy type dots tuplet text velocity gradualVelocity beamStart beamStop tupletStart tupletStop".split()),
     "note": set("string fret rest tie dead vibrato wideVibrato ghost accentuated tap tapping hp harmonic slide bend trill grace graceNote tremoloBar whammy staccato harmonicFret".split()),
-    "automations": {"tempo", "volume", "balance"},
+    "automations": {"tempo", "volume", "balance", "fermata", "gradualTempo"},
     "tempo": {"measure", "position", "bpm", "type", "linear"},
     "bend": {"points", "tone"}, "bend_point": {"position", "tone"},
 }
@@ -39,7 +39,7 @@ UNIMPLEMENTED = {
     "measure": {"direction", "directions", "fromDirection", "fermata", "freeTime"},
     "beat": {"grace", "graceNotes", "tremoloBar", "stroke", "whammy", "vibratoWithTremoloBar"},
     "note": {"trill", "grace", "graceNote", "tremoloBar", "whammy", "harmonicFret", "pickScrape", "vibratoWithTremoloBar"},
-    "tempo": {"linear"},
+    "tempo": set(),
 }
 
 
@@ -92,8 +92,8 @@ def inspect_songsterr(document):
                 category, message = "unknown_semantics", "This feature needs interpretation before reliable conversion."
             elif key in UNIMPLEMENTED.get(scope, set()) and value:
                 category, message = "converter_gap", "The source technique is retained, but its conversion is not implemented."
-            elif scope == "measure" and key == "tripletFeel" and value != "off":
-                category, message = "converter_gap", "Swing timing is not implemented."
+            elif scope == "measure" and key == "tripletFeel" and value not in ("off", "8th", "16th", "dotted8th", "dotted16th", "scottish8th", "scottish16th"):
+                category, message = "unknown_semantics", "This swing feel needs additional interpretation."
             elif (scope, key) in LIMITATIONS:
                 add_finding(report, feature=f"{scope}.{key}", category="game_limitation", impact="display_or_expression",
                             message=LIMITATIONS[scope, key], location=path + "/" + key, value=value, **coordinates)

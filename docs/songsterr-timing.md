@@ -14,8 +14,33 @@ the measure. Its total duration is limited by the average encoded grace
 duration and the principal's available time. The principal reserves one half,
 one quarter or one eighth for undotted, singly dotted or multiply dotted grace
 groups. An over-budget group divides its budget equally. A final principal's
-available time is the remaining measure. Orphans, before-beat groups and groups
-with no positive principal duration are reported, never repaired.
+available time is the remaining measure. Before-beat grace groups within a
+measure borrow from the preceding principal and end at the following attack,
+or at that preceding principal's endpoint for a trailing group. Written grace
+uses the existing acciaccatura value `a`; on-beat uses `p`. Boundary-crossing,
+recording-start and shared-principal combinations stay unsupported rather
+than invoking the public player's fallback that changes grace type or clips
+notes. No measure length is added.
+
+Swing follows the public `Mi` / `ji` / `Ai` transformation: carried eighth
+or sixteenth feel, 2:1 default, 3:1 dotted and 1:3 Scottish. Tuplets with
+nonintegral subdivisions (and duplets under default feel) exempt their pair
+across the part's voices. Incomplete pairs remain straight. Performed lengths
+change; written durations and beat positions do not.
+
+Enabled gradual tempo follows `Ur`: a destination's linear flag interpolates
+from its previous event, with at most 64 steps and rounded intermediate BPM.
+Disabled gradual tempo leaves ordinary tempo steps. This release supports
+events at measure starts; mixed nonzero legacy positions and combined
+ramp/fermata automation need further interpretation.
+
+Explicit fermata automation follows `Qr` / `$r` / `ei`: positions are
+960 ticks per quarter, the held span is the measure's denominator beat or its
+encoded binary subdivision, and the temporary tempo is
+round(BPM × (4/5 − 7×length/15)). The previous rate resumes afterward unless
+an explicit event already occupies that boundary. Only encoded lengths 0–1,
+quarter tempo units, nonoverlapping holds and measures without midbar tempo
+changes are accepted. Free-time or unspecified holds are not guessed.
 
 Brush strokes and arpeggios supply direction, duration (0–960) and shift
 (0–100). Duration is capped at half the written beat and at 960 units. The
