@@ -47,6 +47,7 @@ class Note:
     beat_id: str = ""
     voice_id: str = ""
     slide_in: str | None = None  # Pitch motion into this authored segment.
+    staccato: bool = False  # Applied to sounding duration after ties are folded.
 
 
 @dataclass

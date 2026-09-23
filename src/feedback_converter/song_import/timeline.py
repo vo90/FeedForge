@@ -107,6 +107,7 @@ def render(score: Score) -> dict:
         pending_slide = {}
         pending_hopo = {}
         authored_groups = {}
+        articulations = {}
         last_written = -1
         for occurrence, (index, start) in enumerate(visits):
             if index <= last_written:
@@ -131,7 +132,8 @@ def render(score: Score) -> dict:
                     if prior is None or prior[0]["f"] != note.fret or prior[1] != position:
                         raise ScoreImportError(f"Unresolved tie in {track.name}, measure {index + 1}.")
                     output = prior[0]
-                    output["sus"] = at(end) - output["t"]
+                    articulation = articulations[id(output)]
+                    articulation["segments"] += 1
                     output.update(effects)
                     if note.source_id:
                         output.setdefault("source_ids", []).append(note.source_id)
@@ -146,13 +148,27 @@ def render(score: Score) -> dict:
                         output["ho" if note.fret > prior[0]["f"] else "po"] = True
                         pending_hopo.pop(link_key, None)
                     rendered.append(output)
+                    articulation = {"start": position, "origin_staccato": note.staccato,
+                                    "staccato": False, "pitch_gesture": False, "segments": 1}
+                    articulations[id(output)] = articulation
                     if note.beat_id:
                         authored_groups.setdefault((occurrence, note.beat_id), []).append(output)
                     performed_notes += 1
                     if performed_notes > 500_000:
                         raise ScoreImportError("Performed score exceeds the note import limit.")
+                articulation["staccato"] |= note.staccato
+                articulation["pitch_gesture"] |= bool(note.bends or note.slide or note.slide_in)
+                if articulation["segments"] > 1 and articulation["staccato"] and articulation["pitch_gesture"]:
+                    raise ScoreImportError("Staccato ties with pitch gestures need additional timing verification.")
+                sound_end = end
+                if articulation["origin_staccato"]:
+                    sound_end = articulation["start"] + max((end - articulation["start"]) / 2, Fraction(1, 32))
+                    if sound_end > end:
+                        raise ScoreImportError("Staccato's minimum would extend the authored note; no repair was applied.")
+                output["sus"] = at(sound_end) - output["t"]
+                gesture_duration = max(note.duration / 2, Fraction(1, 32)) if note.staccato else note.duration
                 if note.bends:
-                    curve = [{"t": at(position + note.duration * p) - output["t"], "v": v} for p, v in note.bends]
+                    curve = [{"t": at(position + gesture_duration * p) - output["t"], "v": v} for p, v in note.bends]
                     output.setdefault("bnv", []).extend(curve)
                     output["bn"] = max((p["v"] for p in output["bnv"]), key=abs)
                 if link_key in pending_slide and not note.tie:
@@ -168,7 +184,7 @@ def render(score: Score) -> dict:
                     # loses that boundary; it does not describe slide speed.
                     marks = output.setdefault("slide_out_marks", [])
                     marks.append({"direction": "down" if note.slide == "out_down" else "up",
-                                  "start": at(position) - output["t"], "end": at(end) - output["t"]})
+                                  "start": at(position) - output["t"], "end": at(position + gesture_duration) - output["t"]})
                     directions = {mark["direction"] for mark in marks}
                     if len(directions) == 1:
                         output["slide_out"] = marks[0]["direction"]

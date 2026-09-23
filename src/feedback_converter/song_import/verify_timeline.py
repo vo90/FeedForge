@@ -210,7 +210,8 @@ def expected(source, alignment):
                     result["tie_segments"] += 1
                 else:
                     event = {"start": start, "end": end, "s": atom.string, "f": atom.fret, "effects": dict(atom.effects),
-                             "curve": [], "slide_marks": [], "incoming_marks": [], "locations": [atom.location], "occurrence": occurrence + 1, "beat": atom.beat}
+                             "curve": [], "slide_marks": [], "incoming_marks": [], "locations": [atom.location], "occurrence": occurrence + 1, "beat": atom.beat,
+                             "staccato": atom.staccato, "any_staccato": False, "pitch_gesture": False}
                     if atom.hopo_destination or key in pending_hopos:
                         if previous is None:
                             unsupported(atom.location, "Source hammer-on/pull-off has no prior note.")
@@ -224,14 +225,19 @@ def expected(source, alignment):
                     notes.append(event)
                     if len(notes) > MAX_EVENTS:
                         raise ValueError("source: performed note limit exceeded")
+                event["any_staccato"] |= atom.staccato
+                event["pitch_gesture"] |= bool(atom.bends or atom.slide or atom.slide_in)
+                if len(event["locations"]) > 1 and event["any_staccato"] and event["pitch_gesture"]:
+                    unsupported(atom.location, "Staccato ties with pitch gestures are not independently verified.")
+                gesture_length = max(atom.length / 2, F(1, 32)) if atom.staccato else atom.length
                 for fraction_, value in atom.bends:
                     if not 0 <= fraction_ <= 1:
                         raise ValueError(atom.location + ": bend outside note")
-                    event["curve"].append((clock.at(start + atom.length * fraction_), value))
+                    event["curve"].append((clock.at(start + gesture_length * fraction_), value))
                 if atom.slide in {"shift", "legato"}:
                     pending_slides[key] = (event, atom.slide)
                 elif atom.slide:
-                    event["slide_marks"].append((atom.slide, start, end))
+                    event["slide_marks"].append((atom.slide, start, start + gesture_length))
                 if atom.slide_in:
                     event["incoming_marks"].append((atom.slide_in, start))
                 if atom.hopo_origin:
@@ -254,7 +260,12 @@ def expected(source, alignment):
             unsupported(f"tracks/{part.id}", "Source linked technique has no destination.")
         rendered = []
         for n in notes:
-            start, end = clock.at(n["start"]), clock.at(n["end"])
+            sound_end = n["end"]
+            if n["staccato"]:
+                sound_end = n["start"] + max((n["end"] - n["start"]) / 2, F(1, 32))
+                if sound_end > n["end"]:
+                    unsupported(n["locations"][0], "Staccato minimum exceeds authored duration.")
+            start, end = clock.at(n["start"]), clock.at(sound_end)
             mapped_start, mapped_end = recording.at(start), recording.at(end)
             row = {"t": mapped_start, "sus": round(mapped_end - mapped_start, 6), "s": n["s"], "f": n["f"], **n["effects"]}
             if n["slide_marks"]:

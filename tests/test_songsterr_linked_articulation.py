@@ -40,7 +40,40 @@ def test_staccato_bend_uses_shortened_sound_interval_before_bend_generation():
     assert notes[0]['sus'] == .25
 
 
-def test_tied_staccato_is_still_rejected_until_whole_tie_articulation_is_supported():
-    source = raw_score([measure(beat(duration=(1, 4)), beat(duration=(3, 4), tie=True, staccato=True))])
-    with pytest.raises(ValueError, match='staccato'): parse(source)
-    with pytest.raises(ValueError, match='staccato'): songsterr(source)
+@pytest.mark.parametrize('origin,continuation,sustain', [(True, False, 1), (False, True, 2), (True, True, 1)])
+def test_ties_are_folded_before_source_staccato_articulation(origin, continuation, sustain):
+    source = raw_score([measure(beat(duration=(1, 4), staccato=origin),
+                                {**beat(duration=(3, 4), tie=True, staccato=continuation), 'type': 2, 'dots': 1})])
+    original = deepcopy(source)
+    actual = render(parse(source))['tracks'][0]
+    checked = expected(songsterr(source), {'offset': 0, 'scale': 1})['parts'][0]['notes']
+    assert len(actual['notes']) == len(checked) == 1
+    assert actual['notes'][0]['sus'] == checked[0]['note']['sus'] == sustain
+    assert len(actual['notes'][0]['source_ids']) == 2
+    assert actual['notation']['measures'][0]['staves']['staff']['voices'][0]['beats'][1]['notes'][0]['tied']
+    assert source == original
+
+
+def test_staccato_tie_chain_crosses_bar_without_adding_an_attack():
+    source = raw_score([measure(beat(staccato=True)), measure(beat(tie=True))])
+    actual = render(parse(source))['tracks'][0]['notes']
+    checked = expected(songsterr(source), {'offset': 0, 'scale': 1})['parts'][0]['notes']
+    assert len(actual) == len(checked) == 1
+    assert actual[0]['sus'] == checked[0]['note']['sus'] == 2
+
+
+@pytest.mark.parametrize('changed', ['fret', 'gap'])
+def test_staccato_does_not_repair_a_broken_tie(changed):
+    following = beat(fret=4 if changed == 'fret' else 3, duration=(1, 4), tie=True)
+    beats = [beat(duration=(1, 4), staccato=True)]
+    if changed == 'gap': beats.append({'duration': [1, 4], 'notes': [{'rest': True}]})
+    source = raw_score([measure(*beats, following)])
+    with pytest.raises(ValueError, match='tie'): render(parse(source))
+    with pytest.raises(ValueError, match='tie'): expected(songsterr(source), {'offset': 0, 'scale': 1})
+
+
+def test_combined_staccato_tie_pitch_gesture_remains_explicit_until_verified():
+    source = raw_score([measure(beat(duration=(1, 4), staccato=True, slide='upwards'),
+                                beat(duration=(3, 4), tie=True))])
+    with pytest.raises(ValueError, match='pitch gesture'): render(parse(source))
+    with pytest.raises(ValueError, match='pitch gesture'): expected(songsterr(source), {'offset': 0, 'scale': 1})
