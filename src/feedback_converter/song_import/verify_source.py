@@ -335,7 +335,9 @@ def songsterr(document):
         part_events = {}
         for tempo in automations.get("tempo", []):
             loc = f"parts/{pi}/automations/tempo"
-            _active_unknown(tempo, {"measure", "position", "bpm", "type", "linear", "dotted"}, {"text"}, loc, ignored)
+            _active_unknown(tempo, {"measure", "position", "bpm", "type", "linear", "dotted"}, {"text", "visible"}, loc, ignored)
+            if "visible" in tempo and type(tempo["visible"]) is not bool:
+                raise ValueError(loc + ": invalid tempo visibility")
             if tempo.get("linear") is not None and type(tempo["linear"]) is not bool:
                 raise ValueError(loc + ": invalid linear flag")
             bi = integer(tempo["measure"], loc)
@@ -463,7 +465,10 @@ def songsterr(document):
                             if beat.get(key):
                                 fx[out] = True
                         harmonic = note.get("harmonic")
-                        if note.get("harmonicFret"):
+                        touch = note.get("harmonicFret")
+                        if touch is not None and (type(touch) not in (int, float) or fraction(touch, nloc) < 0):
+                            raise ValueError(nloc + ": invalid harmonic fret")
+                        if touch and harmonic is not None:
                             unsupported(nloc, "Harmonic-fret pitch interpretation is not independently verified.")
                         if harmonic:
                             if harmonic not in {"natural", "pinch"}:
