@@ -51,8 +51,14 @@ def _retime_note(note: dict, alignment: dict, duration: float, *, chord_time: fl
     original_sustain = max(0.0, original_sustain)
     sustain = (map_time(alignment, original + original_sustain) - start if nonlinear
                else original_sustain * float(alignment["scale"]))
-    if start > duration + 0.05 or start + sustain > duration + 0.05:
-        raise ImportFailure("alignment_failed", "The matched tab contains notes outside the recording.")
+    # Match the completed archive's microsecond timing precision. Check the
+    # actual serialized onset/sustain as well as the unrounded source map;
+    # never clip a note or let the old 50 ms allowance hide missing audio.
+    archived_end = round(start, 6) + round(sustain, 6)
+    if max(start + sustain, archived_end) > duration + 0.0000011:
+        raise ImportFailure("alignment_failed", "The matched tab contains notes outside the recording.",
+                            {"mappedNoteEnd": start + sustain, "archivedNoteEnd": archived_end,
+                             "audioDuration": duration})
     if "sus" in note:
         result["sus"] = round(sustain, 6)
     if "slide_out_marks" in note:
