@@ -8,7 +8,7 @@ import json
 import math
 from .songsterr_harmonics import exact_natural
 
-VERSION = 7
+VERSION = 8
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {

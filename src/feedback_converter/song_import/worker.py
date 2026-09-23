@@ -80,7 +80,7 @@ def run_import(request: dict, progress=None) -> dict:
         alignment_recipe = {key: alignment[key] for key in
                             ("method", "offset", "scale", "mapping", "provenance") if key in alignment}
         alignment_recipe.setdefault("method", VERSION)
-        recipe = {"version": 7, "preservationContract": CONTRACT_VERSION, "source": "songsterr", "songId": metadata.get("songId"),
+        recipe = {"version": 8, "preservationContract": CONTRACT_VERSION, "source": "songsterr", "songId": metadata.get("songId"),
                   "revisionId": metadata.get("revisionId"), "scoreHash": score_hash, "audioHash": audio["hash"],
                   "sourceMetadata": dict(performance.get("source") or {}),
                   "audioSource": {key: audio["source"][key] for key in ("kind", "videoId", "title", "sha256") if key in audio["source"]},
