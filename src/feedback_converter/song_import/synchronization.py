@@ -117,19 +117,23 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
     if not isinstance(points, list) or not all(_number(value) for value in points):
         _unavailable("invalid_points")
     supplied_points = list(points)
-    inferred_terminal = len(points) == len(measures) and len(points) >= 2
+    inferred_count = max(0, len(measures) + 1 - len(points)) if len(points) >= 2 else 0
+    inferred_terminal = inferred_count > 0
     if inferred_terminal:
-        # Songsterr's public player repeats the last interval when the final
-        # progression boundary is absent. Admit that documented rule for one
-        # missing terminal boundary only, with explicit provenance and bounds.
-        points = [*points, points[-1] + points[-1] - points[-2]]
+        # The public player repeats the last interval until every progression
+        # boundary exists (video/putPointsIntoPlayer). These are trailing
+        # boundaries only, never replacements for absent interior entries.
+        # All playable events must still fit the actual recording below.
+        interval = points[-1] - points[-2]
+        points = [*points, *(points[-1] + interval * i for i in range(1, inferred_count + 1))]
     if len(points) != len(measures) + 1:
         _unavailable("point_count_mismatch", sourceSyncPointCount=len(points), sourceSyncMeasureCount=len(measures))
     if any(right <= left for left, right in zip(points, points[1:])):
         _unavailable("non_increasing_points")
     silent_terminal = points[-1] > duration + 0.05
-    if silent_terminal and (not inferred_terminal or supplied_points[-1] > duration):
-        _unavailable("terminal_boundary_outside_recording")
+    # Supplied or source-rule trailing boundaries can include written silence
+    # past the recording. Every playable attack, sustain and bend is checked
+    # below; only the nonplayable grid may stop at the recording boundary.
     anchors = []
     previous_end, previous_quarter = 0.0, 0.0
     tempo_points = timeline.get("tempoPoints") or []
@@ -187,6 +191,7 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
               "diagnostics": {"sourceSyncPointCount": len(supplied_points), "sourceSyncMeasureCount": len(measures),
                               "sourceSyncNegativePreroll": points[0] < 0,
                               "sourceSyncInferredTerminalBoundary": inferred_terminal,
+                              "sourceSyncInferredBoundaryCount": inferred_count,
                               "sourceSyncSilentTerminalExtension": silent_terminal}})
     checked = 0
     for track in performance.get("tracks", []):

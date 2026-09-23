@@ -1,31 +1,23 @@
-# Silent terminal synchronization boundary
+# Explicit silent terminal boundaries
 
-The public last-interval rule can place an inferred final measure boundary
-after the recording ends. This is permitted only when the last supplied
-boundary is inside the recording and every playable attack and sustain passes
-the existing audio-bound checks. Explicit out-of-range boundaries, missing
-interior points, ambiguous maps and actual notes outside the recording still
-fail. No map point, note, bend or sustain is moved or clipped.
+A source timing map may end the final written bar after the recording ends.
+This does not invalidate an otherwise complete recording if only silent notation
+extends beyond it. The supplied map is retained unchanged; no note, attack,
+sustain, or bend may exceed the existing recording bounds.
 
-The full inferred measure remains in written notation. The playback beat/
-tempo grid ends with the recording, matching the existing builder behavior.
-Independent verification applies that grid boundary only for the explicitly
-marked inferred silent terminal case, and still verifies every written beat
-and playable note.
+Both explicit and source-rule inferred trailing boundaries follow the same
+checks: the map must cover every performed measure and every playable event must
+fit the recording. Interior missing entries and notes beyond the recording
+remain blocking.
 
-Frozen 2026-09-23 reproductions:
+The public `video/putPointsIntoPlayer` handler repeats the last supplied interval
+until there are progression-length + 1 boundaries, provided at least two points
+exist. The converter follows this exact trailing rule and records the number of
+inferred boundaries. It never fills null interior points or changes known points.
+Evidence: public `common-z7xLi0BiPF1hudTP.js`, captured 2026-09-23, SHA-256
+`039a95156a0b966e7c3602ea8d0f4ae403266ec2f7ba930dd64fcbe41151fc29`.
 
-| Song | Recording end | Inferred terminal | Last actual note end | Consequence |
-|---|---:|---:|---:|---|
-| Last Resort | 198.8673 s | 200.0600 s | 196.9213 s | Eligible for unchanged map |
-| Wake Me Up When September Ends | 286.0002 s | 288.2400 s | 283.8000 s | Still rejected; the last supplied boundary is also beyond the recording |
-| Every Breath You Take | 228.8907 s | 230.5800 s | 229.3931 s | Still rejected; two notes exceed recording |
-
-Chop Suey! and Sonne had conflicting captured map candidates. Wonderwall had
-92 points for 94 performed measures. Those are not solved by a terminal
-boundary change. Confidence thresholds and alternative-map selection remain
-unchanged. These are alignment-stage results, not completed-package claims.
-
-The packaged frozen-source benchmark confirmed that Last Resort completes.
-Wake Me Up When September Ends still fails the explicit-boundary guard; the
-silent inferred-terminal exception alone does not cover that source map.
+This removes arbitrary distinctions between explicit and inferred silent tails
+without relaxing the independent audio matcher's confidence thresholds. A
+source-provided timing map does not imply that its author matched the recording
+perfectly; the conversion preserves the player's timing convention.

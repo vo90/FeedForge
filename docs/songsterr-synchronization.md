@@ -33,10 +33,11 @@ fall back to independent audio matching. A structurally valid source map does no
 claim that a human checked every note against the recording.
 
 Songsterr's player extends incomplete maps by repeating the final known interval
-until it has enough boundaries. FeedForge permits **only one missing final
-boundary**, and only with at least two supplied points. It records that inference
-in provenance and rejects an inferred end outside the recording. It does not
-extrapolate an arbitrarily missing tail or playable events beyond its validated map.
+until it has enough boundaries. FeedForge follows this source-defined trailing
+rule only with at least two supplied points, records the inference count, and
+checks every playable event against the actual recording. It never fills missing
+interior entries. Trailing written silence may exceed the audio; attacks and
+sustains may not. See `songsterr-silent-terminal.md` for the current evidence.
 
 Negative initial points can describe silent score pre-roll before recording time
 zero. They are retained during validation. Negative nonplayable timeline markers
