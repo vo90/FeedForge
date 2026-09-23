@@ -18,7 +18,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 4
+VERSION = 5
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "bn", "pkd"}
 TUNINGS = {"guitar": {6: [40, 45, 50, 55, 59, 64], 7: [35, 40, 45, 50, 55, 59, 64], 8: [30, 35, 40, 45, 50, 55, 59, 64]},
@@ -244,9 +244,69 @@ def _chords(wanted, chart, check, part):
             check.near("chord_time", "tracks/" + part.id + "/chords", wanted_time, actual_time)
 
 
+def _compatibility_report(report, score_path, source, check):
+    """Verify retained limitations from source facts, not the producer's inventory."""
+    from .verify_source import _program_instrument, inactive
+    rows = report.get("findings")
+    if not isinstance(rows, list) or report.get("truncated") is not False:
+        check.fail("compatibility", "import/compatibility", "The compatibility report is incomplete.")
+        return
+    check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
+    check.equal("compatibility_version", "import/compatibility", 4, report.get("version"))
+    check.equal("compatibility_status", "import/compatibility", "limitations" if rows else "compatible", report.get("status"))
+    target = report.get("target", {})
+    check.equal("compatibility_target", "import/compatibility", "1.16.0", target.get("feedpak"))
+    check.equal("compatibility_target", "import/compatibility/notation", 1, target.get("notation"))
+    expected = {}
+    if source.format == "songsterr":
+        document = json.loads(score_path.read_text(encoding="utf-8-sig"))
+
+        def remember(obj, fields, scope, path):
+            for key in fields:
+                if key in obj and not inactive(obj[key]):
+                    expected[(scope + "." + key, path + "/" + key)] = obj[key]
+
+        for pi, (meta, part) in enumerate(zip(document["tracks"], document["parts"])):
+            for ti, tempo in enumerate(part.get("automations", {}).get("tempo", [])):
+                remember(tempo, ("text",), "tempo", f"parts/{pi}/automations/tempo/{ti}")
+            for bi, bar in enumerate(part["measures"]):
+                path = f"parts/{pi}/measures/{bi}"
+                remember(bar, ("doubleBarline", "keySignature"), "measure", path)
+                if not _program_instrument(meta):
+                    continue
+                for vi, voice in enumerate(bar["voices"]):
+                    for bti, beat in enumerate(voice["beats"]):
+                        where = path + f"/voices/{vi}/beats/{bti}"
+                        remember(beat, ("chord", "wahwah"), "beat", where)
+                        for ni, note in enumerate(beat["notes"]):
+                            remember(note, ("staccato",), "note", where + f"/notes/{ni}")
+        for part in source.parts:
+            if part.notation_unavailable and any(part.bars):
+                expected[("notation.written_rhythm", "tracks/" + part.id)] = None
+        for key, value in source.identity.items():
+            check.equal("compatibility_identity", "import/compatibility/source/" + key, value, str(report.get("source", {}).get(key)))
+    actual = {(row.get("feature"), row.get("location")): row for row in rows}
+    check.equal("compatibility_coverage", "import/compatibility", sorted(expected), sorted(actual))
+    check.equal("compatibility_duplicates", "import/compatibility", len(rows), len(actual))
+    for key, value in expected.items():
+        if key not in actual:
+            continue
+        row = actual[key]
+        encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
+        check.equal("compatibility_value", key[1], value if len(encoded) <= 2048 else encoded[:2048], row.get("value"))
+        check.equal("compatibility_value", key[1] + "/truncated", len(encoded) > 2048, row.get("valueTruncated"))
+        check.equal("compatibility_retention", key[1], "original_source", row.get("retained"))
+        check.equal("compatibility_impact", key[1], "display_or_expression", row.get("impact"))
+        check.equal("compatibility_category", key[1], "game_limitation", row.get("category"))
+
+
 def _notation(archive, arrangement, wanted, check):
     """Verify available beat time/rest facts without inferring engraving style."""
     name = arrangement.get("notation")
+    if wanted["source"].notation_unavailable:
+        if name:
+            check.fail("unsupported_notation", name, "Unsupported written rhythm must not be replaced with invented notation.")
+        return
     if not name:
         raise UnverifiedFeature("tracks/" + wanted["source"].id, "Written source notation is missing; its preservation cannot be independently verified.")
     data = _json(archive, name, check)
@@ -354,6 +414,10 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 compatibility = _json(z, recipe.get("compatibilityFile", ""), check)
                 if compatibility.get("status") not in {"compatible", "limitations"}:
                     check.fail("compatibility", "import/compatibility", "A blocked or invalid compatibility report cannot be published.")
+                if recipe.get("preservationContract", 0) >= 5:
+                    _compatibility_report(compatibility, score_path, source, check)
+            elif any(p.notation_unavailable for p in source.parts):
+                check.fail("retained_notation", "import", "A notation limitation requires embedded original source and a compatibility report.")
             if isinstance(recipe, dict):
                 if recipe.get("scoreHash"):
                     check.equal("source_hash", "manifest/song_import/scoreHash", report["sourceSha256"], recipe["scoreHash"])

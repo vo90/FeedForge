@@ -6,7 +6,7 @@ parser and independent verifier still validate every supported representation.
 from copy import deepcopy
 import json
 
-VERSION = 3
+VERSION = 4
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {

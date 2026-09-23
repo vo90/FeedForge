@@ -89,6 +89,7 @@ class Part:
     bars: list
     # Independent notation facts: every written voice/beat, including rests.
     beats: list = field(default_factory=list)
+    notation_unavailable: list = field(default_factory=list)
 
 
 @dataclass
@@ -304,12 +305,10 @@ def songsterr(document):
                     if denominator is None:
                         denominator = next((d for d in (1, 2, 4, 8, 16, 32, 64, 128, 256)
                                             if F(4, d) * (2 - F(1, 2 ** dots)) == written_duration), None)
-                    if denominator is None:
-                        unsupported(loc, "Written duration cannot be independently represented in notation.")
-                    denominator = integer(denominator, loc)
+                    denominator = integer(denominator, loc) if denominator is not None else None
                     if denominator not in (1, 2, 4, 8, 16, 32) or not 0 <= dots <= 2:
-                        unsupported(loc, "Written duration is outside FeedPak notation v1; raw source must remain available.")
-                    ratio = F(4, denominator) * (2 - F(1, 2 ** dots)) / written_duration
+                        track.notation_unavailable.append(loc)
+                    ratio = F(4, denominator) * (2 - F(1, 2 ** dots)) / written_duration if denominator and denominator > 0 else F(1)
                     written = {"dur": denominator, "dot": dots, "tu": [ratio.numerator, ratio.denominator] if ratio != 1 else None}
                     for field, output in {"velocity": "dyn", "vibrato": "vib", "wideVibrato": "vibw", "palmMute": "pm",
                                           "letRing": "lr", "tap": "tap", "tapping": "tap", "slap": "slap", "pop": "pop"}.items():

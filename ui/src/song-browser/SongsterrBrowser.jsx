@@ -30,6 +30,7 @@ export function CompatibilityList({ report }) {
 export function SongsterrJob({ job, api, action, busy }) {
   const [url, setUrl] = useState('');
   const [compatibility, setCompatibility] = useState(null);
+  useEffect(() => { setCompatibility(null); }, [job.id, job.evidence?.id, job.state]);
   const active = ACTIVE.has(job.state);
   const needsAudio = ['needs_audio', 'alignment_failed'].includes(job.state);
   return <li className={`sb-job ${job.state === 'completed' ? 'sb-job-completed' : ''}`}>

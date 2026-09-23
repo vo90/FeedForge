@@ -54,5 +54,10 @@ def load_performance(path: Path | str, metadata: dict | None = None) -> dict:
             exc.compatibility = report
         raise
     if path.suffix.lower() == ".json":
+        for track in performance["tracks"]:
+            if "notation" not in track:
+                add_finding(report, feature="notation.written_rhythm", category="game_limitation", impact="display_or_expression",
+                            message="This arrangement's written rhythm is outside the game's notation vocabulary. Its playable notes and timing are converted; complete notation remains in the original source.",
+                            location="tracks/" + track["id"], value=None, arrangement=track["name"])
         performance["compatibilityReport"] = report
     return performance
