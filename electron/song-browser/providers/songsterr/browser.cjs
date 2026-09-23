@@ -334,7 +334,7 @@ class SongsterrProvider {
       // account copy after a public failure, timeout or changed response shape.
       if (allowAccount === true) return await this._acquireAccount(descriptor, { directory, signal: operation.signal, onProgress });
       try { return await acquireAnonymous(descriptor, { fetch: this.anonymousSession.fetch.bind(this.anonymousSession), directory, signal: operation.signal, onProgress }); }
-      catch (error) { error.canUseAccount = !['cancelled', 'invalid_directory', 'busy'].includes(error.code); throw error; }
+      catch (error) { error.canUseAccount = ['needs_login', 'access_denied'].includes(error.code); throw error; }
     } finally { this.acquiring = false; operation.release(); }
   }
   _loadCopies() {

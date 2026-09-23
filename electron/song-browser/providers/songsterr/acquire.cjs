@@ -5,9 +5,8 @@ const path = require('node:path');
 const zlib = require('node:zlib');
 const { ORIGIN, MAX_SCORE_BYTES, MAX_TOTAL_BYTES, MAX_TRACKS, MAX_MEASURES, failure, check, clean, numeric, sourceFilename, publicAudio, bounded } = require('./policy.cjs');
 
-// These public URL shapes come from the reviewed fetch layer. Their live
-// anonymous availability is unverified. Tests inject a transport; they never
-// issue requests to Songsterr. Do not rotate hosts after an access failure.
+// Metadata and parts must use the same approved revision. Tests inject a
+// transport; do not fall back to latest metadata or rotate hosts on failure.
 function partUrl(songId, revisionId, image, index) {
   if (!numeric(songId) || !numeric(revisionId) || !Number.isInteger(index) || index < 0 || index >= MAX_TRACKS) throw failure('invalid_score', 'The score identity is invalid.');
   if (image == null || image === '') return `https://d3rrfvx08uyjp1.cloudfront.net/part/${revisionId}/${index}`;
@@ -57,7 +56,8 @@ async function readJson(fetch, url, signal, budget) {
   } finally { signal?.removeEventListener('abort', abort); controller.abort(); }
 }
 function validateMeta(meta, descriptor) {
-  if (String(meta.revisionId) !== descriptor.revisionId) throw failure('revision_unavailable', 'Anonymous score metadata does not match the approved revision.');
+  if (String(meta.revisionId) !== descriptor.revisionId) throw failure('revision_unavailable',
+    `Songsterr returned revision ${numeric(meta.revisionId) || 'unknown'} instead of approved revision ${descriptor.revisionId}. Retry the import; signing in is not required by this response.`);
   if (meta.songId != null && String(meta.songId) !== descriptor.id) throw failure('invalid_score', 'The score belongs to a different song.');
   if (!Array.isArray(meta.tracks) || !meta.tracks.length || meta.tracks.length > MAX_TRACKS || meta.tracks.some((track) => !track || typeof track !== 'object' || Array.isArray(track))) throw failure('invalid_score', 'Songsterr did not provide a complete track inventory.');
   for (const key of ['title', 'artist']) {
@@ -74,7 +74,7 @@ async function acquireAnonymous(descriptor, { fetch, directory, signal, onProgre
   if (typeof fetch !== 'function') throw failure('unavailable', 'Anonymous score retrieval is unavailable.');
   if (!numeric(descriptor?.id) || !numeric(descriptor?.revisionId) || descriptor.approval !== 'approved') throw failure('unapproved_revision', 'A verified approved revision is required.');
   const budget = { remaining: MAX_TOTAL_BYTES };
-  const meta = await readJson(fetch, `${ORIGIN}/api/meta/${descriptor.id}`, signal, budget);
+  const meta = await readJson(fetch, `${ORIGIN}/api/meta/${descriptor.id}/${descriptor.revisionId}`, signal, budget);
   validateMeta(meta, descriptor);
   const parts = []; let measures = Number.isInteger(meta.measureCount) && meta.measureCount > 0 ? meta.measureCount : null;
   for (let index = 0; index < meta.tracks.length; index++) {

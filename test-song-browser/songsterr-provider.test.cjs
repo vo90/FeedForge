@@ -42,7 +42,7 @@ test('anonymous adapter preserves all tracks, lowest strings and exact approved 
   assert.equal(score.tracks[0].tuning.length, 8);
   assert.equal(calls.length, 3);
   for (const call of calls) { assert.equal(call.options.credentials, 'omit'); assert.equal(call.options.redirect, 'error'); assert.equal(call.options.headers.Cookie, undefined); assert.equal(call.options.headers.Authorization, undefined); }
-  assert.equal(calls[0].url, 'https://www.songsterr.com/api/meta/564073');
+  assert.equal(calls[0].url, 'https://www.songsterr.com/api/meta/564073/2585330');
   assert.equal(calls[1].url, partUrl('564073', '2585330', 'fixture-image', 0));
 });
 
@@ -66,6 +66,27 @@ test('anonymous metadata mismatch, HTTP restrictions and network failures remain
   }
   await assert.rejects(acquireAnonymous(descriptor, { directory, fetch: async () => { throw new Error('offline'); } }), { code: 'network_error' });
   assert.deepEqual(await fs.readdir(directory), []);
+});
+
+test('mismatched revision never downloads parts or offers account copying', async (t) => {
+  const root = await temporary(t), state = runtime(root);
+  const directory = path.join(root, 'score'); await fs.mkdir(directory);
+  await state.provider.search({ query: 'Green Lung' });
+  let calls = 0;
+  state.provider.anonymousSession.fetch = async (url) => {
+    calls++;
+    assert.equal(url, `https://www.songsterr.com/api/meta/${descriptor.id}/${descriptor.revisionId}`);
+    return response({ ...meta, revisionId: '999' });
+  };
+  await assert.rejects(state.provider.acquire(result, { directory }), (error) => {
+    assert.equal(error.code, 'revision_unavailable');
+    assert.equal(error.canUseAccount, false);
+    assert.match(error.message, /999.*2585330/);
+    return true;
+  });
+  assert.equal(calls, 1);
+  assert.deepEqual(await fs.readdir(directory), []);
+  state.provider.dispose();
 });
 
 test('anonymous adapter rejects large/HTML responses and honors cancellation', async (t) => {
