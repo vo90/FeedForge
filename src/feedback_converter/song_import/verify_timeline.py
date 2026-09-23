@@ -184,6 +184,11 @@ def expected(source, alignment):
         elif not result["tempos"] or not math.isclose(result["tempos"][-1]["bpm"], bpm, rel_tol=1e-12):
             result["tempos"].append(entry)
     for part in source.parts:
+        borrowing_bars = {i for i, beats in enumerate(part.beats) if any(b['q'] < 0 for b in beats)}
+        for visit, index in enumerate(order):
+            if ((index in borrowing_bars and (visit == 0 or order[visit - 1] != index - 1))
+                    or (index + 1 in borrowing_bars and (visit + 1 == len(order) or order[visit + 1] != index + 1))):
+                unsupported(f'tracks/{part.id}/measures/{index}', 'Cross-bar grace borrows across a repeat jump; traversal is not verified.')
         notes, state, pending_slides, pending_hopos = [], {}, {}, {}
         notation_notes = {}
         last_bar = -1

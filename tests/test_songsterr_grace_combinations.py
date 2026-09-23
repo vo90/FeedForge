@@ -71,11 +71,29 @@ def test_before_beat_at_recording_start_uses_source_on_beat_fallback():
     assert result['notes'][1]['sus'] == 1.9375
 
 
-def test_cross_bar_grace_repeat_context_is_not_guessed():
+def test_cross_bar_grace_inside_an_intact_repeated_pair_keeps_its_borrowed_time():
     grace = {**beat(duration=(1, 32)), 'graceNote': 'beforeBeat'}
     source = raw_score([measure(beat(), repeatStart=True), measure(grace, beat(), repeat=2)])
-    with pytest.raises(ValueError, match='repeat'): parse(source)
-    with pytest.raises(ValueError, match='repeat'): songsterr(source)
+    actual = render(parse(source))['tracks'][0]['notes']
+    checked = expected(songsterr(source), {'offset': 0, 'scale': 1})['parts'][0]['notes']
+    assert [n['t'] for n in actual] == [0, 1.9375, 2, 4, 5.9375, 6]
+    assert [n['note']['t'] for n in checked] == [0, 1.9375, 2, 4, 5.9375, 6]
+
+
+def test_cross_bar_grace_still_rejects_a_jump_between_the_borrowing_pair():
+    grace = {**beat(duration=(1, 32)), 'graceNote': 'beforeBeat'}
+    source = raw_score([measure(beat(), repeatStart=True), measure(beat(), repeat=2), measure(grace, beat())])
+    with pytest.raises(ValueError, match='repeat'): render(parse(source))
+    with pytest.raises(ValueError, match='repeat'): expected(songsterr(source), {'offset': 0, 'scale': 1})
+
+
+def test_a_repeat_elsewhere_does_not_disable_cross_bar_grace():
+    grace = {**beat(duration=(1, 32)), 'graceNote': 'beforeBeat'}
+    source = raw_score([measure(beat(), repeatStart=True, repeat=2), measure(beat()), measure(grace, beat())])
+    actual = render(parse(source))['tracks'][0]['notes']
+    checked = expected(songsterr(source), {'offset': 0, 'scale': 1})['parts'][0]['notes']
+    assert [n['t'] for n in actual] == [0, 2, 4, 5.9375, 6]
+    assert [n['note']['t'] for n in checked] == [0, 2, 4, 5.9375, 6]
 
 
 def test_two_groups_borrow_from_the_same_authored_principal_budget():

@@ -102,6 +102,12 @@ def render(score: Score) -> dict:
     source = {**score.source, "excludedTracks": list(score.source.get("excludedTracks", []))}
     performed_notes = 0
     for track in score.tracks:
+        borrowed = {i for i, voices in enumerate(track.written_bars)
+                    if any(b.position < 0 for v in voices for b in v.beats)}
+        for visit, index in enumerate(order):
+            if ((index in borrowed and (visit == 0 or order[visit - 1] != index - 1))
+                    or (index + 1 in borrowed and (visit + 1 == len(order) or order[visit + 1] != index + 1))):
+                raise ScoreImportError(f"Cross-bar grace crosses a repeat jump in {track.name}, measure {index + 1}; its borrowing needs traversal support.")
         rendered: list[dict] = []
         previous_note = {}
         pending_slide = {}
