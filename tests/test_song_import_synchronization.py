@@ -149,7 +149,12 @@ def test_official_single_terminal_extension_is_marked_and_audio_bounded():
     assert result["anchors"][-1]["audio"] == 4.25
     assert result["provenance"]["terminalBoundary"] == "songsterr-last-interval"
     assert result["diagnostics"]["sourceSyncInferredTerminalBoundary"] is True
-    unavailable("terminal_boundary_outside_recording", lambda: align(points=(.25, 3.25), audio=audio_fixture(5)))
+    silent = align(points=(.25, 3.25), audio=audio_fixture(5))
+    assert silent["anchors"][-1]["audio"] == 6.25
+    assert silent["provenance"]["terminalBeyondAudio"] == "silent_notation_only"
+    assert _retime_note(render(score_fixture())["tracks"][0]["notes"][0], silent, 5)["sus"] == 3
+    unavailable("note_outside_recording", lambda: align(points=(.25, 3.25), audio=audio_fixture(4.6)))
+    unavailable("terminal_boundary_outside_recording", lambda: align(points=(.25, 3.25, 6.25), audio=audio_fixture(5)))
     unavailable("point_count_mismatch", lambda: align(points=(.25,)))
     with pytest.raises(ImportFailure, match="cover"):
         map_time(result, 4.1)

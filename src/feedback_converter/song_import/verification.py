@@ -432,6 +432,17 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             duration = manifest.get("duration")
             if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration <= 0:
                 raise ValueError("manifest/duration: invalid audio duration")
+            if alignment.get("provenance", {}).get("terminalBeyondAudio") == "silent_notation_only":
+                anchors = alignment.get("anchors", [])
+                if (alignment.get("mapping") != "piecewise-linear"
+                        or alignment.get("provenance", {}).get("terminalBoundary") != "songsterr-last-interval"
+                        or len(anchors) < 2 or anchors[-2]["audio"] > duration
+                        or anchors[-1]["audio"] <= duration):
+                    check.fail("terminal_boundary", "alignment", "Invalid silent terminal extension.")
+                # Playback grid ends with the recording. Full written measures
+                # remain in notation; every actual note is still checked below.
+                for key in ("beats", "sections", "time_signatures", "tempos"):
+                    wanted[key] = [item for item in wanted[key] if item["time"] <= duration]
             refs = [manifest.get("preview"), manifest.get("song_timeline")]
             if manifest.get("cover"):
                 refs.append(manifest["cover"])
