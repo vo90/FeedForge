@@ -49,6 +49,7 @@ UNIMPLEMENTED = {
 DECISIONS = {
     "pickScrape": "D1", "tremoloBar": "D2", "whammy": "D2", "vibratoWithTremoloBar": "D2",
     "harmonicFret": "D3", "trill": "D4", "rasgueado": "D5", "hasRasgueado": "D5", "unpitched_mute": "D6",
+    "fret_range": "D7", "simultaneous_voices": "D8",
 }
 
 
@@ -175,6 +176,10 @@ def inspect_songsterr(document, *, track_indices=None):
                         inspect(note, "note", npath, nc)
                         if not isinstance(note, dict):
                             continue
+                        if (not note.get('rest') and type(note.get('fret')) is int and 24 < note['fret'] <= 48):
+                            add_finding(report, feature='note.fret_range', category='game_representation', impact='blocking',
+                                        message='This authored fret is beyond the current game range of 24. Its original pitch and position are retained; no octave or string substitution was made.',
+                                        location=npath + '/fret', value=note['fret'], **nc)
                         if note.get("dead") and note.get("fret") is None and not note.get("rest"):
                             add_finding(report, feature="note.unpitched_mute", category="game_representation", impact="blocking",
                                         message="This muted note has no authored fret. A faithful unpitched representation is required; no fret was invented.",

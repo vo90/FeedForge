@@ -50,7 +50,7 @@ def test_explicit_instrument_program_takes_priority_over_part_name(tmp_path):
 def test_ambiguous_same_string_voices_are_not_silently_deduplicated(tmp_path):
     document = raw_score([measure(beat(3))])
     document["parts"][0]["measures"][0]["voices"].append({"beats": [beat(3)]})
-    with pytest.raises(ScoreImportError, match="no notes were deduplicated"):
+    with pytest.raises(ScoreImportError, match="share one string"):
         import_json(tmp_path, document)
 
 

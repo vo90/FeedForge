@@ -34,7 +34,7 @@ def diagnose_arrangements(document, report):
             row["noteCount"] = sum(len(t["notes"]) + sum(len(c["notes"]) for c in t["chords"]) for t in performance["tracks"])
         except (ScoreImportError, ValueError, TypeError, KeyError, IndexError) as exc:
             row["message"] = str(exc)[:1000]
-            feature = "arrangement." + row["stage"]
+            feature = getattr(exc, 'source_feature', "arrangement." + row["stage"])
             row["blockingFeatures"] = [feature]
             measure = re.search(r"measure (\d+)", str(exc), re.I)
             coordinates = {"trackIndex": index, "trackId": row["trackId"], "arrangement": row["name"]}
@@ -42,8 +42,8 @@ def diagnose_arrangements(document, report):
                 coordinates["measure"] = int(measure[1])
             coordinates.update(getattr(exc, "source_location", {}))
             location = coordinates.pop("location", f"parts/{index}")
-            add_finding(report, feature=feature, category="source_interpretation", impact="blocking",
-                        message=row["message"], location=location, **coordinates)
+            add_finding(report, feature=feature, category="game_representation" if feature == 'arrangement.simultaneous_voices' else "source_interpretation", impact="blocking",
+                        message=row["message"], location=location, value=getattr(exc, 'source_value', None), **coordinates)
     report["arrangementSummary"] = {"requested": len(report["arrangements"]),
         "scoreReady": sum(r["status"] == "score_ready" for r in report["arrangements"]),
         "packageVerified": False}
