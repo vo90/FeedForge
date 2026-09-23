@@ -1,6 +1,6 @@
 """Expand musical repeats and render a score onto one performed time axis."""
 
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from fractions import Fraction
 
 from .model import Measure, Score, ScoreImportError, validate_score
@@ -108,6 +108,18 @@ def render(score: Score) -> dict:
             if ((index in borrowed and (visit == 0 or order[visit - 1] != index - 1))
                     or (index + 1 in borrowed and (visit + 1 == len(order) or order[visit + 1] != index + 1))):
                 raise ScoreImportError(f"Cross-bar grace crosses a repeat jump in {track.name}, measure {index + 1}; its borrowing needs traversal support.")
+        rest_spans = {}
+        for bi, start in visits:
+            for voice in track.written_bars[bi] if track.written_bars else []:
+                for beat in voice.beats:
+                    if beat.rest:
+                        rest_spans.setdefault(str(voice.source_index), []).append((start + beat.position, start + beat.position + beat.duration))
+        rest_limits = {}
+        for voice, spans in rest_spans.items():
+            starts, ends, stop = [], [], Fraction(-1)
+            for left, right in sorted(spans):
+                starts.append(left); stop = max(stop, right); ends.append(stop)
+            rest_limits[voice] = (starts, ends)
         rendered: list[dict] = []
         previous_note = {}
         pending_slide = {}
@@ -129,13 +141,20 @@ def render(score: Score) -> dict:
                 prior = previous_note.get(link_key)
                 effects = {key: value for key, value in note.effects.items() if not key.startswith("__")}
                 key = (note.position, note.string)
-                if key in seen:
+                if not note.tie and key in seen:
                     # Keep authored voices in source evidence. A playable event
                     # cannot silently collapse their separate same-string attacks.
                     raise ScoreImportError(f"Ambiguous simultaneous voices on one string in {track.name}, measure {index + 1}; no notes were deduplicated.")
-                seen[key] = note
+                if not note.tie:
+                    seen[key] = note
                 if note.tie:
-                    if prior is None or prior[0]["f"] != note.fret or prior[1] != position:
+                    gap_allowed = score.source.get('format') == 'songsterr'
+                    if gap_allowed and prior is not None and prior[1] < position:
+                        starts, ends = rest_limits.get(note.voice_id, ([], []))
+                        rest_index = bisect_left(starts, position) - 1
+                        gap_allowed = rest_index < 0 or ends[rest_index] <= prior[1]
+                    if (prior is None or prior[0]["f"] != note.fret or prior[1] > position
+                            or prior[1] != position and not gap_allowed):
                         raise ScoreImportError(f"Unresolved tie in {track.name}, measure {index + 1}.")
                     output = prior[0]
                     articulation = articulations[id(output)]
