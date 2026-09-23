@@ -144,7 +144,11 @@ def render(score: Score) -> dict:
                 if not note.tie and key in seen:
                     # Keep authored voices in source evidence. A playable event
                     # cannot silently collapse their separate same-string attacks.
-                    raise ScoreImportError(f"Ambiguous simultaneous voices on one string in {track.name}, measure {index + 1}; no notes were deduplicated.")
+                    error = ScoreImportError(f"Simultaneous authored voices share one string in {track.name}, measure {index + 1}; choosing or combining their playing instructions needs review.")
+                    error.source_feature = 'arrangement.simultaneous_voices'
+                    error.source_value = [{'sourceId': n.source_id, 'voice': n.voice_id, 'string': n.string, 'fret': n.fret}
+                                          for n in (seen[key], note)]
+                    raise error
                 if not note.tie:
                     seen[key] = note
                 if note.tie:
