@@ -96,6 +96,7 @@ class Track:
     capo: int = 0
     role: str = ""
     written_bars: list[list[WrittenVoice]] = field(default_factory=list)
+    clefs: list[str | None] = field(default_factory=list)
 
 
 @dataclass
