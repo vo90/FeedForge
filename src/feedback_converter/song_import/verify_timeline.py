@@ -1,7 +1,7 @@
 """Independent rational performance evaluator used only by verification."""
 from __future__ import annotations
 
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from fractions import Fraction as F
 import math
 
@@ -184,6 +184,20 @@ def expected(source, alignment):
         elif not result["tempos"] or not math.isclose(result["tempos"][-1]["bpm"], bpm, rel_tol=1e-12):
             result["tempos"].append(entry)
     for part in source.parts:
+        rests = {}
+        for visit, bi in enumerate(order):
+            origin = clock.measure_starts[visit]
+            for beat in part.beats[bi]:
+                if beat['rest']:
+                    rests.setdefault(beat['voice'], []).append((origin + beat['q'], origin + beat['q'] + beat['length']))
+        rest_indices = {}
+        for voice, spans in rests.items():
+            spans.sort()
+            starts = [p for p, _ in spans]
+            ends, last = [], F(-1)
+            for _, q in spans:
+                last = max(last, q); ends.append(last)
+            rest_indices[voice] = (starts, ends)
         notes, state, pending_slides, pending_hopos = [], {}, {}, {}
         notation_notes = {}
         last_bar = -1
@@ -201,7 +215,13 @@ def expected(source, alignment):
                     raise ValueError(atom.location + ": invalid duration/string")
                 previous = state.get(key)
                 if atom.tie:
-                    if previous is None or previous["f"] != atom.fret or previous["end"] != start:
+                    gap_allowed = source.format == 'songsterr'
+                    if gap_allowed and previous is not None and previous['end'] < start:
+                        rest_starts, rest_ends = rest_indices.get(atom.voice, ([], []))
+                        i = bisect_left(rest_starts, start) - 1
+                        gap_allowed = i < 0 or rest_ends[i] <= previous['end']
+                    if (previous is None or previous["f"] != atom.fret or previous["end"] > start
+                            or previous["end"] != start and not gap_allowed):
                         unsupported(atom.location, "Source tie does not identify a continuous prior note; it has not been repaired.")
                     event = previous
                     event["end"] = end
