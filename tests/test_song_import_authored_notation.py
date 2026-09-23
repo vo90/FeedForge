@@ -43,8 +43,8 @@ def test_new_uninterpreted_values_are_not_silently_accepted(tmp_path, field, val
 
 
 def test_legacy_brush_is_not_mistaken_for_pick_direction(tmp_path):
-    with pytest.raises(ScoreImportError, match="upStroke"):
-        import_json(tmp_path, raw_score([measure({**beat(), "upStroke": 1})]))
+    result = import_json(tmp_path, raw_score([measure({**beat(), "upStroke": 1})]))
+    assert result["tracks"][0]["notes"][0]["pkd"] == 0
 
 
 def test_independent_verifier_detects_lost_pick_direction_and_vibrato(tmp_path):

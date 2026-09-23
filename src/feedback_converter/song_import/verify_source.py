@@ -144,6 +144,82 @@ def _endings(raw, loc):
     return frozenset(i + 1 for i in range(16) if mask & (1 << i))
 
 
+def _songsterr_beat_clock(beats, measure_length, location):
+    lengths = [4 * fraction(b["duration"], location) for b in beats]
+    starts, position = [], F(0)
+    for beat, length in zip(beats, lengths):
+        if length <= 0:
+            raise ValueError(location + ": invalid written duration")
+        starts.append(position)
+        if not beat.get("graceNote"):
+            position += length
+    if position > measure_length:
+        raise ValueError(location + ": overfull written voice")
+    times = [[start, length, start] for start, length in zip(starts, lengths)]
+    pending = []
+    for index, beat in enumerate(beats):
+        if beat.get("graceNote"):
+            if beat["graceNote"] != "onBeat":
+                unsupported(location, "This grace-note timing is not independently verified.")
+            pending.append(index)
+            continue
+        if not pending:
+            continue
+        if any(beats[i].get("rest") or not any(not n.get("rest") for n in beats[i].get("notes", [])) for i in [*pending, index]):
+            raise ValueError(location + ": grace group has no pitched principal")
+        dots = max(integer(beats[i].get("dots", 0), location) for i in pending)
+        principal_available = measure_length - starts[index] if index + 1 == len(beats) else lengths[index]
+        fraction_available = F(7, 8) if dots >= 2 else F(3, 4) if dots == 1 else F(1, 2)
+        total = sum((lengths[i] for i in pending), F(0))
+        maximum = min(total / len(pending), principal_available * fraction_available)
+        used = F(0)
+        for i in pending:
+            length = maximum / len(pending) if total > maximum else lengths[i]
+            times[i] = [starts[index] + used, length, starts[index]]
+            used += length
+        times[index] = [starts[index] + used, lengths[index] - used, starts[index]]
+        if times[index][1] <= 0:
+            raise ValueError(location + ": grace group consumes principal")
+        pending.clear()
+    if pending:
+        unsupported(location, "A grace note has no independently resolvable principal note.")
+    return times
+
+
+def _songsterr_strum(beat, location):
+    options = [beat[k] for k in ("brushStroke", "arpeggio") if beat.get(k) is not None]
+    legacy = [k for k in ("upStroke", "downStroke") if beat.get(k)]
+    if len(options) > 1 or len(legacy) > 1:
+        unsupported(location, "Conflicting strum markings.")
+    if not options and not legacy:
+        return {}, None
+    if options:
+        stroke = options[0]
+        if not isinstance(stroke, dict) or set(stroke) != {"direction", "duration", "shift"}:
+            unsupported(location, "Unknown strum fields.")
+        direction = stroke["direction"]
+        amount, shift = fraction(stroke["duration"], location), integer(stroke["shift"], location)
+    else:
+        direction, amount, shift = ("down" if legacy[0] == "upStroke" else "up"), F(30), 100
+    if legacy and (integer(beat[legacy[0]], location) != 1 or direction != ("down" if legacy[0] == "upStroke" else "up")):
+        unsupported(location, "Unverified legacy strum value.")
+    if direction not in ("up", "down") or amount < 0 or amount > 960 or not 0 <= shift <= 100:
+        raise ValueError(location + ": invalid strum parameters")
+    notes = [(i, n) for i, n in enumerate(beat["notes"]) if not n.get("rest")]
+    strings = [integer(n["string"], location) for _, n in notes]
+    if len(set(strings)) != len(strings):
+        raise ValueError(location + ": duplicate string in strum")
+    if any(any(n.get(k) for k in ("bend", "hp", "slide", "leftSlide", "rightSlide")) for _, n in notes) or len(notes) < 2:
+        return {}, direction
+    if beat.get("graceNote") or any(n.get("tie") for _, n in notes):
+        unsupported(location, "Combined grace/tie and strum requires additional verification.")
+    capped = min(amount, 960, (fraction(beat["duration"], location) * 1920).__floor__())
+    ordered = sorted(notes, key=lambda item: item[1]["string"], reverse=direction == "down")
+    interval = F(capped) / (len(notes) * 480)
+    first = -interval * (len(notes) - 1) * F(100 - shift, 100)
+    return {index: first + rank * interval for rank, (index, _) in enumerate(ordered)}, direction
+
+
 def songsterr(document):
     if not isinstance(document, dict) or document.get("format") != "songsterr":
         raise ValueError("source: not a Songsterr envelope")
@@ -195,9 +271,9 @@ def songsterr(document):
             bars[bi].tempos[q] = bpm
     parts, excluded = [], []
     note_keys = {"string", "fret", "tie", "rest", "dead", "vibrato", "wideVibrato", "ghost", "accentuated",
-                 "tap", "tapping", "hp", "harmonic", "harmonicFret", "slide", "bend", "leftHandVibrato"}
+                 "tap", "tapping", "hp", "harmonic", "harmonicFret", "slide", "bend", "leftHandVibrato", "staccato"}
     beat_keys = {"duration", "notes", "rest", "type", "dots", "tuplet", "tupletStart", "tupletStop", "graceNote",
-                 "palmMute", "letRing", "tremolo", "tap", "tapping", "slap", "pop", "vibrato", "wideVibrato", "text", "velocity", "gradualVelocity", "chord", "pickStroke", "wahwah"}
+                 "palmMute", "letRing", "tremolo", "tap", "tapping", "slap", "pop", "vibrato", "wideVibrato", "text", "velocity", "gradualVelocity", "chord", "pickStroke", "wahwah", "brushStroke", "arpeggio", "upStroke", "downStroke"}
     for pi, (meta, raw) in enumerate(zip(metadata, raw_parts)):
         tid = str(meta.get("id", pi))
         name = str(meta.get("name") or meta.get("title") or meta.get("instrument") or f"Track {pi + 1}")
@@ -211,7 +287,7 @@ def songsterr(document):
             atoms, beat_facts = [], []
             for vi, voice in enumerate(bar["voices"]):
                 _active_unknown(voice, {"beats", "rest"}, {"id"}, f"parts/{pi}/measures/{bi}/voices/{vi}", ignored)
-                q, borrowed = F(0), F(0)
+                times = _songsterr_beat_clock(voice["beats"], bars[bi].length, f"parts/{pi}/measures/{bi}/voices/{vi}")
                 for bti, beat in enumerate(voice["beats"]):
                     loc = f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}"
                     _active_unknown(beat, beat_keys, {"beamStart", "beamStop", "id"}, loc, ignored)
@@ -220,13 +296,14 @@ def songsterr(document):
                         unsupported(loc + "/chord", "Unverified authored chord label.")
                     if beat.get("wahwah") not in (None, "open", "closed"):
                         unsupported(loc + "/wahwah", "Unverified wah pedal marking.")
-                    duration = fraction(beat["duration"], loc) * 4
-                    written_duration, written_q = duration, q - borrowed
+                    written_duration = fraction(beat["duration"], loc) * 4
+                    q, duration, written_q = times[bti]
+                    offsets, direction = _songsterr_strum(beat, loc)
                     dots = integer(beat.get("dots", 0), loc)
                     denominator = beat.get("type")
                     if denominator is None:
                         denominator = next((d for d in (1, 2, 4, 8, 16, 32, 64, 128, 256)
-                                            if F(4, d) * (2 - F(1, 2 ** dots)) == duration), None)
+                                            if F(4, d) * (2 - F(1, 2 ** dots)) == written_duration), None)
                     if denominator is None:
                         unsupported(loc, "Written duration cannot be independently represented in notation.")
                     denominator = integer(denominator, loc)
@@ -247,11 +324,6 @@ def songsterr(document):
                     grace = beat.get("graceNote")
                     if grace not in (None, "onBeat"):
                         unsupported(loc, "This grace-note timing is not independently verified.")
-                    if grace:
-                        borrowed += duration
-                    elif borrowed:
-                        duration -= borrowed
-                        borrowed = F(0)
                     if duration <= 0:
                         raise ValueError(f"{loc}: nonpositive performed beat duration")
                     fact = {"q": q, "length": duration, "voice": str(vi), "location": loc, "written_q": written_q,
@@ -270,6 +342,8 @@ def songsterr(document):
                         if note.get("leftHandVibrato"):
                             fx["vb"] = True
                         picking = beat.get("pickStroke")
+                        if picking is None:
+                            picking = direction
                         if picking not in (None, "up", "down"):
                             unsupported(loc + "/pickStroke", "Unverified pick direction.")
                         if picking is not None:
@@ -306,7 +380,18 @@ def songsterr(document):
                                      for p in note["bend"]["points"]]
                             if not bends:
                                 raise ValueError(f"{nloc}: missing bend points")
-                        atoms.append(Atom(q, duration, len(tuning) - 1 - integer(note["string"], nloc), integer(note["fret"], nloc),
+                        attack = q + offsets.get(ni, F(0))
+                        length = q + duration - attack
+                        if attack < 0 or length <= 0:
+                            unsupported(nloc, "Strum crosses an unresolved timing boundary.")
+                        if note.get("staccato"):
+                            if note["staccato"] is not True or any(note.get(k) for k in ("tie", "hp", "slide", "bend")):
+                                unsupported(nloc, "Linked staccato is not independently verified.")
+                            reduced = max(length / 2, F(1, 32))
+                            if reduced > length:
+                                unsupported(nloc, "Staccato minimum exceeds authored duration.")
+                            length = reduced
+                        atoms.append(Atom(attack, length, len(tuning) - 1 - integer(note["string"], nloc), integer(note["fret"], nloc),
                                           nloc, str(vi), loc, bool(note.get("tie")), fx, sorted(bends), slide[note.get("slide")],
                                           bool(note.get("hp"))))
                         fact["notes"].append(atoms[-1])
@@ -315,9 +400,6 @@ def songsterr(document):
                             atoms[-1].slide_in = "down"
                         elif raw_slide in {"below", "belowshift", "belowlegato", "belowupwards", "belowdownwards"}:
                             atoms[-1].slide_in = "up"
-                    q += duration
-                if borrowed:
-                    unsupported(loc, "A grace note has no independently resolvable principal note.")
             track.bars.append(atoms)
             track.beats.append(beat_facts)
         parts.append(track)

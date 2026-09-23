@@ -9,6 +9,7 @@ from fractions import Fraction
 
 from .inventory import FeatureInventory
 from .model import Measure, Note, Score, ScoreImportError, Track, WrittenBeat, WrittenVoice, integer, rational
+from .songsterr_timing import voice_timing, strum_offsets
 
 
 def _instrument(meta):
@@ -76,7 +77,12 @@ def _note(raw, beat, position, duration, strings):
         if beat.get(source):
             effects[target] = True
     if raw.get("staccato"):
-        raise ScoreImportError("Staccato sustain interpretation is not implemented yet.")
+        if raw["staccato"] is not True or any(raw.get(k) for k in ("tie", "hp", "slide", "bend")):
+            raise ScoreImportError("Linked or malformed staccato needs additional timing support.")
+        shortened = max(duration / 2, Fraction(1, 32))
+        if shortened > duration:
+            raise ScoreImportError("Staccato's minimum would extend the authored note; no repair was applied.")
+        duration = shortened
     harmonic = raw.get("harmonic")
     if harmonic:
         if harmonic == "natural":
@@ -269,17 +275,17 @@ def parse(document: dict) -> Score:
             for vi, voice in enumerate(measure["voices"]):
                 if not isinstance(voice, dict) or not isinstance(voice.get("beats"), list):
                     raise ScoreImportError("Missing Songsterr beat data.")
-                position = Fraction(0)
-                grace_duration = Fraction(0)
+                timings = voice_timing(voice["beats"], measures[bi].length)
                 voice_id = f"songsterr:{index}:{bi}:{vi}"
                 inventory.inspect(voice, "Songsterr voice", voice_id, playable={"beats", "rest"}, strict=True)
                 written_voice = WrittenVoice(voice_id, source_index=vi)
                 for beat_index, beat in enumerate(voice["beats"]):
                     beat_id = f"{voice_id}:{beat_index}"
                     inventory.inspect(beat, "Songsterr beat", beat_id,
-                                      playable={"duration", "notes", "rest", "palmMute", "tremolo", "tap", "tapping", "slap", "pop", "vibrato", "wideVibrato", "letRing", "graceNote", "grace", "graceNotes", "tremoloBar", "stroke", "whammy", "pickStroke"},
+                                      playable={"duration", "notes", "rest", "palmMute", "tremolo", "tap", "tapping", "slap", "pop", "vibrato", "wideVibrato", "letRing", "graceNote", "grace", "graceNotes", "tremoloBar", "stroke", "whammy", "pickStroke", "brushStroke", "arpeggio", "upStroke", "downStroke"},
                                       notation={"duration", "notes", "rest", "type", "dots", "tuplet", "text", "velocity", "gradualVelocity", "letRing", "palmMute", "tap", "tapping", "slap", "pop", "vibrato", "wideVibrato", "graceNote"},
                                       retained={"chord", "wahwah"},
+                                      # Attack offsets are kept in the playable chart.
                                       layout={"beamStart", "beamStop", "tupletStart", "tupletStop"},
                                       strict=True)
                     if beat.get("wahwah") not in (None, "open", "closed"):
@@ -291,29 +297,11 @@ def parse(document: dict) -> Score:
                         raise ScoreImportError(f"Songsterr grace note type {grace!r} is unsupported in {name}, measure {bi + 1}.")
                     if "duration" not in beat:
                         raise ScoreImportError("Missing exact Songsterr beat duration.")
-                    duration = rational(beat["duration"], "beat duration") * 4
-                    written_duration = duration
-                    written_position = position - grace_duration
-                    if duration <= 0:
-                        raise ScoreImportError("Invalid beat duration.")
+                    written_duration = rational(beat["duration"], "beat duration") * 4
+                    position, duration, written_position = timings[beat_index]
                     if not isinstance(beat.get("notes"), list):
                         raise ScoreImportError("Missing Songsterr notes (rests must have an explicit empty list).")
-                    if grace or grace_duration:
-                        if beat.get("rest") or not any(not note.get("rest") for note in beat["notes"]):
-                            raise ScoreImportError(f"An on-beat grace note needs a following pitched note in {name}, measure {bi + 1}.")
-                    # Songsterr's notation help and Guitar Pro's grace-note
-                    # documentation define on-beat grace as starting at the
-                    # principal beat and shortening/delaying that note. Grace
-                    # durations therefore do not extend the measure. Retain
-                    # their encoded duration; never stretch the whole bar or
-                    # discard the grace notes to make an overfull voice fit.
-                    if grace:
-                        grace_duration += duration
-                    elif grace_duration:
-                        duration -= grace_duration
-                        if duration <= 0:
-                            raise ScoreImportError(f"On-beat grace notes consume the following note in {name}, measure {bi + 1}.")
-                        grace_duration = Fraction(0)
+                    offsets, strum_direction = strum_offsets(beat)
                     denominator, dots, tuplet = _written_rhythm(beat, written_duration)
                     written_beat = WrittenBeat(beat_id, position, duration, rest=bool(beat.get("rest")),
                                                denominator=denominator, dots=dots, tuplet=tuplet,
@@ -331,17 +319,17 @@ def parse(document: dict) -> Score:
                             for point_index, point in enumerate(note["bend"].get("points", [])):
                                 inventory.inspect(point, "Songsterr bend point", f"{source_id}.bend.points[{point_index}]", playable={"position", "tone"}, strict=True)
                         if not note.get("rest"):
-                            parsed = _note(note, beat, position, duration, len(tuning))
+                            offset = offsets.get(note_index, Fraction(0))
+                            if position + offset < 0 or duration <= offset:
+                                raise ScoreImportError("The authored strum crosses a measure boundary or consumes a note; additional timing support is required.")
+                            parsed = _note(note, beat, position + offset, duration - offset, len(tuning))
+                            if strum_direction and "pkd" not in parsed.effects:
+                                parsed.effects["pkd"] = 1 if strum_direction == "up" else 0
                             parsed.source_id, parsed.beat_id, parsed.voice_id = source_id, beat_id, str(vi)
                             bar_notes.append(parsed)
                             written_beat.notes.append(parsed)
                     written_beat.rest = not written_beat.notes
                     written_voice.beats.append(written_beat)
-                    position += duration
-                if grace_duration:
-                    raise ScoreImportError(f"An on-beat grace note has no following note in {name}, measure {bi + 1}.")
-                if position > measures[bi].length:
-                    raise ScoreImportError(f"Voice exceeds measure {bi + 1} in {name}.")
                 written_voices.append(written_voice)
             track_bars.append(bar_notes)
             written_bars.append(written_voices)

@@ -210,7 +210,7 @@ def _chords(wanted, chart, check, part):
         groups.setdefault((item["occurrence"], item["beat"]), []).append(item["note"])
     expected_shapes = {}
     for (_, beat), notes in groups.items():
-        if len(notes) > 1:
+        if len(notes) > 1 and len({n["t"] for n in notes}) == 1:
             shape = (tuple(sorted((n["s"], n["f"]) for n in notes)), labels.get(beat, ""))
             expected_shapes.setdefault(shape, []).append(notes[0]["t"])
     actual_shapes = {}

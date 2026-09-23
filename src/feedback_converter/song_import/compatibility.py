@@ -6,7 +6,7 @@ parser and independent verifier still validate every supported representation.
 from copy import deepcopy
 import json
 
-VERSION = 2
+VERSION = 3
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -28,12 +28,13 @@ LIMITATIONS = {
     ("tempo", "text"): "The descriptive tempo text is retained in the source. The explicit numeric tempo is converted unchanged.",
     ("beat", "chord"): "Authored labels name simultaneous chord templates. Labels on rests or single notes, and label engraving, remain in the source.",
     ("beat", "wahwah"): "The wah pedal marking is retained in the source. Notes and timing are converted; pedal expression is not represented in the game chart.",
+    ("note", "staccato"): "Performed duration follows the source's staccato rule. The written staccato marking is retained in the original source; the game chart has no dedicated staccato marker.",
 }
 # These names are understood but do not yet have a faithful conversion mapping.
 UNIMPLEMENTED = {
     "measure": {"direction", "directions", "fromDirection", "fermata", "freeTime"},
-    "beat": {"grace", "graceNotes", "tremoloBar", "stroke", "whammy", "brushStroke", "arpeggio", "vibratoWithTremoloBar", "upStroke", "downStroke"},
-    "note": {"trill", "grace", "graceNote", "tremoloBar", "whammy", "staccato", "harmonicFret", "pickScrape", "vibratoWithTremoloBar"},
+    "beat": {"grace", "graceNotes", "tremoloBar", "stroke", "whammy", "vibratoWithTremoloBar"},
+    "note": {"trill", "grace", "graceNote", "tremoloBar", "whammy", "harmonicFret", "pickScrape", "vibratoWithTremoloBar"},
     "tempo": {"linear"},
 }
 

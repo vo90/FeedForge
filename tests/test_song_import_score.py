@@ -272,8 +272,9 @@ def test_grouped_on_beat_grace_keeps_original_beat_span_with_repeat_and_tempo_ch
     data["parts"][0]["automations"]["tempo"].append({"measure": 0, "position": [1, 2], "bpm": 60})
     result = import_json(tmp_path, data)
     notes = result["tracks"][0]["notes"]
-    assert [note["t"] for note in notes] == [0, 0.0625, 0.125, 1, 3, 3.0625, 3.125, 4]
-    assert [note["sus"] for note in notes] == [0.0625, 0.0625, 0.875, 2] * 2
+    # Songsterr limits the complete group to its average encoded duration.
+    assert [note["t"] for note in notes] == [0, 0.03125, 0.0625, 1, 3, 3.03125, 3.0625, 4]
+    assert [note["sus"] for note in notes] == [0.03125, 0.03125, 0.9375, 2] * 2
     assert result["duration"] == 6
 
 

@@ -194,7 +194,7 @@ def render(score: Score) -> dict:
         template_ids = {}
         labels = {beat.source_id: beat.chord_label for voices in track.written_bars for voice in voices for beat in voice.beats}
         for (_, beat_id), group in authored_groups.items():
-            if len(group) < 2:
+            if len(group) < 2 or len({note["t"] for note in group}) != 1:
                 continue
             frets = [-1] * len(track.tuning)
             for note in group:
