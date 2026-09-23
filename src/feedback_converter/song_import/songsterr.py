@@ -272,7 +272,10 @@ def parse(document: dict, *, track_indices=None) -> Score:
         if clocks and any(clock != clocks[0] for clock in clocks[1:]):
             raise ScoreImportError("Tracks disagree about the performed tempo automation.")
     for (bar, position), bpm in tempo_events.items():
-        measures[bar].tempos.append((position, bpm))
+        # The score model's runtime BPM contract is a finite float. Automation
+        # keeps exact fractions internally; do not leak those objects into
+        # source synchronization, notation, or JSON evidence serialization.
+        measures[bar].tempos.append((position, float(bpm)))
     tracks = []
     warnings = []
     excluded = []
