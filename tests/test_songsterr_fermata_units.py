@@ -1,11 +1,13 @@
 from copy import deepcopy
 from fractions import Fraction as F
+import json
 
 import pytest
 
 from test_song_import_score import beat, import_json, measure, raw_score
 from feedback_converter.song_import.verify_source import songsterr
 from feedback_converter.song_import.verify_timeline import expected
+from feedback_converter.song_import.synchronization import align_from_songsterr
 
 
 @pytest.mark.parametrize('unit,dotted,initial,held,restored', [
@@ -19,6 +21,7 @@ def test_fermata_rounds_authored_bpm_before_normalizing_its_unit(tmp_path, unit,
     auto['fermata'] = [{'measure': 0, 'position': 1920, 'type': 'short', 'length': 0}]
     original = deepcopy(source)
     performance = import_json(tmp_path, source)
+    json.dumps(performance, allow_nan=False)
     rates = [e['bpm'] for e in performance['tempos']]
     assert rates == [initial, held, restored]
     duration = 120 / initial + 60 / held + 60 / restored
@@ -27,6 +30,12 @@ def test_fermata_rounds_authored_bpm_before_normalizing_its_unit(tmp_path, unit,
     assert list(independent.bars[0].tempos.values()) == [F(str(initial)), F(str(held)), F(str(restored))]
     assert expected(independent, {'offset': 0, 'scale': 1})['score_duration'] == pytest.approx(duration)
     assert source == original
+    timing = align_from_songsterr(performance, {'duration': duration + 1, 'source': {'kind': 'youtube', 'videoId': 'abcdefghijk'}},
+        {'version': 1, 'source': 'songsterr-video-points', 'songId': '123', 'revisionId': '456',
+         'videoId': 'abcdefghijk', 'status': 'done', 'feature': None, 'points': [0, duration]},
+        {'songId': '123', 'revisionId': '456', 'approval': 'approved'})
+    assert timing['status'] == 'validated'
+    json.dumps(timing, allow_nan=False)
 
 
 def test_tempo_unit_is_inherited_across_measures_and_restored_at_next_bar(tmp_path):
