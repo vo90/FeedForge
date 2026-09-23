@@ -12,8 +12,6 @@ def expand(auto, bars, events, loc):
     holds = auto.get("fermata") or []
     if not isinstance(holds, list):
         raise ValueError(loc + ": invalid fermata list")
-    if holds and any(t.get("type", 4) != 4 or t.get("dotted") for t in auto.get("tempo", [])):
-        unsupported(loc, "Fermata tempo-unit combination is not independently verified.")
     boundaries, position = [], F(0)
     for bar in bars:
         boundaries.append(position)
@@ -47,7 +45,12 @@ def expand(auto, bars, events, loc):
         choices = [t for t in original if t <= start]
         if not choices:
             raise ValueError(loc + ": missing fermata base tempo")
-        rate = original[max(choices)]
+        candidates = [(boundaries[integer(t['measure'], loc)] + fraction(t.get('position', 0), loc) * 4, t)
+                      for t in auto.get('tempo', [])]
+        raw = sorted((x for x in candidates if x[0] <= start), key=lambda x: x[0])[-1][1]
+        raw_rate = fraction(raw['bpm'], loc)
+        multiplier = F(4, integer(raw.get('type', 4), loc))
+        rate = raw_rate * multiplier
         unit = F(4, bars[bar].signature[1])
         subdivision = 1
         while subdivision < 128 and (q / unit * subdivision).denominator != 1:
@@ -56,7 +59,7 @@ def expand(auto, bars, events, loc):
         if any(start < b and end > a for a, b in ranges):
             unsupported(loc, "Overlapping fermatas are not independently verified.")
         ranges.append((start, end))
-        slow = F(int(rate * (F(12) - 7 * amount) / 15 + F(1, 2)))
+        slow = F(int(raw_rate * (F(12) - 7 * amount) / 15 + F(1, 2))) * multiplier
         if slow <= 0:
             raise ValueError(loc + ": nonpositive fermata tempo")
         result[start] = slow

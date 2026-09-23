@@ -16,8 +16,6 @@ def performed_tempos(automations, measures, events):
     fermatas = automations.get("fermata") or []
     if not isinstance(fermatas, list):
         raise ScoreImportError("Invalid fermata automation.")
-    if fermatas and any(t.get("type", 4) != 4 or t.get("dotted") for t in automations.get("tempo", [])):
-        raise ScoreImportError("Fermata with non-quarter tempo units needs additional interpretation.")
     starts = [F(0)]
     for m in measures:
         starts.append(starts[-1] + m.length)
@@ -56,7 +54,14 @@ def performed_tempos(automations, measures, events):
         prior = [t for t in original if t <= at]
         if not prior:
             raise ScoreImportError("Fermata has no explicit preceding tempo.")
-        bpm = original[max(prior)]
+        # Qr/ei round the authored BPM before converting its note unit. The
+        # generated hold/restoration events copy type but not the dotted flag.
+        raw_tempos = {starts[integer(t['measure'], 'tempo measure')] + rational(t.get('position', 0)) * 4: t
+                      for t in automations.get('tempo', [])}
+        raw = raw_tempos[max(t for t in raw_tempos if t <= at)]
+        authored_bpm = rational(raw['bpm'], 'tempo')
+        unit_scale = F(4, integer(raw.get('type', 4), 'tempo note value'))
+        bpm = authored_bpm * unit_scale
         unit = F(4, measures[bar].denominator)
         fractional = position / unit % 1
         divisor = next((2 ** power for power in range(8) if (fractional * 2 ** power).denominator == 1), 128)
@@ -64,7 +69,7 @@ def performed_tempos(automations, measures, events):
         if any(at < stop and end > begin for begin, stop in occupied):
             raise ScoreImportError("Overlapping fermata automation needs additional interpretation.")
         occupied.append((at, end))
-        slowed = floor(F(str(bpm)) * (F(4, 5) - F(7, 15) * length) + F(1, 2))
+        slowed = floor(authored_bpm * (F(4, 5) - F(7, 15) * length) + F(1, 2)) * unit_scale
         if slowed <= 0:
             raise ScoreImportError("Fermata produces a nonpositive tempo.")
         by_time[at] = slowed
