@@ -63,6 +63,7 @@ class Atom:
     hopo_destination: bool = False
     wide_vibrato: bool = False
     slide_in: str | None = None
+    staccato: bool = False
 
 
 @dataclass
@@ -549,16 +550,13 @@ def songsterr(document):
                         if (attack < 0 and not cross_bar) or length <= 0:
                             unsupported(nloc, "Strum crosses an unresolved timing boundary.")
                         if note.get("staccato"):
-                            if note["staccato"] is not True or note.get("tie"):
-                                unsupported(nloc, "Linked staccato is not independently verified.")
-                            reduced = max(length / 2, F(1, 32))
-                            if reduced > length:
-                                unsupported(nloc, "Staccato minimum exceeds authored duration.")
-                            length = reduced
+                            if note["staccato"] is not True:
+                                raise ValueError(nloc + ': malformed staccato')
                         atoms.append(Atom(attack, length, len(tuning) - 1 - integer(note["string"], nloc), integer(note["fret"], nloc),
                                           nloc, str(vi), loc, bool(note.get("tie")), fx, sorted(bends), slide[note.get("slide")],
                                           bool(note.get("hp"))))
                         fact["notes"].append(atoms[-1])
+                        atoms[-1].staccato = note.get("staccato") is True
                         atoms[-1].wide_vibrato = bool(note.get("wideVibrato")) or note.get("leftHandVibrato") == "wide"
                         if raw_slide in {"above", "aboveshift", "abovelegato", "aboveupwards", "abovedownwards"}:
                             atoms[-1].slide_in = "down"

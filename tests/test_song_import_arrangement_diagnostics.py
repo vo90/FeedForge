@@ -55,7 +55,7 @@ def test_no_partial_package_is_published_and_full_source_survives(tmp_path):
 
 
 def test_parser_failures_keep_exact_note_location():
-    doc = raw_score([measure(beat(staccato=True, tie=True))])
+    doc = raw_score([measure(beat(staccato="invalid"))])
     report = inspect_songsterr(doc); diagnose_arrangements(doc, report)
     failure = report["findings"][-1]
     assert failure["location"] == "parts/0/measures/0/voices/0/beats/0/notes/0"

@@ -85,15 +85,8 @@ def _note(raw, beat, position, duration, strings):
         if beat.get(source):
             effects[target] = True
     if raw.get("staccato"):
-        # The source performer shortens the sounding interval before applying
-        # bends/slides/hammer gestures. These can coexist; a tied segment still
-        # needs separate treatment because ties are folded before staccato.
-        if raw["staccato"] is not True or raw.get("tie"):
-            raise ScoreImportError("Linked or malformed staccato needs additional timing support.")
-        shortened = max(duration / 2, Fraction(1, 32))
-        if shortened > duration:
-            raise ScoreImportError("Staccato's minimum would extend the authored note; no repair was applied.")
-        duration = shortened
+        if raw["staccato"] is not True:
+            raise ScoreImportError("Malformed staccato.")
     harmonic = raw.get("harmonic")
     if harmonic:
         if harmonic == "natural":
@@ -121,7 +114,7 @@ def _note(raw, beat, position, duration, strings):
             raise ScoreImportError("Bend has no curve data.")
         bends = bend_points(bend["points"])
     return Note(position, duration, string, fret, bool(raw.get("tie")), effects,
-                sorted(bends), False, slide_out, slide_in=slide_in)
+                sorted(bends), False, slide_out, slide_in=slide_in, staccato=raw.get("staccato") is True)
 
 
 def _written_rhythm(beat, duration):
