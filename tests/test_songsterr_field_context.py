@@ -6,6 +6,30 @@ from feedback_converter.song_import.songsterr import parse
 from feedback_converter.song_import.timeline import render
 from feedback_converter.song_import.verify_source import songsterr
 from feedback_converter.song_import.verify_timeline import expected
+from test_song_import_compatibility_verification import reported_fixture
+from test_song_import_verification import verify
+
+
+@pytest.mark.parametrize('visible', [True, False])
+@pytest.mark.parametrize('fault', [None, 'remove', 'value'])
+def test_tempo_visibility_survives_independent_package_verification(tmp_path, visible, fault):
+    source, package = reported_fixture()
+    source['parts'][0]['automations']['tempo'][0]['visible'] = visible
+    report = package['import/compatibility.json']
+    report['findings'].append({
+        'feature': 'tempo.visible', 'location': 'parts/0/automations/tempo/0/visible',
+        'value': visible, 'valueTruncated': False, 'retained': 'original_source',
+        'impact': 'display_or_expression', 'category': 'game_limitation',
+    })
+    if fault == 'remove':
+        report['findings'].pop()
+    elif fault == 'value':
+        report['findings'][-1]['value'] = not visible
+    report['findingCount'] = len(report['findings'])
+    result = verify(tmp_path, source, package)
+    assert result['status'] == ('failed' if fault else 'passed'), result
+    if fault:
+        assert any(e['code'].startswith('compatibility_') for e in result['errors'])
 
 
 @pytest.mark.parametrize('visible', [True, False])

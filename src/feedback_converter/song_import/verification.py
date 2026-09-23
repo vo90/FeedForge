@@ -269,6 +269,10 @@ def _compatibility_report(report, score_path, source, check):
         for pi, (meta, part) in enumerate(zip(document["tracks"], document["parts"])):
             for ti, tempo in enumerate(part.get("automations", {}).get("tempo", [])):
                 remember(tempo, ("text",), "tempo", f"parts/{pi}/automations/tempo/{ti}")
+                # Both true and false are authored display preferences. Unlike
+                # inactive technique flags, false must remain in the report.
+                if isinstance(tempo.get("visible"), bool):
+                    expected[("tempo.visible", f"parts/{pi}/automations/tempo/{ti}/visible")] = tempo["visible"]
             for bi, bar in enumerate(part["measures"]):
                 path = f"parts/{pi}/measures/{bi}"
                 remember(bar, ("doubleBarline", "keySignature"), "measure", path)
