@@ -20,7 +20,7 @@ from .verify_timeline import expected
 
 VERSION = 4
 TIME_TOLERANCE = 0.0000011
-TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "bn"}
+TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "bn", "pkd"}
 TUNINGS = {"guitar": {6: [40, 45, 50, 55, 59, 64], 7: [35, 40, 45, 50, 55, 59, 64], 8: [30, 35, 40, 45, 50, 55, 59, 64]},
            "bass": {4: [28, 33, 38, 43], 5: [23, 28, 33, 38, 43], 6: [23, 28, 33, 38, 43, 48]}}
 
@@ -205,12 +205,13 @@ def _incoming_marks(wanted, note, check, location):
 
 def _chords(wanted, chart, check, part):
     groups = {}
+    labels = {beat["location"]: beat.get("chord_label", "") for bar in part.beats for beat in bar}
     for item in wanted:
         groups.setdefault((item["occurrence"], item["beat"]), []).append(item["note"])
     expected_shapes = {}
-    for notes in groups.values():
+    for (_, beat), notes in groups.items():
         if len(notes) > 1:
-            shape = tuple(sorted((n["s"], n["f"]) for n in notes))
+            shape = (tuple(sorted((n["s"], n["f"]) for n in notes)), labels.get(beat, ""))
             expected_shapes.setdefault(shape, []).append(notes[0]["t"])
     actual_shapes = {}
     templates = chart.get("templates", [])
@@ -218,11 +219,15 @@ def _chords(wanted, chart, check, part):
         loc = f"tracks/{part.id}/chords/{ci}"
         children = chord.get("notes", [])
         shape = tuple(sorted((n["s"], n["f"]) for n in children))
-        actual_shapes.setdefault(shape, []).append(chord["t"])
         template_id = chord.get("id")
         if isinstance(template_id, bool) or not isinstance(template_id, int) or not 0 <= template_id < len(templates):
             check.fail("chord_template", loc, "Chord has no valid template.")
             continue
+        actual_shapes.setdefault((shape, templates[template_id].get("name") or ""), []).append(chord["t"])
+        names = {label for (expected_shape, label), times in expected_shapes.items() if expected_shape == shape
+                 and any(abs(time - chord["t"]) <= TIME_TOLERANCE for time in times)}
+        if (templates[template_id].get("name") or "") not in names:
+            check.fail("invented_chord_name", loc + "/name", "The chord label differs from the authored label at this beat.")
         frets = [-1] * len(part.tuning)
         for s, f in shape:
             if not 0 <= s < len(frets):
@@ -230,7 +235,6 @@ def _chords(wanted, chart, check, part):
                 continue
             frets[s] = f
         check.equal("chord_template", loc + "/frets", frets, templates[template_id].get("frets"))
-        check.equal("invented_chord_name", loc + "/name", "", templates[template_id].get("name") or "")
         check.equal("invented_chord_fingers", loc + "/fingers", [-1] * len(frets), templates[template_id].get("fingers", [-1] * len(frets)))
     if {k: len(v) for k, v in expected_shapes.items()} != {k: len(v) for k, v in actual_shapes.items()}:
         check.fail("authored_chord_groups", "tracks/" + part.id, "Archived chords differ from source-authored simultaneous-note groups.",

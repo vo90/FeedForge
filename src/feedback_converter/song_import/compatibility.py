@@ -6,7 +6,7 @@ parser and independent verifier still validate every supported representation.
 from copy import deepcopy
 import json
 
-VERSION = 1
+VERSION = 2
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -18,11 +18,22 @@ KNOWN = {
     "tempo": {"measure", "position", "bpm", "type", "linear"},
     "bend": {"points", "tone"}, "bend_point": {"position", "tone"},
 }
+KNOWN["measure"].add("doubleBarline")
+KNOWN["tempo"].add("text")
+KNOWN["beat"].update({"chord", "upStroke", "downStroke", "pickStroke", "wahwah", "brushStroke", "arpeggio", "vibratoWithTremoloBar"})
+KNOWN["note"].update({"leftHandVibrato", "pickScrape", "vibratoWithTremoloBar"})
+LIMITATIONS = {
+    ("measure", "doubleBarline"): "The double barline is retained in the source; the game uses its ordinary measure display. Notes and timing are unchanged.",
+    ("measure", "keySignature"): "The written key signature is retained in the source. Explicit pitches are converted unchanged.",
+    ("tempo", "text"): "The descriptive tempo text is retained in the source. The explicit numeric tempo is converted unchanged.",
+    ("beat", "chord"): "Authored labels name simultaneous chord templates. Labels on rests or single notes, and label engraving, remain in the source.",
+    ("beat", "wahwah"): "The wah pedal marking is retained in the source. Notes and timing are converted; pedal expression is not represented in the game chart.",
+}
 # These names are understood but do not yet have a faithful conversion mapping.
 UNIMPLEMENTED = {
     "measure": {"direction", "directions", "fromDirection", "fermata", "freeTime"},
-    "beat": {"grace", "graceNotes", "tremoloBar", "stroke", "whammy"},
-    "note": {"trill", "grace", "graceNote", "tremoloBar", "whammy", "staccato", "harmonicFret"},
+    "beat": {"grace", "graceNotes", "tremoloBar", "stroke", "whammy", "brushStroke", "arpeggio", "vibratoWithTremoloBar", "upStroke", "downStroke"},
+    "note": {"trill", "grace", "graceNote", "tremoloBar", "whammy", "staccato", "harmonicFret", "pickScrape", "vibratoWithTremoloBar"},
     "tempo": {"linear"},
 }
 
@@ -74,10 +85,13 @@ def inspect_songsterr(document):
             category = message = None
             if key not in KNOWN[scope]:
                 category, message = "unknown_semantics", "This feature needs interpretation before reliable conversion."
-            elif key in UNIMPLEMENTED.get(scope, set()):
+            elif key in UNIMPLEMENTED.get(scope, set()) and value:
                 category, message = "converter_gap", "The source technique is retained, but its conversion is not implemented."
             elif scope == "measure" and key == "tripletFeel" and value != "off":
                 category, message = "converter_gap", "Swing timing is not implemented."
+            elif (scope, key) in LIMITATIONS:
+                add_finding(report, feature=f"{scope}.{key}", category="game_limitation", impact="display_or_expression",
+                            message=LIMITATIONS[scope, key], location=path + "/" + key, value=value, **coordinates)
             if category:
                 add_finding(report, feature=f"{scope}.{key}", category=category, impact="blocking",
                             message=message, location=path + "/" + key, value=value, **coordinates)

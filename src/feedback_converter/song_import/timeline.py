@@ -192,6 +192,7 @@ def render(score: Score) -> dict:
             continue
         chords, templates, grouped = [], [], set()
         template_ids = {}
+        labels = {beat.source_id: beat.chord_label for voices in track.written_bars for voice in voices for beat in voice.beats}
         for (_, beat_id), group in authored_groups.items():
             if len(group) < 2:
                 continue
@@ -199,10 +200,11 @@ def render(score: Score) -> dict:
             for note in group:
                 frets[note["s"]] = note["f"]
                 grouped.add(id(note))
-            shape = tuple(frets)
+            label = labels.get(beat_id, "")
+            shape = (tuple(frets), label)
             if shape not in template_ids:
                 template_ids[shape] = len(templates)
-                templates.append({"name": "", "fingers": [-1] * len(frets), "frets": frets})
+                templates.append({"name": label, "fingers": [-1] * len(frets), "frets": frets})
             chords.append({"t": group[0]["t"], "id": template_ids[shape], "source_ids": [beat_id],
                            "notes": [{key: value for key, value in note.items() if key != "t"} for note in group]})
         notation, notation_warnings = render_notation(score, track, visits, at, rendered)

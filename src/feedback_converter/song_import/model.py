@@ -64,6 +64,7 @@ class WrittenBeat:
     annotations: dict = field(default_factory=dict)
     written_duration: Fraction | None = None
     written_position: Fraction | None = None
+    chord_label: str = ""
 
 
 @dataclass

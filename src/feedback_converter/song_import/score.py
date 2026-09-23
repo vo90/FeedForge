@@ -27,7 +27,7 @@ def load_performance(path: Path | str, metadata: dict | None = None) -> dict:
         report = inspect_songsterr(document)
         try:
             if report["status"] == "blocked":
-                examples = ", ".join(dict.fromkeys(row["feature"] for row in report["findings"]))
+                examples = ", ".join(dict.fromkeys(row["feature"] for row in report["findings"] if row["impact"] == "blocking"))
                 raise ScoreImportError("Conversion needs support for " + examples[:600] + ". See compatibility details.")
             score = parse(document)
         except ScoreImportError as exc:

@@ -168,7 +168,7 @@ def songsterr(document):
             raise ValueError(f"{loc}: invalid meter")
         for b in samples:
             _active_unknown(b, {"voices", "signature", "rest", "marker", "repeat", "repeatStart", "alternateEnding", "tripletFeel"},
-                            {"width", "id", "index"}, loc, ignored)
+                            {"width", "id", "index", "doubleBarline", "keySignature"}, loc, ignored)
             if b.get("tripletFeel") not in (None, "off"):
                 unsupported(loc + "/tripletFeel", "Swing timing is not independently verified.")
         markers = [b["marker"] for b in samples if b.get("marker")]
@@ -182,7 +182,7 @@ def songsterr(document):
         _active_unknown(automations, {"tempo"}, {"volume", "balance"}, f"parts/{pi}/automations", ignored)
         for tempo in automations.get("tempo", []):
             loc = f"parts/{pi}/automations/tempo"
-            _active_unknown(tempo, {"measure", "position", "bpm", "type", "linear"}, set(), loc, ignored)
+            _active_unknown(tempo, {"measure", "position", "bpm", "type", "linear"}, {"text"}, loc, ignored)
             if tempo.get("linear"):
                 unsupported(loc, "Linear tempo ramps are not independently verified.")
             bi = integer(tempo["measure"], loc)
@@ -195,9 +195,9 @@ def songsterr(document):
             bars[bi].tempos[q] = bpm
     parts, excluded = [], []
     note_keys = {"string", "fret", "tie", "rest", "dead", "vibrato", "wideVibrato", "ghost", "accentuated",
-                 "tap", "tapping", "hp", "harmonic", "harmonicFret", "slide", "bend"}
+                 "tap", "tapping", "hp", "harmonic", "harmonicFret", "slide", "bend", "leftHandVibrato"}
     beat_keys = {"duration", "notes", "rest", "type", "dots", "tuplet", "tupletStart", "tupletStop", "graceNote",
-                 "palmMute", "letRing", "tremolo", "tap", "tapping", "slap", "pop", "vibrato", "wideVibrato", "text", "velocity", "gradualVelocity"}
+                 "palmMute", "letRing", "tremolo", "tap", "tapping", "slap", "pop", "vibrato", "wideVibrato", "text", "velocity", "gradualVelocity", "chord", "pickStroke", "wahwah"}
     for pi, (meta, raw) in enumerate(zip(metadata, raw_parts)):
         tid = str(meta.get("id", pi))
         name = str(meta.get("name") or meta.get("title") or meta.get("instrument") or f"Track {pi + 1}")
@@ -215,6 +215,11 @@ def songsterr(document):
                 for bti, beat in enumerate(voice["beats"]):
                     loc = f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}"
                     _active_unknown(beat, beat_keys, {"beamStart", "beamStop", "id"}, loc, ignored)
+                    label = beat.get("chord", {})
+                    if not isinstance(label, dict) or set(label) - {"text", "width"} or not isinstance(label.get("text", ""), str):
+                        unsupported(loc + "/chord", "Unverified authored chord label.")
+                    if beat.get("wahwah") not in (None, "open", "closed"):
+                        unsupported(loc + "/wahwah", "Unverified wah pedal marking.")
                     duration = fraction(beat["duration"], loc) * 4
                     written_duration, written_q = duration, q - borrowed
                     dots = integer(beat.get("dots", 0), loc)
@@ -250,7 +255,7 @@ def songsterr(document):
                     if duration <= 0:
                         raise ValueError(f"{loc}: nonpositive performed beat duration")
                     fact = {"q": q, "length": duration, "voice": str(vi), "location": loc, "written_q": written_q,
-                            "rest": not any(not n.get("rest") for n in beat["notes"]), "notation": written, "notes": []}
+                            "rest": not any(not n.get("rest") for n in beat["notes"]), "notation": written, "notes": [], "chord_label": label.get("text", "")}
                     if grace:
                         fact["notation"]["grace"] = "p"
                     beat_facts.append(fact)
@@ -260,6 +265,15 @@ def songsterr(document):
                             continue
                         _active_unknown(note, note_keys, {"id", "velocity", "finger", "leftFinger", "rightFinger"}, nloc, ignored)
                         fx = {}
+                        if note.get("leftHandVibrato") not in (None, "slight", "wide"):
+                            unsupported(nloc + "/leftHandVibrato", "Unverified vibrato width.")
+                        if note.get("leftHandVibrato"):
+                            fx["vb"] = True
+                        picking = beat.get("pickStroke")
+                        if picking not in (None, "up", "down"):
+                            unsupported(loc + "/pickStroke", "Unverified pick direction.")
+                        if picking is not None:
+                            fx["pkd"] = {"down": 0, "up": 1}[picking]
                         for key, out in {"dead": "mt", "vibrato": "vb", "wideVibrato": "vb", "ghost": "ghost",
                                          "accentuated": "ac", "tap": "tp", "tapping": "tp"}.items():
                             if note.get(key):
@@ -296,7 +310,7 @@ def songsterr(document):
                                           nloc, str(vi), loc, bool(note.get("tie")), fx, sorted(bends), slide[note.get("slide")],
                                           bool(note.get("hp"))))
                         fact["notes"].append(atoms[-1])
-                        atoms[-1].wide_vibrato = bool(note.get("wideVibrato"))
+                        atoms[-1].wide_vibrato = bool(note.get("wideVibrato")) or note.get("leftHandVibrato") == "wide"
                         if raw_slide in {"above", "aboveshift", "abovelegato", "aboveupwards", "abovedownwards"}:
                             atoms[-1].slide_in = "down"
                         elif raw_slide in {"below", "belowshift", "belowlegato", "belowupwards", "belowdownwards"}:
