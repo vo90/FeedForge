@@ -144,9 +144,9 @@ def test_legacy_arpeggio_uses_authored_player_duration(tmp_path, field, strings,
     step = 2 ** (value - 7) / 13  # Quarter clock at 120 BPM.
     assert [n["s"] for n in track["notes"]] == strings
     assert [n["t"] for n in track["notes"]] == pytest.approx([0, step, 2 * step])
-    atoms = sorted(read_source(source).parts[0].bars[0], key=lambda n: n.q)
+    atoms = sorted(read_source(source).parts[0].bars[0], key=lambda n: n.q + n.attack_offset)
     assert [n.string for n in atoms] == strings
-    assert [float(n.q) / 2 for n in atoms] == pytest.approx([0, step, 2 * step])
+    assert [float(n.q + n.attack_offset) / 2 for n in atoms] == pytest.approx([0, step, 2 * step])
 
 
 def test_explicit_modern_arpeggio_precedes_retained_legacy_field(tmp_path):
@@ -157,4 +157,4 @@ def test_explicit_modern_arpeggio_precedes_retained_legacy_field(tmp_path):
     notes = import_json(tmp_path, source)["tracks"][0]["notes"]
     assert [n["s"] for n in notes] == [0, 1]
     assert [n["t"] for n in notes] == [0, .0625]
-    assert [float(n.q) for n in read_source(source).parts[0].bars[0]] == [0, .125]
+    assert [float(n.q + n.attack_offset) for n in read_source(source).parts[0].bars[0]] == [0, .125]
