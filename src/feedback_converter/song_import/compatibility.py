@@ -5,6 +5,7 @@ parser and independent verifier still validate every supported representation.
 """
 from copy import deepcopy
 import json
+import math
 
 VERSION = 6
 TARGET = {"feedpak": "1.16.0", "notation": 1,
@@ -24,6 +25,7 @@ KNOWN["beat"].update({"slapping", "popping", "upArpeggio", "downArpeggio"})
 KNOWN["tempo"].add("dotted")
 KNOWN["bend_point"].add("precisePosition")
 KNOWN["tempo"].add("text")
+KNOWN["tempo"].add("visible")
 KNOWN["beat"].update({"chord", "upStroke", "downStroke", "pickStroke", "wahwah", "brushStroke", "arpeggio", "vibratoWithTremoloBar"})
 KNOWN["note"].update({"leftHandVibrato", "pickScrape", "vibratoWithTremoloBar"})
 LIMITATIONS = {
@@ -94,10 +96,23 @@ def inspect_songsterr(document, *, track_indices=None):
                         message="Expected a source object.", location=path, value=obj, **coordinates)
             return
         for key, value in obj.items():
+            if scope == "tempo" and key == "visible" and isinstance(value, bool):
+                add_finding(report, feature="tempo.visible", category="game_limitation", impact="display_or_expression",
+                            message="Tempo-label visibility is retained in the source. The numeric tempo and playback timing are unchanged.",
+                            location=path + "/" + key, value=value, **coordinates)
+                continue
+            if (scope == "note" and key == "harmonicFret" and obj.get("harmonic") is None
+                    and obj.get("harmonicData") is None and isinstance(value, (int, float))
+                    and not isinstance(value, bool) and math.isfinite(value) and value >= 0):
+                # The source performer activates harmonics via harmonic/type,
+                # never from the retained touch-position field by itself.
+                continue
             if inactive(value):
                 continue
             category = message = None
-            if key not in KNOWN[scope]:
+            if scope == "tempo" and key == "visible" and not isinstance(value, bool):
+                category, message = "source_structure", "Invalid tempo visibility flag."
+            elif key not in KNOWN[scope]:
                 category, message = "unknown_semantics", "This feature needs interpretation before reliable conversion."
             elif key in UNIMPLEMENTED.get(scope, set()) and value:
                 category, message = "converter_gap", "The source technique is retained, but its conversion is not implemented."

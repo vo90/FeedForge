@@ -49,10 +49,16 @@ def _endings(value):
 def _note(raw, beat, position, duration, strings):
     string = strings - 1 - integer(raw.get("string"), "string index")
     fret = integer(raw.get("fret"), "fret")
-    unsupported = ("trill", "grace", "graceNote", "tremoloBar", "whammy", "harmonicFret")
+    unsupported = ("trill", "grace", "graceNote", "tremoloBar", "whammy")
     for key in unsupported:
         if raw.get(key):
             raise ScoreImportError(f"Songsterr {key} needs additional conversion support.")
+    if raw.get("harmonicFret") is not None:
+        value = raw["harmonicFret"]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or rational(value, "harmonic fret") < 0:
+            raise ScoreImportError("Invalid harmonic fret.")
+        if value and raw.get("harmonic") is not None:
+            raise ScoreImportError("Songsterr harmonicFret needs additional conversion support.")
     effects = {}
     vibrato = raw.get("leftHandVibrato")
     if vibrato not in (None, "slight", "wide"):
@@ -220,7 +226,9 @@ def parse(document: dict, *, track_indices=None) -> Score:
         part_events = {}
         for tempo_index, tempo in enumerate(automations.get("tempo", [])):
             inventory.inspect(tempo, "Songsterr tempo", f"$.parts[{part_index}].automations.tempo[{tempo_index}]",
-                              playable={"measure", "position", "bpm", "type", "linear", "dotted"}, retained={"text"}, strict=True)
+                              playable={"measure", "position", "bpm", "type", "linear", "dotted"}, retained={"text", "visible"}, strict=True)
+            if "visible" in tempo and not isinstance(tempo["visible"], bool):
+                raise ScoreImportError("Invalid tempo visibility flag.")
             if "text" in tempo and not isinstance(tempo["text"], str):
                 raise ScoreImportError("Invalid descriptive tempo text.")
             bar = integer(tempo.get("measure"), "tempo measure")
