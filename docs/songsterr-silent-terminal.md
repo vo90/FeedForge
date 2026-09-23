@@ -18,10 +18,14 @@ Frozen 2026-09-23 reproductions:
 | Song | Recording end | Inferred terminal | Last actual note end | Consequence |
 |---|---:|---:|---:|---|
 | Last Resort | 198.8673 s | 200.0600 s | 196.9213 s | Eligible for unchanged map |
-| Wake Me Up When September Ends | 286.0002 s | 288.2400 s | 283.8000 s | Eligible for unchanged map |
+| Wake Me Up When September Ends | 286.0002 s | 288.2400 s | 283.8000 s | Still rejected; the last supplied boundary is also beyond the recording |
 | Every Breath You Take | 228.8907 s | 230.5800 s | 229.3931 s | Still rejected; two notes exceed recording |
 
 Chop Suey! and Sonne had conflicting captured map candidates. Wonderwall had
 92 points for 94 performed measures. Those are not solved by a terminal
 boundary change. Confidence thresholds and alternative-map selection remain
 unchanged. These are alignment-stage results, not completed-package claims.
+
+The packaged frozen-source benchmark confirmed that Last Resort completes.
+Wake Me Up When September Ends still fails the explicit-boundary guard; the
+silent inferred-terminal exception alone does not cover that source map.
