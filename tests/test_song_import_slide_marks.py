@@ -78,7 +78,7 @@ def test_gpif_tied_segment_matches_independent_xml_reader(tmp_path, flag, direct
 
 def test_tempo_change_and_piecewise_map_retime_each_boundary(tmp_path):
     document = raw_score([measure(beat(5, duration=(1, 2)), beat(5, duration=(1, 2), tie=True, slide="downwards"))])
-    document["parts"][0]["automations"]["tempo"].append({"measure": 0, "position": [1, 2], "bpm": 60})
+    document["parts"][0]["automations"]["tempo"].append({"measure": 0, "position": 1920, "bpm": 60})
     note = import_json(tmp_path, document)["tracks"][0]["notes"][0]
     assert note["sus"] == 3
     assert note["slide_out_marks"] == [{"direction": "down", "start": 1, "end": 3}]
