@@ -71,6 +71,28 @@ def test_map_matches_performed_score_seconds_and_keeps_exact_identity_provenance
     assert align(performance, points=(.5, 2.5, 6.5))["provenance"]["mapHash"] != result["provenance"]["mapHash"]
 
 
+def test_public_last_interval_rule_extends_only_the_trailing_array_and_keeps_audio_bounds():
+    score = score_fixture([Measure(tempos=[(Fraction(0), 120)]), Measure(), Measure(), Measure()])
+    performance = render(score)
+    result = align(performance, points=(.25, 2.25), audio=audio_fixture(4))
+    assert [p['audio'] for p in result['anchors']] == [.25, 2.25, 4.25, 6.25, 8.25]
+    assert result['diagnostics']['sourceSyncInferredBoundaryCount'] == 3
+    assert result['provenance']['terminalBeyondAudio'] == 'silent_notation_only'
+    # The existing sounding tie ends at 3.25 s. Silent trailing measures may
+    # outlast the audio, but a real attack in one of them cannot be discarded.
+    score.tracks[0].bars[2] = [Note(Fraction(0), Fraction(1), 0, 5)]
+    unavailable('note_outside_recording', lambda: align(render(score), points=(.25,2.25), audio=audio_fixture(4)))
+    unavailable('invalid_points', lambda: align(performance, points=(.25,None,4.25), audio=audio_fixture(4)))
+
+
+def test_explicit_silent_trailing_bars_are_retained_without_clipping_playable_events():
+    performance = render(score_fixture([Measure(tempos=[(Fraction(0),120)]),Measure(),Measure(),Measure()]))
+    result = align(performance, points=(.25,2.25,4.25,6.25,8.25), audio=audio_fixture(4))
+    assert result['diagnostics']['sourceSyncInferredBoundaryCount'] == 0
+    assert result['anchors'][-1]['audio'] == 8.25
+    assert _retime_note(performance['tracks'][0]['notes'][0],result,4)['sus'] == 2
+
+
 def test_sustain_bend_breakpoints_chord_notes_and_all_timeline_events_share_one_map():
     performance = render(score_fixture())
     result = align(performance)
@@ -154,7 +176,12 @@ def test_official_single_terminal_extension_is_marked_and_audio_bounded():
     assert silent["provenance"]["terminalBeyondAudio"] == "silent_notation_only"
     assert _retime_note(render(score_fixture())["tracks"][0]["notes"][0], silent, 5)["sus"] == 3
     unavailable("note_outside_recording", lambda: align(points=(.25, 3.25), audio=audio_fixture(4.6)))
-    unavailable("terminal_boundary_outside_recording", lambda: align(points=(.25, 3.25, 6.25), audio=audio_fixture(5)))
+    explicit = align(points=(.25, 3.25, 6.25), audio=audio_fixture(5))
+    assert explicit['anchors'] == silent['anchors']
+    assert explicit['provenance']['terminalBoundary'] == 'explicit'
+    assert explicit['provenance']['terminalBeyondAudio'] == 'silent_notation_only'
+    unavailable('note_outside_recording', lambda: align(points=(.25, 3.25, 6.25), audio=audio_fixture(4.6)))
+    unavailable('note_outside_recording', lambda: align(points=(.25, 5.25, 6.25), audio=audio_fixture(5)))
     unavailable("point_count_mismatch", lambda: align(points=(.25,)))
     with pytest.raises(ImportFailure, match="cover"):
         map_time(result, 4.1)
