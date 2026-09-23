@@ -14,7 +14,7 @@ def _fraction(value):
 
 
 def _note(note, track, performed):
-    result = {"midi": track.tuning[note.string] + track.capo + note.fret,
+    result = {"midi": track.tuning[note.string] + track.capo + note.fret + note.effects.get("__harmonic_pitch_offset", 0),
               "str": note.string, "fret": note.fret, "source_id": note.source_id}
     if note.tie:
         result["tied"] = True

@@ -11,6 +11,7 @@ from .inventory import FeatureInventory
 from .model import Measure, Note, Score, ScoreImportError, Track, WrittenBeat, WrittenVoice, integer, rational
 from .songsterr_timing import part_timing, strum_offsets, FEELS
 from .songsterr_fields import bend_points
+from .songsterr_harmonics import exact_natural, NATURAL_PITCH
 from .songsterr_automation import performed_tempos
 
 
@@ -57,7 +58,7 @@ def _note(raw, beat, position, duration, strings):
         value = raw["harmonicFret"]
         if isinstance(value, bool) or not isinstance(value, (int, float)) or rational(value, "harmonic fret") < 0:
             raise ScoreImportError("Invalid harmonic fret.")
-        if value and raw.get("harmonic") is not None:
+        if value and raw.get("harmonic") is not None and not exact_natural(raw):
             raise ScoreImportError("Songsterr harmonicFret needs additional conversion support.")
     effects = {}
     vibrato = raw.get("leftHandVibrato")
@@ -90,7 +91,10 @@ def _note(raw, beat, position, duration, strings):
     harmonic = raw.get("harmonic")
     if harmonic:
         if harmonic == "natural":
+            if not exact_natural(raw):
+                raise ScoreImportError("This natural harmonic needs a precise node and pitch representation.")
             effects["hm"] = True
+            effects["__harmonic_pitch_offset"] = NATURAL_PITCH[fret] - fret
         elif harmonic == "pinch":
             effects["hp"] = True
         else:
