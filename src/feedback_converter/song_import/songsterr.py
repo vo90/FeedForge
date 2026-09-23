@@ -367,8 +367,6 @@ def parse(document: dict, *, track_indices=None) -> Score:
                         if not note.get("rest"):
                             offset = offsets.get(note_index, Fraction(0))
                             boundary_grace = position < 0 and grace == "beforeBeat" and bi > 0
-                            if boundary_grace and any(m.repeat_count or m.endings for m in measures):
-                                raise ScoreImportError("Cross-bar grace across repeated notation needs additional traversal support.")
                             if bi == 0 and position + offset < 0:
                                 raise ScoreImportError("The authored strum begins before the score; its recording-start placement needs review.")
                             try:

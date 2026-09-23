@@ -555,8 +555,6 @@ def songsterr(document):
                                 raise ValueError(f"{nloc}: missing bend points")
                         offset = offsets.get(ni, F(0))
                         cross_bar = q < 0 and beat.get('graceNote') == 'beforeBeat' and bi > 0
-                        if cross_bar and any(b.repeat_count or b.endings for b in bars):
-                            unsupported(nloc, "Cross-bar grace with repeated source traversal is not verified.")
                         if bi == 0 and q + offset < 0:
                             unsupported(nloc, "Strum crosses an unresolved timing boundary.")
                         if note.get("staccato"):
