@@ -6,7 +6,7 @@ parser and independent verifier still validate every supported representation.
 from copy import deepcopy
 import json
 
-VERSION = 5
+VERSION = 6
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -43,6 +43,12 @@ UNIMPLEMENTED = {
 }
 
 
+DECISIONS = {
+    "pickScrape": "D1", "tremoloBar": "D2", "whammy": "D2", "vibratoWithTremoloBar": "D2",
+    "harmonicFret": "D3", "trill": "D4", "rasgueado": "D5", "unpitched_mute": "D6",
+}
+
+
 def inactive(value):
     return value is None or value is False or isinstance(value, (str, list, dict)) and not value
 
@@ -59,7 +65,10 @@ def add_finding(report, *, feature, category, impact, message, location="source"
         # Full original values remain in the immutable source. The report is a
         # bounded index into it, not a second copy of arbitrarily large objects.
         encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
+        decision = DECISIONS.get(feature.split(".")[-1])
         report["findings"].append({"feature": feature, "category": category, "impact": impact,
+            "workStatus": "decision_required" if decision else "display_limitation" if impact == "display_or_expression" else "technical_work",
+            **({"decisionId": decision} if decision else {}),
             "message": message, "location": location, **coordinates,
             "value": deepcopy(value) if len(encoded) <= 2048 else encoded[:2048],
             "valueTruncated": len(encoded) > 2048, "retained": "original_source"})
@@ -71,7 +80,7 @@ def add_finding(report, *, feature, category, impact, message, location="source"
         report["status"] = "limitations"
 
 
-def inspect_songsterr(document):
+def inspect_songsterr(document, *, track_indices=None):
     if not isinstance(document, dict):
         report = new_report()
         add_finding(report, feature="document", category="source_structure", impact="blocking", message="Expected a Songsterr score object.")
@@ -115,8 +124,9 @@ def inspect_songsterr(document):
         label = str(meta.get("instrument", meta.get("type", ""))).lower()
         playable = (24 <= program <= 39 if isinstance(program, int) and not isinstance(program, bool) and program >= 0
                     else "guitar" in label or "bass" in label)
-        playable = playable and meta.get("isVocalTrack") is not True
-        coordinates = {"arrangement": str(meta.get("name") or meta.get("title") or f"Track {pi + 1}"), "trackIndex": pi}
+        playable = playable and meta.get("isVocalTrack") is not True and (track_indices is None or pi in track_indices)
+        coordinates = {"arrangement": str(meta.get("name") or meta.get("title") or f"Track {pi + 1}"),
+                       "trackIndex": pi, "trackId": str(meta.get("id", pi))}
         auto = part.get("automations", {})
         inspect(auto, "automations", f"parts/{pi}/automations", coordinates)
         if isinstance(auto, dict):

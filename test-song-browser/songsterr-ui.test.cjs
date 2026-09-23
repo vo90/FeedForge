@@ -41,6 +41,16 @@ test('conversion fidelity, audio timing and artwork have separate honest outcome
   assert.doesNotMatch(checked + modified, /library doctor|repair.*required/i);
 });
 
+test('arrangement diagnostics do not imply a completed or partial import', () => {
+  const html = render(compiled.exports.CompatibilityDetails, { report: { findingCount: 0, findings: [],
+    arrangements: [{ trackIndex: 3, name: 'Bass', status: 'score_ready' }, { trackIndex: 8, name: 'Lead', status: 'blocked', message: 'Unresolved tie.' }] } });
+  assert.match(html, /Score check passed/);
+  assert.match(html, /Every requested arrangement must pass/);
+  assert.match(html, /audio alignment and final file verification/);
+  assert.match(html, /Unresolved tie/);
+  assert.doesNotMatch(html, /FeedPak ready|Download usable parts/);
+});
+
 test('missing or mismatched audio offers exactly the supported link/file replacement flow', () => {
   for (const state of ['needs_audio', 'alignment_failed']) {
     const html = job({ state, canCancel: false, canRetry: true, error: 'Provide a matching recording.' });

@@ -252,7 +252,7 @@ def _compatibility_report(report, score_path, source, check):
         check.fail("compatibility", "import/compatibility", "The compatibility report is incomplete.")
         return
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
-    check.equal("compatibility_version", "import/compatibility", 5, report.get("version"))
+    check.equal("compatibility_version", "import/compatibility", 6, report.get("version"))
     check.equal("compatibility_status", "import/compatibility", "limitations" if rows else "compatible", report.get("status"))
     target = report.get("target", {})
     check.equal("compatibility_target", "import/compatibility", "1.16.0", target.get("feedpak"))

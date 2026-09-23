@@ -25,8 +25,11 @@ def load_performance(path: Path | str, metadata: dict | None = None) -> dict:
             raise ScoreImportError("Invalid Songsterr score JSON.") from exc
         from .compatibility import inspect_songsterr, add_finding
         report = inspect_songsterr(document)
+        capability_blocked = report["status"] == "blocked"
+        from .diagnostics import diagnose_arrangements
+        diagnose_arrangements(document, report)
         try:
-            if report["status"] == "blocked":
+            if capability_blocked:
                 examples = ", ".join(dict.fromkeys(row["feature"] for row in report["findings"] if row["impact"] == "blocking"))
                 raise ScoreImportError("Conversion needs support for " + examples[:600] + ". See compatibility details.")
             score = parse(document)
