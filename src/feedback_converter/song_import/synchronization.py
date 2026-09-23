@@ -127,7 +127,8 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
         _unavailable("point_count_mismatch", sourceSyncPointCount=len(points), sourceSyncMeasureCount=len(measures))
     if any(right <= left for left, right in zip(points, points[1:])):
         _unavailable("non_increasing_points")
-    if points[-1] > duration + 0.05:
+    silent_terminal = points[-1] > duration + 0.05
+    if silent_terminal and (not inferred_terminal or supplied_points[-1] > duration):
         _unavailable("terminal_boundary_outside_recording")
     anchors = []
     previous_end, previous_quarter = 0.0, 0.0
@@ -181,10 +182,12 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
     result.update({"tempos": mapped_tempos,
               "provenance": {"source": "songsterr-video-points", "version": 1, "mapHash": digest,
                              "songId": song_id, "revisionId": revision_id, "videoId": video_id,
-                             "terminalBoundary": "songsterr-last-interval" if inferred_terminal else "explicit"},
+                             "terminalBoundary": "songsterr-last-interval" if inferred_terminal else "explicit",
+                             **({"terminalBeyondAudio": "silent_notation_only"} if silent_terminal else {})},
               "diagnostics": {"sourceSyncPointCount": len(supplied_points), "sourceSyncMeasureCount": len(measures),
                               "sourceSyncNegativePreroll": points[0] < 0,
-                              "sourceSyncInferredTerminalBoundary": inferred_terminal}})
+                              "sourceSyncInferredTerminalBoundary": inferred_terminal,
+                              "sourceSyncSilentTerminalExtension": silent_terminal}})
     checked = 0
     for track in performance.get("tracks", []):
         notes = [(note, note.get("t")) for note in track.get("notes", [])]
