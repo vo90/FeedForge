@@ -5,6 +5,10 @@ content: unusual parts, written pitches, tuning, and annotations retain their
 source meaning. Converter validation checks representation and completeness,
 not whether the transcription sounds correct.
 
+Acquisition requests metadata for the selected approved revision and checks its
+song/revision identity before downloading parts. A metadata mismatch is not an
+authentication error and does not silently fall back to a different revision.
+
 ## Representations
 
 The import model retains source measures, voices, beats, rests, exact fractional
@@ -70,8 +74,14 @@ repeat visits share the same performed timeline as notes.
 The importer does not claim support for every source feature. Active unfamiliar
 musical fields, unresolved ties/links, unsupported navigation or timing, and
 effects whose meaning cannot be mapped without guessing produce an explicit
-error. Inactive unfamiliar flags and unfamiliar descriptive metadata remain in
-source evidence and the inventory. Beat-level tapping and vibrato are recognized
+error. Recognized annotations whose missing display does not change the playable
+notes or timing can complete as **Ready with limitations**. These include chord
+labels outside supported chord display, double barlines, tempo text, key
+signatures, wah annotations and the staccato symbol. Staccato's performed duration
+is still converted. Original values and source locations are recorded; unsupported
+symbols are not replaced with invented notes. Inactive unfamiliar flags and
+unfamiliar descriptive metadata remain in source evidence and the inventory.
+Beat-level tapping and vibrato are recognized
 as well as their note-level forms.
 
 Written notation outside FeedPak v1's duration vocabulary is not quantized: the
@@ -97,13 +107,19 @@ Publication requires structural validation and an independent comparison of the
 raw score with the archive. The independent checker has its own source reader,
 repeat traversal and timing math. Its known-answer and mutation tests do not use
 the production converter to produce expected values. A difference blocks saving;
-unsupported checks report Needs attention. In particular, an omitted notation
-sidecar currently prevents a fully checked import even if playable timing is exact.
+unsupported checks report Needs attention. A known written-rhythm limitation may
+omit that track's notation sidecar only when the original source and explicit
+limitation are embedded and the playable notes and timing still pass independent
+verification. An unexplained missing sidecar blocks publication.
 
-Contract and verifier version 3, in recipe version 3, add independent incoming-slide
-destination checks to the outgoing segment checks from contract 2. Version 1/2
-reports remain readable but do not establish current timing fidelity, and old
-outputs are not reused as version 3 imports.
+Contract, verifier and recipe version 5 require independent checks of retained
+source identity and compatibility-report coverage, values, target, status and
+counts, as well as the musical checks. Compatibility report version 4 identifies
+the assessed FeedPak and notation capabilities; it does not detect the installed
+game's support. Version 3 previously added incoming-slide destination checks to
+the outgoing segment checks from contract 2. Historical contract 1–4 reports
+remain readable but do not establish the current checks, and their outputs are
+not reused as newly verified imports.
 History and recovery receipts bind
 the successful check to the exact archive SHA-256. Old imports are not relabeled
 checked. Later edits leave the original report intact and mark the current file
@@ -115,6 +131,26 @@ feature inventory, archive member hashes and verification report. It is separate
 from the pruned download/attempt cache. Save conversion report exports a portable
 ZIP without copying the original audio, browser account state or credentials.
 Evidence is not silently deleted when the temporary download cache is cleaned.
+
+Each published FeedPak also embeds the exact input score and compatibility
+report under `import/`, referenced from its manifest. Failed imports retain
+evidence when a source was acquired. **View compatibility details** shows the
+feature, location, impact and original value; the full report is exportable.
+Unknown semantics, missing conversion support and game representation limits
+have distinct categories. They do not imply that a source tab is musically wrong.
+
+**Import compatibility** loads a durable backlog across retained evidence,
+grouping features by category and impact with affected revision counts and
+examples. Retries of the same song/revision count once. The newest assessment
+under the highest report version supersedes its earlier assessment, so supported
+features can disappear from the active backlog after reconversion. The backlog
+exports as JSON; it is separate from the bounded job history and displays
+unreadable evidence records rather than silently ignoring them.
+
+Current remaining blockers include tremolo-bar curves, special harmonic touch
+frets, pick scrapes and unpitched muted notes without an authored fret. They stay
+in the evidence/backlog; no fret, pitch or playing instruction is guessed. Grace
+groups and brush/arpeggio timing are described in [authored timing](songsterr-timing.md).
 
 The report separates source fidelity, source-map versus estimated audio timing,
 and consumer capabilities. `ghost: true`, `slide_out: up|down`, and timed
