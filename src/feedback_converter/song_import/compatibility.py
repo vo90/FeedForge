@@ -45,7 +45,7 @@ UNIMPLEMENTED = {
 
 DECISIONS = {
     "pickScrape": "D1", "tremoloBar": "D2", "whammy": "D2", "vibratoWithTremoloBar": "D2",
-    "harmonicFret": "D3", "trill": "D4", "rasgueado": "D5", "unpitched_mute": "D6",
+    "harmonicFret": "D3", "trill": "D4", "rasgueado": "D5", "hasRasgueado": "D5", "unpitched_mute": "D6",
 }
 
 
