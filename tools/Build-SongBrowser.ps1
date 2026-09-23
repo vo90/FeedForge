@@ -7,6 +7,7 @@ param(
     [Parameter(Mandatory = $true)][string]$BuildRoot,
     [string]$DependenciesRoot,
     [ValidateSet('All', 'Converter', 'Package')][string]$Stage = 'All',
+    [switch]$SkipArchive,
     [switch]$CheckOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -131,9 +132,14 @@ try {
         if (!(Test-Path -LiteralPath $appExe -PathType Leaf)) { throw 'The expected distinct test executable was not produced.' }
         @('FeedForge Song Browser Test', '', 'Extract the whole ZIP into a writable folder, then double-click FeedForge Song Browser Test.exe.', 'Keep the complete folder together; resources contain the standalone converter and audio tools.', 'This test app has a separate profile and does not install or update normal FeedForge.', 'Find songs opens automatically. Sign in through the app browser when ready.', 'Live CustomsForge / host testing and FeedBack playback verification remain user-assisted checks.') |
             Set-Content -LiteralPath (Join-Path $portableFolder 'START-HERE.txt') -Encoding utf8
-        $zipPath = Join-Path $buildPath ('FeedForge-Song-Browser-Test-' + $manifest.version + '-win-x64.zip')
-        Compress-Archive -LiteralPath $portableFolder -DestinationPath $zipPath -CompressionLevel Optimal
-        $receipt.package = 'complete'; $receipt.portableExe = $appExe; $receipt.zip = $zipPath; $receipt.zipSha256 = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash; $receipt.completedAt = [DateTime]::UtcNow.ToString('o'); Save-Receipt
+        $zipPath = $null
+        $receipt.zipSha256 = $null
+        if (!$SkipArchive) {
+            $zipPath = Join-Path $buildPath ('FeedForge-Song-Browser-Test-' + $manifest.version + '-win-x64.zip')
+            Compress-Archive -LiteralPath $portableFolder -DestinationPath $zipPath -CompressionLevel Optimal
+            $receipt.zipSha256 = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
+        }
+        $receipt.package = 'complete'; $receipt.portableExe = $appExe; $receipt.zip = $zipPath; $receipt.archiveSkipped = [bool]$SkipArchive; $receipt.completedAt = [DateTime]::UtcNow.ToString('o'); Save-Receipt
         [ordered]@{ portableExecutable = $appExe; zip = $zipPath; sha256 = $receipt.zipSha256 } | ConvertTo-Json
     }
 } finally {
