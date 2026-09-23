@@ -7,14 +7,13 @@ from feedback_converter.song_import.worker import run_import
 from test_song_import_score import beat, measure, raw_score
 
 
-def test_inventory_collects_all_unknowns_and_missing_fret_without_repair():
+def test_inventory_collects_unknowns_without_blocking_an_explicit_unpitched_mute():
     source = raw_score([measure(beat(futureOne=True), beat(futureTwo=0), beat(dead=True))])
     del source['parts'][0]['measures'][0]['voices'][0]['beats'][2]['notes'][0]['fret']
     report = inspect_songsterr(source)
     assert report['status'] == 'blocked'
-    assert {r['feature'] for r in report['findings']} == {'note.futureOne', 'note.futureTwo', 'note.unpitched_mute'}
+    assert {r['feature'] for r in report['findings']} == {'note.futureOne', 'note.futureTwo'}
     assert all(r['measure'] == 1 for r in report['findings'])
-    assert report['findings'][2]['category'] == 'game_representation'
 
 
 def test_blocked_import_saves_source_and_detailed_report_before_audio(tmp_path):

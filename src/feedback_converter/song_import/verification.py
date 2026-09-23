@@ -18,7 +18,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 8
+VERSION = 9
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "bn", "pkd"}
 TUNINGS = {"guitar": {6: [40, 45, 50, 55, 59, 64], 7: [35, 40, 45, 50, 55, 59, 64], 8: [30, 35, 40, 45, 50, 55, 59, 64]},
@@ -252,7 +252,7 @@ def _compatibility_report(report, score_path, source, check):
         check.fail("compatibility", "import/compatibility", "The compatibility report is incomplete.")
         return
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
-    check.equal("compatibility_version", "import/compatibility", 8, report.get("version"))
+    check.equal("compatibility_version", "import/compatibility", 9, report.get("version"))
     check.equal("compatibility_status", "import/compatibility", "limitations" if rows else "compatible", report.get("status"))
     target = report.get("target", {})
     check.equal("compatibility_target", "import/compatibility", "1.16.0", target.get("feedpak"))
@@ -287,6 +287,8 @@ def _compatibility_report(report, score_path, source, check):
         for part in source.parts:
             if part.notation_unavailable and any(part.bars):
                 expected[("notation.written_rhythm", "tracks/" + part.id)] = None
+            if part.unpitched_mutes and any(part.bars):
+                expected[("notation.unpitched_mute", "tracks/" + part.id)] = None
         for key, value in source.identity.items():
             check.equal("compatibility_identity", "import/compatibility/source/" + key, value, str(report.get("source", {}).get(key)))
     actual = {(row.get("feature"), row.get("location")): row for row in rows}
@@ -307,9 +309,9 @@ def _compatibility_report(report, score_path, source, check):
 def _notation(archive, arrangement, wanted, check):
     """Verify available beat time/rest facts without inferring engraving style."""
     name = arrangement.get("notation")
-    if wanted["source"].notation_unavailable:
+    if wanted["source"].notation_unavailable or wanted["source"].unpitched_mutes:
         if name:
-            check.fail("unsupported_notation", name, "Unsupported written rhythm must not be replaced with invented notation.")
+            check.fail("unsupported_notation", name, "Unsupported source notation must not be replaced with invented pitches or rhythm.")
         return
     if not name:
         raise UnverifiedFeature("tracks/" + wanted["source"].id, "Written source notation is missing; its preservation cannot be independently verified.")
@@ -423,7 +425,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                     check.fail("compatibility", "import/compatibility", "A blocked or invalid compatibility report cannot be published.")
                 if recipe.get("preservationContract", 0) >= 5:
                     _compatibility_report(compatibility, score_path, source, check)
-            elif any(p.notation_unavailable for p in source.parts):
+            elif any(p.notation_unavailable or p.unpitched_mutes for p in source.parts):
                 check.fail("retained_notation", "import", "A notation limitation requires embedded original source and a compatibility report.")
             if isinstance(recipe, dict):
                 if recipe.get("scoreHash"):

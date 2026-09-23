@@ -43,7 +43,8 @@ def validate_arrangement_semantics(
     string_count = _effective_string_count(data, manifest_entry)
     template_count = len(data.get("templates", []))
 
-    _validate_templates(data.get("templates", []), label, string_count, error)
+    _validate_templates(data.get("templates", []), label, string_count, error,
+                        unpitched=_unpitched_template_slots(data))
     _validate_payload(data, label, string_count, template_count, error)
     _validate_phrases(data.get("phrases", []), label, string_count, template_count, error)
     _validate_timed_collection(data.get("tempos", []), "time", f"{label}: tempos", error)
@@ -139,7 +140,13 @@ def _validate_note(
         and not 0 <= string < string_count
     ):
         error(f"{path}/s: string {string} is outside the effective 0..{string_count - 1} range")
-    _bounded_integer(note.get("f"), f"{path}/f", 0, MAX_FRET, error)
+    # Existing game wire sentinel: a dead strike with no authored fret. Do
+    # not widen the physical fret range or accept palm mute alone as evidence.
+    if not (type(note.get("f")) is int and note["f"] == 127 and note.get("mt") is True):
+        _bounded_integer(note.get("f"), f"{path}/f", 0, MAX_FRET, error)
+    elif any(note.get(key) for key in ("ho", "po", "hm", "hp", "bn", "bnv", "vb", "slide_out", "slide_out_marks", "slide_in_marks")) or any(
+            isinstance(note.get(key), (int, float)) and note[key] >= 0 for key in ("sl", "slu")):
+        error(f"{path}: an unpitched mute cannot carry a pitched gesture")
     if "sus" in note:
         _nonnegative_number(note["sus"], f"{path}/sus", error)
     for field in ("sl", "slu"):
@@ -238,11 +245,33 @@ def _validate_phrases(
             _validate_payload(level, level_path, string_count, template_count, error, window=window)
 
 
+def _unpitched_template_slots(data: dict[str, Any]) -> set[tuple[int, int]]:
+    """A sentinel template slot needs an explicit dead child on every use.
+
+    Include practice levels: accepting a template-only use would fabricate a
+    pitched note when the loader expands it. Unreferenced slots are not proven.
+    """
+    candidates = {ti: [si for si, fret in enumerate(template.get("frets", [])) if type(fret) is int and fret == 127]
+                  for ti, template in enumerate(data.get("templates", []))}
+    seen, invalid = set(), set()
+    payloads = [data] + [level for phrase in data.get("phrases", []) for level in phrase.get("levels", [])]
+    for payload in payloads:
+        for chord in payload.get("chords", []):
+            for string in candidates.get(chord.get("id", 0), []):
+                slot = (chord.get("id", 0), string)
+                seen.add(slot)
+                children = [n for n in chord.get("notes", []) if n.get("s") == slot[1]]
+                if len(children) != 1 or children[0].get("f") != 127 or children[0].get("mt") is not True:
+                    invalid.add(slot)
+    return seen - invalid
+
+
 def _validate_templates(
     templates: list[dict[str, Any]],
     label: str,
     string_count: int,
     error: ErrorSink,
+    *, unpitched: set[tuple[int, int]] = frozenset(),
 ) -> None:
     for template_index, template in enumerate(templates):
         path = f"{label}: templates/{template_index}"
@@ -256,6 +285,8 @@ def _validate_templates(
             if len(values) != string_count:
                 error(f"{path}/{field}: length must match effective string count {string_count}")
             for value_index, value in enumerate(values):
+                if field == "frets" and (template_index, value_index) in unpitched:
+                    continue
                 _bounded_integer(
                     value,
                     f"{path}/{field}/{value_index}",

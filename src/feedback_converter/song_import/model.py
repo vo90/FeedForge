@@ -37,7 +37,7 @@ class Note:
     position: Fraction
     duration: Fraction
     string: int
-    fret: int
+    fret: int  # 127 with mt=True means an unpitched mute, not a physical fret.
     tie: bool = False
     effects: dict = field(default_factory=dict)
     bends: list[tuple[Fraction, float]] = field(default_factory=list)
@@ -150,7 +150,8 @@ def validate_score(score: Score) -> None:
                                  and note.position + note.duration <= 0)
                 if (note.position < 0 and not leading_grace or note.duration <= 0
                         or note.position + note.duration > score.measures[bi].length
-                        or not 0 <= note.string < len(track.tuning) or not 0 <= note.fret <= 48):
+                        or not 0 <= note.string < len(track.tuning)
+                        or not (0 <= note.fret <= 48 or note.fret == 127 and note.effects.get("mt") is True)):
                     raise ScoreImportError(f"Invalid note in {track.name}, measure {bi + 1}.")
                 if any(p < 0 or p > 1 or not math.isfinite(v) for p, v in note.bends):
                     raise ScoreImportError("Invalid bend curve.")

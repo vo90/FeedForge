@@ -8,7 +8,7 @@ import json
 import math
 from .songsterr_harmonics import exact_natural
 
-VERSION = 8
+VERSION = 9
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -69,7 +69,7 @@ def add_finding(report, *, feature, category, impact, message, location="source"
         # Full original values remain in the immutable source. The report is a
         # bounded index into it, not a second copy of arbitrarily large objects.
         encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
-        decision = DECISIONS.get(feature.split(".")[-1])
+        decision = DECISIONS.get(feature.split(".")[-1]) if impact == "blocking" else None
         report["findings"].append({"feature": feature, "category": category, "impact": impact,
             "workStatus": "decision_required" if decision else "display_limitation" if impact == "display_or_expression" else "technical_work",
             **({"decisionId": decision} if decision else {}),
@@ -180,9 +180,10 @@ def inspect_songsterr(document, *, track_indices=None):
                             add_finding(report, feature='note.fret_range', category='game_representation', impact='blocking',
                                         message='This authored fret is beyond the current game range of 24. Its original pitch and position are retained; no octave or string substitution was made.',
                                         location=npath + '/fret', value=note['fret'], **nc)
-                        if note.get("dead") and note.get("fret") is None and not note.get("rest"):
+                        if (note.get("dead") is True and note.get("fret") is None and not note.get("rest")
+                                and any(note.get(key) for key in ("hp", "slide", "bend", "harmonic", "vibrato", "wideVibrato", "leftHandVibrato"))):
                             add_finding(report, feature="note.unpitched_mute", category="game_representation", impact="blocking",
-                                        message="This muted note has no authored fret. A faithful unpitched representation is required; no fret was invented.",
+                                        message="This unpitched mute also has a pitch gesture. That combination needs representation support; no fret or pitch was invented.",
                                         location=npath, value=note, **nc)
                         if isinstance(note.get("bend"), dict):
                             inspect(note["bend"], "bend", npath + "/bend", nc)

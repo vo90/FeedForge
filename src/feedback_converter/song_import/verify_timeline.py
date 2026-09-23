@@ -240,9 +240,13 @@ def expected(source, alignment):
                     if atom.hopo_destination or key in pending_hopos:
                         if previous is None:
                             unsupported(atom.location, "Source hammer-on/pull-off has no prior note.")
+                        if atom.fret == 127 or previous["f"] == 127:
+                            unsupported(atom.location, "A hammer/pull link has an unpitched endpoint.")
                         event["effects"]["ho" if atom.fret > previous["f"] else "po"] = True
                         pending_hopos.pop(key, None)
                     if key in pending_slides:
+                        if atom.fret == 127:
+                            unsupported(atom.location, "A pitched slide has an unpitched destination.")
                         target, slide = pending_slides.pop(key)
                         target["effects"]["sl"] = atom.fret
                         if slide == "legato":
@@ -269,8 +273,9 @@ def expected(source, alignment):
                     pending_hopos[key] = event
                     event["effects"]["ln"] = True
                 state[key] = event
-                written_note = {"midi": part.tuning[atom.string] + part.capo + atom.fret + atom.pitch_offset,
-                                "str": atom.string, "fret": atom.fret, "tied": atom.tie}
+                written_note = {"str": atom.string, "fret": atom.fret, "tied": atom.tie}
+                if atom.fret != 127:
+                    written_note["midi"] = part.tuning[atom.string] + part.capo + atom.fret + atom.pitch_offset
                 for raw_key, out_key in {"mt": "dead", "ghost": "ghost", "vb": "vib", "ac": "ac", "tp": "tp"}.items():
                     if atom.effects.get(raw_key):
                         written_note[out_key] = atom.effects[raw_key]

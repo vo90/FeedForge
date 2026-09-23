@@ -59,8 +59,16 @@ def load_performance(path: Path | str, metadata: dict | None = None) -> dict:
     if path.suffix.lower() == ".json":
         for track in performance["tracks"]:
             if "notation" not in track:
-                add_finding(report, feature="notation.written_rhythm", category="game_limitation", impact="display_or_expression",
-                            message="This arrangement's written rhythm is outside the game's notation vocabulary. Its playable notes and timing are converted; complete notation remains in the original source.",
-                            location="tracks/" + track["id"], value=None, arrangement=track["name"])
+                source_track = next(t for t in score.tracks if t.id == track["id"])
+                reasons = []
+                if any(n.fret == 127 and n.effects.get("mt") is True for bar in source_track.bars for n in bar):
+                    reasons.append(("unpitched_mute", "Unpitched mutes have no MIDI pitch for standard notation."))
+                if any(b.denominator not in {1, 2, 4, 8, 16, 32} or not 0 <= b.dots <= 2
+                       for voices in source_track.written_bars for voice in voices for b in voice.beats):
+                    reasons.append(("written_rhythm", "This arrangement's written rhythm is outside the game's notation vocabulary."))
+                for reason, message in reasons:
+                    add_finding(report, feature="notation." + reason, category="game_limitation", impact="display_or_expression",
+                                message=message + " Its playable tab is converted; complete notation remains in the original source.",
+                                location="tracks/" + track["id"], value=None, arrangement=track["name"])
         performance["compatibilityReport"] = report
     return performance

@@ -93,6 +93,7 @@ class Part:
     # Independent notation facts: every written voice/beat, including rests.
     beats: list = field(default_factory=list)
     notation_unavailable: list = field(default_factory=list)
+    unpitched_mutes: list = field(default_factory=list)
     clefs: list = field(default_factory=list)
 
 
@@ -483,6 +484,14 @@ def songsterr(document):
                             continue
                         _active_unknown(note, note_keys, {"id", "velocity", "finger", "leftFinger", "rightFinger"}, nloc, ignored)
                         fx = {}
+                        unpitched = note.get("dead") is True and note.get("fret") is None
+                        fret = 127 if unpitched else integer(note["fret"], nloc)
+                        if not unpitched and not 0 <= fret <= 48:
+                            raise ValueError(nloc + ": invalid authored fret")
+                        if unpitched:
+                            if any(note.get(k) for k in ("hp", "slide", "bend", "harmonic", "vibrato", "wideVibrato", "leftHandVibrato")):
+                                unsupported(nloc, "Pitch gestures on an unpitched mute are not independently representable.")
+                            track.unpitched_mutes.append(nloc)
                         if note.get("leftHandVibrato") not in (None, "slight", "wide"):
                             unsupported(nloc + "/leftHandVibrato", "Unverified vibrato width.")
                         if note.get("leftHandVibrato"):
@@ -560,7 +569,7 @@ def songsterr(document):
                         if note.get("staccato"):
                             if note["staccato"] is not True:
                                 raise ValueError(nloc + ': malformed staccato')
-                        atoms.append(Atom(q, duration, len(tuning) - 1 - integer(note["string"], nloc), integer(note["fret"], nloc),
+                        atoms.append(Atom(q, duration, len(tuning) - 1 - integer(note["string"], nloc), fret,
                                           nloc, str(vi), loc, bool(note.get("tie")), fx, sorted(bends), slide[note.get("slide")],
                                           bool(note.get("hp"))))
                         fact["notes"].append(atoms[-1])

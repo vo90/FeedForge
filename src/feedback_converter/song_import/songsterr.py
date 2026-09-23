@@ -49,7 +49,15 @@ def _endings(value):
 
 def _note(raw, beat, position, duration, strings):
     string = strings - 1 - integer(raw.get("string"), "string index")
-    fret = integer(raw.get("fret"), "fret")
+    # 127 is FeedBack's existing unpitched-mute sentinel, never a physical
+    # fret or MIDI pitch. Only an explicitly dead note may omit its fret.
+    unpitched = raw.get("dead") is True and raw.get("fret") is None
+    fret = 127 if unpitched else integer(raw.get("fret"), "fret")
+    if not unpitched and not 0 <= fret <= 48:
+        raise ScoreImportError("Invalid authored fret.")
+    if unpitched and any(raw.get(key) for key in
+                        ("hp", "slide", "bend", "harmonic", "vibrato", "wideVibrato", "leftHandVibrato")):
+        raise ScoreImportError("An unpitched mute with a pitch gesture needs additional representation support.")
     unsupported = ("trill", "grace", "graceNote", "tremoloBar", "whammy")
     for key in unsupported:
         if raw.get(key):

@@ -177,6 +177,8 @@ def render(score: Score) -> dict:
                     if note.hopo or link_key in pending_hopo:
                         if prior is None:
                             raise ScoreImportError(f"Unresolved hammer-on/pull-off in {track.name}.")
+                        if note.fret == 127 or prior[0]["f"] == 127:
+                            raise ScoreImportError("A linked pitch technique reaches an unpitched mute; no fret was invented.")
                         output["ho" if note.fret > prior[0]["f"] else "po"] = True
                         pending_hopo.pop(link_key, None)
                     rendered.append(output)
@@ -204,6 +206,8 @@ def render(score: Score) -> dict:
                     output.setdefault("bnv", []).extend(curve)
                     output["bn"] = max((p["v"] for p in output["bnv"]), key=abs)
                 if link_key in pending_slide and not note.tie:
+                    if note.fret == 127:
+                        raise ScoreImportError("A pitched slide reaches an unpitched mute; no destination fret was invented.")
                     sliding, kind = pending_slide.pop(link_key)
                     sliding["sl"] = note.fret
                     if kind == "legato":
