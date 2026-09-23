@@ -19,8 +19,14 @@ def _choose_alignment(performance: dict, audio: dict, request: dict, progress=No
     if progress:
         progress({"stage": "aligning", "message": "Checking Songsterr's recording timing."})
     try:
-        return align_from_songsterr(performance, audio, request.get("synchronization"),
-                                   request.get("metadata") or {})
+        alignment = align_from_songsterr(performance, audio, request.get("synchronization"),
+                                        request.get("metadata") or {}, allow_ending_candidate=True)
+        if alignment.get("endingCandidate"):
+            if progress:
+                progress({"stage": "aligning", "message": "Checking the earlier song before cutting the tab at the audio ending."})
+            from .ending_cutoff import authorize
+            alignment = authorize(performance, audio, alignment)
+        return alignment
     except ImportFailure as exc:
         if exc.code != "source_sync_unavailable":
             raise
@@ -40,7 +46,7 @@ def _choose_alignment(performance: dict, audio: dict, request: dict, progress=No
 
 def _alignment_summary(alignment: dict) -> dict:
     # Full timing survives in the evidence store, not the bounded history ledger.
-    return {key: value for key, value in alignment.items() if key not in {"anchors", "tempos"}}
+    return {key: value for key, value in alignment.items() if key not in {"anchors", "tempos", "recordingSync"}}
 
 
 def run_import(request: dict, progress=None) -> dict:
@@ -78,7 +84,7 @@ def run_import(request: dict, progress=None) -> dict:
         audio = prepare_audio(request.get("audio"), job, tools=resolve_tools(request.get("tools") or {}))
         alignment = _choose_alignment(performance, audio, request, progress)
         alignment_recipe = {key: alignment[key] for key in
-                            ("method", "offset", "scale", "mapping", "provenance", "terminalSustains") if key in alignment}
+                            ("method", "offset", "scale", "mapping", "provenance", "terminalSustains", "recordingEnd") if key in alignment}
         alignment_recipe.setdefault("method", VERSION)
         recipe = {"version": 8, "preservationContract": CONTRACT_VERSION, "source": "songsterr", "songId": metadata.get("songId"),
                   "revisionId": metadata.get("revisionId"), "scoreHash": score_hash, "audioHash": audio["hash"],
@@ -124,6 +130,9 @@ def run_import(request: dict, progress=None) -> dict:
         summary["compatibility"] = recipe["compatibility"]
         if verification.get("adjustments"):
             summary["adjustments"] = verification["adjustments"]
+        if alignment.get("recordingSync"):
+            summary["recordingSync"] = {key: alignment["recordingSync"][key] for key in
+                                         ("version", "status", "windowCount", "supportedWindows", "everyNoteVerified")}
         if (request.get("outputSettings") or {}).get("generateDifficulty") is True:
             summary["generatedDifficulty"] = {"requested": True, "sourceAuthored": False,
                                                "verificationScope": "full-source-chart"}

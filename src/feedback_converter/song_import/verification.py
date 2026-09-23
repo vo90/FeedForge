@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 10
+VERSION = 11
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "bn", "pkd"}
 TUNINGS = {"guitar": {6: [40, 45, 50, 55, 59, 64], 7: [35, 40, 45, 50, 55, 59, 64], 8: [30, 35, 40, 45, 50, 55, 59, 64]},
@@ -253,7 +253,7 @@ def _compatibility_report(report, score_path, source, check):
         check.fail("compatibility", "import/compatibility", "The compatibility report is incomplete.")
         return
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
-    check.equal("compatibility_version", "import/compatibility", 10, report.get("version"))
+    check.equal("compatibility_version", "import/compatibility", 11, report.get("version"))
     check.equal("compatibility_status", "import/compatibility", "limitations" if rows else "compatible", report.get("status"))
     target = report.get("target", {})
     check.equal("compatibility_target", "import/compatibility", "1.16.0", target.get("feedpak"))
@@ -436,6 +436,83 @@ def _terminal_adjustments(wanted, alignment, recipe, archive, duration, source, 
     return {"terminalSustains": len(changes), "maxShorteningSeconds": max((n["trimmedSeconds"] for n in changes), default=0)}
 
 
+def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, check, manifest, timing):
+    """Independently derive omissions, then recheck audio from the raw-source map."""
+    policy = alignment.get("recordingEnd")
+    if not policy:
+        if any(recipe.get(k) for k in ("recordingEnd", "endingOmissionsFile", "recordingSyncFile")):
+            check.fail("unexpected_ending", "import", "Unapproved ending omissions were declared.")
+        return None
+    anchors = alignment.get("anchors", [])
+    if (source.format != "songsterr" or recipe.get("preservationContract", 0) < 11
+            or alignment.get("method") != "songsterr-video-points-v1" or alignment.get("mapping") != "piecewise-linear"
+            or len(anchors) != len(wanted["order"]) + 1 or len(anchors) < 2
+            or not anchors[-2]["audio"] < duration < anchors[-1]["audio"]
+            or anchors[-1]["audio"] - duration > 3.0 or anchors[-1]["audio"] - anchors[-2]["audio"] > 8.0):
+        check.fail("ending_boundary", "alignment", "Omissions must be confined to a short final-bar overrun.")
+        return None
+    # The acoustic check is recomputed from independently reconstructed notes
+    # and the actual packaged recording. A forged saved status cannot authorize it.
+    from .recording_sync import assess, digest, VERSION as SYNC_VERSION
+    stored = _json(archive, recipe.get("recordingSyncFile", ""), check)
+    required = {"version": 1, "policy": "cut-at-recording-end-v1", "audioDuration": duration,
+                "finalMeasureStart": anchors[-2]["audio"], "syncEvidenceHash": digest(stored)}
+    if (policy != required or recipe.get("recordingEnd") != required
+            or alignment.get("recordingSync") != stored or stored.get("version") != SYNC_VERSION
+            or stored.get("status") != "supported" or stored.get("mapHash") != alignment.get("provenance", {}).get("mapHash")):
+        check.fail("ending_policy", "import", "The ending cutoff has no matching current timing evidence.")
+        return None
+    tracks, omissions = [], []
+    for part in wanted["parts"]:
+        src = part["source"]
+        events = []
+        for item in part["notes"]:
+            n = item["note"]
+            events.append({"t": n["t"], "end": n["t"] + n.get("sus", 0),
+                           "midi": src.tuning[n["s"]] + src.capo + n["f"] if n["f"] != 127 else None,
+                           "effects": {k: v for k, v in n.items() if k not in {"t", "sus", "s", "f"}}})
+        tracks.append({"id": src.id, "instrument": src.instrument, "events": events})
+        kept = []
+        for item in part["notes"]:
+            n = item["note"]
+            if n["t"] >= duration:
+                omissions.append({"trackId": src.id, "string": n["s"], "fret": n["f"],
+                                  "audioStart": round(n["t"], 6), "originalDuration": round(n.get("sus", 0), 6)})
+            else:
+                kept.append(item)
+        if part["notes"] and not kept:
+            check.fail("ending_track", "tracks/" + src.id, "The cutoff would remove an entire source arrangement.")
+        part["notes"] = kept
+    if not omissions:
+        check.fail("empty_ending", "import", "The declared cutoff has no omitted source notes.")
+    ledger = _json(archive, recipe.get("endingOmissionsFile", ""), check)
+    check.equal("ending_header", "import/ending", required, {k: v for k, v in ledger.items() if k != "notes"})
+    recorded = ledger.get("notes")
+    if not isinstance(recorded, list) or any(not isinstance(n, dict) for n in recorded):
+        check.fail("ending_entries", "import/ending", "Ending omissions have invalid entries.")
+        return None
+    key = lambda n: (str(n.get("trackId")), n.get("string", -1), n.get("audioStart", -1), n.get("fret", -1))
+    check.equal("ending_count", "import/ending", len(omissions), len(recorded))
+    for i, (a, b) in enumerate(zip(sorted(omissions, key=key), sorted(recorded, key=key))):
+        check.equal("ending_fields", f"import/ending/{i}", sorted(a), sorted(b))
+        for field, value in a.items():
+            if field in {"audioStart", "originalDuration"}:
+                check.near("ending_value", f"import/ending/{i}/{field}", value, b.get(field))
+            else:
+                check.equal("ending_identity", f"import/ending/{i}/{field}", value, b.get(field))
+    full = [s for s in manifest.get("stems", []) if s.get("id") == "full"]
+    if len(full) != 1:
+        check.fail("ending_audio", "manifest/stems", "A cutoff requires one full recording.")
+    else:
+        audio_bytes = archive.read(full[0]["file"])
+        check.equal("ending_audio_identity", "import/recording-sync", stored.get("audioSha256"), hashlib.sha256(audio_bytes).hexdigest())
+        if not check.total_errors:
+            fresh = assess(tracks, io.BytesIO(audio_bytes), duration, alignment["provenance"]["mapHash"])
+            timing["independentAudioMatchAssessed"] = True
+            check.equal("ending_audio_sync", "import/recording-sync", "supported", fresh["status"])
+    return {"omittedEndingNotes": len(omissions)}
+
+
 def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: dict | None = None) -> dict:
     """Compare an immutable raw score with a completed staged FeedPak.
 
@@ -511,7 +588,11 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             duration = manifest.get("duration")
             if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration <= 0:
                 raise ValueError("manifest/duration: invalid audio duration")
+            ending_adjustments = _ending_adjustments(wanted, alignment, recipe, z, duration, source, check, manifest, report["timing"])
             adjustments = _terminal_adjustments(wanted, alignment, recipe, z, duration, source, check)
+            if ending_adjustments:
+                adjustments = {**(adjustments or {}), **ending_adjustments}
+                report["counts"]["expectedPlayableNotes"] = sum(len(p["notes"]) for p in wanted["parts"])
             if adjustments:
                 report["adjustments"] = adjustments
                 # An adjustment must use the real packaged audio boundary, not

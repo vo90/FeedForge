@@ -1,5 +1,8 @@
 # Recorded final-sustain adjustments (contract 10)
 
+Contract 11 adds a separately guarded final-bar attack cutoff, described in
+`songsterr-recording-end.md`. The held-tail behavior below remains unchanged.
+
 A recording may contain every attack and pitch gesture while ending before the
 last held notes finish. With an accepted Songsterr timing map bound to the exact
 song, approved revision and selected recording, FeedForge shortens those held

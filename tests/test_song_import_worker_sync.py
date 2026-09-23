@@ -18,7 +18,7 @@ def test_source_timing_does_not_run_pitch_matching(monkeypatch):
     expected = {"status": "validated", "method": "songsterr-video-points-v1"}
     calls = []
 
-    def source_map(performance, audio, synchronization, metadata):
+    def source_map(performance, audio, synchronization, metadata, **kwargs):
         calls.append((performance, audio, synchronization, metadata))
         return expected
 
@@ -32,7 +32,7 @@ def test_source_timing_does_not_run_pitch_matching(monkeypatch):
 
 
 def test_unusable_source_map_uses_existing_matcher_and_retains_reason(monkeypatch):
-    def unavailable(*args):
+    def unavailable(*args, **kwargs):
         raise ImportFailure("source_sync_unavailable", "The recording changed.", {"sourceSyncReason": "video_mismatch"})
 
     monkeypatch.setattr(worker, "align_from_songsterr", unavailable)
@@ -49,7 +49,7 @@ def test_unusable_source_map_uses_existing_matcher_and_retains_reason(monkeypatc
 
 
 def test_failed_fallback_preserves_both_diagnostics(monkeypatch):
-    def unavailable(*args):
+    def unavailable(*args, **kwargs):
         raise ImportFailure("source_sync_unavailable", "Timing is incomplete.", {"sourceSyncReason": "incomplete_points"})
 
     def failed(*args, **kwargs):
@@ -65,7 +65,7 @@ def test_failed_fallback_preserves_both_diagnostics(monkeypatch):
 
 
 def test_unexpected_source_failure_is_not_silently_downgraded(monkeypatch):
-    def cancelled(*args):
+    def cancelled(*args, **kwargs):
         raise ImportFailure("cancelled", "Cancelled.")
 
     monkeypatch.setattr(worker, "align_from_songsterr", cancelled)
@@ -120,7 +120,7 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
                "outputSettings": {"nameTemplate": "{artist} - {title}", "outputLayout": "artist"}}
     result = worker.run_import(request)
     assert result["ok"], result
-    assert result["recipe"]["preservationContract"] == result["verification"]["version"] == result["evidence"]["version"] == 10
+    assert result["recipe"]["preservationContract"] == result["verification"]["version"] == result["evidence"]["version"] == 11
     assert result["recipe"]["compatibility"] == {"version": 3, "extensions": ["slide_in_marks", "slide_out", "slide_out_marks"], "status": "requires_consumer_support"}
     assert result["alignment"]["method"] == "songsterr-video-points-v1"
     assert len(result["recipe"]["alignment"]["provenance"]["mapHash"]) == 64

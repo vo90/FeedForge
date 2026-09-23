@@ -49,6 +49,17 @@ test('recorded sustain adjustments are visible without claiming exact source dur
   assert.doesNotMatch(job({ state: 'completed', verification: { status: 'passed' } }), /sustains shortened/);
 });
 
+test('ending omissions disclose the count, audio check and retained original', () => {
+  const verification = { status: 'passed', adjustments: { omittedEndingNotes: 3 } };
+  const html = job({ state: 'completed', verification });
+  assert.match(html, /3 ending notes omitted at or after the audio ending/);
+  assert.match(html, /Earlier timing passed the audio check/);
+  assert.match(html, /original tab and omission details are saved/);
+  assert.match(html, /recorded ending adjustments/);
+  assert.doesNotMatch(job({ state: 'failed', verification }), /Earlier timing passed/);
+  assert.doesNotMatch(job({ state: 'completed', verification: { ...verification, status: 'modified' } }), /Earlier timing passed/);
+});
+
 test('arrangement diagnostics do not imply a completed or partial import', () => {
   const html = render(compiled.exports.CompatibilityDetails, { report: { findingCount: 0, findings: [],
     arrangements: [{ trackIndex: 3, name: 'Bass', status: 'score_ready' }, { trackIndex: 8, name: 'Lead', status: 'blocked', message: 'Unresolved tie.' }] } });

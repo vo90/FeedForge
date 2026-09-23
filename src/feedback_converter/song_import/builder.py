@@ -19,6 +19,7 @@ from .alignment import map_time
 from .audio import ImportFailure
 from .synchronization import source_time_scale
 from .terminal_sustains import allowed as terminal_sustains_allowed, trim_held_note
+from .ending_cutoff import allowed as ending_cutoff_allowed, omitted_note
 
 
 def _tuning_offsets(track: dict) -> list[int]:
@@ -194,7 +195,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         timeline[key] = _timeline_items(performance.get(key, []), alignment, duration)
     if alignment.get("mapping") == "piecewise-linear" and alignment.get("tempos"):
         timeline["tempos"] = [deepcopy(item) for item in alignment["tempos"] if 0 <= item["time"] <= duration]
-    arrangements, sustain_adjustments = [], []
+    arrangements, sustain_adjustments, ending_omissions = [], [], []
+    cut_ending = ending_cutoff_allowed(alignment, duration)
     used = set()
     for index, track in enumerate(performance.get("tracks", [])):
         if track.get("instrument") not in {"guitar", "bass"}:
@@ -207,17 +209,29 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             ident = f"{ident}-{index + 1}"
         used.add(ident.lower())
         tuning = _tuning_offsets(track)
+        def keep(note, start):
+            if cut_ending and map_time(alignment, start) >= duration:
+                ending_omissions.append(omitted_note(track["id"], note, alignment, start))
+                return False
+            return True
         chart = {"name": name, "tuning": tuning, "capo": max(0, int(track.get("capo", 0))),
-                 "notes": [_retime_note(note, alignment, duration) for note in track.get("notes", [])],
+                 "notes": [_retime_note(note, alignment, duration) for note in track.get("notes", []) if keep(note, note["t"])],
                  "chords": [], "templates": deepcopy(track.get("templates", [])),
                  "anchors": [], "handshapes": [], "beats": timeline.get("beats", []),
                  "sections": timeline.get("sections", [])}
         for chord in track.get("chords", []):
+            children = [n for n in chord.get("notes", []) if keep(n, n.get("t", chord["t"]))]
+            if not children:
+                continue
+            if len(children) != len(chord.get("notes", [])):
+                raise ImportFailure("alignment_failed", "The recording ends inside a staggered chord; it cannot yet be cut faithfully.")
             entry = {**deepcopy(chord), "t": round(map_time(alignment, chord["t"]), 6)}
             entry.pop("source_ids", None)
             if "notes" in chord:
                 entry["notes"] = [_retime_note(note, alignment, duration, chord_time=float(chord["t"])) for note in chord["notes"]]
             chart["chords"].append(entry)
+        if not chart["notes"] and not chart["chords"]:
+            raise ImportFailure("alignment_failed", "Cutting at the recording ending would remove an entire arrangement.")
         if timeline.get("tempos"):
             chart["tempos"] = timeline["tempos"]
         if timeline.get("time_signatures"):
@@ -230,7 +244,7 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             for note, start in originals:
                 left = map_time(alignment, start)
                 sustain = round(map_time(alignment, start + note.get("sus", 0)) - left, 6)
-                if left + sustain > duration + 0.0000011:
+                if left < duration and left + sustain > duration + 0.0000011:
                     exported = round(math.floor(duration * 1_000_000) / 1_000_000 - left, 6)
                     sustain_adjustments.append({"trackId": track["id"], "string": note["s"], "fret": note["f"],
                                                 "audioStart": round(left, 6), "originalDuration": sustain,
@@ -286,6 +300,13 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         _write_json(package / "import/sustain-adjustments.json", detail)
         manifest.setdefault("song_import", {}).update(terminalSustains=alignment["terminalSustains"],
                                                        adjustmentsFile="import/sustain-adjustments.json")
+    if ending_omissions:
+        if source_path is None:
+            raise ImportFailure("unsupported_score", "Ending omissions require the retained original tab.")
+        _write_json(package / "import/ending-omissions.json", {**alignment["recordingEnd"], "notes": ending_omissions})
+        _write_json(package / "import/recording-sync.json", alignment["recordingSync"])
+        manifest.setdefault("song_import", {}).update(recordingEnd=alignment["recordingEnd"],
+                    endingOmissionsFile="import/ending-omissions.json", recordingSyncFile="import/recording-sync.json")
     if artwork and artwork.get("status") == "matched" and artwork.get("path"):
         with Image.open(artwork["path"]) as cover:
             extension = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}[cover.format]

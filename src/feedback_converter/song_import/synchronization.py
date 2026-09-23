@@ -72,7 +72,7 @@ def source_time_scale(alignment: dict, time: float) -> float:
 
 
 def align_from_songsterr(performance: dict, audio: dict, synchronization: dict | None,
-                        metadata: dict) -> dict:
+                        metadata: dict, *, allow_ending_candidate: bool = False) -> dict:
     """Return verified source timing or a typed reason for matcher fallback."""
     if not all(isinstance(value, dict) for value in (performance, audio, metadata)):
         _unavailable("invalid_input")
@@ -195,7 +195,7 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
                               "sourceSyncInferredTerminalBoundary": inferred_terminal,
                               "sourceSyncInferredBoundaryCount": inferred_count,
                               "sourceSyncSilentTerminalExtension": silent_terminal}})
-    checked, trimmed = 0, 0
+    checked, trimmed, late = 0, 0, 0
     for track in performance.get("tracks", []):
         notes = [(note, note.get("t")) for note in track.get("notes", [])]
         notes += [(note, note.get("t", chord.get("t"))) for chord in track.get("chords", []) for note in chord.get("notes", [])]
@@ -211,7 +211,15 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
             if mapped_start < 0:
                 _unavailable("negative_note_time")
             if mapped_start >= duration:
-                _unavailable("note_outside_recording", mappedNoteEnd=mapped_end, audioDuration=duration)
+                # A candidate remains unusable by the builder until an acoustic
+                # check authorizes it. A short/missing recording is not a cutoff.
+                if (not allow_ending_candidate or not points[-2] < duration < points[-1]
+                        or points[-1] - duration > 3.0 or points[-1] - points[-2] > 8.0
+                        or start < measures[-1]["start"]):
+                    _unavailable("note_outside_recording", mappedNoteEnd=mapped_end, audioDuration=duration)
+                late += 1
+                checked += 1
+                continue
             for point in note.get("bnv", []):
                 if (not isinstance(point, dict) or not _number(point.get("t")) or not _number(point.get("v"))
                         or point["t"] < 0 or point["t"] > sustain + _EPSILON):
@@ -235,4 +243,7 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
         result["diagnostics"]["shortenedFinalSustains"] = trimmed
         if silent_terminal:
             result["provenance"]["terminalBeyondAudio"] = "recorded_sustain_adjustments"
+    if late:
+        result["status"] = "needs_ending_check"
+        result["endingCandidate"] = {"lateNotes": late, "audioDuration": duration}
     return result
