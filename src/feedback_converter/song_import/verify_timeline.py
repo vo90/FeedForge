@@ -239,6 +239,8 @@ def expected(source, alignment):
                             or previous["end"] != start and not gap_allowed):
                         unsupported(atom.location, "Source tie does not identify a continuous prior note; it has not been repaired.")
                     event = previous
+                    if "hn" in atom.effects and any(event["effects"].get(k) != atom.effects[k] for k in ("hn", "hps")):
+                        unsupported(atom.location, "A changing harmonic target inside a tie is not independently representable.")
                     event["end"] = end
                     event["effects"].update({k: v for k, v in atom.effects.items() if k != "pkd"})
                     event["locations"].append(atom.location)

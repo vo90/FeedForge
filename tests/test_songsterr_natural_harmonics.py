@@ -24,7 +24,7 @@ def test_integer_natural_nodes_keep_playing_position_and_sounding_pitch(fret, pi
     assert written['fret'] == fret and source == original
 
 
-@pytest.mark.parametrize('fret,touch,kind', [(3,2.7,'natural'),(3,3.2,'natural'),(6,5.8,'natural'),
+@pytest.mark.parametrize('fret,touch,kind', [(15,15,'natural'),(3,3.1,'natural'),(6,6,'natural'),
     (7,12,'natural'),(5,12,'pinch'),(5,12,'artificial'),(5,12,'tapped'),(5,12,'semi'),(5,12,'feedback')])
 def test_nodes_requiring_a_different_instruction_are_not_flattened(fret,touch,kind):
     source = raw_score([measure(beat(fret=fret, harmonic=kind, harmonicFret=touch))])
@@ -50,7 +50,7 @@ def test_independent_archive_check_catches_harmonic_pitch_or_cue_loss(tmp_path, 
     raw = source['parts'][0]['measures'][0]['voices'][0]['beats'][2]['notes'][0]
     raw.pop('ghost'); raw.update(harmonic='natural', harmonicFret=7)
     chart_note = package['chart.json']['notes'][2]
-    chart_note.pop('ghost'); chart_note['hm'] = True
+    chart_note.pop('ghost'); chart_note['hm'] = True; chart_note.update(hn=7,hps=19)
     written = package['notation.json']['measures'][0]['staves']['staff']['voices'][0]['beats'][2]['notes'][0]
     written.pop('ghost'); written['midi'] = 59  # Open E2 (40) + third partial (19).
     if corruption == 'ordinary_pitch': written['midi'] = 47

@@ -11,7 +11,7 @@ from .inventory import FeatureInventory
 from .model import Measure, Note, Score, ScoreImportError, Track, WrittenBeat, WrittenVoice, integer, rational
 from .songsterr_timing import part_timing, strum_offsets, FEELS
 from .songsterr_fields import bend_points
-from .songsterr_harmonics import exact_natural, NATURAL_PITCH
+from .songsterr_harmonics import exact_natural, natural_target
 from .songsterr_automation import performed_tempos
 
 
@@ -102,7 +102,9 @@ def _note(raw, beat, position, duration, strings):
             if not exact_natural(raw):
                 raise ScoreImportError("This natural harmonic needs a precise node and pitch representation.")
             effects["hm"] = True
-            effects["__harmonic_pitch_offset"] = NATURAL_PITCH[fret] - fret
+            node, pitch = natural_target(raw)
+            effects.update(hn=node, hps=pitch)
+            effects["__harmonic_pitch_offset"] = pitch - fret
         elif harmonic == "pinch":
             effects["hp"] = True
         else:

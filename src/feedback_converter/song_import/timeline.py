@@ -161,6 +161,8 @@ def render(score: Score) -> dict:
                             or prior[1] != position and not gap_allowed):
                         raise ScoreImportError(f"Unresolved tie in {track.name}, measure {index + 1}.")
                     output = prior[0]
+                    if "hn" in effects and any(output.get(k) != effects[k] for k in ("hn", "hps")):
+                        raise ScoreImportError("A harmonic touch or pitch change inside a tie needs a separate gesture representation.")
                     articulation = articulations[id(output)]
                     articulation["segments"] += 1
                     output.update({k: v for k, v in effects.items() if k != "pkd"})

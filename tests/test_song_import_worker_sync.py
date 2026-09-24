@@ -87,7 +87,8 @@ def test_job_history_keeps_map_identity_without_unbounded_anchor_lists():
     assert len(alignment["anchors"]) == 1000
 
 
-def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(tmp_path, monkeypatch):
+@pytest.mark.parametrize('precise_harmonic', [False, True])
+def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(tmp_path, monkeypatch, precise_harmonic):
     """Only inbound media is faked; parser, timing, audio encoding and builder run."""
     video_id = "abcdefghijk"
     measures = [{"signature": [4, 4], "voices": [{"beats": [
@@ -97,6 +98,8 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
            "tracks": [{"id": 0, "name": "Lead Guitar", "instrumentId": 29, "tuning": [64, 59, 55, 50, 45, 40]}],
            "parts": [{"measures": measures, "automations": {"tempo": [{"measure": 0, "position": [0, 1], "bpm": 120, "type": 4}]}}]}
     measures[0]["voices"][0]["beats"][0]["notes"][0]["slide"] = "belowdownwards"
+    if precise_harmonic:
+        measures[0]["voices"][0]["beats"][1]["notes"][0].update(harmonic='natural', harmonicFret=3.2)
     score = tmp_path / "score.json"
     score.write_text(json.dumps(raw), encoding="utf-8")
     recording = tmp_path / "selected-recording.wav"
@@ -117,11 +120,14 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
     request = {"scorePath": str(score), "audio": {"kind": "url", "url": f"https://www.youtube.com/watch?v={video_id}"}, "artworkLookup": False,
                "metadata": {"songId": "12", "revisionId": "34", "approval": "approved", "title": "Test song", "artist": "Test artist"},
                "synchronization": synchronization, "workDir": str(tmp_path / "work"), "outputDir": str(tmp_path / "library"),
-               "outputSettings": {"nameTemplate": "{artist} - {title}", "outputLayout": "artist"}}
+               "outputSettings": {"nameTemplate": "{artist} - {title}", "outputLayout": "artist", "generateDifficulty": precise_harmonic}}
     result = worker.run_import(request)
     assert result["ok"], result
-    assert result["recipe"]["preservationContract"] == result["verification"]["version"] == result["evidence"]["version"] == 13
-    assert result["recipe"]["compatibility"] == {"version": 3, "extensions": ["slide_in_marks", "slide_out", "slide_out_marks"], "status": "requires_consumer_support"}
+    assert result["recipe"]["preservationContract"] == result["verification"]["version"] == result["evidence"]["version"] == 14
+    extensions = ["slide_in_marks", "slide_out", "slide_out_marks"]
+    if precise_harmonic:
+        extensions = ['hn', 'hps', *extensions]
+    assert result["recipe"]["compatibility"] == {"version": 4, "extensions": extensions, "status": "requires_consumer_support"}
     assert result["alignment"]["method"] == "songsterr-video-points-v1"
     assert len(result["recipe"]["alignment"]["provenance"]["mapHash"]) == 64
     assert "anchors" not in result["alignment"] and "tempos" not in result["alignment"]
@@ -133,6 +139,11 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
         assert archive.read(manifest['song_import']['sourceFile']) == score.read_bytes()
         assert json.loads(archive.read(manifest['song_import']['compatibilityFile']))['status'] == 'compatible'
         chart = json.loads(archive.read(manifest["arrangements"][0]["file"]))
+        if precise_harmonic:
+            assert {k: chart['notes'][1][k] for k in ('f', 'hn', 'hps')} == {'f':3, 'hn':3.2, 'hps':31}
+            retained = [n for phrase in chart['phrases'] for level in phrase['levels'] for n in level['notes'] if n.get('hn')]
+            assert retained and all((n['f'], n['hn'], n['hps']) == (3, 3.2, 31) for n in retained)
+            assert manifest['song_import']['compatibility'] == result['recipe']['compatibility']
         assert [note["t"] for note in chart["notes"]] == pytest.approx(expected_starts)
         assert [note["sus"] for note in chart["notes"]] == pytest.approx([0.525] * 4 + [0.675] * 4)
         assert chart["notes"][0]["slide_out_marks"] == [{"direction": "down", "start": 0, "end": .525}]

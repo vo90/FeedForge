@@ -518,17 +518,22 @@ def songsterr(document):
                             raise ValueError(nloc + ": invalid harmonic fret")
                         # Independent lookup: absolute overtone above the open
                         # string, not an ordinary fretted fundamental.
-                        nodes = {4: 28, 5: 24, 7: 19, 9: 28, 12: 12, 16: 28, 19: 19}
+                        nodes = {2.4: 36, 2.7: 34, 3.2: 31, 4: 28, 5: 24, 5.8: 34,
+                                 7: 19, 8.2: 36, 9: 28, 9.6: 34, 12: 12, 14.7: 34,
+                                 16: 28, 17: 36, 19: 19, 21.7: 34, 24: 24}
+                        node = next((x for x in nodes if abs(fraction(touch if touch is not None else note['fret'], nloc)
+                                                            - F(str(x))) <= F(1, 10**9)), None) if harmonic == 'natural' else None
                         natural = (harmonic == 'natural' and note.get('harmonicData') is None
-                                   and note.get('fret') in nodes and not isinstance(note.get('fret'), bool)
-                                   and (touch is None or touch == note['fret']))
+                                   and node is not None and note.get('fret') == round(node)
+                                   and not isinstance(note.get('fret'), bool))
                         if touch and harmonic is not None and not natural:
                             unsupported(nloc, "Harmonic-fret pitch interpretation is not independently verified.")
                         if harmonic:
                             if harmonic == 'natural':
                                 if not natural:
                                     unsupported(nloc, 'Natural harmonic node is not independently representable.')
-                                harmonic_shift = nodes[note['fret']] - note['fret']
+                                harmonic_shift = nodes[node] - note['fret']
+                                fx.update(hn=node, hps=nodes[node])
                             if harmonic not in {"natural", "pinch"}:
                                 unsupported(nloc, "This harmonic type is not independently verified.")
                             fx[{"natural": "hm", "pinch": "hp"}[harmonic]] = True
