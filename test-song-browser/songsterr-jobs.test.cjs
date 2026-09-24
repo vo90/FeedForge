@@ -10,6 +10,12 @@ const { selectSynchronization, unavailableSynchronization, audioVideo } = requir
 
 const CHART = { id: '123', title: 'Synthetic Song', artist: 'Synthetic Artist' };
 const SETTINGS = { outputLayout: 'flat', nameTemplate: '{artist} - {title}' };
+
+test('packaged app and converter use the same preservation contract', () => {
+  const { CURRENT_PRESERVATION_CONTRACT } = require('../electron/song-browser/songsterr-evidence.cjs');
+  const source = fs.readFileSync(path.join(__dirname, '../src/feedback_converter/song_import/evidence.py'), 'utf8');
+  assert.equal(CURRENT_PRESERVATION_CONTRACT, Number(source.match(/^CONTRACT_VERSION = (\d+)$/m)[1]));
+});
 const RESPONSE = (value) => ({ code: 0, stdout: JSON.stringify({ ok: true, ...value }) });
 
 function deferred() {
@@ -80,7 +86,7 @@ async function fixture(t, options = {}) {
     const hash = (data) => crypto.createHash('sha256').update(data).digest('hex');
     const outputHash = hash(fs.readFileSync(stagingPath));
     const sourceHash = hash(fs.readFileSync(request.scorePath));
-    const contract = options.contract || 14;
+    const contract = options.contract || 15;
     const report = JSON.stringify({ version: contract, status: 'passed', sourceSha256: sourceHash }), verificationHash = hash(report);
     const record = JSON.stringify({ version: contract, outputHash, objects: { verification: verificationHash, source: sourceHash } });
     const id = hash(record);
@@ -194,7 +200,7 @@ test('verification is bound to the exact staged file before publication', async 
   assert.deepEqual(fs.readdirSync(f.outputDir), []);
 });
 
-for (const contract of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]) test(`old preservation contract ${contract} cannot publish as a current verified conversion`, async (t) => {
+for (const contract of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]) test(`old preservation contract ${contract} cannot publish as a current verified conversion`, async (t) => {
   const f = await fixture(t, { contract });
   f.enqueue(); await settle(f.jobs);
   assert.equal(f.jobs.snapshot()[0].state, 'failed');
@@ -202,7 +208,7 @@ for (const contract of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]) test(`old pr
   assert.deepEqual(fs.readdirSync(f.outputDir), []);
 });
 
-for (const contract of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]) test(`old contract ${contract} reports survive recovery without current mapping fidelity or reuse`, async (t) => {
+for (const contract of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]) test(`old contract ${contract} reports survive recovery without current mapping fidelity or reuse`, async (t) => {
   const f = await fixture(t);
   f.enqueue(); await settle(f.jobs); await f.jobs.dispose();
   const job = f.jobs.jobs[0], hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -232,7 +238,7 @@ for (const contract of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]) test(`old co
     await settle(restored);
     const fresh = restored.snapshot()[1];
     assert.equal(fresh.state, 'completed', fresh.error);
-    assert.equal(fresh.verification.version, 14);
+    assert.equal(fresh.verification.version, 15);
     assert.equal(fresh.verification.status, 'passed');
     assert.notEqual(fresh.outputPath, old.outputPath);
     assert.equal(fs.readFileSync(old.outputPath, 'utf8'), 'Synthetic FeedPak');

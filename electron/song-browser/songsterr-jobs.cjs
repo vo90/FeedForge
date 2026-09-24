@@ -5,7 +5,7 @@ const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { publishFeedpak } = require('./publication.cjs');
 const { normalizeOutputSettings } = require('./output-settings.cjs');
-const { inspectEvidence, reportBundle, compatibilityReport, compatibilityBacklog } = require('./songsterr-evidence.cjs');
+const { inspectEvidence, reportBundle, compatibilityReport, compatibilityBacklog, CURRENT_PRESERVATION_CONTRACT, KNOWN_PRESERVATION_CONTRACTS } = require('./songsterr-evidence.cjs');
 const { waitForSharedOperation } = require('./shared-operation.cjs');
 const { unavailableSynchronization, synchronizationSummary, audioVideo } = require('./providers/songsterr/synchronization.cjs');
 const WAITING = new Set(['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed']);
@@ -93,11 +93,11 @@ class SongsterrJobs {
           if (saved.recipe?.preservationContract) {
             const checked = inspectEvidence(this.auditRoot, saved.evidence, saved.outputHash);
             const contract = saved.recipe.preservationContract;
-            if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].includes(contract) || saved.verification?.version !== contract || saved.verification.status !== 'passed'
+            if (!KNOWN_PRESERVATION_CONTRACTS.includes(contract) || saved.verification?.version !== contract || saved.verification.status !== 'passed'
                 || checked.verification.version !== contract || checked.verification.status !== 'passed') throw new Error('Unverified recovery receipt.');
           }
           Object.assign(job, saved, { outputPath: output.path, state: 'completed', committed: true, message: 'FeedPak ready.',
-            error: '', pathValidation: undefined, outputVerification: saved.verification?.version === 14 && saved.verification.status === 'passed' ? 'passed' : 'not_checked', controller: new AbortController() });
+            error: '', pathValidation: undefined, outputVerification: saved.verification?.version === CURRENT_PRESERVATION_CONTRACT && saved.verification.status === 'passed' ? 'passed' : 'not_checked', controller: new AbortController() });
         }
       } catch { /* Preserve interrupted job and files for an explicit retry. */ }
     }
@@ -115,7 +115,7 @@ class SongsterrJobs {
           const hash = await hashFile(output.path);
           if (hash !== job.verification.outputHash) { job.outputVerification = 'modified'; continue; }
           const checked = inspectEvidence(this.auditRoot, job.evidence, hash);
-          job.outputVerification = job.recipe?.preservationContract === 14 && checked.verification.version === 14 && checked.verification.status === 'passed' ? 'passed' : 'not_checked';
+          job.outputVerification = job.recipe?.preservationContract === CURRENT_PRESERVATION_CONTRACT && checked.verification.version === CURRENT_PRESERVATION_CONTRACT && checked.verification.status === 'passed' ? 'passed' : 'not_checked';
         } catch { job.outputVerification = 'not_checked'; }
       }
       this.lastOutputCheck = Date.now();
@@ -336,10 +336,10 @@ class SongsterrJobs {
     this._set(job, 'validating', { message: 'Checking the completed FeedPak…' });
     await this._run(job, ['--validate-feedpak', staging], attempt);
     const outputHash = await hashFile(staging, job.controller.signal);
-    if (result.recipe?.preservationContract !== 14 || result.verification?.version !== 14 || result.verification.status !== 'passed'
+    if (result.recipe?.preservationContract !== CURRENT_PRESERVATION_CONTRACT || result.verification?.version !== CURRENT_PRESERVATION_CONTRACT || result.verification.status !== 'passed'
         || result.verification.outputHash !== outputHash) throw new Error('The converter did not provide a current source verification. Update the converter and retry.');
     const checked = inspectEvidence(this.auditRoot, result.evidence, outputHash);
-    if (checked.verification.version !== 14 || checked.verification.status !== 'passed') throw new Error('Source verification did not pass.');
+    if (checked.verification.version !== CURRENT_PRESERVATION_CONTRACT || checked.verification.status !== 'passed') throw new Error('Source verification did not pass.');
     if (result.scoreHash !== job.cachedScoreHash || checked.record.objects.source !== job.cachedScoreHash) throw new Error('Source verification describes a different tab.');
     Object.assign(job, { outputRelativePath: result.relativePath, outputHash,
       verification: result.verification, evidence: result.evidence, artwork: result.artwork, compatibility: result.compatibility, outputVerification: 'passed',
@@ -347,11 +347,11 @@ class SongsterrJobs {
     const identity = (j) => JSON.stringify([j.sourceKey, j.scoreHash, j.audioHash, j.recipe, j.converterRecipe, j.outputDir, j.outputRelativePath, j.outputSettings]);
     const prior = this.jobs.find((j) => j !== job && j.state === 'completed' && identity(j) === identity(job) && j.outputPath);
     let canReuse = false;
-    if (prior && prior.verification?.version === 14 && prior.verification.status === 'passed') {
+    if (prior && prior.verification?.version === CURRENT_PRESERVATION_CONTRACT && prior.verification.status === 'passed') {
       try {
         const checkedPrior = inspectEvidence(this.auditRoot, prior.evidence, prior.outputHash);
         canReuse = await hashFile(prior.outputPath, job.controller.signal) === prior.outputHash
-          && checkedPrior.verification.version === 14 && checkedPrior.verification.status === 'passed';
+          && checkedPrior.verification.version === CURRENT_PRESERVATION_CONTRACT && checkedPrior.verification.status === 'passed';
       } catch { /* A missing historical report does not invalidate this fresh conversion. */ }
     }
     if (canReuse) {

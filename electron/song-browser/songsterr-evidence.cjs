@@ -2,6 +2,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const CURRENT_PRESERVATION_CONTRACT = 15;
+const KNOWN_PRESERVATION_CONTRACTS = Array.from({ length: CURRENT_PRESERVATION_CONTRACT }, (_, i) => i + 1);
 const DIGEST = /^[a-f0-9]{64}$/;
 const digest = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 
@@ -16,7 +18,7 @@ function checkedFile(root, relative, expected, maxBytes) {
 }
 
 function inspectEvidence(root, reference, outputHash) {
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14].includes(reference?.version) || !DIGEST.test(reference.id || '')) throw new Error('The conversion report is unavailable.');
+  if (!KNOWN_PRESERVATION_CONTRACTS.includes(reference?.version) || !DIGEST.test(reference.id || '')) throw new Error('The conversion report is unavailable.');
   const filename = checkedFile(root, `records/${reference.id}.json`, reference.id, 1024 * 1024);
   const record = JSON.parse(fs.readFileSync(filename, 'utf8'));
   const report = checkedFile(root, `objects/${record.objects?.verification}`, record.objects?.verification, 16 * 1024 * 1024);
@@ -82,8 +84,8 @@ function compatibilityBacklog(root) {
     // independent package verification under the current contract.
     let checked;
     try { checked = inspectEvidence(root, reference); } catch { unreadable++; continue; }
-    if (checked.verification.version === 14 && checked.verification.status === 'passed' && reference.version === 14
-        && report.version >= 14 && DIGEST.test(checked.record.outputHash || '')) {
+    if (checked.verification.version === CURRENT_PRESERVATION_CONTRACT && checked.verification.status === 'passed' && reference.version === CURRENT_PRESERVATION_CONTRACT
+        && report.version >= CURRENT_PRESERVATION_CONTRACT && DIGEST.test(checked.record.outputHash || '')) {
       const active = new Set(report.findings.map(f => JSON.stringify([f.feature, f.category, f.impact])));
       for (const [key, finding] of history.get(sourceKey) || []) {
         if (!active.has(key)) resolved.push({ ...finding, ...identity, sourceKey, reportId: reference.id,
@@ -95,4 +97,4 @@ function compatibilityBacklog(root) {
     groups: [...groups.values()].map(g => ({ ...g, affectedSongs: g.songs.size, songs: [...g.songs.values()] }))
       .sort((a, b) => b.affectedSongs - a.affectedSongs || a.feature.localeCompare(b.feature)) };
 }
-module.exports = { inspectEvidence, reportBundle, compatibilityReport, compatibilityBacklog };
+module.exports = { inspectEvidence, reportBundle, compatibilityReport, compatibilityBacklog, CURRENT_PRESERVATION_CONTRACT, KNOWN_PRESERVATION_CONTRACTS };
