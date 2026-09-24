@@ -152,6 +152,7 @@ def expected(source, alignment):
         for _, inherited in sorted(bar.tempos.items()):
             pass
     previous_signature = None
+    visible_downbeats = 0
     for occurrence, index in enumerate(order):
         bar, origin = source.bars[index], clock.measure_starts[occurrence]
         start_time = recording.at(clock.at(origin))
@@ -163,14 +164,23 @@ def expected(source, alignment):
         while q < bar.length:
             time = recording.at(clock.at(origin + q))
             if time >= 0:
-                result["beats"].append({"time": time, "measure": occurrence + 1 if q == 0 else -1})
+                if q == 0:
+                    visible_downbeats += 1
+                result["beats"].append({"time": time, "measure": visible_downbeats if q == 0 else -1})
             q += F(4, bar.signature[1])
         if bar.section:
             time = recording.at(clock.at(origin))
             if time >= 0:
                 result["sections"].append({"time": time, "name": bar.section})
         if bar.signature != previous_signature:
-            result["time_signatures"].append({"time": max(0., recording.at(clock.at(origin))), "ts": list(bar.signature)})
+            meter = {"time": max(0., recording.at(clock.at(origin))), "ts": list(bar.signature)}
+            # If several silent bars precede audio, only the last meter at its
+            # origin is active. Derive this from source bars independently of
+            # the producer's exported-timeline filtering.
+            if result["time_signatures"] and result["time_signatures"][-1]["time"] == meter["time"]:
+                result["time_signatures"][-1] = meter
+            else:
+                result["time_signatures"].append(meter)
             previous_signature = bar.signature
     tempo_seconds = set(clock.seconds)
     if recording.piecewise:

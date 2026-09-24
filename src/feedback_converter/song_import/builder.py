@@ -163,16 +163,31 @@ def _retime_notation(value, alignment: dict):
     return result
 
 
-def _timeline_items(items: list, alignment: dict, duration: float) -> list:
+def _timeline_items(items: list, alignment: dict, duration: float, *, kind: str | None = None) -> list:
     result = []
+    active_meter = None
     for item in items:
         time = map_time(alignment, item["time"], allow_negative=alignment.get("mapping") == "piecewise-linear")
+        if kind == "time_signatures" and time < 0:
+            active_meter = {**item, "time": 0.0}
         if 0 <= time <= duration:
             entry = {**item, "time": time}
             if "bpm" in entry:
                 scale = source_time_scale(alignment, item["time"]) if alignment.get("mapping") == "piecewise-linear" else float(alignment["scale"])
                 entry["bpm"] = float(entry["bpm"]) / scale
             result.append(entry)
+    if active_meter is not None and (not result or result[0]["time"] > 0):
+        result.insert(0, active_meter)
+    if kind == "beats":
+        # FeedPak uses an ordinal for exported downbeats, not source bar IDs.
+        # Cropping silent pre-roll can remove one or more earlier downbeats.
+        # Keep pickup beats and all timestamps; original bar references remain
+        # in retained source and written notation, whose numbering is unchanged.
+        ordinal = 0
+        for entry in result:
+            if entry.get("measure", -1) > 0:
+                ordinal += 1
+                entry["measure"] = ordinal
     return result
 
 
@@ -192,7 +207,7 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         raise ImportFailure("unsupported_score", "The song title and original artist are required.")
     timeline = {"version": 1}
     for key in ("beats", "sections", "tempos", "time_signatures"):
-        timeline[key] = _timeline_items(performance.get(key, []), alignment, duration)
+        timeline[key] = _timeline_items(performance.get(key, []), alignment, duration, kind=key)
     if alignment.get("mapping") == "piecewise-linear" and alignment.get("tempos"):
         timeline["tempos"] = [deepcopy(item) for item in alignment["tempos"] if 0 <= item["time"] <= duration]
     arrangements, sustain_adjustments, ending_omissions = [], [], []

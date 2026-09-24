@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 11
+VERSION = 12
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "bn", "pkd"}
 TUNINGS = {"guitar": {6: [40, 45, 50, 55, 59, 64], 7: [35, 40, 45, 50, 55, 59, 64], 8: [30, 35, 40, 45, 50, 55, 59, 64]},
@@ -253,7 +253,7 @@ def _compatibility_report(report, score_path, source, check):
         check.fail("compatibility", "import/compatibility", "The compatibility report is incomplete.")
         return
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
-    check.equal("compatibility_version", "import/compatibility", 11, report.get("version"))
+    check.equal("compatibility_version", "import/compatibility", 12, report.get("version"))
     check.equal("compatibility_status", "import/compatibility", "limitations" if rows else "compatible", report.get("status"))
     target = report.get("target", {})
     check.equal("compatibility_target", "import/compatibility", "1.16.0", target.get("feedpak"))
