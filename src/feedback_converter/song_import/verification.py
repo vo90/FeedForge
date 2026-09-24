@@ -19,9 +19,9 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 14
+VERSION = 15
 TIME_TOLERANCE = 0.0000011
-TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "bn", "pkd"}
+TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TUNINGS = {"guitar": {6: [40, 45, 50, 55, 59, 64], 7: [35, 40, 45, 50, 55, 59, 64], 8: [30, 35, 40, 45, 50, 55, 59, 64]},
            "bass": {4: [28, 33, 38, 43], 5: [23, 28, 33, 38, 43], 6: [23, 28, 33, 38, 43, 48]}}
 
@@ -119,7 +119,7 @@ def _notes(wanted, actual, check, part, duration):
         for key in ("t", "sus"):
             check.near("note_time" if key == "t" else "note_sustain", loc + "/" + key, a[key], b.get(key, 0))
         for key in TECHNIQUES:
-            if key in {"slide_out_marks", "slide_in_marks"}:
+            if key in {"slide_out_marks", "slide_in_marks", "pick_scrape_marks"}:
                 continue
             wanted_value, actual_value = a.get(key), b.get(key)
             if wanted_value is None and (actual_value is None or actual_value is False):
@@ -130,6 +130,7 @@ def _notes(wanted, actual, check, part, duration):
                 check.equal("note_technique", loc + "/" + key, wanted_value, actual_value)
         _slide_marks(a.get("slide_out_marks", []), b, check, loc)
         _incoming_marks(a.get("slide_in_marks", []), b, check, loc)
+        _scrape_marks(a.get("pick_scrape_marks", []), b, check, loc)
         curves = (a.get("bnv", []), b.get("bnv", []))
         check.equal("bend_point_count", loc + "/bnv", len(curves[0]), len(curves[1]))
         for pi, (ap, bp) in enumerate(zip(*curves)):
@@ -170,6 +171,25 @@ def _slide_marks(wanted, note, check, location):
             check.equal("slide_mark_direction", at + "/direction", expected["direction"], mark["direction"])
             check.near("slide_mark_time", at + "/start", expected["start"], left)
             check.near("slide_mark_time", at + "/end", expected["end"], right)
+
+
+def _scrape_marks(wanted, note, check, location):
+    # Reuse interval-shape checking, but retain scrape-specific error locations.
+    if not wanted and "pick_scrape_marks" not in note:
+        return
+    if "pick_scrape_marks" in note and note.get("mt") is not True:
+        check.fail("scrape_pitched", location, "Pick scrapes must be unpitched and unscored.")
+    if "pick_scrape_marks" in note and not note["pick_scrape_marks"]:
+        check.fail("scrape_empty", location, "A present scrape extension needs an interval.")
+    class ScrapeCheck:
+        def __getattr__(self, name):
+            def call(code, loc, *args):
+                return getattr(check, name)(code.replace("slide_mark", "scrape_mark"),
+                    loc.replace("slide_out_marks", "pick_scrape_marks"), *args)
+            return call
+    proxy = dict(note)
+    proxy["slide_out_marks"] = note.get("pick_scrape_marks", [])
+    _slide_marks(wanted, proxy, ScrapeCheck(), location)
 
 
 def _incoming_marks(wanted, note, check, location):
@@ -253,7 +273,7 @@ def _compatibility_report(report, score_path, source, check):
         check.fail("compatibility", "import/compatibility", "The compatibility report is incomplete.")
         return
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
-    check.equal("compatibility_version", "import/compatibility", 14, report.get("version"))
+    check.equal("compatibility_version", "import/compatibility", 15, report.get("version"))
     check.equal("compatibility_status", "import/compatibility", "limitations" if rows else "compatible", report.get("status"))
     target = report.get("target", {})
     check.equal("compatibility_target", "import/compatibility", "1.16.0", target.get("feedpak"))
@@ -284,7 +304,7 @@ def _compatibility_report(report, score_path, source, check):
                         where = path + f"/voices/{vi}/beats/{bti}"
                         remember(beat, ("chord", "wahwah", "letRing"), "beat", where)
                         for ni, note in enumerate(beat["notes"]):
-                            remember(note, ("staccato",), "note", where + f"/notes/{ni}")
+                            remember(note, ("staccato", "pickScrape"), "note", where + f"/notes/{ni}")
         for part in source.parts:
             if part.notation_unavailable and any(part.bars):
                 expected[("notation.written_rhythm", "tracks/" + part.id)] = None
@@ -413,6 +433,11 @@ def _terminal_adjustments(wanted, alignment, recipe, archive, duration, source, 
                             "audioStart": round(start, 6), "originalDuration": round(sustain, 6),
                             "exportedDuration": shortened, "trimmedSeconds": round(sustain - shortened, 6)})
             note["sus"] = shortened
+            if "pick_scrape_marks" in note:
+                note["pick_scrape_marks"] = [{**m, "end": min(m["end"], shortened)}
+                    for m in note["pick_scrape_marks"] if m["start"] < shortened]
+                if not note["pick_scrape_marks"]:
+                    note.pop("pick_scrape_marks")
             if "bnv" in note:
                 note["bnv"] = curve
     if not changes:
@@ -523,7 +548,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
     check = Check()
     report = {"version": VERSION, "status": "failed", "errors": check.errors, "warnings": [], "counts": {},
               "scope": ["source_identity", "track_coverage", "physical_pitch", "note_timing", "techniques", "bend_curves",
-                        "slide_out_segment_timing", "slide_in_destination_timing", "authored_chord_groups", "beats", "meter", "sections", "tempo", "notation_beat_timing",
+                        "slide_out_segment_timing", "slide_in_destination_timing", "pick_scrape_intervals", "authored_chord_groups", "beats", "meter", "sections", "tempo", "notation_beat_timing",
                         "notation_written_rhythm", "notation_pitch_and_ties", "container_references"],
               "rounding": {"secondsDecimalPlaces": 6, "comparisonToleranceSeconds": TIME_TOLERANCE},
               "musicalQualityAssessed": False}

@@ -202,6 +202,20 @@ def render(score: Score) -> dict:
                     if sound_end > end:
                         raise ScoreImportError("Staccato's minimum would extend the authored note; no repair was applied.")
                 output["sus"] = at(sound_end) - output["t"]
+                # Scrapes inherit across tied continuations, but retain every
+                # authored change of direction. These are time intervals, not
+                # a trajectory between the (possibly hidden) source frets.
+                scrape = note.pick_scrape or (articulation.get("scrape") if note.tie else None)
+                articulation["scrape"] = scrape
+                if scrape:
+                    if not output.get("mt"):
+                        raise ScoreImportError("A pick scrape cannot target a pitched note.")
+                    marks = output.setdefault("pick_scrape_marks", [])
+                    left, right = max(0., at(position) - output["t"]), at(end) - output["t"]
+                    if marks and marks[-1]["direction"] == scrape and abs(marks[-1]["end"] - left) < 1e-9:
+                        marks[-1]["end"] = right
+                    else:
+                        marks.append({"direction": scrape, "start": left, "end": right})
                 gesture_duration = max(note.duration / 2, Fraction(1, 32)) if note.staccato else note.duration
                 if note.bends:
                     curve = [{"t": at(position + gesture_duration * p) - output["t"], "v": v} for p, v in note.bends]
@@ -239,6 +253,14 @@ def render(score: Score) -> dict:
                 previous_note[link_key] = (output, end)
         if pending_slide or pending_hopo:
             raise ScoreImportError(f"A linked technique has no destination in {track.name}.")
+        # Apply the final sounding duration once ties have extended it. Clipping
+        # each tied segment early loses later intervals on staccato attacks.
+        for output in rendered:
+            if "pick_scrape_marks" in output:
+                output["pick_scrape_marks"] = [{**m, "end": min(m["end"], output["sus"])}
+                    for m in output["pick_scrape_marks"] if m["start"] < output["sus"]]
+                if not output["pick_scrape_marks"]:
+                    output.pop("pick_scrape_marks")
         if any(n["sus"] <= 0 for n in rendered):
             raise ScoreImportError(f"An authored strum consumes a sounding note in {track.name}; no duration was repaired.")
         # A written leading grace may sound in the preceding measure. Voices

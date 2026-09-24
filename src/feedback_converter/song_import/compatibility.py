@@ -8,7 +8,7 @@ import json
 import math
 from .songsterr_harmonics import exact_natural
 
-VERSION = 14
+VERSION = 15
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -30,6 +30,7 @@ KNOWN["tempo"].add("visible")
 KNOWN["beat"].update({"chord", "upStroke", "downStroke", "pickStroke", "wahwah", "brushStroke", "arpeggio", "vibratoWithTremoloBar"})
 KNOWN["note"].update({"leftHandVibrato", "pickScrape", "vibratoWithTremoloBar"})
 LIMITATIONS = {
+    ("note", "pickScrape"): "Pick scrapes: visual only, not scored. Direction, strings and timing are preserved; an updated game is required to display them.",
     ("beat", "letRing"): "The let-ring marking is retained in the original source. Written and tied note durations are preserved; the game does not display this marking or extend ringing beyond those durations.",
     ("measure", "doubleBarline"): "The double barline is retained in the source; the game uses its ordinary measure display. Notes and timing are unchanged.",
     ("measure", "keySignature"): "The written key signature is retained in the source. Explicit pitches are converted unchanged.",
@@ -42,7 +43,7 @@ LIMITATIONS = {
 UNIMPLEMENTED = {
     "measure": {"direction", "directions", "fromDirection", "fermata", "freeTime"},
     "beat": {"grace", "graceNotes", "tremoloBar", "stroke", "whammy", "vibratoWithTremoloBar"},
-    "note": {"trill", "grace", "graceNote", "tremoloBar", "whammy", "harmonicFret", "pickScrape", "vibratoWithTremoloBar"},
+    "note": {"trill", "grace", "graceNote", "tremoloBar", "whammy", "harmonicFret", "vibratoWithTremoloBar"},
     "tempo": set(),
 }
 
@@ -117,6 +118,8 @@ def inspect_songsterr(document, *, track_indices=None):
             category = message = None
             if scope == "tempo" and key == "visible" and not isinstance(value, bool):
                 category, message = "source_structure", "Invalid tempo visibility flag."
+            elif scope == "note" and key == "pickScrape" and (value not in ("up", "down") or obj.get("dead") is not True):
+                category, message = "source_structure", "Pick scrapes require a direction and an unpitched dead note."
             elif key not in KNOWN[scope]:
                 category, message = "unknown_semantics", "This feature needs interpretation before reliable conversion."
             elif key in UNIMPLEMENTED.get(scope, set()) and value:
@@ -177,7 +180,8 @@ def inspect_songsterr(document, *, track_indices=None):
                         inspect(note, "note", npath, nc)
                         if not isinstance(note, dict):
                             continue
-                        if (not note.get('rest') and type(note.get('fret')) is int and 24 < note['fret'] <= 48):
+                        visual_scrape = note.get('dead') is True and note.get('pickScrape') in ('up', 'down')
+                        if (not visual_scrape and not note.get('rest') and type(note.get('fret')) is int and 24 < note['fret'] <= 48):
                             add_finding(report, feature='note.fret_range', category='game_representation', impact='blocking',
                                         message='This authored fret is beyond the current game range of 24. Its original pitch and position are retained; no octave or string substitution was made.',
                                         location=npath + '/fret', value=note['fret'], **nc)

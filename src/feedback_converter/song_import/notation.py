@@ -31,7 +31,7 @@ def _note(note, track, performed):
 def render_notation(score, track, visits, at, performed_notes=()):
     if not track.written_bars:
         return None, []
-    if any(note.fret == 127 and note.effects.get("mt") is True for bar in track.bars for note in bar):
+    if any(note.pick_scrape or note.fret == 127 and note.effects.get("mt") is True for bar in track.bars for note in bar):
         return None, [f"Notation for {track.name} is retained in source evidence only: "
                       "unpitched mutes have no MIDI pitch. The playable tab preserves their strings and timing."]
     for voices in track.written_bars:

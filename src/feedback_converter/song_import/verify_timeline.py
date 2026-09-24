@@ -247,7 +247,7 @@ def expected(source, alignment):
                     result["tie_segments"] += 1
                 else:
                     event = {"start": start + atom.attack_offset, "end": end, "s": atom.string, "f": atom.fret, "effects": dict(atom.effects),
-                             "curve": [], "slide_marks": [], "incoming_marks": [], "locations": [atom.location], "occurrence": occurrence + 1, "beat": atom.beat,
+                             "curve": [], "slide_marks": [], "incoming_marks": [], "scrapes": [], "scrape_direction": None, "locations": [atom.location], "occurrence": occurrence + 1, "beat": atom.beat,
                              "staccato": atom.staccato, "any_staccato": False, "pitch_gesture": False}
                     if atom.hopo_destination or key in pending_hopos:
                         if previous is None:
@@ -267,6 +267,14 @@ def expected(source, alignment):
                     if len(notes) > MAX_EVENTS:
                         raise ValueError("source: performed note limit exceeded")
                 event["any_staccato"] |= atom.staccato
+                direction = atom.pick_scrape or (event["scrape_direction"] if atom.tie else None)
+                event["scrape_direction"] = direction
+                if direction:
+                    intervals = event["scrapes"]
+                    if intervals and intervals[-1][0] == direction and intervals[-1][2] == start:
+                        intervals[-1] = (direction, intervals[-1][1], end)
+                    else:
+                        intervals.append((direction, max(start, event["start"]), end))
                 event["pitch_gesture"] |= bool(atom.bends or atom.slide or atom.slide_in)
                 if len(event["locations"]) > 1 and event["any_staccato"] and event["pitch_gesture"]:
                     unsupported(atom.location, "Staccato ties with pitch gestures are not independently verified.")
@@ -312,6 +320,13 @@ def expected(source, alignment):
                 unsupported(n["locations"][0], "Strum exceeds its sounding interval; no attack or endpoint was repaired.")
             mapped_start, mapped_end = recording.at(start), recording.at(end)
             row = {"t": mapped_start, "sus": round(mapped_end - mapped_start, 6), "s": n["s"], "f": n["f"], **n["effects"]}
+            if n["scrapes"]:
+                row["pick_scrape_marks"] = [{"direction": direction,
+                    "start": round(recording.at(clock.at(left)) - mapped_start, 6),
+                    "end": round(recording.at(clock.at(min(right, sound_end))) - mapped_start, 6)}
+                    for direction, left, right in n["scrapes"] if left < sound_end]
+                if not row["pick_scrape_marks"]:
+                    row.pop("pick_scrape_marks")
             if n["slide_marks"]:
                 row["slide_out_marks"] = [{"direction": direction,
                                            "start": round(recording.at(clock.at(left)) - mapped_start, 6),

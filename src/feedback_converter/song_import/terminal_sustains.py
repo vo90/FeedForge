@@ -53,6 +53,11 @@ def trim_held_note(note: dict, duration: float) -> tuple[dict, dict | None]:
             or any(p["time"] > shortened + EPSILON for p in note.get("slide_in_marks", []))):
         raise ImportFailure("alignment_failed", "The audio ends during a bend or slide; it cannot be shortened as a held sustain.")
     adjusted = {**note, "sus": shortened}
+    if "pick_scrape_marks" in note:
+        adjusted["pick_scrape_marks"] = [{**mark, "end": min(mark["end"], shortened)}
+            for mark in note["pick_scrape_marks"] if mark["start"] < shortened]
+        if not adjusted["pick_scrape_marks"]:
+            adjusted.pop("pick_scrape_marks")
     if "bnv" in note:
         adjusted["bnv"] = curve
     detail = {"string": note["s"], "fret": note["f"], "audioStart": round(start, 6),

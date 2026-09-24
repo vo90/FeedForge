@@ -123,11 +123,11 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
                "outputSettings": {"nameTemplate": "{artist} - {title}", "outputLayout": "artist", "generateDifficulty": precise_harmonic}}
     result = worker.run_import(request)
     assert result["ok"], result
-    assert result["recipe"]["preservationContract"] == result["verification"]["version"] == result["evidence"]["version"] == 14
+    assert result["recipe"]["preservationContract"] == result["verification"]["version"] == result["evidence"]["version"] == 15
     extensions = ["slide_in_marks", "slide_out", "slide_out_marks"]
     if precise_harmonic:
         extensions = ['hn', 'hps', *extensions]
-    assert result["recipe"]["compatibility"] == {"version": 4, "extensions": extensions, "status": "requires_consumer_support"}
+    assert result["recipe"]["compatibility"] == {"version": 5, "extensions": extensions, "status": "requires_consumer_support"}
     assert result["alignment"]["method"] == "songsterr-video-points-v1"
     assert len(result["recipe"]["alignment"]["provenance"]["mapHash"]) == 64
     assert "anchors" not in result["alignment"] and "tempos" not in result["alignment"]

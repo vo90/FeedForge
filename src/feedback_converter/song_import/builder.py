@@ -64,6 +64,9 @@ def _retime_note(note: dict, alignment: dict, duration: float, *, chord_time: fl
                              "audioDuration": duration})
     if "sus" in note:
         result["sus"] = round(sustain, 6)
+    if "pick_scrape_marks" in note:
+        from .pick_scrape import retime
+        result["pick_scrape_marks"] = retime(note, alignment, original, start, sustain)
     if "slide_out_marks" in note:
         marks = note["slide_out_marks"]
         if not isinstance(marks, list):

@@ -66,6 +66,7 @@ class Atom:
     staccato: bool = False
     pitch_offset: int = 0
     attack_offset: F = F(0)
+    pick_scrape: str | None = None
 
 
 @dataclass
@@ -401,7 +402,7 @@ def songsterr(document):
                 unsupported("automations", "Tracks have different performed tempo automation.")
     parts, excluded = [], []
     note_keys = {"string", "fret", "tie", "rest", "dead", "vibrato", "wideVibrato", "ghost", "accentuated",
-                 "tap", "tapping", "hp", "harmonic", "harmonicFret", "slide", "bend", "leftHandVibrato", "staccato"}
+                 "tap", "tapping", "hp", "harmonic", "harmonicFret", "slide", "bend", "leftHandVibrato", "staccato", "pickScrape"}
     beat_keys = {"duration", "notes", "rest", "type", "dots", "tuplet", "tupletStart", "tupletStop", "graceNote",
                  "palmMute", "letRing", "tremolo", "tap", "tapping", "slap", "pop", "slapping", "popping", "vibrato", "wideVibrato", "text", "velocity", "gradualVelocity", "chord", "pickStroke", "wahwah", "brushStroke", "arpeggio", "upStroke", "downStroke", "upArpeggio", "downArpeggio"}
     for pi, (meta, raw) in enumerate(zip(metadata, raw_parts)):
@@ -484,6 +485,9 @@ def songsterr(document):
                             continue
                         _active_unknown(note, note_keys, {"id", "velocity", "finger", "leftFinger", "rightFinger"}, nloc, ignored)
                         fx = {}
+                        scrape = note.get("pickScrape")
+                        if scrape is not None and (type(scrape) is not str or scrape not in ("up", "down") or note.get("dead") is not True):
+                            unsupported(nloc + "/pickScrape", "Invalid unpitched scrape instruction.")
                         unpitched = note.get("dead") is True and note.get("fret") is None
                         fret = 127 if unpitched else integer(note["fret"], nloc)
                         if not unpitched and not 0 <= fret <= 48:
@@ -491,6 +495,8 @@ def songsterr(document):
                         if unpitched:
                             if any(note.get(k) for k in ("hp", "slide", "bend", "harmonic", "vibrato", "wideVibrato", "leftHandVibrato")):
                                 unsupported(nloc, "Pitch gestures on an unpitched mute are not independently representable.")
+                            track.unpitched_mutes.append(nloc)
+                        elif scrape:
                             track.unpitched_mutes.append(nloc)
                         if note.get("leftHandVibrato") not in (None, "slight", "wide"):
                             unsupported(nloc + "/leftHandVibrato", "Unverified vibrato width.")
@@ -579,6 +585,7 @@ def songsterr(document):
                                           bool(note.get("hp"))))
                         fact["notes"].append(atoms[-1])
                         atoms[-1].staccato = note.get("staccato") is True
+                        atoms[-1].pick_scrape = scrape
                         atoms[-1].pitch_offset = harmonic_shift
                         atoms[-1].attack_offset = offset
                         atoms[-1].wide_vibrato = bool(note.get("wideVibrato")) or note.get("leftHandVibrato") == "wide"
