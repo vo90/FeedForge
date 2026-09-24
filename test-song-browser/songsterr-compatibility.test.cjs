@@ -47,20 +47,20 @@ test('a vanished finding stays unresolved until the current package is independe
   function save(version, status, findings) {
     const object = value => { const data = JSON.stringify(value), id = hash(data); fs.writeFileSync(path.join(root, 'objects', id), data); return id; };
     const source = hash('immutable tab');
-    const verification = object({ version: 16, status, sourceSha256: source });
+    const verification = object({ version: 17, status, sourceSha256: source });
     const compatibility = object({ version, findings, status: findings.length ? 'blocked' : 'compatible' });
-    const data = JSON.stringify({ version: 16, outputHash: status === 'passed' ? hash('package') : null,
+    const data = JSON.stringify({ version: 17, outputHash: status === 'passed' ? hash('package') : null,
       sourceMetadata: { songId: '12', revisionId: '34' }, objects: { source, verification, compatibility } });
     const id = hash(data), file = path.join(root, 'records', id + '.json');
     fs.writeFileSync(file, data); fs.utimesSync(file, ++clock, clock);
   }
   save(4, 'incomplete', [finding]);
-  save(16, 'incomplete', []);
+  save(17, 'incomplete', []);
   assert.equal(compatibilityBacklog(root).resolved.length, 0);
-  save(16, 'passed', []);
+  save(17, 'passed', []);
   const list = compatibilityBacklog(root);
   assert.equal(list.resolved.length, 1);
   assert.equal(list.resolved[0].workStatus, 'fixed_verified');
   assert.equal(list.resolved[0].sourceHash, hash('immutable tab'));
-  assert.equal(list.resolved[0].assessmentVersion, 16);
+  assert.equal(list.resolved[0].assessmentVersion, 17);
 });

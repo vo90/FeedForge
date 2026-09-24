@@ -226,6 +226,14 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
                     _unavailable("invalid_bend_timing")
             if mapped_end > duration + 0.0000011:
                 mapped = {**note, "t": round(mapped_start, 6), "sus": round(mapped_end - mapped_start, 6)}
+                if 'whammy' in note:
+                    from ..whammy import retime_whammy
+                    try:
+                        mapped['whammy'] = retime_whammy(note['whammy'], start, sustain, mapped_start,
+                                                        lambda t: _mapped_value(result, t),
+                                                        [p['score'] for p in result.get('anchors', [])])
+                    except ValueError:
+                        _unavailable('invalid_whammy_timing')
                 for key, coordinates in (("bnv", ("t",)), ("slide_out_marks", ("start", "end")), ("slide_in_marks", ("time",))):
                     if key in mapped:
                         mapped[key] = [{**p, **{k: round(_mapped_value(result, start + p[k]) - mapped_start, 6) for k in coordinates}}

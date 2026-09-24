@@ -164,6 +164,10 @@ def _validate_note(
         from .harmonic_target import valid_note_target
         if not valid_note_target(note):
             error(f"{path}/harmonic_target: invalid fretted-harmonic target or conflicting note flags")
+    if "whammy" in note:
+        from .whammy import valid_whammy
+        if not valid_whammy(note['whammy'], note.get('sus', 0)):
+            error(f"{path}/whammy: invalid bar expression or interval")
     if "harmonic_alias" in note and not (note["harmonic_alias"] == "songsterr-natural-15"
             and note.get("hm") is True and type(note.get("f")) is int and note["f"] == 15
             and not any(note.get(k) for k in ("hp", "mt", "fhm"))

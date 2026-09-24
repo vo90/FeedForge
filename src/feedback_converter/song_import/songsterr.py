@@ -11,6 +11,7 @@ from .inventory import FeatureInventory
 from .model import Measure, Note, Score, ScoreImportError, Track, WrittenBeat, WrittenVoice, integer, rational
 from .songsterr_timing import part_timing, strum_offsets, FEELS
 from .songsterr_fields import bend_points
+from .songsterr_whammy import source_whammy
 from .songsterr_harmonics import exact_natural, natural_target, natural_alias, source_target
 from .songsterr_automation import performed_tempos
 
@@ -139,7 +140,8 @@ def _note(raw, beat, position, duration, strings):
             raise ScoreImportError("Bend has no curve data.")
         bends = bend_points(bend["points"])
     return Note(position, duration, string, fret, bool(raw.get("tie")), effects,
-                sorted(bends), False, slide_out, slide_in=slide_in, staccato=raw.get("staccato") is True, pick_scrape=scrape)
+                sorted(bends), False, slide_out, slide_in=slide_in, staccato=raw.get("staccato") is True,
+                pick_scrape=scrape, whammy=source_whammy(beat))
 
 
 def _written_rhythm(beat, duration):
@@ -161,6 +163,10 @@ def _written_rhythm(beat, duration):
 
 def _annotations(beat):
     result = {}
+    bar = source_whammy(beat)
+    if bar is not None:
+        result["bar"] = {"points": [{"position": float(p), "semitones": v} for p, v in bar["curve"]],
+                         **({"vibrato": bar["vibrato"]} if bar["vibrato"] else {})}
     for key in ("slapping", "popping"):
         if key in beat and not isinstance(beat[key], bool):
             raise ScoreImportError(f"Invalid {key} flag.")
@@ -353,7 +359,7 @@ def parse(document: dict, *, track_indices=None) -> Score:
                 for beat_index, beat in enumerate(voice["beats"]):
                     beat_id = f"{voice_id}:{beat_index}"
                     inventory.inspect(beat, "Songsterr beat", beat_id,
-                                      playable={"duration", "notes", "rest", "palmMute", "tremolo", "tap", "tapping", "slap", "pop", "slapping", "popping", "vibrato", "wideVibrato", "letRing", "graceNote", "grace", "graceNotes", "tremoloBar", "stroke", "whammy", "pickStroke", "brushStroke", "arpeggio", "upStroke", "downStroke", "upArpeggio", "downArpeggio"},
+                                      playable={"duration", "notes", "rest", "palmMute", "tremolo", "tap", "tapping", "slap", "pop", "slapping", "popping", "vibrato", "wideVibrato", "vibratoWithTremoloBar", "letRing", "graceNote", "grace", "graceNotes", "tremoloBar", "stroke", "whammy", "pickStroke", "brushStroke", "arpeggio", "upStroke", "downStroke", "upArpeggio", "downArpeggio"},
                                       notation={"duration", "notes", "rest", "type", "dots", "tuplet", "text", "velocity", "gradualVelocity", "letRing", "palmMute", "tap", "tapping", "slap", "pop", "vibrato", "wideVibrato", "graceNote"},
                                       retained={"chord", "wahwah"},
                                       # Attack offsets are kept in the playable chart.
@@ -361,7 +367,7 @@ def parse(document: dict, *, track_indices=None) -> Score:
                                       strict=True)
                     if beat.get("wahwah") not in (None, "open", "closed"):
                         raise ScoreImportError("Unsupported wah pedal marking.")
-                    if any(beat.get(k) for k in ("grace", "graceNotes", "tremoloBar", "stroke", "whammy")):
+                    if any(beat.get(k) for k in ("grace", "graceNotes", "stroke", "whammy")):
                         raise ScoreImportError("Unsupported Songsterr beat technique.")
                     grace = beat.get("graceNote")
                     if grace not in (None, "onBeat", "beforeBeat"):

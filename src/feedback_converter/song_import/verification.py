@@ -19,10 +19,10 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 16
+VERSION = 17
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
-TECHNIQUES.update({"harmonic_target", "harmonic_alias"})
+TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy"})
 TUNINGS = {"guitar": {6: [40, 45, 50, 55, 59, 64], 7: [35, 40, 45, 50, 55, 59, 64], 8: [30, 35, 40, 45, 50, 55, 59, 64]},
            "bass": {4: [28, 33, 38, 43], 5: [23, 28, 33, 38, 43], 6: [23, 28, 33, 38, 43, 48]}}
 
@@ -120,7 +120,7 @@ def _notes(wanted, actual, check, part, duration):
         for key in ("t", "sus"):
             check.near("note_time" if key == "t" else "note_sustain", loc + "/" + key, a[key], b.get(key, 0))
         for key in TECHNIQUES:
-            if key in {"slide_out_marks", "slide_in_marks", "pick_scrape_marks"}:
+            if key in {"slide_out_marks", "slide_in_marks", "pick_scrape_marks", "whammy"}:
                 continue
             wanted_value, actual_value = a.get(key), b.get(key)
             if wanted_value is None and (actual_value is None or actual_value is False):
@@ -132,6 +132,8 @@ def _notes(wanted, actual, check, part, duration):
         _slide_marks(a.get("slide_out_marks", []), b, check, loc)
         _incoming_marks(a.get("slide_in_marks", []), b, check, loc)
         _scrape_marks(a.get("pick_scrape_marks", []), b, check, loc)
+        from .verify_whammy import check_bar
+        check_bar(a.get('whammy'), b.get('whammy'), check, loc+'/whammy')
         curves = (a.get("bnv", []), b.get("bnv", []))
         check.equal("bend_point_count", loc + "/bnv", len(curves[0]), len(curves[1]))
         for pi, (ap, bp) in enumerate(zip(*curves)):
@@ -303,7 +305,7 @@ def _compatibility_report(report, score_path, source, check):
                 for vi, voice in enumerate(bar["voices"]):
                     for bti, beat in enumerate(voice["beats"]):
                         where = path + f"/voices/{vi}/beats/{bti}"
-                        remember(beat, ("chord", "wahwah", "letRing"), "beat", where)
+                        remember(beat, ("chord", "wahwah", "letRing", "tremoloBar", "vibratoWithTremoloBar"), "beat", where)
                         for ni, note in enumerate(beat["notes"]):
                             remember(note, ("staccato", "pickScrape"), "note", where + f"/notes/{ni}")
                             if (note.get('harmonic') in ('semi', 'feedback') and note.get('harmonicFret') is not None
@@ -418,6 +420,23 @@ def _terminal_adjustments(wanted, alignment, recipe, archive, duration, source, 
             if start + sustain <= duration + TIME_TOLERANCE:
                 continue
             shortened = round(cutoff - start, 6)
+            if note.get('whammy'):
+                invalid = False
+                for segment in note['whammy']['segments']:
+                    if segment['end'] <= shortened + TIME_TOLERANCE:
+                        continue
+                    if segment['start'] >= shortened:
+                        invalid = True; break
+                    earlier = [p for p in segment['curve'] if p['t'] <= shortened]
+                    later = [p for p in segment['curve'] if p['t'] > shortened]
+                    if later and (not earlier or any(abs(p['v']-earlier[-1]['v']) > 1e-10 for p in later)):
+                        invalid = True; break
+                    if later:
+                        segment['curve'] = earlier + ([{'t':shortened,'v':earlier[-1]['v']}] if earlier[-1]['t'] < shortened else [])
+                    segment['end'] = shortened
+                if invalid:
+                    check.fail('adjustment_technique',item['locations'][0],'The audio boundary crosses an authored bar gesture.')
+                    continue
             curve = note.get("bnv", [])
             if any(p["t"] > shortened + TIME_TOLERANCE for p in curve):
                 earlier = [p for p in curve if p["t"] <= shortened]

@@ -127,7 +127,7 @@ def test_finished_archive_is_verified_against_source_and_lost_marks_fail(tmp_pat
     performance=load_performance(source_path)
     alignment={'status':'validated','offset':0,'scale':1}
     built=build_feedpak(performance,audio,alignment,job,output_dir=tmp_path/'out',source_path=source_path,
-        compatibility=performance['compatibilityReport'],recipe={'preservationContract':16})
+        compatibility=performance['compatibilityReport'],recipe={'preservationContract':17})
     archive=Path(built['stagingPath'])
     assert verify_import(source_path,archive,alignment)['status']=='passed'
     with zipfile.ZipFile(archive) as z: files={name:z.read(name) for name in z.namelist()}

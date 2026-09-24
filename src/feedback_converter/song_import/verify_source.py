@@ -67,6 +67,7 @@ class Atom:
     pitch_offset: int = 0
     attack_offset: F = F(0)
     pick_scrape: str | None = None
+    whammy: dict | None = None
 
 
 @dataclass
@@ -403,7 +404,7 @@ def songsterr(document):
     parts, excluded = [], []
     note_keys = {"string", "fret", "tie", "rest", "dead", "vibrato", "wideVibrato", "ghost", "accentuated",
                  "tap", "tapping", "hp", "harmonic", "harmonicFret", "slide", "bend", "leftHandVibrato", "staccato", "pickScrape"}
-    beat_keys = {"duration", "notes", "rest", "type", "dots", "tuplet", "tupletStart", "tupletStop", "graceNote",
+    beat_keys = {"tremoloBar", "vibratoWithTremoloBar", "duration", "notes", "rest", "type", "dots", "tuplet", "tupletStart", "tupletStop", "graceNote",
                  "palmMute", "letRing", "tremolo", "tap", "tapping", "slap", "pop", "slapping", "popping", "vibrato", "wideVibrato", "text", "velocity", "gradualVelocity", "chord", "pickStroke", "wahwah", "brushStroke", "arpeggio", "upStroke", "downStroke", "upArpeggio", "downArpeggio"}
     for pi, (meta, raw) in enumerate(zip(metadata, raw_parts)):
         tid = str(meta.get("id", pi))
@@ -438,6 +439,8 @@ def songsterr(document):
                 for bti, beat in enumerate(voice["beats"]):
                     loc = f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}"
                     _active_unknown(beat, beat_keys, {"beamStart", "beamStop", "id"}, loc, ignored)
+                    from .verify_whammy import read_bar
+                    bar_expression = read_bar(beat, loc)
                     for key in ("slapping", "popping"):
                         if key in beat and not isinstance(beat[key], bool):
                             raise ValueError(loc + ": invalid " + key + " flag")
@@ -459,6 +462,9 @@ def songsterr(document):
                         track.notation_unavailable.append(loc)
                     ratio = F(4, denominator) * (2 - F(1, 2 ** dots)) / written_duration if denominator and denominator > 0 else F(1)
                     written = {"dur": denominator, "dot": dots, "tu": [ratio.numerator, ratio.denominator] if ratio != 1 else None}
+                    if bar_expression is not None:
+                        written["bar"] = {"points": [{"position": float(p), "semitones": float(v)} for p,v in bar_expression['curve']],
+                                          **({"vibrato": bar_expression['vibrato']} if bar_expression['vibrato'] else {})}
                     for field, output in {"velocity": "dyn", "vibrato": "vib", "wideVibrato": "vibw", "palmMute": "pm",
                                           "letRing": "lr", "tap": "tap", "tapping": "tap", "slap": "slap", "pop": "pop", "slapping": "slap", "popping": "pop"}.items():
                         if beat.get(field):
@@ -603,6 +609,8 @@ def songsterr(document):
                         fact["notes"].append(atoms[-1])
                         atoms[-1].staccato = note.get("staccato") is True
                         atoms[-1].pick_scrape = scrape
+                        atoms[-1].whammy = ({**bar_expression, 'source_id': f'songsterr:{pi}:{bi}:{vi}:{bti}'}
+                                           if bar_expression is not None else None)
                         atoms[-1].pitch_offset = harmonic_shift
                         atoms[-1].attack_offset = offset
                         atoms[-1].wide_vibrato = bool(note.get("wideVibrato")) or note.get("leftHandVibrato") == "wide"

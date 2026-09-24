@@ -81,7 +81,7 @@ def features(path):
 
 def samples(events, left, right):
     notes = [n for n in events if left <= n['t'] < right and n['midi'] is not None and 28 <= n['midi'] <= 96
-             and not any(n['effects'].get(k) for k in ['mt', 'bn', 'bnv', 'sl', 'slu'])]
+             and not any(n['effects'].get(k) for k in ['mt', 'bn', 'bnv', 'sl', 'slu', 'whammy'])]
     groups = {}
     for note in notes:
         groups.setdefault(round(note['t'], 3), []).append(note)

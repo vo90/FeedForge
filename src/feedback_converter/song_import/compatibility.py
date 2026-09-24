@@ -8,7 +8,7 @@ import json
 import math
 from .songsterr_harmonics import exact_natural, natural_alias, source_target
 
-VERSION = 16
+VERSION = 17
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -30,6 +30,8 @@ KNOWN["tempo"].add("visible")
 KNOWN["beat"].update({"chord", "upStroke", "downStroke", "pickStroke", "wahwah", "brushStroke", "arpeggio", "vibratoWithTremoloBar"})
 KNOWN["note"].update({"leftHandVibrato", "pickScrape", "vibratoWithTremoloBar"})
 LIMITATIONS = {
+    ("beat", "tremoloBar"): "Whammy-bar pitch curves are preserved. Bar expression is optional; an updated game is required for the display and scoring policy.",
+    ("beat", "vibratoWithTremoloBar"): "Slight/wide bar vibrato is preserved. These notes are visual only in the updated game because the source does not specify an exact pitch curve; they do not reduce accuracy or streaks.",
     ("note", "pickScrape"): "Pick scrapes: visual only, not scored. Direction, strings and timing are preserved; an updated game is required to display them.",
     ("beat", "letRing"): "The let-ring marking is retained in the original source. Written and tied note durations are preserved; the game does not display this marking or extend ringing beyond those durations.",
     ("measure", "doubleBarline"): "The double barline is retained in the source; the game uses its ordinary measure display. Notes and timing are unchanged.",
@@ -42,7 +44,7 @@ LIMITATIONS = {
 # These names are understood but do not yet have a faithful conversion mapping.
 UNIMPLEMENTED = {
     "measure": {"direction", "directions", "fromDirection", "fermata", "freeTime"},
-    "beat": {"grace", "graceNotes", "tremoloBar", "stroke", "whammy", "vibratoWithTremoloBar"},
+    "beat": {"grace", "graceNotes", "stroke", "whammy"},
     "note": {"trill", "grace", "graceNote", "tremoloBar", "whammy", "harmonicFret", "vibratoWithTremoloBar"},
     "tempo": set(),
 }

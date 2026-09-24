@@ -79,6 +79,6 @@ def test_strummed_hopo_destination_keeps_written_technique_and_independent_verif
     source_path = tmp_path / 'score.json'
     alignment = {'status': 'validated', 'offset': 0, 'scale': 1}
     built = build_feedpak(performance, audio, alignment, job, output_dir=tmp_path / 'out',
-                         source_path=source_path, compatibility=performance['compatibilityReport'], recipe={'preservationContract': 16})
+                         source_path=source_path, compatibility=performance['compatibilityReport'], recipe={'preservationContract': 17})
     checked = verify_import(source_path, Path(built['stagingPath']), alignment)
     assert checked['status'] == 'passed', checked['errors']

@@ -64,6 +64,14 @@ def _retime_note(note: dict, alignment: dict, duration: float, *, chord_time: fl
                              "audioDuration": duration})
     if "sus" in note:
         result["sus"] = round(sustain, 6)
+    if "whammy" in note:
+        from ..whammy import retime_whammy
+        try:
+            result["whammy"] = retime_whammy(note["whammy"], original, original_sustain, start,
+                                             lambda t: map_time(alignment, t),
+                                             [p['score'] for p in alignment.get('anchors', [])])
+        except ValueError as exc:
+            raise ImportFailure("unsupported_score", str(exc)) from exc
     if "pick_scrape_marks" in note:
         from .pick_scrape import retime
         result["pick_scrape_marks"] = retime(note, alignment, original, start, sustain)

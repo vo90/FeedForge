@@ -123,6 +123,6 @@ def test_built_package_retains_the_interpretation_and_verifies(tmp_path,kind):
     path=tmp_path/'source.json';path.write_text(json.dumps(source),encoding='utf-8')
     performance=load_performance(path);alignment={'status':'validated','offset':0,'scale':1}
     built=build_feedpak(performance,audio,alignment,job,output_dir=tmp_path/'out',source_path=path,
-        compatibility=performance['compatibilityReport'],recipe={'preservationContract':16})
+        compatibility=performance['compatibilityReport'],recipe={'preservationContract':17})
     result=verify_import(path,Path(built['stagingPath']),alignment)
     assert result['status']=='passed',result

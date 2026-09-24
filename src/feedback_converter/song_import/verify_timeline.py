@@ -277,10 +277,35 @@ def expected(source, alignment):
                         intervals[-1] = (direction, intervals[-1][1], end)
                     else:
                         intervals.append((direction, max(start, event["start"]), end))
-                event["pitch_gesture"] |= bool(atom.bends or atom.slide or atom.slide_in)
+                event["pitch_gesture"] |= bool(atom.bends or atom.slide or atom.slide_in or atom.whammy)
                 if len(event["locations"]) > 1 and event["any_staccato"] and event["pitch_gesture"]:
                     unsupported(atom.location, "Staccato ties with pitch gestures are not independently verified.")
                 gesture_length = max(atom.length / 2, F(1, 32)) if atom.staccato else atom.length
+                retained = event.get('whammy', [])
+                old = retained[-1] if atom.tie and retained else None
+                held_bar = old['points'][0][1] if old and old['points'] else 0
+                if held_bar:
+                    left_time, right_time = clock.at(start), clock.at(start + gesture_length)
+                    def held_interval(a, b):
+                        return {'left': a, 'right': b, 'source_id': old['source_id'],
+                                'group': old['group'], 'vibrato': None,
+                                'points': [(a, held_bar), (b, held_bar)]}
+                    if old['right'] < left_time:
+                        retained.append(held_interval(old['right'], left_time))
+                    if atom.whammy is None:
+                        retained.append(held_interval(left_time, right_time))
+                if atom.whammy is not None:
+                    left = start + (atom.attack_offset if not atom.tie else 0)
+                    right = start + gesture_length
+                    if left >= right:
+                        unsupported(atom.location, 'Bar expression has no sounding interval')
+                    event.setdefault('whammy', []).append({
+                        'left': clock.at(left), 'right': clock.at(right),
+                        'source_id': atom.whammy['source_id'],
+                        'group': f"{atom.whammy['source_id']}@{occurrence}",
+                        'vibrato': atom.whammy['vibrato'],
+                        'points': [(clock.at(left+(right-left)*p),v) for p,v in atom.whammy['curve']]
+                                  or ([(clock.at(left),held_bar),(clock.at(right),held_bar)] if held_bar else [])})
                 for fraction_, value in atom.bends:
                     if not 0 <= fraction_ <= 1:
                         raise ValueError(atom.location + ": bend outside note")
@@ -322,6 +347,23 @@ def expected(source, alignment):
                 unsupported(n["locations"][0], "Strum exceeds its sounding interval; no attack or endpoint was repaired.")
             mapped_start, mapped_end = recording.at(start), recording.at(end)
             row = {"t": mapped_start, "sus": round(mapped_end - mapped_start, 6), "s": n["s"], "f": n["f"], **n["effects"]}
+            if n.get('whammy'):
+                segments = []
+                for expression in n['whammy']:
+                    points = []
+                    for point in expression['points']:
+                        if points and recording.piecewise:
+                            previous = points[-1]
+                            for boundary in recording.scores:
+                                if previous[0]+F(1,10**9) < boundary < point[0]-F(1,10**9):
+                                    points.append((boundary, previous[1]+(point[1]-previous[1])*(boundary-previous[0])/(point[0]-previous[0])))
+                        points.append(point)
+                    segments.append({'start': round(recording.at(expression['left'])-mapped_start,6),
+                                     'end': round(recording.at(expression['right'])-mapped_start,6),
+                                     'source_id': expression['source_id'], 'group': expression['group'],
+                                     'curve': [{'t':round(recording.at(p)-mapped_start,6),'v':float(v)} for p,v in points],
+                                     **({'vibrato':expression['vibrato']} if expression['vibrato'] else {})})
+                row['whammy'] = {'version':1,'policy':'optional','segments':segments}
             if n["scrapes"]:
                 row["pick_scrape_marks"] = [{"direction": direction,
                     "start": round(recording.at(clock.at(left)) - mapped_start, 6),

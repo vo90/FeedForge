@@ -5,6 +5,7 @@ from fractions import Fraction
 
 from .model import Measure, Score, ScoreImportError, validate_score
 from .notation import render_notation
+from .songsterr_whammy import append_segment
 
 
 def playback_order(measures: list[Measure]) -> list[int]:
@@ -195,7 +196,7 @@ def render(score: Score) -> dict:
                     if performed_notes > 500_000:
                         raise ScoreImportError("Performed score exceeds the note import limit.")
                 articulation["staccato"] |= note.staccato
-                articulation["pitch_gesture"] |= bool(note.bends or note.slide or note.slide_in)
+                articulation["pitch_gesture"] |= bool(note.bends or note.slide or note.slide_in or note.whammy)
                 if articulation["segments"] > 1 and articulation["staccato"] and articulation["pitch_gesture"]:
                     raise ScoreImportError("Staccato ties with pitch gestures need additional timing verification.")
                 sound_end = end
@@ -219,6 +220,7 @@ def render(score: Score) -> dict:
                     else:
                         marks.append({"direction": scrape, "start": left, "end": right})
                 gesture_duration = max(note.duration / 2, Fraction(1, 32)) if note.staccato else note.duration
+                append_segment(output, note, position, position + gesture_duration, at, occurrence)
                 if note.bends:
                     curve = [{"t": at(position + gesture_duration * p) - output["t"], "v": v} for p, v in note.bends]
                     output.setdefault("bnv", []).extend(curve)
