@@ -6,9 +6,9 @@ parser and independent verifier still validate every supported representation.
 from copy import deepcopy
 import json
 import math
-from .songsterr_harmonics import exact_natural
+from .songsterr_harmonics import exact_natural, natural_alias, source_target
 
-VERSION = 15
+VERSION = 16
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -100,7 +100,16 @@ def inspect_songsterr(document, *, track_indices=None):
                         message="Expected a source object.", location=path, value=obj, **coordinates)
             return
         for key, value in obj.items():
-            if scope == "note" and key == "harmonicFret" and exact_natural(obj):
+            if scope == "note" and key == "harmonicFret" and (exact_natural(obj) or source_target(obj)):
+                interpretation = ("Natural harmonic position 15 is displayed as 14.7, matching the source playback harmonic; the authored value is retained."
+                                  if natural_alias(obj) else
+                                  "Semi-harmonics use the pinch-harmonic display and permit the fretted sound alongside the selected harmonic."
+                                  if obj.get("harmonic") == "semi" else
+                                  "Feedback keeps the initial note and sustain. The initial attack accepts the fretted or harmonic pitch; amplifier feedback is not required."
+                                  if obj.get("harmonic") == "feedback" else None)
+                if interpretation:
+                    add_finding(report, feature="note.harmonicFret", category="game_limitation", impact="display_or_expression",
+                                message=interpretation, location=path + "/" + key, value=value, **coordinates)
                 continue
             if scope == "tempo" and key == "visible" and isinstance(value, bool):
                 add_finding(report, feature="tempo.visible", category="game_limitation", impact="display_or_expression",

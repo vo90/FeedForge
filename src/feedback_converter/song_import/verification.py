@@ -19,9 +19,10 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 15
+VERSION = 16
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
+TECHNIQUES.update({"harmonic_target", "harmonic_alias"})
 TUNINGS = {"guitar": {6: [40, 45, 50, 55, 59, 64], 7: [35, 40, 45, 50, 55, 59, 64], 8: [30, 35, 40, 45, 50, 55, 59, 64]},
            "bass": {4: [28, 33, 38, 43], 5: [23, 28, 33, 38, 43], 6: [23, 28, 33, 38, 43, 48]}}
 
@@ -273,7 +274,7 @@ def _compatibility_report(report, score_path, source, check):
         check.fail("compatibility", "import/compatibility", "The compatibility report is incomplete.")
         return
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
-    check.equal("compatibility_version", "import/compatibility", 15, report.get("version"))
+    check.equal("compatibility_version", "import/compatibility", VERSION, report.get("version"))
     check.equal("compatibility_status", "import/compatibility", "limitations" if rows else "compatible", report.get("status"))
     target = report.get("target", {})
     check.equal("compatibility_target", "import/compatibility", "1.16.0", target.get("feedpak"))
@@ -305,6 +306,10 @@ def _compatibility_report(report, score_path, source, check):
                         remember(beat, ("chord", "wahwah", "letRing"), "beat", where)
                         for ni, note in enumerate(beat["notes"]):
                             remember(note, ("staccato", "pickScrape"), "note", where + f"/notes/{ni}")
+                            if (note.get('harmonic') in ('semi', 'feedback') and note.get('harmonicFret') is not None
+                                    or note.get('harmonic') == 'natural' and note.get('fret') == 15
+                                    and note.get('harmonicFret') == 15 and note.get('harmonicData') is None):
+                                remember(note, ('harmonicFret',), 'note', where + f'/notes/{ni}')
         for part in source.parts:
             if part.notation_unavailable and any(part.bars):
                 expected[("notation.written_rhythm", "tracks/" + part.id)] = None

@@ -163,6 +163,8 @@ def render(score: Score) -> dict:
                     output = prior[0]
                     if "hn" in effects and any(output.get(k) != effects[k] for k in ("hn", "hps")):
                         raise ScoreImportError("A harmonic touch or pitch change inside a tie needs a separate gesture representation.")
+                    if "harmonic_target" in effects and output.get("harmonic_target") != effects["harmonic_target"]:
+                        raise ScoreImportError("A harmonic type or pitch change inside a tie needs a separate gesture representation.")
                     articulation = articulations[id(output)]
                     articulation["segments"] += 1
                     output.update({k: v for k, v in effects.items() if k != "pkd"})

@@ -28,10 +28,12 @@ Common bundle hash:
 The verified table additionally includes 2.4, 2.7, 3.2, 5.8, 8.2, 9.6, 14.7,
 17, 21.7 and 24. Only floating-point noise within 1e-9 is normalized; unknown
 nodes are not rounded. The source fret must agree with the node's tab shorthand.
-In particular node 15 is not silently converted to 14.7. A target change
-inside a tie remains unsupported instead of rewriting the earlier attack.
-Pinch, artificial, tapped, semi and feedback harmonic details retain their
-previous capability boundary.
+Contract 16 adds the verified natural fret-15/node-15 alias to 14.7/34, recording
+the interpretation while preserving the source. This applies to all matching
+notes, not a specific song. See `songsterr-harmonic-support.md` for that alias and
+the fretted harmonic extension. Unknown positions still are not rounded. A
+target change inside a tie remains unsupported instead of rewriting the earlier
+attack.
 
 ## Consumers and scoring
 

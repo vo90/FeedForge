@@ -528,21 +528,38 @@ def songsterr(document):
                                  7: 19, 8.2: 36, 9: 28, 9.6: 34, 12: 12, 14.7: 34,
                                  16: 28, 17: 36, 19: 19, 21.7: 34, 24: 24}
                         node = next((x for x in nodes if abs(fraction(touch if touch is not None else note['fret'], nloc)
-                                                            - F(str(x))) <= F(1, 10**9)), None) if harmonic == 'natural' else None
+                                                            - F(str(x))) <= F(1, 10**9)), None) if harmonic else None
+                        alias = (harmonic == 'natural' and note.get('fret') == 15 and touch == 15
+                                 and note.get('harmonicData') is None)
+                        if alias:
+                            node = 14.7
                         natural = (harmonic == 'natural' and note.get('harmonicData') is None
                                    and node is not None and note.get('fret') == round(node)
                                    and not isinstance(note.get('fret'), bool))
-                        if touch and harmonic is not None and not natural:
+                        policies = {'pinch': 'harmonic', 'artificial': 'harmonic', 'tapped': 'harmonic',
+                                    'semi': 'mixed', 'feedback': 'attack_either'}
+                        explicit = (isinstance(harmonic, str) and harmonic in policies
+                                    and touch is not None and node is not None and note.get('harmonicData') is None)
+                        if touch and harmonic is not None and not (natural or explicit):
                             unsupported(nloc, "Harmonic-fret pitch interpretation is not independently verified.")
                         if harmonic:
                             if harmonic == 'natural':
                                 if not natural:
                                     unsupported(nloc, 'Natural harmonic node is not independently representable.')
                                 harmonic_shift = nodes[node] - note['fret']
-                                fx.update(hn=node, hps=nodes[node])
-                            if harmonic not in {"natural", "pinch"}:
+                                fx.update(hm=True, hn=node, hps=nodes[node])
+                                if alias:
+                                    fx['harmonic_alias'] = 'songsterr-natural-15'
+                            elif explicit:
+                                harmonic_shift = nodes[node]
+                                fx['harmonic_target'] = {'kind': harmonic, 'node': node,
+                                                         'interval': nodes[node], 'policy': policies[harmonic]}
+                                if harmonic in ('pinch', 'semi'):
+                                    fx['hp'] = True
+                            elif harmonic == 'pinch':
+                                fx['hp'] = True
+                            else:
                                 unsupported(nloc, "This harmonic type is not independently verified.")
-                            fx[{"natural": "hm", "pinch": "hp"}[harmonic]] = True
                         slide = {None: None, "above": None, "below": None,
                                  "shift": "shift", "aboveshift": "shift", "belowshift": "shift",
                                  "legato": "legato", "abovelegato": "legato", "belowlegato": "legato",

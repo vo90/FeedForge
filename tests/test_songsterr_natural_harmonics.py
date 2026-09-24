@@ -24,8 +24,8 @@ def test_integer_natural_nodes_keep_playing_position_and_sounding_pitch(fret, pi
     assert written['fret'] == fret and source == original
 
 
-@pytest.mark.parametrize('fret,touch,kind', [(15,15,'natural'),(3,3.1,'natural'),(6,6,'natural'),
-    (7,12,'natural'),(5,12,'pinch'),(5,12,'artificial'),(5,12,'tapped'),(5,12,'semi'),(5,12,'feedback')])
+@pytest.mark.parametrize('fret,touch,kind', [(3,3.1,'natural'),(6,6,'natural'),
+    (7,12,'natural'),(5,15,'pinch'),(5,15,'artificial'),(5,15,'tapped'),(5,15,'semi'),(5,15,'feedback')])
 def test_nodes_requiring_a_different_instruction_are_not_flattened(fret,touch,kind):
     source = raw_score([measure(beat(fret=fret, harmonic=kind, harmonicFret=touch))])
     assert inspect_songsterr(source)['status'] == 'blocked'

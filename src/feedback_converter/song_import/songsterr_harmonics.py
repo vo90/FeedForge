@@ -1,10 +1,13 @@
 """Verified natural touch positions and source playback pitches.
 
 The integer fret is the author's tablature shorthand, NOT the sounding pitch.
-Only floating-point noise is tolerated: never round an unknown node to a known
-one. In particular a touch at 15 is not silently changed to 14.7.
+Exact source positions take precedence over the displayed integer fret.
+Verified aliases apply to every matching source note, independently of song,
+artist, revision or arrangement. Unknown positions are never rounded to a
+nearby known node: that could change the intended partial.
 """
 import math
+from ..harmonic_target import target_for, ALIAS
 
 
 # Semitones above the open string, agreeing with source playback and its
@@ -23,6 +26,8 @@ def natural_target(note):
         touch = fret
     if type(touch) not in (int, float) or not math.isfinite(touch):
         return None
+    if fret == 15 and touch == 15 and note.get("harmonicFret") is not None:
+        return 14.7, 34
     for node, semitones in NATURAL_PITCH.items():
         if abs(touch - node) <= 1e-9 and fret == round(node):
             return node, semitones
@@ -31,3 +36,13 @@ def natural_target(note):
 
 def exact_natural(note):
     return natural_target(note) is not None
+
+
+def source_target(note):
+    if note.get("harmonicData") is not None:
+        return None
+    return target_for(note.get("harmonic"), note.get("harmonicFret"))
+
+
+def natural_alias(note):
+    return ALIAS if natural_target(note) == (14.7, 34) and note.get("harmonicFret") == 15 else None

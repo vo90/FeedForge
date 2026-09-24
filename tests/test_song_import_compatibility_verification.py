@@ -8,10 +8,10 @@ from test_song_import_verification import example, verify
 def reported_fixture():
     source, package = example()
     source["parts"][0]["automations"]["tempo"][0]["text"] = "Moderate"
-    package["manifest.yaml"]["song_import"] = {"preservationContract": 15, "sourceFile": "import/source.json",
+    package["manifest.yaml"]["song_import"] = {"preservationContract": 16, "sourceFile": "import/source.json",
                                               "compatibilityFile": "import/compatibility.json"}
     package["import/source.json"] = source
-    package["import/compatibility.json"] = {"version": 15, "source": {"songId": "12", "revisionId": "34"},
+    package["import/compatibility.json"] = {"version": 16, "source": {"songId": "12", "revisionId": "34"},
         "target": {"feedpak": "1.16.0", "notation": 1}, "status": "limitations", "findingCount": 1, "truncated": False,
         "findings": [{"feature": "tempo.text", "location": "parts/0/automations/tempo/0/text", "value": "Moderate",
                       "valueTruncated": False, "retained": "original_source", "impact": "display_or_expression", "category": "game_limitation"}]}

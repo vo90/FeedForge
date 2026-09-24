@@ -160,6 +160,16 @@ def _validate_note(
     # Existing game wire sentinel: a dead strike with no authored fret. Do
     # not widen the physical fret range or accept palm mute alone as evidence.
     scrape = _valid_pick_scrape(note)
+    if "harmonic_target" in note:
+        from .harmonic_target import valid_note_target
+        if not valid_note_target(note):
+            error(f"{path}/harmonic_target: invalid fretted-harmonic target or conflicting note flags")
+    if "harmonic_alias" in note and not (note["harmonic_alias"] == "songsterr-natural-15"
+            and note.get("hm") is True and type(note.get("f")) is int and note["f"] == 15
+            and not any(note.get(k) for k in ("hp", "mt", "fhm"))
+            and type(note.get("hn")) in (int, float) and note["hn"] == 14.7
+            and type(note.get("hps")) is int and note["hps"] == 34):
+        error(f"{path}/harmonic_alias: inconsistent natural harmonic interpretation")
     if "pick_scrape_marks" in note and not scrape:
         error(f"{path}/pick_scrape_marks: requires a dead note with ordered, positive intervals within its sustain")
     unpitched = scrape or type(note.get("f")) is int and note["f"] == 127 and note.get("mt") is True

@@ -241,6 +241,8 @@ def expected(source, alignment):
                     event = previous
                     if "hn" in atom.effects and any(event["effects"].get(k) != atom.effects[k] for k in ("hn", "hps")):
                         unsupported(atom.location, "A changing harmonic target inside a tie is not independently representable.")
+                    if "harmonic_target" in atom.effects and event["effects"].get("harmonic_target") != atom.effects["harmonic_target"]:
+                        unsupported(atom.location, "A changing fretted harmonic inside a tie is not independently representable.")
                     event["end"] = end
                     event["effects"].update({k: v for k, v in atom.effects.items() if k != "pkd"})
                     event["locations"].append(atom.location)
