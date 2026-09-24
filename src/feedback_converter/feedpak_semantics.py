@@ -123,6 +123,23 @@ def _validate_payload(
         _validate_span_in_window(start, end, path, window, error)
 
 
+def _valid_pick_scrape(note: dict[str, Any]) -> bool:
+    marks, sustain = note.get("pick_scrape_marks"), note.get("sus")
+    if (note.get("mt") is not True or not isinstance(marks, list) or not marks
+            or type(sustain) not in (int, float) or not math.isfinite(sustain) or sustain <= 0):
+        return False
+    previous = 0.0
+    for mark in marks:
+        if (not isinstance(mark, dict) or set(mark) != {"direction", "start", "end"}
+                or mark.get("direction") not in ("up", "down")
+                or any(type(mark.get(k)) not in (int, float) or not math.isfinite(mark[k]) for k in ("start", "end"))):
+            return False
+        if not previous <= mark["start"] < mark["end"] <= sustain + 0.0000011:
+            return False
+        previous = mark["end"]
+    return True
+
+
 def _validate_note(
     note: dict[str, Any],
     path: str,
@@ -142,10 +159,17 @@ def _validate_note(
         error(f"{path}/s: string {string} is outside the effective 0..{string_count - 1} range")
     # Existing game wire sentinel: a dead strike with no authored fret. Do
     # not widen the physical fret range or accept palm mute alone as evidence.
-    if not (type(note.get("f")) is int and note["f"] == 127 and note.get("mt") is True):
+    scrape = _valid_pick_scrape(note)
+    if "pick_scrape_marks" in note and not scrape:
+        error(f"{path}/pick_scrape_marks: requires a dead note with ordered, positive intervals within its sustain")
+    unpitched = scrape or type(note.get("f")) is int and note["f"] == 127 and note.get("mt") is True
+    if scrape:
+        # This is retained source metadata, never a playable fret or pitch.
+        _bounded_integer(note.get("f"), f"{path}/f", 0, 127, error)
+    elif not unpitched:
         _bounded_integer(note.get("f"), f"{path}/f", 0, MAX_FRET, error)
-    elif any(note.get(key) for key in ("ho", "po", "hm", "hp", "bn", "bnv", "vb", "slide_out", "slide_out_marks", "slide_in_marks")) or any(
-            isinstance(note.get(key), (int, float)) and note[key] >= 0 for key in ("sl", "slu")):
+    if unpitched and (any(note.get(key) for key in ("ho", "po", "hm", "hp", "bn", "bnv", "vb", "slide_out", "slide_out_marks", "slide_in_marks")) or any(
+            isinstance(note.get(key), (int, float)) and note[key] >= 0 for key in ("sl", "slu"))):
         error(f"{path}: an unpitched mute cannot carry a pitched gesture")
     if "sus" in note:
         _nonnegative_number(note["sus"], f"{path}/sus", error)
@@ -251,7 +275,7 @@ def _unpitched_template_slots(data: dict[str, Any]) -> set[tuple[int, int]]:
     Include practice levels: accepting a template-only use would fabricate a
     pitched note when the loader expands it. Unreferenced slots are not proven.
     """
-    candidates = {ti: [si for si, fret in enumerate(template.get("frets", [])) if type(fret) is int and fret == 127]
+    candidates = {ti: [si for si, fret in enumerate(template.get("frets", [])) if type(fret) is int and fret > MAX_FRET]
                   for ti, template in enumerate(data.get("templates", []))}
     seen, invalid = set(), set()
     payloads = [data] + [level for phrase in data.get("phrases", []) for level in phrase.get("levels", [])]
@@ -261,7 +285,9 @@ def _unpitched_template_slots(data: dict[str, Any]) -> set[tuple[int, int]]:
                 slot = (chord.get("id", 0), string)
                 seen.add(slot)
                 children = [n for n in chord.get("notes", []) if n.get("s") == slot[1]]
-                if len(children) != 1 or children[0].get("f") != 127 or children[0].get("mt") is not True:
+                expected = data["templates"][slot[0]]["frets"][string]
+                if (len(children) != 1 or children[0].get("f") != expected or children[0].get("mt") is not True
+                        or expected != 127 and not _valid_pick_scrape(children[0])):
                     invalid.add(slot)
     return seen - invalid
 

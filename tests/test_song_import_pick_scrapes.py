@@ -113,7 +113,8 @@ def test_scrapes_are_not_used_as_pitched_audio_alignment_evidence():
     for a,b in zip(before,after): np.testing.assert_array_equal(a,b)
 
 
-def test_finished_archive_is_verified_against_source_and_lost_marks_fail(tmp_path):
+@pytest.mark.parametrize('fret', [3, 34])
+def test_finished_archive_is_verified_against_source_and_lost_marks_fail(tmp_path, fret):
     import json,zipfile
     from pathlib import Path
     from test_song_import_builder import inputs
@@ -121,7 +122,7 @@ def test_finished_archive_is_verified_against_source_and_lost_marks_fail(tmp_pat
     from feedback_converter.song_import.builder import build_feedpak
     from feedback_converter.song_import.verification import verify_import
     _,audio,_,job=inputs(tmp_path)
-    source=raw_score([measure(scrape('up',duration=(1,2)),scrape('down',duration=(1,2)))])
+    source=raw_score([measure(scrape('up',duration=(1,2),fret=fret),scrape('down',duration=(1,2),fret=fret))])
     source_path=tmp_path/'scrape-source.json';source_path.write_text(json.dumps(source),encoding='utf-8')
     performance=load_performance(source_path)
     alignment={'status':'validated','offset':0,'scale':1}
@@ -136,3 +137,23 @@ def test_finished_archive_is_verified_against_source_and_lost_marks_fail(tmp_pat
     with zipfile.ZipFile(corrupt,'w') as z:
         for name,data in files.items():z.writestr(name,data)
     assert verify_import(source_path,corrupt,alignment)['status']=='failed'
+
+
+def test_hidden_scrape_fret_is_only_valid_with_typed_dead_child_on_every_template_use():
+    from feedback_converter.feedpak_semantics import validate_arrangement_semantics
+    n={'s':0,'f':34,'mt':True,'sus':1,'pick_scrape_marks':[{'direction':'down','start':0,'end':1}]}
+    chart={'templates':[{'frets':[34,-1,-1,-1,-1,-1]}],'chords':[{'t':0,'id':0,'notes':[n]}]}
+    errors=[];validate_arrangement_semantics(chart,{},'test',errors.append)
+    assert not errors
+    for change in ('not_dead','missing','empty','reversed','outside','unordered','pitch','template_only'):
+        changed=deepcopy(chart);child=changed['chords'][0]['notes'][0]
+        if change=='not_dead':child['mt']=False
+        if change=='missing':child.pop('pick_scrape_marks')
+        if change=='empty':child['pick_scrape_marks']=[]
+        if change=='reversed':child['pick_scrape_marks'][0]['end']=-1
+        if change=='outside':child['pick_scrape_marks'][0]['end']=2
+        if change=='unordered':child['pick_scrape_marks']*=2
+        if change=='pitch':child['bn']=1
+        if change=='template_only':changed['chords'].append({'t':1,'id':0})
+        errors=[];validate_arrangement_semantics(changed,{},'test',errors.append)
+        assert errors,change
