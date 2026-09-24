@@ -75,8 +75,10 @@ def render_notation(score, track, visits, at, performed_notes=()):
                 if beat.rest:
                     item["rest"] = True
                 else:
+                    # Technique resolution follows the sounding attack, including
+                    # an authored strum offset; the written beat stays unchanged.
                     item["notes"] = [_note(note, track, performed_by_source.get(
-                        (note.source_id, round(at(start + note.position), 8)), {})) for note in beat.notes]
+                        (note.source_id, round(at(start + note.position + note.attack_offset), 8)), {})) for note in beat.notes]
                 beats.append(item)
             voice_index = voice.source_index if voice.source_index is not None else vi
             measure["staves"]["staff"]["voices"].append({"v": voice_index, "source_id": voice.source_id, "beats": beats})

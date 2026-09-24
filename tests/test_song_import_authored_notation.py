@@ -58,3 +58,27 @@ def test_independent_verifier_detects_lost_pick_direction_and_vibrato(tmp_path):
     assert report["status"] == "passed", report
     del package["chart.json"]["notes"][0]["pkd"]
     assert "note_technique" in {e["code"] for e in verify(tmp_path, source, package)["errors"]}
+
+
+@pytest.mark.parametrize('fret,technique', [(7, 'ho'), (3, 'po')])
+@pytest.mark.parametrize('shift', [0, 100])
+def test_strummed_hopo_destination_keeps_written_technique_and_independent_verification(tmp_path, fret, technique, shift):
+    from pathlib import Path
+    from test_song_import_builder import inputs
+    from feedback_converter.song_import.builder import build_feedpak
+    from feedback_converter.song_import.verification import verify_import
+    origin = {'duration': [1, 4], 'notes': [{'string': s, 'fret': 5, 'hp': True} for s in (5, 4, 3)]}
+    destination = {'duration': [1, 4], 'brushStroke': {'direction': 'down', 'duration': 120, 'shift': shift},
+                   'notes': [{'string': s, 'fret': fret} for s in (5, 4, 3)]}
+    source = raw_score([measure(origin, destination)])
+    performance = import_json(tmp_path, source)
+    for m in performance['tracks'][0]['notation']['measures']:
+        written = m['staves']['staff']['voices'][0]['beats'][1]
+        assert all(n.get(technique) is True for n in written['notes'])
+    _, audio, _, job = inputs(tmp_path)
+    source_path = tmp_path / 'score.json'
+    alignment = {'status': 'validated', 'offset': 0, 'scale': 1}
+    built = build_feedpak(performance, audio, alignment, job, output_dir=tmp_path / 'out',
+                         source_path=source_path, compatibility=performance['compatibilityReport'], recipe={'preservationContract': 15})
+    checked = verify_import(source_path, Path(built['stagingPath']), alignment)
+    assert checked['status'] == 'passed', checked['errors']
