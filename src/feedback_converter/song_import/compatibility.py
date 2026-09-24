@@ -8,7 +8,7 @@ import json
 import math
 from .songsterr_harmonics import exact_natural
 
-VERSION = 12
+VERSION = 13
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -30,6 +30,7 @@ KNOWN["tempo"].add("visible")
 KNOWN["beat"].update({"chord", "upStroke", "downStroke", "pickStroke", "wahwah", "brushStroke", "arpeggio", "vibratoWithTremoloBar"})
 KNOWN["note"].update({"leftHandVibrato", "pickScrape", "vibratoWithTremoloBar"})
 LIMITATIONS = {
+    ("beat", "letRing"): "The let-ring marking is retained in the original source. Written and tied note durations are preserved; the game does not display this marking or extend ringing beyond those durations.",
     ("measure", "doubleBarline"): "The double barline is retained in the source; the game uses its ordinary measure display. Notes and timing are unchanged.",
     ("measure", "keySignature"): "The written key signature is retained in the source. Explicit pitches are converted unchanged.",
     ("tempo", "text"): "The descriptive tempo text is retained in the source. The explicit numeric tempo is converted unchanged.",
