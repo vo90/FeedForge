@@ -104,6 +104,7 @@ def render(score: Score) -> dict:
 
     outputs = []
     harmonic_ties = []
+    trill_evidence = []
     warnings = list(score.warnings)
     source = {**score.source, "excludedTracks": list(score.source.get("excludedTracks", []))}
     performed_notes = 0
@@ -132,6 +133,7 @@ def render(score: Score) -> dict:
         pending_hopo = {}
         authored_groups = {}
         articulations = {}
+        hopo_links = []
         last_written = -1
         for occurrence, (index, start) in enumerate(visits):
             if index <= last_written:
@@ -195,15 +197,23 @@ def render(score: Score) -> dict:
                             raise ScoreImportError("A linked pitch technique reaches an unpitched mute; no fret was invented.")
                         output["ho" if note.fret > prior[0]["f"] else "po"] = True
                         pending_hopo.pop(link_key, None)
+                        hopo_links.append((prior[0], output))
                     rendered.append(output)
                     articulation = {"start": attack, "origin_staccato": note.staccato,
-                                    "staccato": False, "pitch_gesture": False, "segments": 1}
+                                    "staccato": False, "pitch_gesture": False, "segments": 1,
+                                    "trill": note.trill, "occurrence": occurrence + 1}
                     articulations[id(output)] = articulation
                     if note.beat_id:
                         authored_groups.setdefault((occurrence, note.beat_id), []).append(output)
                     performed_notes += 1
                     if performed_notes > 500_000:
                         raise ScoreImportError("Performed score exceeds the note import limit.")
+                from .songsterr_trills import check_segment
+                try:
+                    check_segment(note, articulation)
+                except ScoreImportError as exc:
+                    exc.source_location = {"location": note.source_id + '/trill', "measure": index + 1}
+                    raise
                 articulation["staccato"] |= note.staccato
                 articulation["pitch_gesture"] |= bool(note.bends or note.slide or note.slide_in or note.whammy)
                 if articulation["segments"] > 1 and articulation["staccato"] and articulation["pitch_gesture"]:
@@ -213,6 +223,7 @@ def render(score: Score) -> dict:
                     sound_end = articulation["start"] + max((end - articulation["start"]) / 2, Fraction(1, 32))
                     if sound_end > end:
                         raise ScoreImportError("Staccato's minimum would extend the authored note; no repair was applied.")
+                articulation["end"] = sound_end
                 output["sus"] = at(sound_end) - output["t"]
                 # Scrapes inherit across tied continuations, but retain every
                 # authored change of direction. These are time intervals, not
@@ -266,6 +277,10 @@ def render(score: Score) -> dict:
                 previous_note[link_key] = (output, end)
         if pending_slide or pending_hopo:
             raise ScoreImportError(f"A linked technique has no destination in {track.name}.")
+        from .songsterr_trills import expand
+        performed_notes += expand(rendered, articulations, hopo_links, track.id, at, trill_evidence, authored_groups)
+        if performed_notes > 500_000:
+            raise ScoreImportError("Performed score exceeds the note import limit.")
         # Apply the final sounding duration once ties have extended it. Clipping
         # each tied segment early loses later intervals on staccato attacks.
         for output in rendered:
@@ -373,4 +388,5 @@ def render(score: Score) -> dict:
             "warnings": warnings, "source": source,
             "sourceScore": score.source_document,
             **({'harmonicTieEvidence': sorted(harmonic_ties, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if harmonic_ties else {}),
+            **({"trillEvidence": trill_evidence} if trill_evidence else {}),
             "featureInventory": score.feature_inventory}

@@ -169,7 +169,7 @@ def expected(source, alignment):
     order = visits(source)
     clock, recording = Clock(source, order), RecordingMap(alignment)
     result = {"parts": [], "beats": [], "sections": [], "time_signatures": [], "tempos": [], "order": order,
-              'harmonic_ties': [],
+              'harmonic_ties': [], 'trills': [],
               "raw_notes": sum(len(bar) for p in source.parts for bar in p.bars), "tie_segments": 0}
     measure_facts = []
     inherited_tempos, inherited = [], F(120)
@@ -241,6 +241,7 @@ def expected(source, alignment):
             rest_indices[voice] = (starts, ends)
         notes, state, pending_slides, pending_hopos = [], {}, {}, {}
         notation_notes = {}
+        hopo_links = []
         last_bar = -1
         for occurrence, index in enumerate(order):
             origin = clock.measure_starts[occurrence]
@@ -306,7 +307,7 @@ def expected(source, alignment):
                 else:
                     event = {"start": start + atom.attack_offset, "end": end, "s": atom.string, "f": atom.fret, "effects": dict(atom.effects),
                              "curve": [], "slide_marks": [], "incoming_marks": [], "scrapes": [], "scrape_direction": None, "locations": [atom.location], "occurrence": occurrence + 1, "beat": atom.beat,
-                             "staccato": atom.staccato, "any_staccato": False, "pitch_gesture": False}
+                             "staccato": atom.staccato, "any_staccato": False, "pitch_gesture": False, "trill": atom.trill}
                     if atom.hopo_destination or key in pending_hopos:
                         if previous is None:
                             unsupported(atom.location, "Source hammer-on/pull-off has no prior note.")
@@ -314,6 +315,7 @@ def expected(source, alignment):
                             unsupported(atom.location, "A hammer/pull link has an unpitched endpoint.")
                         event["effects"]["ho" if atom.fret > previous["f"] else "po"] = True
                         pending_hopos.pop(key, None)
+                        hopo_links.append((previous, event))
                     if key in pending_slides:
                         if atom.fret == 127:
                             unsupported(atom.location, "A pitched slide has an unpitched destination.")
@@ -324,6 +326,8 @@ def expected(source, alignment):
                     notes.append(event)
                     if len(notes) > MAX_EVENTS:
                         raise ValueError("source: performed note limit exceeded")
+                from .verify_trills import segment as verify_trill_segment
+                verify_trill_segment(atom, event)
                 event["any_staccato"] |= atom.staccato
                 direction = atom.pick_scrape or (event["scrape_direction"] if atom.tie else None)
                 event["scrape_direction"] = direction
@@ -391,6 +395,8 @@ def expected(source, alignment):
                 notation_notes[(occurrence, atom.location)] = written_note
         if pending_slides or pending_hopos:
             unsupported(f"tracks/{part.id}", "Source linked technique has no destination.")
+        from .verify_trills import expand as trill_expectations
+        notes = trill_expectations(notes, hopo_links, part, notation_notes, result["trills"])
         rendered = []
         for n in notes:
             sound_end = n["end"]
@@ -468,7 +474,8 @@ def expected(source, alignment):
                     curve.append(p)
                 row["bnv"] = [{"t": round(recording.at(p) - mapped_start, 6), "v": float(v)} for p, v in curve]
                 row["bn"] = float(max((v for _, v in curve), key=abs))
-            rendered.append({"note": row, "locations": n["locations"], "occurrence": n["occurrence"], "beat": n["beat"]})
+            rendered.append({"note": row, "locations": n["locations"], "occurrence": n["occurrence"], "beat": n["beat"],
+                             **({'trill': True} if n.get('trill') else {})})
         notation_beats = []
         for occurrence, index in enumerate(order):
             origin = clock.measure_starts[occurrence]

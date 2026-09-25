@@ -341,6 +341,12 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         from .tied_harmonics import archive_evidence
         _write_json(package / 'import/tied-harmonics.json', archive_evidence(performance, source_path))
         manifest.setdefault('song_import', {})['tiedHarmonicsFile'] = 'import/tied-harmonics.json'
+    if performance.get('trillEvidence'):
+        if source_path is None:
+            raise ImportFailure('unsupported_score', 'Trill expansion requires the retained original tab.')
+        from .songsterr_trills import archive_evidence as trill_archive
+        _write_json(package / 'import/trills.json', trill_archive(performance, source_path))
+        manifest.setdefault('song_import', {})['trillsFile'] = 'import/trills.json'
     if sustain_adjustments:
         if source_path is None:
             raise ImportFailure("unsupported_score", "Sustain adjustments require the retained original tab.")

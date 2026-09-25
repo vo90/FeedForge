@@ -68,6 +68,7 @@ class Atom:
     attack_offset: F = F(0)
     pick_scrape: str | None = None
     whammy: dict | None = None
+    trill: dict | None = None
 
 
 @dataclass
@@ -427,7 +428,7 @@ def songsterr(document, *, track_indices=None):
                 unsupported("automations", "Tracks have different performed tempo automation.")
     parts, excluded = [], []
     note_keys = {"string", "fret", "tie", "rest", "dead", "vibrato", "wideVibrato", "ghost", "accentuated",
-                 "tap", "tapping", "hp", "harmonic", "harmonicFret", "slide", "bend", "leftHandVibrato", "staccato", "pickScrape"}
+                 "trill", "tap", "tapping", "hp", "harmonic", "harmonicFret", "slide", "bend", "leftHandVibrato", "staccato", "pickScrape"}
     beat_keys = {"tremoloBar", "vibratoWithTremoloBar", "duration", "notes", "rest", "type", "dots", "tuplet", "tupletStart", "tupletStop", "graceNote",
                  "palmMute", "letRing", "tremolo", "tap", "tapping", "slap", "pop", "slapping", "popping", "vibrato", "wideVibrato", "text", "velocity", "gradualVelocity", "chord", "pickStroke", "wahwah", "brushStroke", "arpeggio", "upStroke", "downStroke", "upArpeggio", "downArpeggio"}
     for pi, (meta, raw) in enumerate(zip(metadata, raw_parts)):
@@ -634,6 +635,8 @@ def songsterr(document, *, track_indices=None):
                                           nloc, str(vi), loc, bool(note.get("tie")), fx, sorted(bends), slide[note.get("slide")],
                                           bool(note.get("hp"))))
                         fact["notes"].append(atoms[-1])
+                        from .verify_trills import read as read_trill
+                        atoms[-1].trill = read_trill(note, beat, raw["measures"], nloc)
                         atoms[-1].staccato = note.get("staccato") is True
                         atoms[-1].pick_scrape = scrape
                         atoms[-1].whammy = ({**bar_expression, 'source_id': f'songsterr:{pi}:{bi}:{vi}:{bti}'}

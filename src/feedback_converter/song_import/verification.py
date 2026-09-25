@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 22
+VERSION = 23
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -232,10 +232,12 @@ def _incoming_marks(wanted, note, check, location):
 def _chords(wanted, chart, check, part):
     groups = {}
     labels = {beat["location"]: beat.get("chord_label", "") for bar in part.beats for beat in bar}
+    trill_beats = {(item['occurrence'], item['beat']) for item in wanted if item.get('trill')}
     for item in wanted:
-        groups.setdefault((item["occurrence"], item["beat"]), []).append(item["note"])
+        key = (item['occurrence'], item['beat'])
+        groups.setdefault((*key, item['note']['t'] if key in trill_beats else None), []).append(item["note"])
     expected_shapes = {}
-    for (_, beat), notes in groups.items():
+    for (_, beat, _), notes in groups.items():
         if len(notes) > 1 and len({n["t"] for n in notes}) == 1:
             shape = (tuple(sorted((n["s"], n["f"]) for n in notes)), labels.get(beat, ""))
             expected_shapes.setdefault(shape, []).append(notes[0]["t"])
@@ -645,6 +647,12 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                     _compatibility_report(compatibility, score_path, source, check, wanted['harmonic_ties'])
             elif any(p.notation_unavailable or p.unpitched_mutes for p in source.parts):
                 check.fail("retained_notation", "import", "A notation limitation requires embedded original source and a compatibility report.")
+            if wanted['trills'] or recipe.get('trillsFile'):
+                retained = _json(z, recipe.get('trillsFile', ''), check)
+                check.equal('trill_evidence', 'import/trills', {
+                    'version': 1, 'policy': 'songsterr-trill-hopo-v1', 'timeDomain': 'quarter_notes',
+                    'sourceSha256': report['sourceSha256'], 'trills': wanted['trills']}, retained)
+                report['scope'].append('source_trill_expansion')
             if wanted['harmonic_ties'] or recipe.get('tiedHarmonicsFile'):
                 retained = _json(z, recipe.get('tiedHarmonicsFile', ''), check)
                 check.equal('harmonic_evidence', 'import/tied-harmonics/version', 2, retained.get('version'))

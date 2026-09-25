@@ -8,7 +8,7 @@ import json
 import math
 from .songsterr_harmonics import exact_natural, natural_alias, source_target
 
-VERSION = 22
+VERSION = 23
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -45,7 +45,7 @@ LIMITATIONS = {
 UNIMPLEMENTED = {
     "measure": {"direction", "directions", "fromDirection", "fermata", "freeTime"},
     "beat": {"grace", "graceNotes", "stroke", "whammy"},
-    "note": {"trill", "grace", "graceNote", "tremoloBar", "whammy", "harmonicFret", "vibratoWithTremoloBar"},
+    "note": {"grace", "graceNote", "tremoloBar", "whammy", "harmonicFret", "vibratoWithTremoloBar"},
     "tempo": set(),
 }
 

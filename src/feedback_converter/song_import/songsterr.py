@@ -49,7 +49,7 @@ def _endings(value):
     return frozenset(i + 1 for i in range(16) if mask & (1 << i))
 
 
-def _note(raw, beat, position, duration, strings):
+def _note(raw, beat, position, duration, strings, tpqn=16384):
     scrape = raw.get("pickScrape")
     if scrape is not None and (not isinstance(scrape, str) or scrape not in ("up", "down") or raw.get("dead") is not True):
         raise ScoreImportError("A pick scrape requires an up/down direction and a dead note.")
@@ -63,7 +63,7 @@ def _note(raw, beat, position, duration, strings):
     if unpitched and any(raw.get(key) for key in
                         ("hp", "slide", "bend", "harmonic", "vibrato", "wideVibrato", "leftHandVibrato")):
         raise ScoreImportError("An unpitched mute with a pitch gesture needs additional representation support.")
-    unsupported = ("trill", "grace", "graceNote", "tremoloBar", "whammy")
+    unsupported = ("grace", "graceNote", "tremoloBar", "whammy")
     for key in unsupported:
         if raw.get(key):
             raise ScoreImportError(f"Songsterr {key} needs additional conversion support.")
@@ -140,9 +140,10 @@ def _note(raw, beat, position, duration, strings):
         if not isinstance(bend, dict) or not bend.get("points"):
             raise ScoreImportError("Bend has no curve data.")
         bends = bend_points(bend["points"])
+    from .songsterr_trills import read as read_trill
     return Note(position, duration, string, fret, bool(raw.get("tie")), effects,
                 sorted(bends), False, slide_out, slide_in=slide_in, staccato=raw.get("staccato") is True,
-                pick_scrape=scrape, whammy=source_whammy(beat))
+                pick_scrape=scrape, whammy=source_whammy(beat), trill=read_trill(raw, beat, tpqn))
 
 
 def _written_rhythm(beat, duration):
@@ -331,6 +332,8 @@ def parse(document: dict, *, track_indices=None) -> Score:
         track_bars = []
         written_bars = []
         feel = "off"
+        from .songsterr_trills import resolution
+        trill_clock = resolution(part["measures"])
         part_clocks = part_timing(part["measures"], [m.length for m in measures])
         for bi, measure in enumerate(part["measures"]):
             inventory.inspect(measure, "Songsterr measure", f"$.parts[{index}].measures[{bi}]",
@@ -404,7 +407,7 @@ def parse(document: dict, *, track_indices=None) -> Score:
                             if bi == 0 and position + offset < 0:
                                 raise ScoreImportError("The authored strum begins before the score; its recording-start placement needs review.")
                             try:
-                                parsed = _note(note, beat, position, duration, len(tuning))
+                                parsed = _note(note, beat, position, duration, len(tuning), trill_clock)
                             except ScoreImportError as exc:
                                 exc.source_location = {"measure": bi + 1, "voice": vi + 1, "beat": beat_index + 1,
                                     "note": note_index + 1, "location": f"parts/{index}/measures/{bi}/voices/{vi}/beats/{beat_index}/notes/{note_index}"}
