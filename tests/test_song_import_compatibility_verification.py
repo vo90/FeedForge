@@ -3,6 +3,7 @@ from copy import deepcopy
 import pytest
 
 from test_song_import_verification import example, verify
+from feedback_converter.song_import.compatibility import VERSION
 
 
 def reported_fixture():
@@ -11,7 +12,7 @@ def reported_fixture():
     package["manifest.yaml"]["song_import"] = {"preservationContract": 17, "sourceFile": "import/source.json",
                                               "compatibilityFile": "import/compatibility.json"}
     package["import/source.json"] = source
-    package["import/compatibility.json"] = {"version": 17, "source": {"songId": "12", "revisionId": "34"},
+    package["import/compatibility.json"] = {"version": VERSION, "source": {"songId": "12", "revisionId": "34"},
         "target": {"feedpak": "1.16.0", "notation": 1}, "status": "limitations", "findingCount": 1, "truncated": False,
         "findings": [{"feature": "tempo.text", "location": "parts/0/automations/tempo/0/text", "value": "Moderate",
                       "valueTruncated": False, "retained": "original_source", "impact": "display_or_expression", "category": "game_limitation"}]}
