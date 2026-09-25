@@ -143,7 +143,7 @@ def test_unverified_combinations_are_located_not_dropped(extra):
 
 
 @pytest.mark.parametrize('fault',[None,'pitch','time','sustain','technique','link','missing','extra',
-                                 'evidence','source','rate','identity','order'])
+                                 'evidence','source','rate','identity','order','boolean','numeric_type'])
 def test_final_archive_nonlinear_mapping_and_mutation(tmp_path,fault):
     from test_song_import_builder import inputs
     from feedback_converter.song_import import load_performance
@@ -177,9 +177,13 @@ def test_final_archive_nonlinear_mapping_and_mutation(tmp_path,fault):
     if fault=='rate':evidence['trills'][0]['speed']='120'
     if fault=='identity':evidence['trills'][0]['sourceIds'][0]='invented'
     if fault=='order':evidence['trills'][0]['events'].reverse()
+    if fault=='boolean':evidence['trills'][0]['events'][1]['ordinal']=True
+    if fault=='numeric_type':evidence['trills'][0]['events'][1]['ordinal']=1.0
     files[name]=json.dumps(chart).encode();files['import/trills.json']=json.dumps(evidence).encode()
     mutated=tmp_path/'mutated.feedpak'
     with ZipFile(mutated,'w') as z:
         for name,data in files.items():z.writestr(name,data)
     checked=verify_import(source,mutated,alignment)
     assert checked['status']==('passed' if fault is None else 'failed'),checked
+    if fault in {'boolean','numeric_type'}:
+        assert len(json.dumps(checked)) < 10000

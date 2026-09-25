@@ -649,9 +649,15 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 check.fail("retained_notation", "import", "A notation limitation requires embedded original source and a compatibility report.")
             if wanted['trills'] or recipe.get('trillsFile'):
                 retained = _json(z, recipe.get('trillsFile', ''), check)
-                check.equal('trill_evidence', 'import/trills', {
+                evidence = {
                     'version': 1, 'policy': 'songsterr-trill-hopo-v1', 'timeDomain': 'quarter_notes',
-                    'sourceSha256': report['sourceSha256'], 'trills': wanted['trills']}, retained)
+                    'sourceSha256': report['sourceSha256'], 'trills': wanted['trills']}
+                # JSON identity distinguishes nested true/1 and 1/1.0. A plain
+                # Python dict comparison does not. Keep a corrupt large receipt
+                # out of the error report rather than echoing both whole trees.
+                if json.dumps(evidence, sort_keys=True) != json.dumps(retained, sort_keys=True):
+                    check.fail('trill_evidence', 'import/trills',
+                               'The retained trill expansion differs from the independently reconstructed source evidence.')
                 report['scope'].append('source_trill_expansion')
             if wanted['harmonic_ties'] or recipe.get('tiedHarmonicsFile'):
                 retained = _json(z, recipe.get('tiedHarmonicsFile', ''), check)
