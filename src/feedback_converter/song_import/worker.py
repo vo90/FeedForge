@@ -46,7 +46,7 @@ def _choose_alignment(performance: dict, audio: dict, request: dict, progress=No
 
 def _alignment_summary(alignment: dict) -> dict:
     # Full timing survives in the evidence store, not the bounded history ledger.
-    return {key: value for key, value in alignment.items() if key not in {"anchors", "tempos", "recordingSync"}}
+    return {key: value for key, value in alignment.items() if key not in {"anchors", "tempos", "recordingSync", "sourceTiming"}}
 
 
 def run_import(request: dict, progress=None) -> dict:

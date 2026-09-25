@@ -228,9 +228,30 @@ def test_official_single_terminal_extension_is_marked_and_audio_bounded():
 @pytest.mark.parametrize("points,reason", [((0, None, 4), "invalid_points"), ((0, True, 4), "invalid_points"),
                                          ((0, float("nan"), 4), "invalid_points"), ((0, float("inf"), 4), "invalid_points"),
                                          ((0, 2, 2), "non_increasing_points"), ((0, 3, 2), "non_increasing_points"),
-                                         ((0, 1, 2, 3), "point_count_mismatch")])
+                                         ((0, 1, 2, 1), "non_increasing_points"),
+                                         ((0, 1, 2, None), "invalid_points")])
 def test_invalid_and_mismatched_anchor_arrays_do_not_get_patched(points, reason):
     unavailable(reason, lambda: align(points=points))
+
+
+@pytest.mark.parametrize('extra', [(8,), (8, 1000)])
+def test_surplus_points_are_an_unused_suffix_not_a_longer_final_bar(extra):
+    points = (.25, 2.25, 6.25, *extra)
+    result = align(points=points)
+    baseline = align()
+    assert result['anchors'] == baseline['anchors']
+    assert result['tempos'] == baseline['tempos']
+    assert result['sourceTiming']['points'] == list(points)
+    assert result['provenance']['mapHash'] != baseline['provenance']['mapHash']
+    assert result['provenance']['boundaryPolicy'] == {
+        'version': 1, 'rule': 'songsterr-shared-boundary-prefix', 'supplied': len(points),
+        'used': 3, 'unusedTrailing': len(extra), 'inferredTrailing': 0}
+    for t in (0, .1, 1, 2, 2.5, 3, 4):
+        assert map_time(result, t) == map_time(baseline, t)
+
+
+def test_unused_suffix_does_not_rescue_attacks_outside_audio():
+    unavailable('note_outside_recording', lambda: align(points=(1, 3, 5, 7), audio=audio_fixture(1)))
 
 
 def test_exact_revision_recording_and_full_mix_binding_are_mandatory():

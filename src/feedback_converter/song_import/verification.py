@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 19
+VERSION = 20
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy"})
@@ -613,6 +613,12 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             manifest = yaml.safe_load(z.read("manifest.yaml"))
             _finite(manifest, "manifest", check)
             recipe = manifest.get("song_import", {})
+            if (recipe.get('preservationContract', 0) >= 20
+                    and alignment.get('method') == 'songsterr-video-points-v1'):
+                from .verify_synchronization import verify_source_timing
+                timing = _json(z, recipe.get('sourceTimingFile', ''), check)
+                verify_source_timing(source, alignment, recipe, timing, check)
+                report['scope'].append('retained_source_timing_boundaries')
             if recipe.get('preservationContract', 0) >= 18 and source.format == 'songsterr':
                 check.equal('section_provenance', 'manifest/song_import/sourceMetadata/sectionLabels',
                             source.section_labels, recipe.get('sourceMetadata', {}).get('sectionLabels'))

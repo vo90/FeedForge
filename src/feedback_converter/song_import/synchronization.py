@@ -148,6 +148,13 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
     if not isinstance(points, list) or not all(_number(value) for value in points):
         _unavailable("invalid_points")
     supplied_points = list(points)
+    if any(right <= left for left, right in zip(points, points[1:])):
+        _unavailable("non_increasing_points")
+    # The public player's score/video interpolation uses the shorter boundary
+    # array (gk), in both directions. Only an unused suffix can be omitted;
+    # never choose an interior point or stretch the score to the extra endpoint.
+    unused_count = max(0, len(points) - len(measures) - 1)
+    points = points[:len(measures) + 1]
     inferred_count = max(0, len(measures) + 1 - len(points)) if len(points) >= 2 else 0
     inferred_terminal = inferred_count > 0
     if inferred_terminal:
@@ -216,14 +223,19 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
     canonical.update(songId=song_id, revisionId=revision_id, points=[float(value) for value in supplied_points])
     digest = hashlib.sha256(json.dumps(canonical, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
     result.update({"tempos": mapped_tempos,
+              "sourceTiming": canonical,
               "provenance": {"source": "songsterr-video-points", "version": 1, "mapHash": digest,
                              "songId": song_id, "revisionId": revision_id, "videoId": video_id,
+                             "boundaryPolicy": {"version": 1, "rule": "songsterr-shared-boundary-prefix",
+                                                "supplied": len(supplied_points), "used": len(points),
+                                                "unusedTrailing": unused_count, "inferredTrailing": inferred_count},
                              "terminalBoundary": "songsterr-last-interval" if inferred_terminal else "explicit",
                              **({"terminalBeyondAudio": "silent_notation_only"} if silent_terminal else {})},
               "diagnostics": {"sourceSyncPointCount": len(supplied_points), "sourceSyncMeasureCount": len(measures),
                               "sourceSyncNegativePreroll": points[0] < 0,
                               "sourceSyncInferredTerminalBoundary": inferred_terminal,
                               "sourceSyncInferredBoundaryCount": inferred_count,
+                              "sourceSyncUnusedTrailingPointCount": unused_count,
                               "sourceSyncSilentTerminalExtension": silent_terminal}})
     checked, trimmed, late = 0, 0, 0
     for track in performance.get("tracks", []):
