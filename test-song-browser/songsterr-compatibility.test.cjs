@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { compatibilityBacklog, compatibilityReport } = require('../electron/song-browser/songsterr-evidence.cjs');
+const { compatibilityBacklog, compatibilityReport, CURRENT_PRESERVATION_CONTRACT: CURRENT } = require('../electron/song-browser/songsterr-evidence.cjs');
 const hash = data => crypto.createHash('sha256').update(data).digest('hex');
 
 test('durable list deduplicates retries, records locations, and replaces resolved gaps', t => {
@@ -47,20 +47,20 @@ test('a vanished finding stays unresolved until the current package is independe
   function save(version, status, findings) {
     const object = value => { const data = JSON.stringify(value), id = hash(data); fs.writeFileSync(path.join(root, 'objects', id), data); return id; };
     const source = hash('immutable tab');
-    const verification = object({ version: 17, status, sourceSha256: source });
+    const verification = object({ version: CURRENT, status, sourceSha256: source });
     const compatibility = object({ version, findings, status: findings.length ? 'blocked' : 'compatible' });
-    const data = JSON.stringify({ version: 17, outputHash: status === 'passed' ? hash('package') : null,
+    const data = JSON.stringify({ version: CURRENT, outputHash: status === 'passed' ? hash('package') : null,
       sourceMetadata: { songId: '12', revisionId: '34' }, objects: { source, verification, compatibility } });
     const id = hash(data), file = path.join(root, 'records', id + '.json');
     fs.writeFileSync(file, data); fs.utimesSync(file, ++clock, clock);
   }
   save(4, 'incomplete', [finding]);
-  save(17, 'incomplete', []);
+  save(CURRENT, 'incomplete', []);
   assert.equal(compatibilityBacklog(root).resolved.length, 0);
-  save(17, 'passed', []);
+  save(CURRENT, 'passed', []);
   const list = compatibilityBacklog(root);
   assert.equal(list.resolved.length, 1);
   assert.equal(list.resolved[0].workStatus, 'fixed_verified');
   assert.equal(list.resolved[0].sourceHash, hash('immutable tab'));
-  assert.equal(list.resolved[0].assessmentVersion, 17);
+  assert.equal(list.resolved[0].assessmentVersion, CURRENT);
 });

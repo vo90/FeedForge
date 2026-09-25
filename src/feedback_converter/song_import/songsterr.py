@@ -14,6 +14,7 @@ from .songsterr_fields import bend_points
 from .songsterr_whammy import source_whammy
 from .songsterr_harmonics import exact_natural, natural_target, natural_alias, source_target
 from .songsterr_automation import performed_tempos
+from .songsterr_sections import section_label
 
 
 def _instrument(meta):
@@ -211,7 +212,8 @@ def parse(document: dict, *, track_indices=None) -> Score:
     count = len(parts[0]["measures"])
     if any(len(part["measures"]) != count for part in parts):
         raise ScoreImportError("A Songsterr track is truncated.")
-    measures = []
+    measures, section_labels = [], []
+    eligible = {i for i, meta in enumerate(metadata) if _instrument(meta)}
     signature = (4, 4)
     for bi in range(count):
         candidates = [p["measures"][bi] for p in parts]
@@ -235,8 +237,9 @@ def parse(document: dict, *, track_indices=None) -> Score:
         repeat_values = {integer(m["repeat"], "repeat count") for m in candidates if "repeat" in m}
         if len(repeat_values) > 1:
             raise ScoreImportError("Tracks disagree about the repeat count.")
-        marker = next((m.get("marker") for m in candidates if m.get("marker")), "")
-        section = str(marker.get("text", "")) if isinstance(marker, dict) else str(marker)
+        section, label_detail = section_label(candidates, metadata, eligible, bi)
+        if label_detail:
+            section_labels.append(label_detail)
         ending_values = {_endings(m.get("alternateEnding")) for m in candidates if m.get("alternateEnding")}
         if len(ending_values) > 1:
             raise ScoreImportError("Tracks disagree about alternate endings.")
@@ -429,7 +432,10 @@ def parse(document: dict, *, track_indices=None) -> Score:
             tracks[-1].clefs.append(clef)
     source = {key: document[key] for key in ("songId", "revisionId", "approved", "url") if key in document}
     source["format"] = "songsterr"
-    source.update(trackCount=len(metadata), excludedTracks=excluded)
+    source.update(trackCount=len(metadata), excludedTracks=excluded, sectionLabels=section_labels)
+    for decision in section_labels:
+        if len({label['text'] for label in decision['labels']}) > 1:
+            warnings.append(f"Section label in measure {decision['measure']} uses guitar/bass consensus; all track labels are retained.")
     warnings.extend(inventory.warnings())
     return Score(str(document.get("title", "")), str(document.get("artist", "")), measures, tracks,
                  str(document.get("album", "")), document.get("year", ""), source, warnings,

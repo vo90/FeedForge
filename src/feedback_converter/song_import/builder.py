@@ -312,7 +312,9 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         except (TypeError, ValueError):
             pass
     if recipe:
-        manifest["song_import"] = {**recipe, "coverage": coverage}
+        manifest["song_import"] = {**deepcopy(recipe), "coverage": coverage}
+    if 'sectionLabels' in source:
+        manifest.setdefault('song_import', {}).setdefault('sourceMetadata', {})['sectionLabels'] = deepcopy(source['sectionLabels'])
     if source_path is not None:
         original = "import/source" + source_path.suffix.lower()
         (package / "import").mkdir()

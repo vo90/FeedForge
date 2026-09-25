@@ -110,6 +110,7 @@ class Source:
     track_count: int
     identity: dict = field(default_factory=dict)
     ignored: set = field(default_factory=set)
+    section_labels: list = field(default_factory=list)
 
 
 def inactive(value):
@@ -339,6 +340,8 @@ def songsterr(document):
     if not 0 < count <= 20_000 or any(len(p["measures"]) != count for p in raw_parts):
         raise ValueError("source: inconsistent measure counts")
     ignored, bars, signature = set(), [], (4, 4)
+    section_labels = []
+    eligible = {_index for _index, meta in enumerate(metadata) if _program_instrument(meta)}
     for bi in range(count):
         loc = f"measures/{bi}"
         samples = [part["measures"][bi] for part in raw_parts]
@@ -354,10 +357,29 @@ def songsterr(document):
         for b in samples:
             _active_unknown(b, {"voices", "signature", "rest", "marker", "repeat", "repeatStart", "alternateEnding", "tripletFeel", "clef"},
                             {"width", "id", "index", "doubleBarline", "keySignature"}, loc, ignored)
-        markers = [b["marker"] for b in samples if b.get("marker")]
-        names = {str(m.get("text", "")) if isinstance(m, dict) else str(m) for m in markers}
+        annotations = []
+        for pi, (meta, bar) in enumerate(zip(metadata, samples)):
+            marker = bar.get('marker')
+            if marker is None or marker is False or marker == '' or marker == {}:
+                continue
+            marker_loc = f'parts/{pi}/measures/{bi}/marker'
+            if isinstance(marker, dict):
+                if set(marker) - {'text', 'width'}:
+                    unsupported(marker_loc, 'Unknown section marker structure.')
+                marker = marker.get('text', '')
+            if not isinstance(marker, str):
+                raise ValueError(marker_loc + ': invalid section marker')
+            if marker:
+                annotations.append({'trackIndex': pi, 'trackId': str(meta.get('id', pi)),
+                                    'eligible': pi in eligible, 'text': marker, 'location': marker_loc})
+        playable_names = {a['text'] for a in annotations if a['eligible']}
+        names = playable_names or {a['text'] for a in annotations}
         if len(names) > 1:
-            unsupported(loc + "/marker", "Source tracks have different section markers.")
+            unsupported(loc + '/marker', 'Guitar/bass section labels or their fallback are ambiguous.')
+        if annotations:
+            section_labels.append({'measure': bi + 1, 'label': next(iter(names)),
+                                   'basis': 'guitar_bass_consensus' if playable_names else 'other_tracks_consensus',
+                                   'labels': annotations})
         bars.append(Bar(signature, any(b.get("repeatStart") for b in samples), next(iter(repeats), 0),
                         next(iter(endings), frozenset()), next(iter(names), "")))
     all_clocks = []
@@ -622,7 +644,7 @@ def songsterr(document):
             track.beats.append(beat_facts)
         parts.append(track)
     return Source("songsterr", str(document.get("title", "")), str(document.get("artist", "")), bars, parts,
-                  excluded, len(metadata), {k: str(document[k]) for k in ("songId", "revisionId") if k in document}, ignored)
+                  excluded, len(metadata), {k: str(document[k]) for k in ("songId", "revisionId") if k in document}, ignored, section_labels)
 
 
 def _txt(node, path, default=""):
