@@ -13,8 +13,8 @@ MAX_EVENTS = 500_000
 def visits(source: Source):
     """Expand repeat intervals recursively, independently of the import walker.
 
-    Ending regions beginning before a repeat close remain explicitly unverified;
-    accepting individually filtered bars there can silently change navigation.
+    Partition each repeat into a common prefix and pass-owned ending spans.
+    This checker does not use the producer's masks or iterative stack walker.
     """
     openings, intervals = [], {}
     for i, bar in enumerate(source.bars):
@@ -26,17 +26,44 @@ def visits(source: Source):
             start = openings.pop() if openings else 0
             if start in intervals:
                 unsupported(f"measures/{i}", "Overlapping repeat intervals are not independently verified.")
-            if any(b.endings for b in source.bars[start:i]):
-                unsupported(f"measures/{i}", "Multi-bar ending regions are not independently verified.")
             intervals[start] = (i, bar.repeat_count)
     if openings:
         unsupported(f"measures/{openings[-1]}", "Unclosed source repeat has no definite performance order.")
     if not intervals and any(bar.endings for bar in source.bars):
         unsupported("measures", "Alternate endings without a repeat have no independently verified performance order.")
+    endings, claimed = {}, set()
+    for lo, (hi, count) in intervals.items():
+        starts = [j for j in range(lo, hi + 1) if source.bars[j].endings]
+        tail = hi + 1
+        if tail < len(source.bars) and source.bars[tail].endings and not source.bars[tail].repeat_start:
+            starts.append(tail)
+        if not starts:
+            continue
+        if starts[0] == lo or (not source.bars[lo].repeat_start and starts[0] < hi):
+            unsupported(f'measures/{lo}', 'The common repeat prefix is not independently established.')
+        if any(a != lo and a <= hi and b >= lo for a, (b, _) in intervals.items()):
+            unsupported(f'measures/{lo}', 'Nested alternate-ending ownership is not independently verified.')
+        spans, seen = [], set()
+        for j, at in enumerate(starts):
+            turns = source.bars[at].endings
+            if any(type(t) is not int or t < 1 or t > count for t in turns):
+                raise ValueError(f'measures/{at}: invalid ending pass')
+            if at == tail and turns != {count}:
+                unsupported(f'measures/{at}', 'Only the final ending can follow the close.')
+            if seen & turns:
+                unsupported(f'measures/{at}', 'Disjoint regions claim the same repeat pass.')
+            seen.update(turns)
+            spans.append((at, min(hi + 1, starts[j + 1] if j + 1 < len(starts) else hi + 1), turns))
+            claimed.add(at)
+        if seen != set(range(1, count + 1)):
+            unsupported(f'measures/{lo}', 'Alternate endings omit a repeat pass.')
+        endings[lo] = spans
+    if any(b.endings and i not in claimed for i, b in enumerate(source.bars)):
+        unsupported('measures', 'An alternate ending has no definite owning repeat.')
     result = []
 
     def segment(lo, hi, turn=1, owner=None):
-        i, ending_turn = lo, turn
+        i = lo
         while i <= hi:
             if i in intervals and i != owner:
                 end, count = intervals[i]
@@ -44,16 +71,14 @@ def visits(source: Source):
                     unsupported(f"measures/{i}", "Crossing source repeats are not independently verified.")
                 for repeat_turn in range(1, count + 1):
                     segment(i, end, repeat_turn, i)
-                ending_turn = count if owner is None else turn
                 i = end + 1
                 continue
             bar = source.bars[i]
-            if not bar.endings or ending_turn in bar.endings:
+            owned = next((turns for a, b, turns in endings.get(owner, []) if a <= i < b), None)
+            if owned is None or turn in owned:
                 result.append(i)
                 if len(result) > 20_000:
                     raise ValueError("source: performed measure limit exceeded")
-            if not bar.endings:
-                ending_turn = turn
             i += 1
 
     segment(0, len(source.bars) - 1)

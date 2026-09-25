@@ -8,6 +8,8 @@ const crypto = require('node:crypto');
 const { SongsterrJobs } = require('../electron/song-browser/songsterr-jobs.cjs');
 const { selectSynchronization, unavailableSynchronization, audioVideo } = require('../electron/song-browser/providers/songsterr/synchronization.cjs');
 
+const { CURRENT_PRESERVATION_CONTRACT: CURRENT } = require('../electron/song-browser/songsterr-evidence.cjs');
+
 const CHART = { id: '123', title: 'Synthetic Song', artist: 'Synthetic Artist' };
 const SETTINGS = { outputLayout: 'flat', nameTemplate: '{artist} - {title}' };
 
@@ -86,7 +88,7 @@ async function fixture(t, options = {}) {
     const hash = (data) => crypto.createHash('sha256').update(data).digest('hex');
     const outputHash = hash(fs.readFileSync(stagingPath));
     const sourceHash = hash(fs.readFileSync(request.scorePath));
-    const contract = options.contract || 17;
+    const contract = options.contract || CURRENT;
     const report = JSON.stringify({ version: contract, status: 'passed', sourceSha256: sourceHash }), verificationHash = hash(report);
     const record = JSON.stringify({ version: contract, outputHash, objects: { verification: verificationHash, source: sourceHash } });
     const id = hash(record);
@@ -200,7 +202,7 @@ test('verification is bound to the exact staged file before publication', async 
   assert.deepEqual(fs.readdirSync(f.outputDir), []);
 });
 
-for (const contract of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]) test(`old preservation contract ${contract} cannot publish as a current verified conversion`, async (t) => {
+for (const contract of Array.from({ length: CURRENT - 1 }, (_, i) => i + 1)) test(`old preservation contract ${contract} cannot publish as a current verified conversion`, async (t) => {
   const f = await fixture(t, { contract });
   f.enqueue(); await settle(f.jobs);
   assert.equal(f.jobs.snapshot()[0].state, 'failed');
@@ -208,7 +210,7 @@ for (const contract of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]) 
   assert.deepEqual(fs.readdirSync(f.outputDir), []);
 });
 
-for (const contract of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]) test(`old contract ${contract} reports survive recovery without current mapping fidelity or reuse`, async (t) => {
+for (const contract of Array.from({ length: CURRENT - 1 }, (_, i) => i + 1)) test(`old contract ${contract} reports survive recovery without current mapping fidelity or reuse`, async (t) => {
   const f = await fixture(t);
   f.enqueue(); await settle(f.jobs); await f.jobs.dispose();
   const job = f.jobs.jobs[0], hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -238,7 +240,7 @@ for (const contract of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]) 
     await settle(restored);
     const fresh = restored.snapshot()[1];
     assert.equal(fresh.state, 'completed', fresh.error);
-    assert.equal(fresh.verification.version, 17);
+    assert.equal(fresh.verification.version, CURRENT);
     assert.equal(fresh.verification.status, 'passed');
     assert.notEqual(fresh.outputPath, old.outputPath);
     assert.equal(fs.readFileSync(old.outputPath, 'utf8'), 'Synthetic FeedPak');

@@ -199,6 +199,14 @@ def _timeline_items(items: list, alignment: dict, duration: float, *, kind: str 
             if entry.get("measure", -1) > 0:
                 ordinal += 1
                 entry["measure"] = ordinal
+    if kind == 'tempos':
+        effective = []
+        for entry in result:
+            if effective and effective[-1]['time'] == entry['time']:
+                effective[-1] = entry
+            elif not effective or not math.isclose(effective[-1]['bpm'], entry['bpm'], rel_tol=1e-12):
+                effective.append(entry)
+        result = effective
     return result
 
 
