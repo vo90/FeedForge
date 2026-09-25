@@ -19,6 +19,23 @@ def document(extra=None):
         beat(duration=(1,2),fret=14,tie=True))])
 
 
+def test_worker_advertises_the_contact_to_consumers(tmp_path, monkeypatch):
+    from test_song_import_builder import inputs
+    from feedback_converter.song_import import worker
+    inputs(tmp_path)
+    path=tmp_path/'source.json';path.write_text(json.dumps(document()),encoding='utf-8')
+    # Synthetic fixture: synchronization itself is exercised by the real-song
+    # acceptance run, while this checks the full worker's published contract.
+    monkeypatch.setattr(worker, '_choose_alignment', lambda *args: {'status':'validated','offset':0,'scale':1})
+    result=worker.run_import({'scorePath':str(path),'workDir':str(tmp_path/'work'),
+        'outputDir':str(tmp_path/'out'),'audio':{'kind':'file','path':str(tmp_path/'input.wav')},'artworkLookup':False})
+    assert result['ok'],result
+    with ZipFile(result['stagingPath']) as z:
+        recipe=yaml.safe_load(z.read('manifest.yaml'))['song_import']
+    assert 'harmonic_changes' in recipe['compatibility']['extensions']
+    assert recipe['compatibility']['status']=='requires_consumer_support'
+
+
 def test_contact_owns_its_remaining_sustain_not_the_initial_attack():
     source=document({'bend':{'points':[{'position':0,'tone':0},{'position':60,'tone':100}]}})
     before=deepcopy(source); p=render(parse(source));v=expected(songsterr(source),{'offset':0,'scale':1})
