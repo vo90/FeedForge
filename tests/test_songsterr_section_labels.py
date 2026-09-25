@@ -40,6 +40,9 @@ def test_frozen_conflict_patterns_choose_playable_consensus_without_altering_sou
     selected=parse(doc,track_indices={2})
     assert selected.source['sectionLabels'] == score.source['sectionLabels']
     assert selected.measures[0].section == playable
+    independent_selected = songsterr(doc, track_indices={2})
+    assert independent_selected.section_labels == reference.section_labels
+    assert len(independent_selected.parts) == 1
     assert any('consensus' in w for w in score.warnings)
 
 

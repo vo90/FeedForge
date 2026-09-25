@@ -330,7 +330,9 @@ def _songsterr_strum(beat, location):
     return {index: first + rank * interval for rank, (index, _) in enumerate(ordered)}, direction
 
 
-def songsterr(document):
+def songsterr(document, *, track_indices=None):
+    # Diagnostic selection never changes shared labels, meter, tempo or repeats.
+    # Published archives use the default, which checks every eligible track.
     if not isinstance(document, dict) or document.get("format") != "songsterr":
         raise ValueError("source: not a Songsterr envelope")
     metadata, raw_parts = document["tracks"], document["parts"]
@@ -434,6 +436,9 @@ def songsterr(document):
         kind = _program_instrument(meta)
         if not kind:
             excluded.append({"id": tid, "name": name, "reason": "non_playable_instrument"})
+            continue
+        if track_indices is not None and pi not in track_indices:
+            excluded.append({'id': tid, 'name': name, 'reason': 'diagnostic_selection'})
             continue
         tuning = [integer(v) for v in reversed(raw.get("tuning") or meta["tuning"])]
         track = Part(tid, name, kind, tuning, integer(raw.get("capo", meta.get("capo", 0))), [], [])
