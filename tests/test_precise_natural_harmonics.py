@@ -61,5 +61,9 @@ def test_ties_keep_one_target_and_cannot_silently_change_it(second_node):
         assert len(actual)==1 and actual[0]['hn']==3.2 and actual[0]['hps']==31
         assert len(expected(songsterr(source),{'offset':0,'scale':1})['parts'][0]['notes'])==1
     else:
-        with pytest.raises(ValueError):render(parse(source))
-        with pytest.raises(ValueError):expected(songsterr(source),{'offset':0,'scale':1})
+        actual=render(parse(source))
+        verified=expected(songsterr(source),{'offset':0,'scale':1})
+        assert actual['tracks'][0]['notes'][0]['hn']==3.2
+        assert verified['parts'][0]['notes'][0]['note']['hn']==3.2
+        assert actual['harmonicTieEvidence'][0]['authored']['hn']==2.7
+        assert actual['harmonicTieEvidence'][0]['rule']=='initial-target-continued'

@@ -103,6 +103,7 @@ def render(score: Score) -> dict:
         return seconds[k] + float(position - points[k]) * 60 / bpms[k]
 
     outputs = []
+    harmonic_ties = []
     warnings = list(score.warnings)
     source = {**score.source, "excludedTracks": list(score.source.get("excludedTracks", []))}
     performed_notes = 0
@@ -166,13 +167,17 @@ def render(score: Score) -> dict:
                             or prior[1] != position and not gap_allowed):
                         raise ScoreImportError(f"Unresolved tie in {track.name}, measure {index + 1}.")
                     output = prior[0]
-                    if "hn" in effects and any(output.get(k) != effects[k] for k in ("hn", "hps")):
+                    songsterr_tie = score.source.get('format') == 'songsterr'
+                    if songsterr_tie:
+                        from .tied_harmonics import FIELDS, retain
+                        retain(output, effects, note, track, occurrence, position, end, at, harmonic_ties)
+                    elif "hn" in effects and any(output.get(k) != effects[k] for k in ("hn", "hps")):
                         raise ScoreImportError("A harmonic touch or pitch change inside a tie needs a separate gesture representation.")
-                    if "harmonic_target" in effects and output.get("harmonic_target") != effects["harmonic_target"]:
+                    if not songsterr_tie and "harmonic_target" in effects and output.get("harmonic_target") != effects["harmonic_target"]:
                         raise ScoreImportError("A harmonic type or pitch change inside a tie needs a separate gesture representation.")
                     articulation = articulations[id(output)]
                     articulation["segments"] += 1
-                    output.update({k: v for k, v in effects.items() if k != "pkd"})
+                    output.update({k: v for k, v in effects.items() if k != "pkd" and (not songsterr_tie or k not in FIELDS)})
                     if note.source_id:
                         output.setdefault("source_ids", []).append(note.source_id)
                 else:
@@ -365,4 +370,5 @@ def render(score: Score) -> dict:
             "scoreTimeline": score_timeline,
             "warnings": warnings, "source": source,
             "sourceScore": score.source_document,
+            **({'harmonicTieEvidence': sorted(harmonic_ties, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if harmonic_ties else {}),
             "featureInventory": score.feature_inventory}

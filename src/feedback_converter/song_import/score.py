@@ -57,6 +57,8 @@ def load_performance(path: Path | str, metadata: dict | None = None) -> dict:
             exc.compatibility = report
         raise
     if path.suffix.lower() == ".json":
+        from .tied_harmonics import report_findings
+        report_findings(performance, report)
         for track in performance["tracks"]:
             if "notation" not in track:
                 source_track = next(t for t in score.tracks if t.id == track["id"])

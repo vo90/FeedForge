@@ -332,6 +332,12 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     if alignment.get("sourceTiming") is not None:
         _write_json(package / "import/source-timing.json", alignment["sourceTiming"])
         manifest.setdefault("song_import", {})["sourceTimingFile"] = "import/source-timing.json"
+    if performance.get('harmonicTieEvidence'):
+        if source_path is None:
+            raise ImportFailure('unsupported_score', 'Tied harmonic interpretation requires the retained original tab.')
+        from .tied_harmonics import archive_evidence
+        _write_json(package / 'import/tied-harmonics.json', archive_evidence(performance, source_path))
+        manifest.setdefault('song_import', {})['tiedHarmonicsFile'] = 'import/tied-harmonics.json'
     if sustain_adjustments:
         if source_path is None:
             raise ImportFailure("unsupported_score", "Sustain adjustments require the retained original tab.")

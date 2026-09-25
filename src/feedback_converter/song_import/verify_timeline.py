@@ -169,6 +169,7 @@ def expected(source, alignment):
     order = visits(source)
     clock, recording = Clock(source, order), RecordingMap(alignment)
     result = {"parts": [], "beats": [], "sections": [], "time_signatures": [], "tempos": [], "order": order,
+              'harmonic_ties': [],
               "raw_notes": sum(len(bar) for p in source.parts for bar in p.bars), "tie_segments": 0}
     measure_facts = []
     inherited_tempos, inherited = [], F(120)
@@ -264,12 +265,31 @@ def expected(source, alignment):
                             or previous["end"] != start and not gap_allowed):
                         unsupported(atom.location, "Source tie does not identify a continuous prior note; it has not been repaired.")
                     event = previous
-                    if "hn" in atom.effects and any(event["effects"].get(k) != atom.effects[k] for k in ("hn", "hps")):
+                    harmonic_fields = {'hm', 'hp', 'hn', 'hps', 'harmonic_target', 'harmonic_alias'}
+                    if source.format == 'songsterr':
+                        stated = {k: atom.effects[k] for k in harmonic_fields if k in atom.effects}
+                        kept = {k: event['effects'][k] for k in harmonic_fields if k in event['effects']}
+                        if stated and stated != kept:
+                            def harmonic_pitch(fx):
+                                if 'hps' in fx: return fx['hps']
+                                h = fx.get('harmonic_target')
+                                if h: return atom.fret + h['interval']
+                                return None if fx.get('hp') or fx.get('hm') else atom.fret
+                            feedback = any(fx.get('harmonic_target', {}).get('kind') == 'feedback' for fx in (stated, kept))
+                            same_pitch = harmonic_pitch(stated) is not None and harmonic_pitch(stated) == harmonic_pitch(kept)
+                            parts = atom.location.split('/')
+                            result['harmonic_ties'].append({
+                                'trackId': part.id, 'sourceId': 'songsterr:' + ':'.join(parts[i] for i in (1,3,5,7,9)),
+                                'location': atom.location, 'occurrence': occurrence + 1,
+                                'attack': float(clock.at(event['start'])), 'start': float(clock.at(start)), 'end': float(clock.at(end)),
+                                'string': atom.string, 'fret': atom.fret, 'authored': stated, 'used': kept,
+                                'rule': 'feedback-optional' if feedback else 'same-pitch' if same_pitch else 'initial-target-continued'})
+                    elif "hn" in atom.effects and any(event["effects"].get(k) != atom.effects[k] for k in ("hn", "hps")):
                         unsupported(atom.location, "A changing harmonic target inside a tie is not independently representable.")
-                    if "harmonic_target" in atom.effects and event["effects"].get("harmonic_target") != atom.effects["harmonic_target"]:
+                    if source.format != 'songsterr' and "harmonic_target" in atom.effects and event["effects"].get("harmonic_target") != atom.effects["harmonic_target"]:
                         unsupported(atom.location, "A changing fretted harmonic inside a tie is not independently representable.")
                     event["end"] = end
-                    event["effects"].update({k: v for k, v in atom.effects.items() if k != "pkd"})
+                    event["effects"].update({k: v for k, v in atom.effects.items() if k != "pkd" and (source.format != 'songsterr' or k not in harmonic_fields)})
                     event["locations"].append(atom.location)
                     result["tie_segments"] += 1
                 else:
@@ -437,5 +457,6 @@ def expected(source, alignment):
         rendered.sort(key=lambda item: (item["note"]["t"], item["note"]["s"]))
         result["parts"].append({"source": part, "notes": rendered, "notation_beats": notation_beats, "notation_measures": measure_facts})
     result["score_duration"] = float(clock.at(clock.quarters))
+    result['harmonic_ties'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result["mapped_end"] = recording.at(clock.at(clock.quarters))
     return result

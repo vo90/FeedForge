@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 20
+VERSION = 21
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy"})
@@ -268,7 +268,7 @@ def _chords(wanted, chart, check, part):
             check.near("chord_time", "tracks/" + part.id + "/chords", wanted_time, actual_time)
 
 
-def _compatibility_report(report, score_path, source, check):
+def _compatibility_report(report, score_path, source, check, harmonic_ties=()):
     """Verify retained limitations from source facts, not the producer's inventory."""
     from .verify_source import _program_instrument, inactive
     rows = report.get("findings")
@@ -282,6 +282,8 @@ def _compatibility_report(report, score_path, source, check):
     check.equal("compatibility_target", "import/compatibility", "1.16.0", target.get("feedpak"))
     check.equal("compatibility_target", "import/compatibility/notation", 1, target.get("notation"))
     expected = {}
+    for row in harmonic_ties:
+        expected[('note.tied_harmonic', row['location'] + f"@visit{row['occurrence']}")] = {k: row[k] for k in ('authored', 'used', 'rule')}
     if source.format == "songsterr":
         document = json.loads(score_path.read_text(encoding="utf-8-sig"))
 
@@ -632,9 +634,31 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 if compatibility.get("status") not in {"compatible", "limitations"}:
                     check.fail("compatibility", "import/compatibility", "A blocked or invalid compatibility report cannot be published.")
                 if recipe.get("preservationContract", 0) >= 5:
-                    _compatibility_report(compatibility, score_path, source, check)
+                    _compatibility_report(compatibility, score_path, source, check, wanted['harmonic_ties'])
             elif any(p.notation_unavailable or p.unpitched_mutes for p in source.parts):
                 check.fail("retained_notation", "import", "A notation limitation requires embedded original source and a compatibility report.")
+            if wanted['harmonic_ties'] or recipe.get('tiedHarmonicsFile'):
+                retained = _json(z, recipe.get('tiedHarmonicsFile', ''), check)
+                check.equal('harmonic_evidence', 'import/tied-harmonics/version', 1, retained.get('version'))
+                check.equal('harmonic_evidence', 'import/tied-harmonics/policy', 'songsterr-tied-harmonics-v1', retained.get('policy'))
+                check.equal('harmonic_evidence', 'import/tied-harmonics/timeDomain', 'score_seconds', retained.get('timeDomain'))
+                check.equal('harmonic_evidence', 'import/tied-harmonics/sourceSha256', report['sourceSha256'], retained.get('sourceSha256'))
+                rows = retained.get('continuations')
+                if not isinstance(rows, list):
+                    raise ValueError('import/tied-harmonics: missing continuations')
+                check.equal('harmonic_evidence', 'import/tied-harmonics/count', len(wanted['harmonic_ties']), len(rows))
+                for i, (a, b) in enumerate(zip(wanted['harmonic_ties'], rows)):
+                    where = f'import/tied-harmonics/{i}'
+                    if not isinstance(b, dict):
+                        check.fail('harmonic_evidence', where, 'A continuation evidence row must be an object.')
+                        continue
+                    check.equal('harmonic_evidence', where, sorted(a), sorted(b))
+                    for key in a:
+                        if key in {'attack', 'start', 'end'}:
+                            check.near('harmonic_evidence_time', where + '/' + key, a[key], b.get(key))
+                        else:
+                            check.equal('harmonic_evidence', where + '/' + key, a[key], b.get(key))
+                report['scope'].append('tied_harmonic_interpretation')
             if isinstance(recipe, dict):
                 if recipe.get("scoreHash"):
                     check.equal("source_hash", "manifest/song_import/scoreHash", report["sourceSha256"], recipe["scoreHash"])

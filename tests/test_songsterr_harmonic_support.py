@@ -65,8 +65,11 @@ def test_ties_do_not_create_extra_harmonic_attacks(kind):
     assert len(actual) == len(checked) == 1
     assert actual[0]['sus'] == checked[0]['note']['sus']
     source['parts'][0]['measures'][0]['voices'][0]['beats'][1]['notes'][0]['harmonicFret']=7
-    with pytest.raises(ValueError): render(parse(source))
-    with pytest.raises(ValueError): expected(songsterr(source),{'offset':0,'scale':1})
+    kept=render(parse(source))
+    verified=expected(songsterr(source),{'offset':0,'scale':1})
+    assert kept['tracks'][0]['notes'][0]['harmonic_target']['node']==12
+    assert verified['parts'][0]['notes'][0]['note']['harmonic_target']['node']==12
+    assert kept['harmonicTieEvidence'][0]['authored']['harmonic_target']['node']==7
 
 
 @pytest.mark.parametrize('kind,node', [('natural',15.1),('artificial',15),('semi',None),('feedback',3.1)])
