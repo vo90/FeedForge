@@ -71,6 +71,36 @@ def source_time_scale(alignment: dict, time: float) -> float:
     return (a1 - a0) / (s1 - s0)
 
 
+def _verify_ending_order(performance, measures):
+    """Re-read retained source; counts or a producer capability flag are insufficient."""
+    from .verify_source import songsterr
+    from .verify_timeline import visits, Clock
+    try:
+        envelope = performance['sourceScore']
+        if envelope.get('format') != 'songsterr':
+            raise ValueError('missing source navigation')
+        source = songsterr(envelope['document'])
+        for key in ('songId', 'revisionId'):
+            if source.identity.get(key) != str(performance['source'].get(key)):
+                raise ValueError('source identity mismatch')
+        order = visits(source)
+        if len(order) != len(measures):
+            raise ValueError('order length mismatch')
+        clock, counts = Clock(source, order), {}
+        for index, (written, actual) in enumerate(zip(order, measures)):
+            counts[written] = counts.get(written, 0) + 1
+            quarter = clock.measure_starts[index]
+            length = source.bars[written].length
+            if actual.get('writtenIndex') != written or actual.get('visit') != counts[written]:
+                raise ValueError('written occurrence mismatch')
+            expected = {'quarter': float(quarter), 'quarters': float(length),
+                        'start': float(clock.at(quarter)), 'end': float(clock.at(quarter + length))}
+            if any(not _number(actual.get(k)) or abs(actual[k] - v) > _EPSILON for k, v in expected.items()):
+                raise ValueError('source coordinates mismatch')
+    except (ValueError, KeyError, TypeError, AttributeError, IndexError):
+        _unavailable('unverified_multibar_endings')
+
+
 def align_from_songsterr(performance: dict, audio: dict, synchronization: dict | None,
                         metadata: dict, *, allow_ending_candidate: bool = False) -> dict:
     """Return verified source timing or a typed reason for matcher fallback."""
@@ -113,7 +143,7 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
     if timeline.get("hasAlternateEndings") and not timeline.get("hasRepeats"):
         _unavailable("unverified_alternate_endings")
     if timeline.get("hasMultiBarAlternateEndings"):
-        _unavailable("unverified_multibar_endings")
+        _verify_ending_order(performance, measures)
     points = synchronization.get("points")
     if not isinstance(points, list) or not all(_number(value) for value in points):
         _unavailable("invalid_points")

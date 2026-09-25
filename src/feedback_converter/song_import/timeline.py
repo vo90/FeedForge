@@ -6,6 +6,7 @@ from fractions import Fraction
 from .model import Measure, Score, ScoreImportError, validate_score
 from .notation import render_notation
 from .songsterr_whammy import append_segment
+from .repeat_regions import repeat_regions
 
 
 def playback_order(measures: list[Measure]) -> list[int]:
@@ -16,12 +17,15 @@ def playback_order(measures: list[Measure]) -> list[int]:
         if bar.repeat_start:
             opens.append(i)
         if bar.repeat_count:
+            if not 2 <= bar.repeat_count <= 32:
+                raise ScoreImportError('Invalid repeat count.')
             start = opens.pop() if opens else 0
             if start in closes:
                 raise ScoreImportError("Multiple repeat closes sharing one start need explicit navigation support.")
             closes[start] = i
     if opens:
         raise ScoreImportError("An open repeat has no closing repeat.")
+    ending_masks = repeat_regions(measures, closes)
     active: list[list[int]] = []  # [start, close, pass]
     order: list[int] = []
     i = 0
@@ -35,7 +39,7 @@ def playback_order(measures: list[Measure]) -> list[int]:
             active.append([i, closes[i], 1])
         bar = measures[i]
         turn = active[-1][2] if active else final_pass
-        if not bar.endings or turn in bar.endings:
+        if not ending_masks[i] or turn in ending_masks[i]:
             order.append(i)
         if active and active[-1][1] == i:
             frame = active[-1]
@@ -323,9 +327,8 @@ def render(score: Score) -> dict:
         if bar.repeat_count:
             start = repeat_starts.pop() if repeat_starts else 0
             repeat_intervals.append((start, index))
-            # Songsterr's player skips an entire ending region. The current
-            # score walker skips marked bars individually; only an ending on
-            # the close bar itself has proven equivalent source semantics.
+            # The complete region is skipped, including unmarked continuation
+            # bars. Synchronization independently checks its performed order.
             multibar_endings = multibar_endings or any(item.endings for item in score.measures[start:index])
     # An outer bracket can start implicitly at bar zero. Count actual closed
     # intervals, not only explicit start markers, to detect such nesting.
