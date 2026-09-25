@@ -19,10 +19,10 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 21
+VERSION = 22
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
-TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy"})
+TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
 TUNINGS = {"guitar": {6: [40, 45, 50, 55, 59, 64], 7: [35, 40, 45, 50, 55, 59, 64], 8: [30, 35, 40, 45, 50, 55, 59, 64]},
            "bass": {4: [28, 33, 38, 43], 5: [23, 28, 33, 38, 43], 6: [23, 28, 33, 38, 43, 48]}}
 
@@ -120,7 +120,7 @@ def _notes(wanted, actual, check, part, duration):
         for key in ("t", "sus"):
             check.near("note_time" if key == "t" else "note_sustain", loc + "/" + key, a[key], b.get(key, 0))
         for key in TECHNIQUES:
-            if key in {"slide_out_marks", "slide_in_marks", "pick_scrape_marks", "whammy"}:
+            if key in {"slide_out_marks", "slide_in_marks", "pick_scrape_marks", "whammy", "harmonic_changes"}:
                 continue
             wanted_value, actual_value = a.get(key), b.get(key)
             if wanted_value is None and (actual_value is None or actual_value is False):
@@ -134,6 +134,8 @@ def _notes(wanted, actual, check, part, duration):
         _scrape_marks(a.get("pick_scrape_marks", []), b, check, loc)
         from .verify_whammy import check_bar
         check_bar(a.get('whammy'), b.get('whammy'), check, loc+'/whammy')
+        from .verify_harmonic_changes import check_changes
+        check_changes(a.get('harmonic_changes'), b.get('harmonic_changes'), check, loc+'/harmonic_changes')
         curves = (a.get("bnv", []), b.get("bnv", []))
         check.equal("bend_point_count", loc + "/bnv", len(curves[0]), len(curves[1]))
         for pi, (ap, bp) in enumerate(zip(*curves)):
@@ -422,6 +424,12 @@ def _terminal_adjustments(wanted, alignment, recipe, archive, duration, source, 
             if start + sustain <= duration + TIME_TOLERANCE:
                 continue
             shortened = round(cutoff - start, 6)
+            if note.get('harmonic_changes'):
+                events = note['harmonic_changes']['events']
+                if any(e['start'] >= shortened - TIME_TOLERANCE for e in events):
+                    check.fail('adjustment_technique',item['locations'][0],'The audio boundary omits a harmonic contact.')
+                    continue
+                for event in events: event['end'] = shortened
             if note.get('whammy'):
                 invalid = False
                 for segment in note['whammy']['segments']:
@@ -639,8 +647,8 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 check.fail("retained_notation", "import", "A notation limitation requires embedded original source and a compatibility report.")
             if wanted['harmonic_ties'] or recipe.get('tiedHarmonicsFile'):
                 retained = _json(z, recipe.get('tiedHarmonicsFile', ''), check)
-                check.equal('harmonic_evidence', 'import/tied-harmonics/version', 1, retained.get('version'))
-                check.equal('harmonic_evidence', 'import/tied-harmonics/policy', 'songsterr-tied-harmonics-v1', retained.get('policy'))
+                check.equal('harmonic_evidence', 'import/tied-harmonics/version', 2, retained.get('version'))
+                check.equal('harmonic_evidence', 'import/tied-harmonics/policy', 'songsterr-tied-harmonics-v2', retained.get('policy'))
                 check.equal('harmonic_evidence', 'import/tied-harmonics/timeDomain', 'score_seconds', retained.get('timeDomain'))
                 check.equal('harmonic_evidence', 'import/tied-harmonics/sourceSha256', report['sourceSha256'], retained.get('sourceSha256'))
                 rows = retained.get('continuations')

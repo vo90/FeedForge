@@ -64,6 +64,9 @@ def _retime_note(note: dict, alignment: dict, duration: float, *, chord_time: fl
                              "audioDuration": duration})
     if "sus" in note:
         result["sus"] = round(sustain, 6)
+    if 'harmonic_changes' in note:
+        from ..harmonic_changes import retime_changes
+        result['harmonic_changes'] = retime_changes({**note, 't':original}, lambda t: map_time(alignment,t))
     if "whammy" in note:
         from ..whammy import retime_whammy
         try:

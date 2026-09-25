@@ -269,6 +269,8 @@ def expected(source, alignment):
                     if source.format == 'songsterr':
                         stated = {k: atom.effects[k] for k in harmonic_fields if k in atom.effects}
                         kept = {k: event['effects'][k] for k in harmonic_fields if k in event['effects']}
+                        if event.get('contact'):
+                            kept = {'harmonic_target': dict(event['contact']['target'])}
                         if stated and stated != kept:
                             def harmonic_pitch(fx):
                                 if 'hps' in fx: return fx['hps']
@@ -278,12 +280,21 @@ def expected(source, alignment):
                             feedback = any(fx.get('harmonic_target', {}).get('kind') == 'feedback' for fx in (stated, kept))
                             same_pitch = harmonic_pitch(stated) is not None and harmonic_pitch(stated) == harmonic_pitch(kept)
                             parts = atom.location.split('/')
+                            source_id = 'songsterr:' + ':'.join(parts[i] for i in (1,3,5,7,9))
+                            can_touch = (not kept and not event.get('harmonic_conflict') and not event['effects'].get('mt')
+                                         and stated.get('harmonic_target', {}).get('kind') == 'artificial'
+                                         and start > event['start'] and not atom.slide and not atom.slide_in)
+                            if can_touch:
+                                event['contact'] = {'at':start, 'target':dict(stated['harmonic_target']), 'source_id':source_id}
+                                kept = dict(stated)
+                            else:
+                                event['harmonic_conflict'] = True
                             result['harmonic_ties'].append({
-                                'trackId': part.id, 'sourceId': 'songsterr:' + ':'.join(parts[i] for i in (1,3,5,7,9)),
+                                'trackId': part.id, 'sourceId': source_id,
                                 'location': atom.location, 'occurrence': occurrence + 1,
                                 'attack': float(clock.at(event['start'])), 'start': float(clock.at(start)), 'end': float(clock.at(end)),
                                 'string': atom.string, 'fret': atom.fret, 'authored': stated, 'used': kept,
-                                'rule': 'feedback-optional' if feedback else 'same-pitch' if same_pitch else 'initial-target-continued'})
+                                'rule': 'timed-artificial-contact' if can_touch else 'feedback-optional' if feedback else 'same-pitch' if same_pitch else 'initial-target-continued'})
                     elif "hn" in atom.effects and any(event["effects"].get(k) != atom.effects[k] for k in ("hn", "hps")):
                         unsupported(atom.location, "A changing harmonic target inside a tie is not independently representable.")
                     if source.format != 'songsterr' and "harmonic_target" in atom.effects and event["effects"].get("harmonic_target") != atom.effects["harmonic_target"]:
@@ -392,6 +403,19 @@ def expected(source, alignment):
                 unsupported(n["locations"][0], "Strum exceeds its sounding interval; no attack or endpoint was repaired.")
             mapped_start, mapped_end = recording.at(start), recording.at(end)
             row = {"t": mapped_start, "sus": round(mapped_end - mapped_start, 6), "s": n["s"], "f": n["f"], **n["effects"]}
+            if n.get('contact'):
+                contact = n['contact']
+                if (contact['at'] >= sound_end or n['slide_marks'] or n['incoming_marks']
+                        or any(k in n['effects'] for k in ('sl','slu','slide_out'))):
+                    for evidence in result['harmonic_ties']:
+                        if (evidence['trackId'] == part.id and evidence['attack'] == float(start)
+                                and evidence['string'] == n['s'] and evidence['fret'] == n['f']):
+                            evidence['used'] = {k: n['effects'][k] for k in harmonic_fields if k in n['effects']}
+                            evidence['rule'] = 'initial-target-continued'
+                else:
+                    row['harmonic_changes'] = {'version':1, 'events':[{
+                        'start':round(recording.at(clock.at(contact['at']))-mapped_start,6),
+                        'end':row['sus'], 'target':contact['target'], 'source_id':contact['source_id']}]}
             if n.get('whammy'):
                 segments = []
                 for expression in n['whammy']:

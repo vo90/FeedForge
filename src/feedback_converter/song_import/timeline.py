@@ -170,7 +170,7 @@ def render(score: Score) -> dict:
                     songsterr_tie = score.source.get('format') == 'songsterr'
                     if songsterr_tie:
                         from .tied_harmonics import FIELDS, retain
-                        retain(output, effects, note, track, occurrence, position, end, at, harmonic_ties)
+                        retain(output, effects, note, track, occurrence, position, end, at, harmonic_ties, articulations[id(output)])
                     elif "hn" in effects and any(output.get(k) != effects[k] for k in ("hn", "hps")):
                         raise ScoreImportError("A harmonic touch or pitch change inside a tie needs a separate gesture representation.")
                     if not songsterr_tie and "harmonic_target" in effects and output.get("harmonic_target") != effects["harmonic_target"]:
@@ -269,6 +269,8 @@ def render(score: Score) -> dict:
         # Apply the final sounding duration once ties have extended it. Clipping
         # each tied segment early loses later intervals on staccato attacks.
         for output in rendered:
+            from .tied_harmonics import finish
+            finish(output, harmonic_ties, track.id)
             if "pick_scrape_marks" in output:
                 output["pick_scrape_marks"] = [{**m, "end": min(m["end"], output["sus"])}
                     for m in output["pick_scrape_marks"] if m["start"] < output["sus"]]

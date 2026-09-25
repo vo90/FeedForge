@@ -22,7 +22,7 @@ def tied_source(first, second):
     ({'harmonic':'pinch','harmonicFret':5}, {'harmonic':'pinch','harmonicFret':12}, 'initial-target-continued'),
     ({'harmonic':'tapped','harmonicFret':7}, {'harmonic':'artificial','harmonicFret':7}, 'same-pitch'),
     ({}, {'harmonic':'feedback','harmonicFret':3.2}, 'feedback-optional'),
-    ({}, {'harmonic':'artificial','harmonicFret':7}, 'initial-target-continued'),
+    ({}, {'harmonic':'artificial','harmonicFret':7}, 'timed-artificial-contact'),
 ])
 def test_fallback_preserves_attack_bend_timing_and_literal_source(first,second,rule):
     source=tied_source(first, {**second, 'bend':{'points':[{'position':0,'tone':0},{'position':60,'tone':100}]}})

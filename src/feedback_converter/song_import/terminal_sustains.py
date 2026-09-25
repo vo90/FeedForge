@@ -53,6 +53,13 @@ def trim_held_note(note: dict, duration: float) -> tuple[dict, dict | None]:
             or any(p["time"] > shortened + EPSILON for p in note.get("slide_in_marks", []))):
         raise ImportFailure("alignment_failed", "The audio ends during a bend or slide; it cannot be shortened as a held sustain.")
     adjusted = {**note, "sus": shortened}
+    if 'harmonic_changes' in note:
+        from copy import deepcopy
+        changes = deepcopy(note['harmonic_changes'])
+        if any(e['start'] >= shortened - EPSILON for e in changes['events']):
+            raise ImportFailure('alignment_failed', 'The audio ends before a harmonic contact; it cannot be shortened as a held sustain.')
+        for event in changes['events']: event['end'] = shortened
+        adjusted['harmonic_changes'] = changes
     if 'whammy' in note:
         from ..whammy import trim_whammy
         try:
