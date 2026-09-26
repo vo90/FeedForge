@@ -358,6 +358,16 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         from .tied_mutes import archive_evidence as mute_archive
         _write_json(package / 'import/tied-mutes.json', mute_archive(performance, source_path))
         manifest.setdefault('song_import', {})['tiedMutesFile'] = 'import/tied-mutes.json'
+    if source_path is not None and performance.get('strumEvidence'):
+        import hashlib
+        groups = deepcopy(performance['strumEvidence'])
+        for group in groups:
+            group['time'] = round(map_time(alignment,group['time']),6)
+            for note in group['notes']:
+                note['t'] = round(map_time(alignment,note['t']),6)
+        _write_json(package / 'import/strums.json', {'version':1,'timeDomain':'recording_seconds',
+                    'sourceSha256':hashlib.sha256(source_path.read_bytes()).hexdigest(),'groups':groups})
+        manifest.setdefault('song_import', {})['strumsFile'] = 'import/strums.json'
     if performance.get('harmonicTieEvidence'):
         if source_path is None:
             raise ImportFailure('unsupported_score', 'Tied harmonic interpretation requires the retained original tab.')

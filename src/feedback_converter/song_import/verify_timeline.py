@@ -169,7 +169,7 @@ def expected(source, alignment):
     order = visits(source)
     clock, recording = Clock(source, order), RecordingMap(alignment)
     result = {"parts": [], "beats": [], "sections": [], "time_signatures": [], "tempos": [], "order": order,
-              'harmonic_ties': [], 'tied_mutes': [], 'trills': [],
+              'harmonic_ties': [], 'tied_mutes': [], 'trills': [], 'strums': [],
               "raw_notes": sum(len(bar) for p in source.parts for bar in p.bars), "tie_segments": 0}
     measure_facts = []
     inherited_tempos, inherited = [], F(120)
@@ -241,6 +241,7 @@ def expected(source, alignment):
             rest_indices[voice] = (starts, ends)
         notes, state, pending_slides, pending_hopos = [], {}, {}, {}
         notation_notes = {}
+        strum_groups = {}
         hopo_links = []
         last_bar = -1
         for occurrence, index in enumerate(order):
@@ -256,6 +257,14 @@ def expected(source, alignment):
                 if atom.length <= 0 or atom.string < 0 or atom.string >= len(part.tuning):
                     raise ValueError(atom.location + ": invalid duration/string")
                 previous = state.get(key)
+                if not atom.tie and atom.strum_direction:
+                    path = atom.beat.split('/')
+                    group_key = (occurrence, atom.beat)
+                    group = strum_groups.setdefault(group_key, {
+                        'trackId':part.id, 'sourceId':'songsterr:' + ':'.join(path[i] for i in (1,3,5,7)),
+                        'occurrence':occurrence+1, 'time':float(clock.at(start)),
+                        'direction':atom.strum_direction, 'notes':[]})
+                    group['notes'].append({'t':float(clock.at(start+atom.attack_offset)), 's':atom.string,'f':atom.fret})
                 if atom.tie:
                     gap_allowed = source.format == 'songsterr'
                     if gap_allowed and previous is not None and previous['end'] < start:
@@ -408,6 +417,10 @@ def expected(source, alignment):
         if pending_slides or pending_hopos:
             unsupported(f"tracks/{part.id}", "Source linked technique has no destination.")
         from .verify_trills import expand as trill_expectations
+        for group in strum_groups.values():
+            if len(group['notes']) >= 2 and len({n['s'] for n in group['notes']}) == len(group['notes']):
+                group['notes'].sort(key=lambda n:n['s'])
+                result['strums'].append(group)
         notes = trill_expectations(notes, hopo_links, part, notation_notes, result["trills"])
         rendered = []
         for n in notes:
@@ -502,5 +515,6 @@ def expected(source, alignment):
     result["score_duration"] = float(clock.at(clock.quarters))
     result['harmonic_ties'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['tied_mutes'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
+    result['strums'].sort(key=lambda r:(r['trackId'],r['occurrence'],r['time'],r['sourceId']))
     result["mapped_end"] = recording.at(clock.at(clock.quarters))
     return result

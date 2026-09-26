@@ -66,6 +66,7 @@ class Atom:
     staccato: bool = False
     pitch_offset: int = 0
     attack_offset: F = F(0)
+    strum_direction: str | None = None
     pick_scrape: str | None = None
     whammy: dict | None = None
     trill: dict | None = None
@@ -635,6 +636,7 @@ def songsterr(document, *, track_indices=None):
                                           nloc, str(vi), loc, bool(note.get("tie")), fx, sorted(bends), slide[note.get("slide")],
                                           bool(note.get("hp"))))
                         fact["notes"].append(atoms[-1])
+                        atoms[-1].strum_direction = direction
                         from .verify_trills import read as read_trill
                         atoms[-1].trill = read_trill(note, beat, raw["measures"], nloc)
                         atoms[-1].staccato = note.get("staccato") is True

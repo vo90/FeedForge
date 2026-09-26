@@ -105,6 +105,7 @@ def render(score: Score) -> dict:
     outputs = []
     harmonic_ties = []
     tied_mutes = []
+    strums = []
     trill_evidence = []
     warnings = list(score.warnings)
     source = {**score.source, "excludedTracks": list(score.source.get("excludedTracks", []))}
@@ -133,6 +134,7 @@ def render(score: Score) -> dict:
         pending_slide = {}
         pending_hopo = {}
         authored_groups = {}
+        strum_origins = {}
         articulations = {}
         hopo_links = []
         last_written = -1
@@ -209,6 +211,13 @@ def render(score: Score) -> dict:
                     articulations[id(output)] = articulation
                     if note.beat_id:
                         authored_groups.setdefault((occurrence, note.beat_id), []).append(output)
+                        if score.source.get('format') == 'songsterr':
+                            _, pi, bi, vi, ei = note.beat_id.split(':')
+                            raw = score.source_document['document']['parts'][int(pi)]['measures'][int(bi)]['voices'][int(vi)]['beats'][int(ei)]
+                            from .songsterr_timing import strum_offsets
+                            _, direction = strum_offsets(raw)
+                            if direction:
+                                strum_origins[(occurrence, note.beat_id)] = (at(position), direction)
                     performed_notes += 1
                     if performed_notes > 500_000:
                         raise ScoreImportError("Performed score exceeds the note import limit.")
@@ -308,6 +317,12 @@ def render(score: Score) -> dict:
         chords, templates, grouped = [], [], set()
         template_ids = {}
         labels = {beat.source_id: beat.chord_label for voices in track.written_bars for voice in voices for beat in voice.beats}
+        for key, (time, direction) in strum_origins.items():
+            group = authored_groups[key]
+            if len(group) >= 2 and len({n['s'] for n in group}) == len(group):
+                strums.append({'trackId':track.id, 'sourceId':key[1], 'occurrence':key[0]+1,
+                               'time':time, 'direction':direction,
+                               'notes':[{'t':n['t'],'s':n['s'],'f':n['f']} for n in sorted(group,key=lambda n:n['s'])]})
         for (_, beat_id), group in authored_groups.items():
             if len(group) < 2 or len({note["t"] for note in group}) != 1:
                 continue
@@ -393,5 +408,6 @@ def render(score: Score) -> dict:
             "sourceScore": score.source_document,
             **({'harmonicTieEvidence': sorted(harmonic_ties, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if harmonic_ties else {}),
             **({'tiedMuteEvidence': sorted(tied_mutes, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if tied_mutes else {}),
+            'strumEvidence': sorted(strums,key=lambda r:(r['trackId'],r['occurrence'],r['time'],r['sourceId'])),
             **({"trillEvidence": trill_evidence} if trill_evidence else {}),
             "featureInventory": score.feature_inventory}

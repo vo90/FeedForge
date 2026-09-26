@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 25
+VERSION = 26
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -628,6 +628,28 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             manifest = yaml.safe_load(z.read("manifest.yaml"))
             _finite(manifest, "manifest", check)
             recipe = manifest.get("song_import", {})
+            if recipe.get('strumsFile') or recipe.get('preservationContract',0) >= 26 and wanted['strums']:
+                from .verify_timeline import RecordingMap
+                recording = RecordingMap(alignment)
+                retained = _json(z, recipe.get('strumsFile',''), check)
+                check.equal('strum_evidence','import/strums/version',1,retained.get('version'))
+                check.equal('strum_evidence','import/strums/timeDomain','recording_seconds',retained.get('timeDomain'))
+                check.equal('strum_evidence','import/strums/sourceSha256',report['sourceSha256'],retained.get('sourceSha256'))
+                groups = retained.get('groups')
+                if not isinstance(groups,list): raise ValueError('Missing strum groups')
+                check.equal('strum_evidence','import/strums/count',len(wanted['strums']),len(groups))
+                for i,(a,b) in enumerate(zip(wanted['strums'],groups)):
+                    where=f'import/strums/{i}'
+                    check.equal('strum_evidence',where+'/keys',sorted(a),sorted(b))
+                    for key in ('trackId','sourceId','occurrence','direction'):
+                        check.equal('strum_evidence',where+'/'+key,a[key],b.get(key))
+                    check.near('strum_time',where,recording.at(a['time']),b.get('time'))
+                    check.equal('strum_evidence',where+'/count',len(a['notes']),len(b['notes']))
+                    for n,m in zip(a['notes'],b['notes']):
+                        check.equal('strum_evidence',where+'/note-keys',sorted(n),sorted(m))
+                        for key in ('s','f'): check.equal('strum_evidence',where+'/'+key,n[key],m.get(key))
+                        check.near('strum_time',where+'/note',recording.at(n['t']),m.get('t'))
+                report['scope'].append('authored_strum_display_groups')
             if (recipe.get('preservationContract', 0) >= 20
                     and alignment.get('method') == 'songsterr-video-points-v1'):
                 from .verify_synchronization import verify_source_timing
