@@ -15,7 +15,7 @@ from feedback_converter.song_import.high_frets import project
 from feedback_converter.song_import.verification import verify_import, Check, _notes, _chords, _flatten
 from feedback_converter.song_import.verify_source import songsterr
 from feedback_converter.song_import.verify_timeline import expected
-from feedback_converter.song_import.verify_high_frets import reconstruct
+from feedback_converter.song_import.verify_high_frets import reconstruct, check_receipt
 from test_songsterr_recording_end import recording
 
 
@@ -207,3 +207,12 @@ def test_high_fret_at_recording_end_keeps_original_audio_sync_evidence(recording
     assert checked['adjustments']['omittedEndingNotes']==2
     assert len(assessed)==1 and len(assessed[0][0]['events'])==208
     assert assessed[0][0]['events'][-1]['midi']==66
+
+
+@pytest.mark.parametrize('change,valid', [(0.000001,True),(0.000003,False),(True,False)])
+def test_receipt_time_uses_existing_rounding_tolerance_but_rejects_changes(change,valid):
+    receipt={'notes':[{'scoreStart':1.,'scoreDuration':.053763,'fret':26}],'links':[]}
+    actual=deepcopy(receipt)
+    actual['notes'][0]['scoreDuration']=change if isinstance(change,bool) else .053763+change
+    check=Check();check_receipt(receipt,actual,check)
+    assert (not check.errors)==valid

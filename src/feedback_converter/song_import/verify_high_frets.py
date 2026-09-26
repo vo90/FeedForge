@@ -50,6 +50,34 @@ def reconstruct(reference, mapped):
     return receipt
 
 
+def check_receipt(expected_receipt, actual, check):
+    """Exact identities/counts, with the existing one-microsecond time tolerance."""
+    if not isinstance(actual, dict) or set(actual) != set(expected_receipt):
+        check.fail("omission_receipt", "import/high-fret-omissions", "Missing or unexpected omission receipt fields.")
+        return
+    encode = lambda value: json.dumps(value, sort_keys=True, ensure_ascii=False)
+    for key in expected_receipt:
+        if key not in {"notes", "links"}:
+            if encode(expected_receipt[key]) != encode(actual[key]):
+                check.fail("omission_receipt", "import/high-fret-omissions/" + key, "Omission receipt header differs from the source-derived policy.")
+            continue
+        rows = actual[key]
+        wanted = expected_receipt[key]
+        if not isinstance(rows, list) or len(rows) != len(wanted):
+            check.fail("omission_receipt", "import/high-fret-omissions/" + key, "Omission receipt event count differs from the original source.")
+            continue
+        for index, (a, b) in enumerate(zip(wanted, rows)):
+            location = f"import/high-fret-omissions/{key}/{index}"
+            if not isinstance(b, dict) or set(a) != set(b):
+                check.fail("omission_receipt", location, "Omission event fields differ from the source-derived event.")
+                continue
+            for field in a:
+                if field in {"scoreStart", "scoreDuration"}:
+                    check.near("omission_time", location + "/" + field, a[field], b[field])
+                elif encode(a[field]) != encode(b[field]):
+                    check.fail("omission_receipt", location + "/" + field, "Omission event identity differs from the original source.")
+
+
 def verify(source, wanted, source_path, recipe, archive, check, read_json):
     if source.format != "songsterr":
         if recipe.get("highFretOmissionsFile") or recipe.get("omissions"):
@@ -73,9 +101,7 @@ def verify(source, wanted, source_path, recipe, archive, check, read_json):
     check.equal("omission_file", "import", "import/high-fret-omissions.json", filename)
     if filename:
         stored = read_json(archive, filename, check)
-        # Strict JSON spelling also rejects bool/int and integer/float confusion.
-        if json.dumps(stored, sort_keys=True, ensure_ascii=False) != json.dumps(receipt, sort_keys=True, ensure_ascii=False):
-            check.fail("omission_receipt", filename, "Omission receipt differs from independently reconstructed source events.")
+        check_receipt(receipt, stored, check)
     summary = {"policy": "omit-unsupported-frets-v1", "omittedNotes": len(receipt["notes"]),
                "omittedSlideEvents": sum(n["reason"] == "slide_target_above_24" for n in receipt["notes"]),
                "clearedLinks": len(receipt["links"]), "excludedTracks": receipt["excludedTracks"],
