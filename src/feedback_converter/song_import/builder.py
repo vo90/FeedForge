@@ -221,6 +221,13 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     if alignment.get("status") != "validated":
         raise ImportFailure("alignment_failed", "The recording has not passed synchronization checks.")
     settings = output_settings or {}
+    original_tracks = performance.get("tracks", [])
+    from .high_frets import project, archive_receipt, summary as omission_summary
+    omissions = None
+    if (performance.get("source") or {}).get("format") == "songsterr":
+        performance, omissions = project(performance)
+        if omissions["notes"] and (source_path is None or (recipe or {}).get("preservationContract", 0) < 24):
+            raise ImportFailure("unsupported_score", "High-fret omissions require the original tab and preservation contract 24.")
     package = directory / "package"
     package.mkdir(exist_ok=False)
     duration = float(audio["duration"])
@@ -234,6 +241,12 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         timeline["tempos"] = [deepcopy(item) for item in alignment["tempos"] if 0 <= item["time"] <= duration]
     arrangements, sustain_adjustments, ending_omissions = [], [], []
     cut_ending = ending_cutoff_allowed(alignment, duration)
+    if cut_ending:
+        for original_track in original_tracks:
+            originals = [(n, n["t"]) for n in original_track.get("notes", [])]
+            originals += [(n, n.get("t", c["t"])) for c in original_track.get("chords", []) for n in c.get("notes", [])]
+            ending_omissions.extend(omitted_note(original_track["id"], n, alignment, start)
+                                    for n, start in originals if map_time(alignment, start) >= duration)
     used = set()
     for index, track in enumerate(performance.get("tracks", [])):
         if track.get("instrument") not in {"guitar", "bass"}:
@@ -248,7 +261,6 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         tuning = _tuning_offsets(track)
         def keep(note, start):
             if cut_ending and map_time(alignment, start) >= duration:
-                ending_omissions.append(omitted_note(track["id"], note, alignment, start))
                 return False
             return True
         chart = {"name": name, "tuning": tuning, "capo": max(0, int(track.get("capo", 0))),
@@ -332,6 +344,11 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         shutil.copyfile(source_path, package / original)
         _write_json(package / "import/compatibility.json", compatibility)
         manifest.setdefault("song_import", {}).update(sourceFile=original, compatibilityFile="import/compatibility.json")
+    if omissions and omissions["notes"]:
+        _write_json(package / "import/high-fret-omissions.json", archive_receipt(omissions, source_path))
+        coverage["omissions"] = omission_summary(omissions)
+        manifest.setdefault("song_import", {}).update(highFretOmissionsFile="import/high-fret-omissions.json",
+                                                       omissions=coverage["omissions"])
     if alignment.get("sourceTiming") is not None:
         _write_json(package / "import/source-timing.json", alignment["sourceTiming"])
         manifest.setdefault("song_import", {})["sourceTimingFile"] = "import/source-timing.json"
@@ -392,4 +409,5 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     return {"stagingPath": str(archive), "relativePath": destination.relative_to(output_dir).as_posix(),
             "title": title, "artist": artist, "duration": duration,
             "coverage": coverage,
-            "warnings": list(validation.warnings)}
+            "warnings": list(validation.warnings) + ([f"Completed with omitted notes: {len(omissions['notes'])} unsupported high-fret or connected slide events are not displayed or scored. Original tab retained. Staff notation for affected arrangements is retained in the source only."]
+                                                       if omissions and omissions["notes"] else [])}

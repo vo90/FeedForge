@@ -22,7 +22,7 @@ def example():
                       {"type": 4, "duration": [1, 4], "notes": [{"string": 5, "fret": 3, "hp": True}]},
                       {"type": 4, "duration": [1, 4], "notes": [{"string": 5, "fret": 5}]},
                       {"type": 4, "duration": [1, 4], "notes": [{"string": 5, "fret": 7, "ghost": True}]},
-                      {"type": 4, "duration": [1, 4], "notes": [{"string": 5, "fret": 30, "slide": "upwards"}]},
+                      {"type": 4, "duration": [1, 4], "notes": [{"string": 5, "fret": 24, "slide": "upwards"}]},
                   ]}]}]}]}
     beats = [{"time": 1, "measure": 1}, {"time": 1.5, "measure": -1}, {"time": 2, "measure": -1}, {"time": 2.5, "measure": -1}]
     sections = [{"time": 1, "name": "Intro"}]
@@ -31,7 +31,7 @@ def example():
         {"t": 1, "s": 0, "f": 3, "sus": .5, "ln": True},
         {"t": 1.5, "s": 0, "f": 5, "sus": .5, "ho": True},
         {"t": 2, "s": 0, "f": 7, "sus": .5, "ghost": True},
-        {"t": 2.5, "s": 0, "f": 30, "sus": .5, "slide_out": "up",
+        {"t": 2.5, "s": 0, "f": 24, "sus": .5, "slide_out": "up",
          "slide_out_marks": [{"direction": "up", "start": 0, "end": .5}]}],
         "chords": [], "templates": [], "beats": deepcopy(beats), "sections": deepcopy(sections), "tempos": deepcopy(tempos)}
     timeline = {"version": 1, "beats": beats, "sections": sections, "tempos": tempos, "time_signatures": [{"time": 1, "ts": [4, 4]}]}
@@ -39,7 +39,7 @@ def example():
         "ts": [4, 4], "tempo": 120, "written_tempo": 120, "duration_seconds": 2, "staves": {"staff": {"voices": [
         {"v": 0, "beats": [{"t": t, "duration_seconds": .5, "beat_pos": [i, 1], "dur": 4, "notes": [
             {"midi": 40 + f, "str": 0, "fret": f, **({"ho": True} if f == 5 else {"ghost": True} if f == 7 else {})}]}
-                            for i, (t, f) in enumerate([(1, 3), (1.5, 5), (2, 7), (2.5, 30)])]}]}}}]}
+                            for i, (t, f) in enumerate([(1, 3), (1.5, 5), (2, 7), (2.5, 24)])]}]}}}]}
     manifest = {"feedpak_version": "1.16.0", "title": "Fixture", "artist": "Artist", "duration": 4,
                 "cover": "cover.png", "preview": "audio/preview.ogg", "stems": [{"file": "audio/full.ogg"}],
                 "song_timeline": "timeline.json", "arrangements": [{"id": "g", "name": "Lead", "type": "lead",
@@ -194,7 +194,7 @@ def test_gpif_is_read_independently_from_literal_xml(tmp_path):
     <Notes><Note id="a"><Properties><Property name="String"><String>0</String></Property><Property name="Fret"><Fret>3</Fret></Property></Properties></Note>
     <Note id="b"><Properties><Property name="String"><String>0</String></Property><Property name="Fret"><Fret>5</Fret></Property></Properties></Note>
     <Note id="c"><Properties><Property name="String"><String>0</String></Property><Property name="Fret"><Fret>7</Fret></Property></Properties></Note>
-    <Note id="d"><Properties><Property name="String"><String>0</String></Property><Property name="Fret"><Fret>30</Fret></Property></Properties></Note></Notes></GPIF>'''
+    <Note id="d"><Properties><Property name="String"><String>0</String></Property><Property name="Fret"><Fret>24</Fret></Property></Properties></Note></Notes></GPIF>'''
     gp = tmp_path / "example.gp"
     with ZipFile(gp, "w") as z:
         z.writestr("Content/score.gpif", xml)

@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 23
+VERSION = 24
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -313,6 +313,9 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=()):
                         where = path + f"/voices/{vi}/beats/{bti}"
                         remember(beat, ("chord", "wahwah", "letRing", "tremoloBar", "vibratoWithTremoloBar"), "beat", where)
                         for ni, note in enumerate(beat["notes"]):
+                            if (not note.get("rest") and type(note.get("fret")) is int and 24 < note["fret"] <= 48
+                                    and not (note.get("dead") is True and note.get("pickScrape") in ("up", "down"))):
+                                expected[("note.fret_range", where + f"/notes/{ni}/fret")] = note["fret"]
                             remember(note, ("staccato", "pickScrape"), "note", where + f"/notes/{ni}")
                             if (note.get('harmonic') in ('semi', 'feedback') and note.get('harmonicFret') is not None
                                     or note.get('harmonic') == 'natural' and note.get('fret') == 15
@@ -336,14 +339,14 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=()):
         check.equal("compatibility_value", key[1], value if len(encoded) <= 2048 else encoded[:2048], row.get("value"))
         check.equal("compatibility_value", key[1] + "/truncated", len(encoded) > 2048, row.get("valueTruncated"))
         check.equal("compatibility_retention", key[1], "original_source", row.get("retained"))
-        check.equal("compatibility_impact", key[1], "display_or_expression", row.get("impact"))
+        check.equal("compatibility_impact", key[1], "gameplay_omission" if key[0] == "note.fret_range" else "display_or_expression", row.get("impact"))
         check.equal("compatibility_category", key[1], "game_limitation", row.get("category"))
 
 
 def _notation(archive, arrangement, wanted, check):
     """Verify available beat time/rest facts without inferring engraving style."""
     name = arrangement.get("notation")
-    if wanted["source"].notation_unavailable or wanted["source"].unpitched_mutes:
+    if wanted.get("high_fret_omissions") or wanted["source"].notation_unavailable or wanted["source"].unpitched_mutes:
         if name:
             check.fail("unsupported_notation", name, "Unsupported source notation must not be replaced with invented pitches or rhythm.")
         return
@@ -527,20 +530,18 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
     for part in wanted["parts"]:
         src = part["source"]
         events = []
-        for item in part["notes"]:
+        for item in part.get("sync_notes", part["notes"]):
             n = item["note"]
             events.append({"t": n["t"], "end": n["t"] + n.get("sus", 0),
                            "midi": src.tuning[n["s"]] + src.capo + n["f"] if n["f"] != 127 else None,
                            "effects": {k: v for k, v in n.items() if k not in {"t", "sus", "s", "f"}}})
         tracks.append({"id": src.id, "instrument": src.instrument, "events": events})
-        kept = []
-        for item in part["notes"]:
+        kept = [item for item in part["notes"] if item["note"]["t"] < duration]
+        for item in part.get("sync_notes", part["notes"]):
             n = item["note"]
             if n["t"] >= duration:
                 omissions.append({"trackId": src.id, "string": n["s"], "fret": n["f"],
                                   "audioStart": round(n["t"], 6), "originalDuration": round(n.get("sus", 0), 6)})
-            else:
-                kept.append(item)
         if part["notes"] and not kept:
             check.fail("ending_track", "tracks/" + src.id, "The cutoff would remove an entire source arrangement.")
         part["notes"] = kept
@@ -692,6 +693,13 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             duration = manifest.get("duration")
             if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration <= 0:
                 raise ValueError("manifest/duration: invalid audio duration")
+            from .verify_high_frets import verify as verify_omissions
+            omissions = verify_omissions(source, wanted, score_path, recipe, z, check, _json)
+            if omissions:
+                report["omissions"] = omissions
+                report["scope"].append("declared_high_fret_gameplay_omissions")
+                check.equal("omission_compatibility", "import/compatibility", omissions, compatibility.get("omissions"))
+                report["counts"]["expectedPlayableNotes"] = sum(len(p["notes"]) for p in wanted["parts"])
             ending_adjustments = _ending_adjustments(wanted, alignment, recipe, z, duration, source, check, manifest, report["timing"])
             adjustments = _terminal_adjustments(wanted, alignment, recipe, z, duration, source, check)
             if ending_adjustments:

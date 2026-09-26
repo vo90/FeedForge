@@ -5,16 +5,17 @@ from feedback_converter.song_import.compatibility import inspect_songsterr
 from feedback_converter.song_import.diagnostics import diagnose_arrangements
 
 
-def test_valid_extended_fret_is_a_located_game_capability_decision_before_packaging():
+def test_valid_extended_fret_is_a_located_approved_gameplay_omission():
     source = raw_score([measure(beat(fret=29))]); original = deepcopy(source)
     report = inspect_songsterr(source)
     finding = report['findings'][0]
     assert finding['feature'] == 'note.fret_range'
-    assert finding['decisionId'] == 'D7' and finding['workStatus'] == 'decision_required'
+    assert 'decisionId' not in finding and finding['workStatus'] == 'gameplay_omission'
     assert finding['location'] == 'parts/0/measures/0/voices/0/beats/0/notes/0/fret'
     assert finding['value'] == 29 and source == original
     diagnose_arrangements(source, report)
-    assert report['arrangements'][0]['stage'] == 'compatibility'
+    assert report['arrangements'][0]['status'] == 'score_ready'
+    assert report['arrangements'][0]['omissions']['omittedNotes'] == 1
 
 
 def test_distinct_simultaneous_voices_are_retained_as_a_playing_choice():

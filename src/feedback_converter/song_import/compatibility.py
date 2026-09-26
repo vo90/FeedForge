@@ -8,7 +8,7 @@ import json
 import math
 from .songsterr_harmonics import exact_natural, natural_alias, source_target
 
-VERSION = 23
+VERSION = 24
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -75,7 +75,7 @@ def add_finding(report, *, feature, category, impact, message, location="source"
         encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
         decision = DECISIONS.get(feature.split(".")[-1]) if impact == "blocking" else None
         report["findings"].append({"feature": feature, "category": category, "impact": impact,
-            "workStatus": "decision_required" if decision else "display_limitation" if impact == "display_or_expression" else "technical_work",
+            "workStatus": "decision_required" if decision else "gameplay_omission" if impact == "gameplay_omission" else "display_limitation" if impact == "display_or_expression" else "technical_work",
             **({"decisionId": decision} if decision else {}),
             "message": message, "location": location, **coordinates,
             "value": deepcopy(value) if len(encoded) <= 2048 else encoded[:2048],
@@ -193,8 +193,8 @@ def inspect_songsterr(document, *, track_indices=None):
                             continue
                         visual_scrape = note.get('dead') is True and note.get('pickScrape') in ('up', 'down')
                         if (not visual_scrape and not note.get('rest') and type(note.get('fret')) is int and 24 < note['fret'] <= 48):
-                            add_finding(report, feature='note.fret_range', category='game_representation', impact='blocking',
-                                        message='This authored fret is beyond the current game range of 24. Its original pitch and position are retained; no octave or string substitution was made.',
+                            add_finding(report, feature='note.fret_range', category='game_limitation', impact='gameplay_omission',
+                                        message='Notes above fret 24 and slide events leading above fret 24 are omitted from gameplay and scoring. Original pitches and positions remain in the retained source; no substitution was made.',
                                         location=npath + '/fret', value=note['fret'], **nc)
                         if (note.get("dead") is True and note.get("fret") is None and not note.get("rest")
                                 and any(note.get(key) for key in ("hp", "slide", "bend", "harmonic", "vibrato", "wideVibrato", "leftHandVibrato"))):
@@ -211,4 +211,4 @@ def inspect_songsterr(document, *, track_indices=None):
 def summary(report):
     if not report:
         return None
-    return {key: deepcopy(report[key]) for key in ("version", "target", "status", "findingCount", "truncated")}
+    return {key: deepcopy(report[key]) for key in ("version", "target", "status", "findingCount", "truncated", "omissions") if key in report}

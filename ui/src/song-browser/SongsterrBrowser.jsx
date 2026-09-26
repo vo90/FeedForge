@@ -7,12 +7,12 @@ const LABELS = { queued: 'Queued', resolving: 'Checking revision', downloading: 
 function errorText(value) { return typeof value === 'string' ? value : value?.message || value?.error || 'The operation failed. Please try again.'; }
 
 const CATEGORY = { unknown_semantics: 'Needs interpretation', source_interpretation: 'Needs interpretation', converter_gap: 'Converter support', game_representation: 'Game representation', game_limitation: 'Game limitation', source_structure: 'Source structure', conversion_check: 'Conversion check', audio_alignment: 'Audio alignment' };
-const WORK = { decision_required: 'Design decision needed', technical_work: 'Conversion work needed', display_limitation: 'Display limitation', fixed_verified: 'Resolved and verified' };
+const WORK = { decision_required: 'Design decision needed', technical_work: 'Conversion work needed', display_limitation: 'Display limitation', gameplay_omission: 'Omitted from gameplay and scoring', fixed_verified: 'Resolved and verified' };
 export function CompatibilityDetails({ report }) {
   if (!report) return null;
   return <div className="st-compatibility"><p>{report.findingCount || 0} compatibility findings. Original information is retained; retention does not mean the game displays or scores it.</p>
     {report.arrangements?.length ? <details open><summary>Arrangement checks</summary>
-      <p>Every requested arrangement must pass before a FeedPak is saved. A passed score check still needs audio alignment and final file verification.</p>
+      <p>Every requested arrangement is checked before saving. Unsupported high-fret events can be omitted with a recorded limitation. A passed score check still needs audio alignment and final file verification.</p>
       <ul>{report.arrangements.map(item => <li key={item.trackIndex}><strong>{item.name}</strong> · {item.status === 'score_ready' ? 'Score check passed' : 'Needs attention'}
         {item.message ? <p>{item.message}</p> : item.blockingFeatures?.length ? <p>{item.blockingFeatures.join(', ')}</p> : null}</li>)}</ul>
     </details> : null}
@@ -42,7 +42,8 @@ export function SongsterrJob({ job, api, action, busy }) {
   const needsAudio = ['needs_audio', 'alignment_failed'].includes(job.state);
   return <li className={`sb-job ${job.state === 'completed' ? 'sb-job-completed' : ''}`}>
     <div className="sb-job-top"><div className="sb-job-heading"><strong>{job.title}</strong><span>{job.artist}</span></div>
-      <span className="sb-job-status">{active ? <LoaderCircle className="sb-spin" size={14} /> : job.state === 'completed' ? <Check size={14} /> : job.state !== 'cancelled' ? <AlertTriangle size={14} /> : null}{job.state === 'completed' && job.compatibility?.status === 'limitations' ? 'Ready with limitations' : LABELS[job.state] || job.state}</span></div>
+      <span className="sb-job-status">{active ? <LoaderCircle className="sb-spin" size={14} /> : job.state === 'completed' ? <Check size={14} /> : job.state !== 'cancelled' ? <AlertTriangle size={14} /> : null}{job.state === 'completed' && job.verification?.omissions?.omittedNotes ? 'Ready with omitted notes' : job.state === 'completed' && job.compatibility?.status === 'limitations' ? 'Ready with limitations' : LABELS[job.state] || job.state}</span></div>
+    {job.verification?.omissions?.omittedNotes ? <p>{job.verification.omissions.omittedNotes} high-fret or connected slide events omitted from display and scoring. The complete original tab is saved inside the FeedPak.{job.verification.omissions.excludedTracks?.length ? ` ${job.verification.omissions.excludedTracks.length} arrangements had no supported notes remaining.` : ''}</p> : null}
     {active ? <progress className="sb-progress" aria-label={`${job.title}: ${LABELS[job.state]}`} /> : null}
     <p>{job.error || job.message}</p>
     {job.revisionId ? <small>Approved revision {job.revisionId}</small> : null}

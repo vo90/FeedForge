@@ -32,6 +32,11 @@ def diagnose_arrangements(document, report):
             performance = render(score)
             row["status"] = "score_ready"
             row["noteCount"] = sum(len(t["notes"]) + sum(len(c["notes"]) for c in t["chords"]) for t in performance["tracks"])
+            from .high_frets import project, summary
+            _, omissions = project(performance)
+            if omissions["notes"]:
+                row["omissions"] = summary(omissions)
+                row["message"] = f"{len(omissions['notes'])} high-fret or connected slide events will be omitted from gameplay and scoring."
         except (ScoreImportError, ValueError, TypeError, KeyError, IndexError) as exc:
             row["message"] = str(exc)[:1000]
             feature = getattr(exc, 'source_feature', "arrangement." + row["stage"])

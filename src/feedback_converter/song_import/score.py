@@ -59,6 +59,10 @@ def load_performance(path: Path | str, metadata: dict | None = None) -> dict:
     if path.suffix.lower() == ".json":
         from .tied_harmonics import report_findings
         report_findings(performance, report)
+        from .high_frets import project, summary as omission_summary
+        _, omissions = project(performance)
+        if omissions["notes"]:
+            report["omissions"] = omission_summary(omissions)
         for track in performance["tracks"]:
             if "notation" not in track:
                 source_track = next(t for t in score.tracks if t.id == track["id"])

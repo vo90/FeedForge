@@ -130,12 +130,14 @@ def run_import(request: dict, progress=None) -> dict:
         summary["compatibility"] = recipe["compatibility"]
         if verification.get("adjustments"):
             summary["adjustments"] = verification["adjustments"]
+        if verification.get("omissions"):
+            summary["omissions"] = verification["omissions"]
         if alignment.get("recordingSync"):
             summary["recordingSync"] = {key: alignment["recordingSync"][key] for key in
                                          ("version", "status", "windowCount", "supportedWindows", "everyNoteVerified")}
         if (request.get("outputSettings") or {}).get("generateDifficulty") is True:
             summary["generatedDifficulty"] = {"requested": True, "sourceAuthored": False,
-                                               "verificationScope": "full-source-chart"}
+                                               "verificationScope": "source-chart-with-declared-omissions" if verification.get("omissions") else "full-source-chart"}
         if verification.get("status") != "passed":
             unsupported = verification.get("status") == "unsupported"
             return {"ok": False, "code": "needs_attention" if unsupported else "verification_failed",
@@ -148,7 +150,7 @@ def run_import(request: dict, progress=None) -> dict:
                 "verification": summary, "evidence": evidence, "compatibility": compatibility_summary(compatibility),
                 "artwork": {key: artwork[key] for key in ("status", "album", "year", "message", "reason") if key in artwork},
                 "warnings": list(performance.get("warnings", [])) + result["warnings"] +
-                            (["Practice difficulty was requested. Source verification covers the full chart; generated levels are not source-authored."]
+                            (["Practice difficulty was requested. Verification covers the main chart and any declared omissions; generated levels are not source-authored."]
                              if (request.get("outputSettings") or {}).get("generateDifficulty") is True else []) +
                             (["Timing was imported from Songsterr for this tab revision and recording."]
                              if alignment.get("method") == "songsterr-video-points-v1" else

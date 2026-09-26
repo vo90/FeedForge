@@ -17,6 +17,14 @@ const { SongsterrJob, default: SongsterrBrowser } = compiled.exports;
 const base = { id: 'job-songsterr-1', songId: '564073', title: 'Woodland Rites', artist: 'Green Lung', state: 'queued', canCancel: true, canRetry: false };
 const render = (Component, props) => renderToStaticMarkup(React.createElement(Component, props));
 const job = (change) => render(SongsterrJob, { job: { ...base, ...change }, api: {}, action() {}, busy: false });
+test('completed partial charts identify omitted gameplay targets, not only display limitations', () => {
+  const html = job({ state: 'completed', compatibility: { status: 'limitations' },
+    verification: { omissions: { omittedNotes: 14, excludedTracks: ['lead'] } } });
+  assert.match(html, /Ready with omitted notes/);
+  assert.match(html, /14 high-fret or connected slide events omitted from display and scoring/);
+  assert.match(html, /1 arrangements had no supported notes remaining/);
+  assert.doesNotMatch(html, /Ready with limitations/);
+});
 const buttonText = (html) => [...html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map((match) => match[1].replace(/<[^>]*>/g, '').trim());
 
 test('completed imports distinguish limitations without implying a failed or fully supported chart', () => {
@@ -64,7 +72,8 @@ test('arrangement diagnostics do not imply a completed or partial import', () =>
   const html = render(compiled.exports.CompatibilityDetails, { report: { findingCount: 0, findings: [],
     arrangements: [{ trackIndex: 3, name: 'Bass', status: 'score_ready' }, { trackIndex: 8, name: 'Lead', status: 'blocked', message: 'Unresolved tie.' }] } });
   assert.match(html, /Score check passed/);
-  assert.match(html, /Every requested arrangement must pass/);
+  assert.match(html, /Every requested arrangement is checked/);
+  assert.match(html, /Unsupported high-fret events can be omitted with a recorded limitation/);
   assert.match(html, /audio alignment and final file verification/);
   assert.match(html, /Unresolved tie/);
   assert.doesNotMatch(html, /FeedPak ready|Download usable parts/);
