@@ -169,7 +169,7 @@ def expected(source, alignment):
     order = visits(source)
     clock, recording = Clock(source, order), RecordingMap(alignment)
     result = {"parts": [], "beats": [], "sections": [], "time_signatures": [], "tempos": [], "order": order,
-              'harmonic_ties': [], 'trills': [],
+              'harmonic_ties': [], 'tied_mutes': [], 'trills': [],
               "raw_notes": sum(len(bar) for p in source.parts for bar in p.bars), "tie_segments": 0}
     measure_facts = []
     inherited_tempos, inherited = [], F(120)
@@ -266,6 +266,18 @@ def expected(source, alignment):
                             or previous["end"] != start and not gap_allowed):
                         unsupported(atom.location, "Source tie does not identify a continuous prior note; it has not been repaired.")
                     event = previous
+                    late_mute = (source.format == 'songsterr' and atom.effects.get('mt') is True
+                                 and not event['effects'].get('mt') and atom.fret != 127
+                                 and not atom.pick_scrape and not event['scrapes'])
+                    if late_mute:
+                        path = atom.location.split('/')
+                        result['tied_mutes'].append({
+                            'trackId': part.id, 'sourceId': 'songsterr:' + ':'.join(path[i] for i in (1,3,5,7,9)),
+                            'location': atom.location, 'occurrence': occurrence + 1,
+                            'attack': float(clock.at(event['start'])), 'start': float(clock.at(start)), 'end': float(clock.at(end)),
+                            'string': atom.string, 'fret': atom.fret,
+                            'authored': {'dead': True}, 'used': {'dead': False},
+                            'rule': 'initial-pitched-target-continued'})
                     harmonic_fields = {'hm', 'hp', 'hn', 'hps', 'harmonic_target', 'harmonic_alias'}
                     if source.format == 'songsterr':
                         stated = {k: atom.effects[k] for k in harmonic_fields if k in atom.effects}
@@ -301,7 +313,7 @@ def expected(source, alignment):
                     if source.format != 'songsterr' and "harmonic_target" in atom.effects and event["effects"].get("harmonic_target") != atom.effects["harmonic_target"]:
                         unsupported(atom.location, "A changing fretted harmonic inside a tie is not independently representable.")
                     event["end"] = end
-                    event["effects"].update({k: v for k, v in atom.effects.items() if k != "pkd" and (source.format != 'songsterr' or k not in harmonic_fields)})
+                    event["effects"].update({k: v for k, v in atom.effects.items() if k != "pkd" and not (late_mute and k == 'mt') and (source.format != 'songsterr' or k not in harmonic_fields)})
                     event["locations"].append(atom.location)
                     result["tie_segments"] += 1
                 else:
@@ -489,5 +501,6 @@ def expected(source, alignment):
         result["parts"].append({"source": part, "notes": rendered, "notation_beats": notation_beats, "notation_measures": measure_facts})
     result["score_duration"] = float(clock.at(clock.quarters))
     result['harmonic_ties'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
+    result['tied_mutes'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result["mapped_end"] = recording.at(clock.at(clock.quarters))
     return result

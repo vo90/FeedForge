@@ -104,6 +104,7 @@ def render(score: Score) -> dict:
 
     outputs = []
     harmonic_ties = []
+    tied_mutes = []
     trill_evidence = []
     warnings = list(score.warnings)
     source = {**score.source, "excludedTracks": list(score.source.get("excludedTracks", []))}
@@ -170,7 +171,10 @@ def render(score: Score) -> dict:
                         raise ScoreImportError(f"Unresolved tie in {track.name}, measure {index + 1}.")
                     output = prior[0]
                     songsterr_tie = score.source.get('format') == 'songsterr'
+                    late_mute = False
                     if songsterr_tie:
+                        from .tied_mutes import retain as retain_mute
+                        late_mute = retain_mute(output, effects, note, track, occurrence, position, end, at, tied_mutes)
                         from .tied_harmonics import FIELDS, retain
                         retain(output, effects, note, track, occurrence, position, end, at, harmonic_ties, articulations[id(output)])
                     elif "hn" in effects and any(output.get(k) != effects[k] for k in ("hn", "hps")):
@@ -179,7 +183,7 @@ def render(score: Score) -> dict:
                         raise ScoreImportError("A harmonic type or pitch change inside a tie needs a separate gesture representation.")
                     articulation = articulations[id(output)]
                     articulation["segments"] += 1
-                    output.update({k: v for k, v in effects.items() if k != "pkd" and (not songsterr_tie or k not in FIELDS)})
+                    output.update({k: v for k, v in effects.items() if k != "pkd" and not (late_mute and k == 'mt') and (not songsterr_tie or k not in FIELDS)})
                     if note.source_id:
                         output.setdefault("source_ids", []).append(note.source_id)
                 else:
@@ -388,5 +392,6 @@ def render(score: Score) -> dict:
             "warnings": warnings, "source": source,
             "sourceScore": score.source_document,
             **({'harmonicTieEvidence': sorted(harmonic_ties, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if harmonic_ties else {}),
+            **({'tiedMuteEvidence': sorted(tied_mutes, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if tied_mutes else {}),
             **({"trillEvidence": trill_evidence} if trill_evidence else {}),
             "featureInventory": score.feature_inventory}

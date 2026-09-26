@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 24
+VERSION = 25
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -272,7 +272,7 @@ def _chords(wanted, chart, check, part):
             check.near("chord_time", "tracks/" + part.id + "/chords", wanted_time, actual_time)
 
 
-def _compatibility_report(report, score_path, source, check, harmonic_ties=()):
+def _compatibility_report(report, score_path, source, check, harmonic_ties=(), tied_mutes=()):
     """Verify retained limitations from source facts, not the producer's inventory."""
     from .verify_source import _program_instrument, inactive
     rows = report.get("findings")
@@ -286,6 +286,8 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=()):
     check.equal("compatibility_target", "import/compatibility", "1.16.0", target.get("feedpak"))
     check.equal("compatibility_target", "import/compatibility/notation", 1, target.get("notation"))
     expected = {}
+    for row in tied_mutes:
+        expected[('note.tied_mute', row['location'] + f"@visit{row['occurrence']}")] = {k: row[k] for k in ('authored', 'used', 'rule')}
     for row in harmonic_ties:
         expected[('note.tied_harmonic', row['location'] + f"@visit{row['occurrence']}")] = {k: row[k] for k in ('authored', 'used', 'rule')}
     if source.format == "songsterr":
@@ -645,7 +647,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 if compatibility.get("status") not in {"compatible", "limitations"}:
                     check.fail("compatibility", "import/compatibility", "A blocked or invalid compatibility report cannot be published.")
                 if recipe.get("preservationContract", 0) >= 5:
-                    _compatibility_report(compatibility, score_path, source, check, wanted['harmonic_ties'])
+                    _compatibility_report(compatibility, score_path, source, check, wanted['harmonic_ties'], wanted['tied_mutes'])
             elif any(p.notation_unavailable or p.unpitched_mutes for p in source.parts):
                 check.fail("retained_notation", "import", "A notation limitation requires embedded original source and a compatibility report.")
             if wanted['trills'] or recipe.get('trillsFile'):
@@ -660,6 +662,32 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                     check.fail('trill_evidence', 'import/trills',
                                'The retained trill expansion differs from the independently reconstructed source evidence.')
                 report['scope'].append('source_trill_expansion')
+            if wanted['tied_mutes'] or recipe.get('tiedMutesFile'):
+                if recipe.get('preservationContract', 0) < 25:
+                    check.fail('mute_evidence', 'manifest/song_import', 'Tied mute interpretation requires preservation contract 25.')
+                retained = _json(z, recipe.get('tiedMutesFile', ''), check)
+                identity = {'version': 1, 'policy': 'songsterr-tied-mutes-v1',
+                            'timeDomain': 'score_seconds', 'sourceSha256': report['sourceSha256']}
+                check.equal('mute_evidence', 'import/tied-mutes/keys', sorted([*identity, 'continuations']), sorted(retained))
+                for key, value in identity.items():
+                    check.equal('mute_evidence', 'import/tied-mutes/' + key, value, retained.get(key))
+                rows = retained.get('continuations')
+                if not isinstance(rows, list):
+                    raise ValueError('import/tied-mutes: missing continuations')
+                check.equal('mute_evidence', 'import/tied-mutes/count', len(wanted['tied_mutes']), len(rows))
+                for i, (a, b) in enumerate(zip(wanted['tied_mutes'], rows)):
+                    where = f'import/tied-mutes/{i}'
+                    if not isinstance(b, dict):
+                        check.fail('mute_evidence', where, 'A continuation evidence row must be an object.')
+                        continue
+                    check.equal('mute_evidence', where, sorted(a), sorted(b))
+                    for key in a:
+                        if key in {'attack', 'start', 'end'}:
+                            check.near('mute_evidence_time', where + '/' + key, a[key], b.get(key))
+                        else:
+                            check.equal('mute_evidence', where + '/' + key,
+                                        json.dumps(a[key], sort_keys=True), json.dumps(b.get(key), sort_keys=True))
+                report['scope'].append('tied_mute_interpretation')
             if wanted['harmonic_ties'] or recipe.get('tiedHarmonicsFile'):
                 retained = _json(z, recipe.get('tiedHarmonicsFile', ''), check)
                 check.equal('harmonic_evidence', 'import/tied-harmonics/version', 2, retained.get('version'))

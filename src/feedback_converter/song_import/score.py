@@ -59,6 +59,8 @@ def load_performance(path: Path | str, metadata: dict | None = None) -> dict:
     if path.suffix.lower() == ".json":
         from .tied_harmonics import report_findings
         report_findings(performance, report)
+        from .tied_mutes import report_findings as report_tied_mutes
+        report_tied_mutes(performance, report)
         from .high_frets import project, summary as omission_summary
         _, omissions = project(performance)
         if omissions["notes"]:
