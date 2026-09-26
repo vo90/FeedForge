@@ -358,6 +358,12 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         from .muted_slides import archive_evidence as muted_slide_archive
         _write_json(package / 'import/muted-slides.json', muted_slide_archive(performance, source_path))
         manifest.setdefault('song_import', {})['mutedSlidesFile'] = 'import/muted-slides.json'
+    if performance.get('mutedTieIdentityEvidence'):
+        if source_path is None or (recipe or {}).get('preservationContract', 0) < 30:
+            raise ImportFailure('unsupported_score', 'Muted tie identity requires the retained original tab and preservation contract 30.')
+        from .muted_ties import archive_evidence as muted_tie_archive
+        _write_json(package / 'import/muted-tie-identity.json', muted_tie_archive(performance, source_path))
+        manifest.setdefault('song_import', {})['mutedTieIdentityFile'] = 'import/muted-tie-identity.json'
     if performance.get('tiedMuteEvidence'):
         if source_path is None or (recipe or {}).get('preservationContract', 0) < 25:
             raise ImportFailure('unsupported_score', 'Tied mute interpretation requires the retained original tab and preservation contract 25.')

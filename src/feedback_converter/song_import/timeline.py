@@ -111,6 +111,7 @@ def _render(score: Score) -> dict:
     outputs = []
     harmonic_ties = []
     tied_mutes = []
+    muted_tie_identities = []
     muted_slides = []
     strums = []
     trill_evidence = []
@@ -177,11 +178,24 @@ def _render(score: Score) -> dict:
                         starts, ends = rest_limits.get(note.voice_id, ([], []))
                         rest_index = bisect_left(starts, position) - 1
                         gap_allowed = rest_index < 0 or ends[rest_index] <= prior[1]
-                    if (prior is None or prior[0]["f"] != note.fret or prior[1] > position
+                    if (prior is None or prior[1] > position
                             or prior[1] != position and not gap_allowed):
                         raise ScoreImportError(f"Unresolved tie in {track.name}, measure {index + 1}.")
                     output = prior[0]
                     songsterr_tie = score.source.get('format') == 'songsterr'
+                    from .muted_ties import equivalent, plain_segment, record
+                    prior_articulation = articulations[id(output)]
+                    if prior_articulation.get('muted_identity') and not plain_segment(note):
+                        raise ScoreImportError('A normalized muted tie cannot introduce a pitch gesture.')
+                    if output['f'] != note.fret:
+                        starts, ends = rest_limits.get(note.voice_id, ([], []))
+                        rest_index = bisect_left(starts, position) - 1
+                        uninterrupted = rest_index < 0 or ends[rest_index] <= prior_articulation['start']
+                        if (not songsterr_tie or prior[1] != position or not uninterrupted
+                                or not equivalent(output, note, prior_articulation)):
+                            raise ScoreImportError(f"Unresolved tie in {track.name}, measure {index + 1}.")
+                        muted_tie_identities.append(record(output, note, track, occurrence, position, end, at))
+                        prior_articulation['muted_identity'] = True
                     late_mute = False
                     if songsterr_tie:
                         from .tied_mutes import retain as retain_mute
@@ -428,6 +442,7 @@ def _render(score: Score) -> dict:
             "sourceScore": score.source_document,
             **({'harmonicTieEvidence': sorted(harmonic_ties, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if harmonic_ties else {}),
             **({'tiedMuteEvidence': sorted(tied_mutes, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if tied_mutes else {}),
+            **({'mutedTieIdentityEvidence': sorted(muted_tie_identities, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if muted_tie_identities else {}),
             'strumEvidence': sorted(strums,key=lambda r:(r['trackId'],r['occurrence'],r['time'],r['sourceId'])),
             **({"trillEvidence": trill_evidence} if trill_evidence else {}),
             **({'mutedSlideEvidence': sorted(muted_slides, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if muted_slides else {}),

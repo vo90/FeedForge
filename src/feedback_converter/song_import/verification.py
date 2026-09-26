@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 29
+VERSION = 30
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -717,6 +717,21 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 if json.dumps(stable(evidence),sort_keys=True) != json.dumps(stable(retained),sort_keys=True):
                     check.fail('muted_slide_evidence', 'import/muted-slides', 'Muted slide evidence differs from the independently reconstructed source.')
                 report['scope'].append('muted_slide_interpretation')
+            if wanted['muted_tie_identities'] or recipe.get('mutedTieIdentityFile'):
+                if recipe.get('preservationContract', 0) < 30:
+                    check.fail('muted_tie_identity', 'manifest/song_import', 'Muted tie identity requires preservation contract 30.')
+                retained = _json(z, recipe.get('mutedTieIdentityFile', ''), check)
+                evidence = {'version': 1, 'policy': 'songsterr-muted-tie-identity-v1',
+                            'timeDomain': 'score_seconds', 'sourceSha256': report['sourceSha256'],
+                            'continuations': wanted['muted_tie_identities']}
+                def stable_muted_tie(value):
+                    if type(value) is float: return round(value, 6)
+                    if isinstance(value, list): return [stable_muted_tie(v) for v in value]
+                    if isinstance(value, dict): return {k: stable_muted_tie(v) for k, v in value.items()}
+                    return value
+                if json.dumps(stable_muted_tie(evidence), sort_keys=True) != json.dumps(stable_muted_tie(retained), sort_keys=True):
+                    check.fail('muted_tie_identity', 'import/muted-tie-identity', 'Muted tie evidence differs from the independently reconstructed source.')
+                report['scope'].append('muted_tie_identity')
             if wanted['tied_mutes'] or recipe.get('tiedMutesFile'):
                 if recipe.get('preservationContract', 0) < 25:
                     check.fail('mute_evidence', 'manifest/song_import', 'Tied mute interpretation requires preservation contract 25.')

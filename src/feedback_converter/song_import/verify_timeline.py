@@ -175,7 +175,7 @@ def _expected(source, alignment):
     order = visits(source)
     clock, recording = Clock(source, order), RecordingMap(alignment)
     result = {"parts": [], "beats": [], "sections": [], "time_signatures": [], "tempos": [], "order": order,
-              'harmonic_ties': [], 'tied_mutes': [], 'muted_slides': [], 'trills': [], 'strums': [],
+              'harmonic_ties': [], 'tied_mutes': [], 'muted_tie_identities': [], 'muted_slides': [], 'trills': [], 'strums': [],
               "raw_notes": sum(len(bar) for p in source.parts for bar in p.bars), "tie_segments": 0}
     measure_facts = []
     inherited_tempos, inherited = [], F(120)
@@ -278,10 +278,38 @@ def _expected(source, alignment):
                         rest_starts, rest_ends = rest_indices.get(atom.voice, ([], []))
                         i = bisect_left(rest_starts, start) - 1
                         gap_allowed = i < 0 or rest_ends[i] <= previous['end']
-                    if (previous is None or previous["f"] != atom.fret or previous["end"] > start
+                    if (previous is None or previous["end"] > start
                             or previous["end"] != start and not gap_allowed):
                         unsupported(atom.location, "Source tie does not identify a continuous prior note; it has not been repaired.")
                     event = previous
+                    # Reconstruct independently of the producer's normalization.
+                    expressive = (atom.bends or atom.slide or atom.slide_in or atom.whammy
+                                  or atom.trill or atom.pick_scrape or atom.hopo_origin or atom.hopo_destination
+                                  or any(atom.effects.get(k) for k in ('hm','hp','hn','harmonic_target','vb')))
+                    if event.get('muted_identity') and expressive:
+                        unsupported(atom.location, 'A normalized muted continuation has a pitch gesture.')
+                    if event['f'] != atom.fret:
+                        rest_starts, rest_ends = rest_indices.get(atom.voice, ([], []))
+                        ri = bisect_left(rest_starts, start) - 1
+                        interrupted = ri >= 0 and rest_ends[ri] > event['start']
+                        if (source.format != 'songsterr' or event['end'] != start or interrupted
+                                or event['effects'].get('mt') is not True or atom.effects.get('mt') is not True
+                                or sorted((event['f'], atom.fret)) != [0, 127]
+                                or expressive or event['pitch_gesture'] or event['trill'] or event['scrapes']
+                                or any(event['effects'].get(k) for k in ('hm','hp','hn','harmonic_target','vb','ho','po','ln'))):
+                            unsupported(atom.location, 'Source tie does not identify a continuous prior note; it has not been repaired.')
+                        p = atom.location.split('/')
+                        first = event['locations'][0].split('/')
+                        result['muted_tie_identities'].append({
+                            'trackId': part.id, 'sourceId': 'songsterr:' + ':'.join(p[i] for i in (1,3,5,7,9)),
+                            'originSourceId': 'songsterr:' + ':'.join(first[i] for i in (1,3,5,7,9)),
+                            'location': atom.location, 'occurrence': occurrence + 1,
+                            'attack': float(clock.at(event['start'])), 'start': float(clock.at(start)), 'end': float(clock.at(end)),
+                            'string': atom.string,
+                            'authored': {'dead': True, 'fret': None if atom.fret == 127 else atom.fret},
+                            'used': {'dead': True, 'fret': None if event['f'] == 127 else event['f']},
+                            'rule': 'muted-tie-keeps-attack-target'})
+                        event['muted_identity'] = True
                     late_mute = (source.format == 'songsterr' and atom.effects.get('mt') is True
                                  and not event['effects'].get('mt') and atom.fret != 127
                                  and not atom.pick_scrape and not event['scrapes'])
@@ -540,6 +568,7 @@ def _expected(source, alignment):
     result["score_duration"] = float(clock.at(clock.quarters))
     result['harmonic_ties'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['tied_mutes'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
+    result['muted_tie_identities'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['muted_slides'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['strums'].sort(key=lambda r:(r['trackId'],r['occurrence'],r['time'],r['sourceId']))
     result["mapped_end"] = recording.at(clock.at(clock.quarters))
