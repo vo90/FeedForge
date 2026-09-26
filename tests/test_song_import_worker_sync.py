@@ -123,7 +123,7 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
                "outputSettings": {"nameTemplate": "{artist} - {title}", "outputLayout": "artist", "generateDifficulty": precise_harmonic}}
     result = worker.run_import(request)
     assert result["ok"], result
-    assert result["recipe"]["preservationContract"] == result["verification"]["version"] == result["evidence"]["version"] == 28
+    assert result["recipe"]["preservationContract"] == result["verification"]["version"] == result["evidence"]["version"] == 29
     extensions = ["slide_in_marks", "slide_out", "slide_out_marks"]
     if precise_harmonic:
         extensions = ['hn', 'hps', *extensions]

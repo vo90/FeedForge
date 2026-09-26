@@ -62,10 +62,11 @@ def test_parser_failures_keep_exact_note_location():
     assert failure["measure"] == failure["beat"] == failure["note"] == 1
 
 
-@pytest.mark.parametrize("field", ["rasgueado", "hasRasgueado"])
-def test_authored_rasgueado_spellings_remain_a_design_decision(field):
+@pytest.mark.parametrize("value", [True, "miiTriplet", "eamii"])
+def test_explicit_rasgueado_patterns_remain_a_design_decision(value):
+    field = "rasgueado"
     doc = raw_score([measure(beat())])
-    doc["parts"][0]["measures"][0]["voices"][0]["beats"][0][field] = True
+    doc["parts"][0]["measures"][0]["voices"][0]["beats"][0][field] = value
     before = deepcopy(doc)
     report = inspect_songsterr(doc)
     finding = next(f for f in report["findings"] if f["feature"] == "beat." + field)

@@ -467,7 +467,9 @@ def songsterr(document, *, track_indices=None):
                 times = all_times[bi][vi]
                 for bti, beat in enumerate(voice["beats"]):
                     loc = f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}"
-                    _active_unknown(beat, beat_keys, {"beamStart", "beamStop", "id"}, loc, ignored)
+                    _active_unknown(beat, beat_keys, {"beamStart", "beamStop", "id", "hasRasgueado"}, loc, ignored)
+                    if beat.get("hasRasgueado") is not None and not isinstance(beat["hasRasgueado"], bool):
+                        raise ValueError(loc + ": invalid rasgueado flag")
                     from .verify_whammy import read_bar
                     bar_expression = read_bar(beat, loc)
                     for key in ("slapping", "popping"):

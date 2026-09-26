@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 28
+VERSION = 29
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -315,7 +315,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
                 for vi, voice in enumerate(bar["voices"]):
                     for bti, beat in enumerate(voice["beats"]):
                         where = path + f"/voices/{vi}/beats/{bti}"
-                        remember(beat, ("chord", "wahwah", "letRing", "tremoloBar", "vibratoWithTremoloBar"), "beat", where)
+                        remember(beat, ("chord", "wahwah", "letRing", "tremoloBar", "vibratoWithTremoloBar", "hasRasgueado"), "beat", where)
                         for ni, note in enumerate(beat["notes"]):
                             if (not note.get("rest") and type(note.get("fret")) is int and 24 < note["fret"] <= 48
                                     and not (note.get("dead") is True and note.get("pickScrape") in ("up", "down"))):
@@ -341,6 +341,8 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
         row = actual[key]
         encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
         check.equal("compatibility_value", key[1], value if len(encoded) <= 2048 else encoded[:2048], row.get("value"))
+        if key[0] == "beat.hasRasgueado":
+            check.equal("compatibility_value", key[1] + "/boolean", True, row.get("value") is True)
         check.equal("compatibility_value", key[1] + "/truncated", len(encoded) > 2048, row.get("valueTruncated"))
         check.equal("compatibility_retention", key[1], "original_source", row.get("retained"))
         check.equal("compatibility_impact", key[1], "gameplay_omission" if key[0] == "note.fret_range" else "display_or_expression", row.get("impact"))
@@ -630,6 +632,8 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             manifest = yaml.safe_load(z.read("manifest.yaml"))
             _finite(manifest, "manifest", check)
             recipe = manifest.get("song_import", {})
+            if "hasRasgueado" in source.ignored and recipe.get("preservationContract", 0) < 5:
+                check.fail("retained_rasgueado", "import", "The rasgueado instruction requires retained source and a verified compatibility report.")
             if recipe.get('preservationContract',0) < 27 and not recipe.get('voicesFile'):
                 # Verification of historical archives retains their old voice
                 # contract. New imports always declare the projection receipt.

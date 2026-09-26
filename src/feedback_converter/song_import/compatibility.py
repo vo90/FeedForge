@@ -8,7 +8,7 @@ import json
 import math
 from .songsterr_harmonics import exact_natural, natural_alias, source_target
 
-VERSION = 28
+VERSION = 29
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -29,7 +29,9 @@ KNOWN["tempo"].add("text")
 KNOWN["tempo"].add("visible")
 KNOWN["beat"].update({"chord", "upStroke", "downStroke", "pickStroke", "wahwah", "brushStroke", "arpeggio", "vibratoWithTremoloBar"})
 KNOWN["note"].update({"leftHandVibrato", "pickScrape", "vibratoWithTremoloBar"})
+KNOWN["beat"].add("hasRasgueado")
 LIMITATIONS = {
+    ("beat", "hasRasgueado"): "The rasgueado strumming instruction is retained in the original source. Written notes, ties, durations and explicit strums are preserved and scored normally; no rasgueado display, additional strokes or special scoring are added.",
     ("beat", "tremoloBar"): "Whammy-bar pitch curves are preserved. Bar expression is optional; an updated game is required for the display and scoring policy.",
     ("beat", "vibratoWithTremoloBar"): "Slight/wide bar vibrato is preserved. These notes are visual only in the updated game because the source does not specify an exact pitch curve; they do not reduce accuracy or streaks.",
     ("note", "pickScrape"): "Pick scrapes: visual only, not scored. Direction, strings and timing are preserved; an updated game is required to display them.",
@@ -52,7 +54,7 @@ UNIMPLEMENTED = {
 
 DECISIONS = {
     "pickScrape": "D1", "tremoloBar": "D2", "whammy": "D2", "vibratoWithTremoloBar": "D2",
-    "harmonicFret": "D3", "trill": "D4", "rasgueado": "D5", "hasRasgueado": "D5", "unpitched_mute": "D6",
+    "harmonicFret": "D3", "trill": "D4", "rasgueado": "D5", "unpitched_mute": "D6",
     "fret_range": "D7", "simultaneous_voices": "D8",
 }
 
@@ -102,6 +104,13 @@ def inspect_songsterr(document, *, track_indices=None):
                         message="Expected a source object.", location=path, value=obj, **coordinates)
             return
         for key, value in obj.items():
+            # Only the boolean expression flag is approved. Named patterns in
+            # the separate rasgueado field still need rhythmic interpretation.
+            if scope == "beat" and key == "hasRasgueado" and value is not None and not isinstance(value, bool):
+                add_finding(report, feature="beat.hasRasgueado", category="source_structure", impact="blocking",
+                            message="Invalid rasgueado flag; expected a boolean.",
+                            location=path + "/" + key, value=value, **coordinates)
+                continue
             if scope == "note" and key == "harmonicFret" and (exact_natural(obj) or source_target(obj)):
                 interpretation = ("Natural harmonic position 15 is displayed as 14.7, matching the source playback harmonic; the authored value is retained."
                                   if natural_alias(obj) else
