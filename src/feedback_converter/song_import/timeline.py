@@ -111,6 +111,7 @@ def _render(score: Score) -> dict:
     outputs = []
     harmonic_ties = []
     tied_mutes = []
+    muted_slides = []
     strums = []
     trill_evidence = []
     warnings = list(score.warnings)
@@ -138,6 +139,7 @@ def _render(score: Score) -> dict:
         rendered: list[dict] = []
         previous_note = {}
         pending_slide = {}
+        pending_muted_shifts = {}
         pending_hopo = {}
         authored_groups = {}
         strum_origins = {}
@@ -146,7 +148,7 @@ def _render(score: Score) -> dict:
         last_written = -1
         for occurrence, (index, start) in enumerate(visits):
             if index <= last_written:
-                if pending_slide or pending_hopo:
+                if pending_slide or pending_hopo or pending_muted_shifts:
                     raise ScoreImportError(f"An unresolved linked technique crosses a repeat jump in {track.name}.")
                 previous_note.clear()
             last_written = index
@@ -265,6 +267,17 @@ def _render(score: Score) -> dict:
                     curve = [{"t": at(position + gesture_duration * p) - output["t"], "v": v} for p, v in note.bends]
                     output.setdefault("bnv", []).extend(curve)
                     output["bn"] = max((p["v"] for p in output["bnv"]), key=abs)
+                if link_key in pending_muted_shifts and not note.tie:
+                    if note.fret == 127 or effects.get('mt'):
+                        raise ScoreImportError('A muted shift needs an explicit pitched destination; no fret was invented.')
+                    for row in pending_muted_shifts.pop(link_key):
+                        row['target'] = {'sourceId': note.source_id, 'time': output['t'], 'fret': note.fret}
+                if note.fret == 127 and note.slide:
+                    from .muted_slides import record
+                    row = record(note, track, occurrence, output['t'], at(position), at(position + gesture_duration))
+                    muted_slides.append(row)
+                    if note.slide == 'shift':
+                        pending_muted_shifts.setdefault(link_key, []).append(row)
                 if link_key in pending_slide and not note.tie:
                     if note.fret == 127:
                         raise ScoreImportError("A pitched slide reaches an unpitched mute; no destination fret was invented.")
@@ -272,7 +285,7 @@ def _render(score: Score) -> dict:
                     sliding["sl"] = note.fret
                     if kind == "legato":
                         sliding["ln"] = True
-                if note.slide in {"shift", "legato"}:
+                if note.slide in {"shift", "legato"} and note.fret != 127:
                     pending_slide[link_key] = (output, note.slide)
                 elif note.slide in {"out_down", "out_up"}:
                     # A tied continuation may carry the marking only on its
@@ -295,7 +308,7 @@ def _render(score: Score) -> dict:
                     pending_hopo[link_key] = output
                     output["ln"] = True
                 previous_note[link_key] = (output, end)
-        if pending_slide or pending_hopo:
+        if pending_slide or pending_hopo or pending_muted_shifts:
             raise ScoreImportError(f"A linked technique has no destination in {track.name}.")
         from .songsterr_trills import expand
         performed_notes += expand(rendered, articulations, hopo_links, track.id, at, trill_evidence, authored_groups)
@@ -417,4 +430,5 @@ def _render(score: Score) -> dict:
             **({'tiedMuteEvidence': sorted(tied_mutes, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if tied_mutes else {}),
             'strumEvidence': sorted(strums,key=lambda r:(r['trackId'],r['occurrence'],r['time'],r['sourceId'])),
             **({"trillEvidence": trill_evidence} if trill_evidence else {}),
+            **({'mutedSlideEvidence': sorted(muted_slides, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if muted_slides else {}),
             "featureInventory": score.feature_inventory}

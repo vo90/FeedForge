@@ -175,7 +175,7 @@ def _expected(source, alignment):
     order = visits(source)
     clock, recording = Clock(source, order), RecordingMap(alignment)
     result = {"parts": [], "beats": [], "sections": [], "time_signatures": [], "tempos": [], "order": order,
-              'harmonic_ties': [], 'tied_mutes': [], 'trills': [], 'strums': [],
+              'harmonic_ties': [], 'tied_mutes': [], 'muted_slides': [], 'trills': [], 'strums': [],
               "raw_notes": sum(len(bar) for p in source.parts for bar in p.bars), "tie_segments": 0}
     measure_facts = []
     inherited_tempos, inherited = [], F(120)
@@ -246,6 +246,7 @@ def _expected(source, alignment):
                 last = max(last, q); ends.append(last)
             rest_indices[voice] = (starts, ends)
         notes, state, pending_slides, pending_hopos = [], {}, {}, {}
+        muted_pending = {}
         notation_notes = {}
         strum_groups = {}
         hopo_links = []
@@ -253,7 +254,7 @@ def _expected(source, alignment):
         for occurrence, index in enumerate(order):
             origin = clock.measure_starts[occurrence]
             if index <= last_bar:
-                if pending_slides or pending_hopos:
+                if pending_slides or pending_hopos or muted_pending:
                     unsupported(f"tracks/{part.id}/measures/{index}", "A linked technique crosses a repeat jump.")
                 state.clear()
             last_bar = index
@@ -343,6 +344,13 @@ def _expected(source, alignment):
                         event["effects"]["ho" if atom.fret > previous["f"] else "po"] = True
                         pending_hopos.pop(key, None)
                         hopo_links.append((previous, event))
+                    if key in muted_pending:
+                        if atom.fret == 127 or atom.effects.get('mt'):
+                            unsupported(atom.location, 'A muted shift lacks a pitched destination.')
+                        path = atom.location.split('/')
+                        for record in muted_pending.pop(key):
+                            record['target'] = {'sourceId': 'songsterr:' + ':'.join(path[i] for i in (1,3,5,7,9)),
+                                                'time': float(clock.at(event['start'])), 'fret': atom.fret}
                     if key in pending_slides:
                         if atom.fret == 127:
                             unsupported(atom.location, "A pitched slide has an unpitched destination.")
@@ -397,9 +405,20 @@ def _expected(source, alignment):
                     if not 0 <= fraction_ <= 1:
                         raise ValueError(atom.location + ": bend outside note")
                     event["curve"].append((clock.at(start + gesture_length * fraction_), value))
-                if atom.slide in {"shift", "legato"}:
+                if atom.fret == 127 and atom.slide:
+                    path = atom.location.split('/')
+                    record = {'trackId':part.id, 'sourceId':'songsterr:' + ':'.join(path[i] for i in (1,3,5,7,9)),
+                              'location':atom.location, 'occurrence':occurrence+1,
+                              'attack':float(clock.at(event['start'])), 'start':float(clock.at(start)),
+                              'end':float(clock.at(start+gesture_length)), 'string':atom.string,
+                              'authored':{'slide':{'shift':'shift','up':'upwards','down':'downwards'}[atom.slide]},
+                              'used':{'rule':'retained-shift-no-pitch-path' if atom.slide=='shift' else 'unscored-directional-slide'},
+                              'target':None}
+                    result['muted_slides'].append(record)
+                    if atom.slide == 'shift':muted_pending.setdefault(key,[]).append(record)
+                if atom.slide in {"shift", "legato"} and atom.fret != 127:
                     pending_slides[key] = (event, atom.slide)
-                elif atom.slide:
+                elif atom.slide in {'up','down'}:
                     event["slide_marks"].append((atom.slide, start, start + gesture_length))
                 if atom.slide_in:
                     event["incoming_marks"].append((atom.slide_in, start))
@@ -420,7 +439,7 @@ def _expected(source, alignment):
                         if event["effects"].get(fx):
                             written_note[fx] = True
                 notation_notes[(occurrence, atom.location)] = written_note
-        if pending_slides or pending_hopos:
+        if pending_slides or pending_hopos or muted_pending:
             unsupported(f"tracks/{part.id}", "Source linked technique has no destination.")
         from .verify_trills import expand as trill_expectations
         for group in strum_groups.values():
@@ -521,6 +540,7 @@ def _expected(source, alignment):
     result["score_duration"] = float(clock.at(clock.quarters))
     result['harmonic_ties'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['tied_mutes'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
+    result['muted_slides'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['strums'].sort(key=lambda r:(r['trackId'],r['occurrence'],r['time'],r['sourceId']))
     result["mapped_end"] = recording.at(clock.at(clock.quarters))
     return result

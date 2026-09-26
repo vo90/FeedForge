@@ -8,7 +8,7 @@ import json
 import math
 from .songsterr_harmonics import exact_natural, natural_alias, source_target
 
-VERSION = 27
+VERSION = 28
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -197,7 +197,8 @@ def inspect_songsterr(document, *, track_indices=None):
                                         message='Notes above fret 24 and slide events leading above fret 24 are omitted from gameplay and scoring. Original pitches and positions remain in the retained source; no substitution was made.',
                                         location=npath + '/fret', value=note['fret'], **nc)
                         if (note.get("dead") is True and note.get("fret") is None and not note.get("rest")
-                                and any(note.get(key) for key in ("hp", "slide", "bend", "harmonic", "vibrato", "wideVibrato", "leftHandVibrato"))):
+                                and (any(note.get(key) for key in ("hp", "bend", "harmonic", "vibrato", "wideVibrato", "leftHandVibrato"))
+                                     or note.get("slide") not in (None, "shift", "upwards", "downwards"))):
                             add_finding(report, feature="note.unpitched_mute", category="game_representation", impact="blocking",
                                         message="This unpitched mute also has a pitch gesture. That combination needs representation support; no fret or pitch was invented.",
                                         location=npath, value=note, **nc)

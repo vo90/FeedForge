@@ -4,7 +4,7 @@ from copy import deepcopy
 import hashlib
 
 POLICY = 'source-voices-v1'
-SIDECARS = ('harmonicTieEvidence', 'tiedMuteEvidence', 'trillEvidence', 'strumEvidence')
+SIDECARS = ('harmonicTieEvidence', 'tiedMuteEvidence', 'mutedSlideEvidence', 'trillEvidence', 'strumEvidence')
 
 
 def derived_id(track_id, voice):

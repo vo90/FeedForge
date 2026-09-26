@@ -528,7 +528,8 @@ def songsterr(document, *, track_indices=None):
                         if not unpitched and not 0 <= fret <= 48:
                             raise ValueError(nloc + ": invalid authored fret")
                         if unpitched:
-                            if any(note.get(k) for k in ("hp", "slide", "bend", "harmonic", "vibrato", "wideVibrato", "leftHandVibrato")):
+                            if (any(note.get(k) for k in ("hp", "bend", "harmonic", "vibrato", "wideVibrato", "leftHandVibrato"))
+                                    or note.get("slide") not in (None, "shift", "upwards", "downwards")):
                                 unsupported(nloc, "Pitch gestures on an unpitched mute are not independently representable.")
                             track.unpitched_mutes.append(nloc)
                         elif scrape:

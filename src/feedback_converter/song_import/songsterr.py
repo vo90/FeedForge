@@ -60,8 +60,9 @@ def _note(raw, beat, position, duration, strings, tpqn=16384):
     fret = 127 if unpitched else integer(raw.get("fret"), "fret")
     if not unpitched and not 0 <= fret <= 48:
         raise ScoreImportError("Invalid authored fret.")
-    if unpitched and any(raw.get(key) for key in
-                        ("hp", "slide", "bend", "harmonic", "vibrato", "wideVibrato", "leftHandVibrato")):
+    if unpitched and (any(raw.get(key) for key in
+                        ("hp", "bend", "harmonic", "vibrato", "wideVibrato", "leftHandVibrato"))
+                        or raw.get("slide") not in (None, "shift", "upwards", "downwards")):
         raise ScoreImportError("An unpitched mute with a pitch gesture needs additional representation support.")
     unsupported = ("grace", "graceNote", "tremoloBar", "whammy")
     for key in unsupported:

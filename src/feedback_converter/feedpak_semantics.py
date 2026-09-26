@@ -182,9 +182,11 @@ def _validate_note(
         _bounded_integer(note.get("f"), f"{path}/f", 0, 127, error)
     elif not unpitched:
         _bounded_integer(note.get("f"), f"{path}/f", 0, MAX_FRET, error)
-    if unpitched and (any(note.get(key) for key in ("ho", "po", "hm", "hp", "bn", "bnv", "vb", "slide_out", "slide_out_marks", "slide_in_marks")) or any(
+    if unpitched and (any(note.get(key) for key in ("ho", "po", "hm", "hp", "bn", "bnv", "vb", "slide_in_marks")) or any(
             isinstance(note.get(key), (int, float)) and note[key] >= 0 for key in ("sl", "slu"))):
         error(f"{path}: an unpitched mute cannot carry a pitched gesture")
+    if unpitched and (note.get("slide_out") or note.get("slide_out_marks")) and (scrape or not note.get("slide_out_marks")):
+        error(f"{path}: an unpitched slide-out requires explicit intervals and cannot also be a pick scrape")
     if "sus" in note:
         _nonnegative_number(note["sus"], f"{path}/sus", error)
     for field in ("sl", "slu"):
