@@ -29,11 +29,13 @@ def test_simultaneous_tied_segments_in_independent_voices_are_not_new_attacks(tm
     # simultaneous hidden continuations share the later onset/string.
     first['voices'][1]['beats'].insert(0, {'duration': [1, 8], 'notes': [{'rest': True}]})
     source = raw_score([first, second])
-    actual = import_json(tmp_path, source)['tracks'][0]
-    wanted = expected(songsterr(source), {'offset': 0, 'scale': 1})['parts'][0]['notes']
-    assert len(actual['notes']) == len(wanted) == 3
-    assert [n['t'] for n in actual['notes']] == [0, .25, .5]
-    assert sorted(n['t'] + n['sus'] for n in actual['notes']) == [.5, 4, 4]
+    tracks = import_json(tmp_path, source)['tracks']
+    parts = expected(songsterr(source), {'offset': 0, 'scale': 1})['parts']
+    actual=sorted([n for t in tracks for n in t['notes']],key=lambda n:n['t'])
+    assert len(tracks)==len(parts)==2
+    assert len(actual)==sum(len(p['notes']) for p in parts)==3
+    assert [n['t'] for n in actual] == [0, .25, .5]
+    assert sorted(n['t'] + n['sus'] for n in actual) == [.5, 4, 4]
 
 
 @pytest.mark.parametrize('fault', ['fret', 'voice', 'missing'])

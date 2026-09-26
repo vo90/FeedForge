@@ -166,6 +166,12 @@ class RecordingMap:
 
 
 def expected(source, alignment):
+    from .verify_voices import project
+    result = _expected(source, alignment)
+    return project(source, alignment, result, _expected) if source.format == 'songsterr' else result
+
+
+def _expected(source, alignment):
     order = visits(source)
     clock, recording = Clock(source, order), RecordingMap(alignment)
     result = {"parts": [], "beats": [], "sections": [], "time_signatures": [], "tempos": [], "order": order,

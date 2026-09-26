@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 26
+VERSION = 27
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -272,7 +272,7 @@ def _chords(wanted, chart, check, part):
             check.near("chord_time", "tracks/" + part.id + "/chords", wanted_time, actual_time)
 
 
-def _compatibility_report(report, score_path, source, check, harmonic_ties=(), tied_mutes=()):
+def _compatibility_report(report, score_path, source, check, harmonic_ties=(), tied_mutes=(), projected_parts=None):
     """Verify retained limitations from source facts, not the producer's inventory."""
     from .verify_source import _program_instrument, inactive
     rows = report.get("findings")
@@ -323,7 +323,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
                                     or note.get('harmonic') == 'natural' and note.get('fret') == 15
                                     and note.get('harmonicFret') == 15 and note.get('harmonicData') is None):
                                 remember(note, ('harmonicFret',), 'note', where + f'/notes/{ni}')
-        for part in source.parts:
+        for part in (projected_parts if projected_parts is not None else source.parts):
             if part.notation_unavailable and any(part.bars):
                 expected[("notation.written_rhythm", "tracks/" + part.id)] = None
             if part.unpitched_mutes and any(part.bars):
@@ -628,6 +628,18 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             manifest = yaml.safe_load(z.read("manifest.yaml"))
             _finite(manifest, "manifest", check)
             recipe = manifest.get("song_import", {})
+            if recipe.get('preservationContract',0) < 27 and not recipe.get('voicesFile'):
+                # Verification of historical archives retains their old voice
+                # contract. New imports always declare the projection receipt.
+                from .verify_timeline import _expected
+                wanted = _expected(source, alignment)
+                report['counts'].update(selectedTracks=len(wanted['parts']),expectedNotes=sum(len(p['notes']) for p in wanted['parts']))
+            if wanted.get('voice_projection') or recipe.get('voicesFile'):
+                from .verify_voices import verify as verify_voices
+                check.equal('voice_projection','manifest/song_import/voicesFile','import/voices.json',recipe.get('voicesFile'))
+                retained = _json(z,recipe.get('voicesFile',''),check)
+                verify_voices(wanted.get('voice_projection',{}),retained,report['sourceSha256'],check)
+                report['scope'].append('authored_voice_arrangements')
             if recipe.get('strumsFile') or recipe.get('preservationContract',0) >= 26 and wanted['strums']:
                 from .verify_timeline import RecordingMap
                 recording = RecordingMap(alignment)
@@ -669,7 +681,8 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 if compatibility.get("status") not in {"compatible", "limitations"}:
                     check.fail("compatibility", "import/compatibility", "A blocked or invalid compatibility report cannot be published.")
                 if recipe.get("preservationContract", 0) >= 5:
-                    _compatibility_report(compatibility, score_path, source, check, wanted['harmonic_ties'], wanted['tied_mutes'])
+                    _compatibility_report(compatibility, score_path, source, check, wanted['harmonic_ties'], wanted['tied_mutes'],
+                                          [p['source'] for p in wanted['parts']])
             elif any(p.notation_unavailable or p.unpitched_mutes for p in source.parts):
                 check.fail("retained_notation", "import", "A notation limitation requires embedded original source and a compatibility report.")
             if wanted['trills'] or recipe.get('trillsFile'):

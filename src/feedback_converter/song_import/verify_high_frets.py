@@ -95,6 +95,8 @@ def verify(source, wanted, source_path, recipe, archive, check, read_json):
         check.fail("omission_contract", "import", "This partial-chart policy requires Songsterr preservation contract 24.")
         return None
     from .verify_timeline import expected
+    if recipe.get('preservationContract',0)<27 and not recipe.get('voicesFile'):
+        from .verify_timeline import _expected as expected
     reference = expected(source, {"offset": 0, "scale": 1})
     receipt = reconstruct(reference, wanted)
     receipt["sourceSha256"] = hashlib.sha256(source_path.read_bytes()).hexdigest()

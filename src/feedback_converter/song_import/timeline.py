@@ -56,6 +56,12 @@ def playback_order(measures: list[Measure]) -> list[int]:
 
 
 def render(score: Score) -> dict:
+    from .voices import project
+    result = _render(score)
+    return project(score, result, _render) if score.source.get('format') == 'songsterr' else result
+
+
+def _render(score: Score) -> dict:
     validate_score(score)
     order = playback_order(score.measures)
     # Written tempos determine the inherited tempo when playback jumps backward.
@@ -152,7 +158,8 @@ def render(score: Score) -> dict:
                 prior = previous_note.get(link_key)
                 effects = {key: value for key, value in note.effects.items() if not key.startswith("__")}
                 key = (note.position, note.string)
-                if not note.tie and key in seen:
+                if not note.tie and key in seen and (score.source.get('format') != 'songsterr'
+                                                     or seen[key].voice_id == note.voice_id):
                     # Keep authored voices in source evidence. A playable event
                     # cannot silently collapse their separate same-string attacks.
                     error = ScoreImportError(f"Simultaneous authored voices share one string in {track.name}, measure {index + 1}; choosing or combining their playing instructions needs review.")

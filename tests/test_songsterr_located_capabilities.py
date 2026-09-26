@@ -22,9 +22,7 @@ def test_distinct_simultaneous_voices_are_retained_as_a_playing_choice():
     bar = measure(beat(fret=5));bar['voices'].append({'beats':[beat(fret=7)]})
     source = raw_score([bar]); original = deepcopy(source)
     report = inspect_songsterr(source);diagnose_arrangements(source,report)
-    finding = report['findings'][-1]
-    assert finding['feature'] == 'arrangement.simultaneous_voices'
-    assert finding['decisionId'] == 'D8' and finding['measure'] == 1
-    assert [n['fret'] for n in finding['value']] == [5,7]
-    assert [n['voice'] for n in finding['value']] == ['0','1']
-    assert source == original and report['arrangementSummary']['scoreReady'] == 0
+    row = report['arrangements'][0]
+    assert row['status']=='score_ready' and row['blockingFeatures']==[]
+    assert [a['name'] for a in row['generatedArrangements']]==['Lead Guitar — Voice 1','Lead Guitar — Voice 2']
+    assert source == original and report['arrangementSummary']['scoreReady'] == 1

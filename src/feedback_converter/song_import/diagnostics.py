@@ -32,6 +32,9 @@ def diagnose_arrangements(document, report):
             performance = render(score)
             row["status"] = "score_ready"
             row["noteCount"] = sum(len(t["notes"]) + sum(len(c["notes"]) for c in t["chords"]) for t in performance["tracks"])
+            if performance.get('voiceProjection'):
+                row['generatedArrangements']=[{'id':t['id'],'name':t['name']} for t in performance['tracks']]
+                row['message']=' '.join(w for w in performance['warnings'] if w.startswith('Source arrangement '))
             from .high_frets import project, summary
             _, omissions = project(performance)
             if omissions["notes"]:

@@ -67,7 +67,15 @@ def load_performance(path: Path | str, metadata: dict | None = None) -> dict:
             report["omissions"] = omission_summary(omissions)
         for track in performance["tracks"]:
             if "notation" not in track:
-                source_track = next(t for t in score.tracks if t.id == track["id"])
+                original_id = next((r['sourceTrackId'] for r in performance.get('voiceProjection',{}).get('tracks',[])
+                                    if any(a['id']==track['id'] for a in r['arrangements'])),track['id'])
+                source_track = next(t for t in score.tracks if t.id == original_id)
+                if original_id != track['id']:
+                    from copy import deepcopy
+                    selected = next(a['voices'] for r in performance['voiceProjection']['tracks'] for a in r['arrangements'] if a['id']==track['id'])
+                    source_track=deepcopy(source_track)
+                    source_track.bars=[[n for n in b if int(n.voice_id) in selected] for b in source_track.bars]
+                    source_track.written_bars=[[v for v in b if v.source_index in selected] for b in source_track.written_bars]
                 reasons = []
                 if any(n.pick_scrape or n.fret == 127 and n.effects.get("mt") is True for bar in source_track.bars for n in bar):
                     reasons.append(("unpitched_mute", "Unpitched mutes have no MIDI pitch for standard notation."))
@@ -79,4 +87,6 @@ def load_performance(path: Path | str, metadata: dict | None = None) -> dict:
                                 message=message + " Its playable tab is converted; complete notation remains in the original source.",
                                 location="tracks/" + track["id"], value=None, arrangement=track["name"])
         performance["compatibilityReport"] = report
+        if performance.get('voiceProjection'):
+            report['voiceProjection'] = performance['voiceProjection']
     return performance

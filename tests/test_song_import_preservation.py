@@ -47,11 +47,13 @@ def test_explicit_instrument_program_takes_priority_over_part_name(tmp_path):
     assert result["source"]["excludedTracks"][0]["name"] == "Bass Clarinet"
 
 
-def test_ambiguous_same_string_voices_are_not_silently_deduplicated(tmp_path):
+def test_equivalent_same_string_voices_are_combined_with_explicit_source_receipt(tmp_path):
     document = raw_score([measure(beat(3))])
     document["parts"][0]["measures"][0]["voices"].append({"beats": [beat(3)]})
-    with pytest.raises(ScoreImportError, match="share one string"):
-        import_json(tmp_path, document)
+    result=import_json(tmp_path, document)
+    assert len(result['tracks'][0]['notes'])==1
+    attack=result['voiceProjection']['tracks'][0]['combinedAttacks'][0]
+    assert attack['rule']=='equivalent' and len(attack['sourceIds'])==2
 
 
 def test_beat_techniques_and_direction_only_slide_are_preserved(tmp_path):

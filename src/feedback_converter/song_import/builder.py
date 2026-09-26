@@ -358,6 +358,12 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         from .tied_mutes import archive_evidence as mute_archive
         _write_json(package / 'import/tied-mutes.json', mute_archive(performance, source_path))
         manifest.setdefault('song_import', {})['tiedMutesFile'] = 'import/tied-mutes.json'
+    if performance.get('voiceProjection'):
+        if source_path is None:
+            raise ImportFailure('unsupported_score', 'Voice arrangements require the retained original tab.')
+        from .voices import archive_receipt as voice_receipt
+        _write_json(package / 'import/voices.json', voice_receipt(performance, source_path))
+        manifest.setdefault('song_import', {})['voicesFile'] = 'import/voices.json'
     if source_path is not None and performance.get('strumEvidence'):
         import hashlib
         groups = deepcopy(performance['strumEvidence'])
