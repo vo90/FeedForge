@@ -112,6 +112,7 @@ def _render(score: Score) -> dict:
     harmonic_ties = []
     tied_mutes = []
     muted_tie_identities = []
+    staccato_bends = []
     muted_slides = []
     strums = []
     trill_evidence = []
@@ -230,7 +231,8 @@ def _render(score: Score) -> dict:
                     rendered.append(output)
                     articulation = {"start": attack, "origin_staccato": note.staccato,
                                     "staccato": False, "pitch_gesture": False, "segments": 1,
-                                    "trill": note.trill, "occurrence": occurrence + 1}
+                                    "trill": note.trill, "occurrence": occurrence + 1,
+                                    "other_pitch_gesture": False, "bend_segments": []}
                     articulations[id(output)] = articulation
                     if note.beat_id:
                         authored_groups.setdefault((occurrence, note.beat_id), []).append(output)
@@ -252,7 +254,10 @@ def _render(score: Score) -> dict:
                     raise
                 articulation["staccato"] |= note.staccato
                 articulation["pitch_gesture"] |= bool(note.bends or note.slide or note.slide_in or note.whammy)
-                if articulation["segments"] > 1 and articulation["staccato"] and articulation["pitch_gesture"]:
+                articulation["other_pitch_gesture"] |= bool(note.slide or note.slide_in or note.whammy)
+                articulation['bend_segments'].append((note, position, end, occurrence))
+                if (articulation["segments"] > 1 and articulation["staccato"] and articulation["pitch_gesture"]
+                        and (score.source.get('format') != 'songsterr' or articulation['other_pitch_gesture'])):
                     raise ScoreImportError("Staccato ties with pitch gestures need additional timing verification.")
                 sound_end = end
                 if articulation["origin_staccato"]:
@@ -324,6 +329,12 @@ def _render(score: Score) -> dict:
                 previous_note[link_key] = (output, end)
         if pending_slide or pending_hopo or pending_muted_shifts:
             raise ScoreImportError(f"A linked technique has no destination in {track.name}.")
+        if score.source.get('format') == 'songsterr':
+            from .staccato_bends import finish as finish_bend
+            for output in rendered:
+                evidence = finish_bend(output, articulations[id(output)], track.id, at, points)
+                if evidence:
+                    staccato_bends.append(evidence)
         from .songsterr_trills import expand
         performed_notes += expand(rendered, articulations, hopo_links, track.id, at, trill_evidence, authored_groups)
         if performed_notes > 500_000:
@@ -443,6 +454,7 @@ def _render(score: Score) -> dict:
             **({'harmonicTieEvidence': sorted(harmonic_ties, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if harmonic_ties else {}),
             **({'tiedMuteEvidence': sorted(tied_mutes, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if tied_mutes else {}),
             **({'mutedTieIdentityEvidence': sorted(muted_tie_identities, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if muted_tie_identities else {}),
+            **({'staccatoBendEvidence': sorted(staccato_bends, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if staccato_bends else {}),
             'strumEvidence': sorted(strums,key=lambda r:(r['trackId'],r['occurrence'],r['time'],r['sourceId'])),
             **({"trillEvidence": trill_evidence} if trill_evidence else {}),
             **({'mutedSlideEvidence': sorted(muted_slides, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if muted_slides else {}),

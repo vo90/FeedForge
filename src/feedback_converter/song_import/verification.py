@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 30
+VERSION = 31
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -717,6 +717,21 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 if json.dumps(stable(evidence),sort_keys=True) != json.dumps(stable(retained),sort_keys=True):
                     check.fail('muted_slide_evidence', 'import/muted-slides', 'Muted slide evidence differs from the independently reconstructed source.')
                 report['scope'].append('muted_slide_interpretation')
+            if wanted['staccato_bends'] or recipe.get('staccatoBendsFile'):
+                if recipe.get('preservationContract', 0) < 31:
+                    check.fail('staccato_bends', 'manifest/song_import', 'Tied staccato bends require preservation contract 31.')
+                retained = _json(z, recipe.get('staccatoBendsFile', ''), check)
+                evidence = {'version': 1, 'policy': 'songsterr-staccato-bends-v1',
+                            'timeDomain': 'score_seconds', 'sourceSha256': report['sourceSha256'],
+                            'chains': wanted['staccato_bends']}
+                def stable_staccato(value):
+                    if type(value) is float: return round(value, 6)
+                    if isinstance(value, list): return [stable_staccato(v) for v in value]
+                    if isinstance(value, dict): return {k: stable_staccato(v) for k, v in value.items()}
+                    return value
+                if json.dumps(stable_staccato(evidence), sort_keys=True) != json.dumps(stable_staccato(retained), sort_keys=True):
+                    check.fail('staccato_bends', 'import/staccato-bends', 'Tied staccato bend evidence differs from the independently reconstructed source.')
+                report['scope'].append('staccato_bend_timing')
             if wanted['muted_tie_identities'] or recipe.get('mutedTieIdentityFile'):
                 if recipe.get('preservationContract', 0) < 30:
                     check.fail('muted_tie_identity', 'manifest/song_import', 'Muted tie identity requires preservation contract 30.')

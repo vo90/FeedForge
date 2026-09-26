@@ -13,9 +13,9 @@ The independent verifier uses logical source events before mapping their soundin
 ends to the recording. The frozen real examples are Under the Bridge, Additional
 Guitar measure 60, and Another Brick in the Wall Part 2, lead measure 86.
 
-Combined tied staccato with pitch gestures remains a located technical limitation
-pending verification of each hidden segment's gesture timing; it is not a reason
-to reject ordinary tied staccato or a gameplay decision.
+Tied staccato finger bends are resolved after the full chain under the rule in
+`songsterr-staccato-bends.md`. Other combined pitch gestures remain explicit
+verification limitations; ordinary tied staccato continues to work.
 
 Source: public worker `FluidsynthAudioPlayerWorkerEntry-Do-Dwi4LNDxTupzE.js`,
 captured 2026-09-23, SHA-256

@@ -175,7 +175,7 @@ def _expected(source, alignment):
     order = visits(source)
     clock, recording = Clock(source, order), RecordingMap(alignment)
     result = {"parts": [], "beats": [], "sections": [], "time_signatures": [], "tempos": [], "order": order,
-              'harmonic_ties': [], 'tied_mutes': [], 'muted_tie_identities': [], 'muted_slides': [], 'trills': [], 'strums': [],
+              'harmonic_ties': [], 'tied_mutes': [], 'muted_tie_identities': [], 'staccato_bends': [], 'muted_slides': [], 'trills': [], 'strums': [],
               "raw_notes": sum(len(bar) for p in source.parts for bar in p.bars), "tie_segments": 0}
     measure_facts = []
     inherited_tempos, inherited = [], F(120)
@@ -363,7 +363,8 @@ def _expected(source, alignment):
                 else:
                     event = {"start": start + atom.attack_offset, "end": end, "s": atom.string, "f": atom.fret, "effects": dict(atom.effects),
                              "curve": [], "slide_marks": [], "incoming_marks": [], "scrapes": [], "scrape_direction": None, "locations": [atom.location], "occurrence": occurrence + 1, "beat": atom.beat,
-                             "staccato": atom.staccato, "any_staccato": False, "pitch_gesture": False, "trill": atom.trill}
+                             "staccato": atom.staccato, "any_staccato": False, "pitch_gesture": False, "trill": atom.trill,
+                             "other_pitch_gesture": False, "bend_atoms": []}
                     if atom.hopo_destination or key in pending_hopos:
                         if previous is None:
                             unsupported(atom.location, "Source hammer-on/pull-off has no prior note.")
@@ -401,7 +402,10 @@ def _expected(source, alignment):
                     else:
                         intervals.append((direction, max(start, event["start"]), end))
                 event["pitch_gesture"] |= bool(atom.bends or atom.slide or atom.slide_in or atom.whammy)
-                if len(event["locations"]) > 1 and event["any_staccato"] and event["pitch_gesture"]:
+                event['other_pitch_gesture'] |= bool(atom.slide or atom.slide_in or atom.whammy)
+                event['bend_atoms'].append((atom, start, end, occurrence))
+                if (len(event["locations"]) > 1 and event["any_staccato"] and event["pitch_gesture"]
+                        and (source.format != 'songsterr' or event['other_pitch_gesture'])):
                     unsupported(atom.location, "Staccato ties with pitch gestures are not independently verified.")
                 gesture_length = max(atom.length / 2, F(1, 32)) if atom.staccato else atom.length
                 retained = event.get('whammy', [])
@@ -483,6 +487,11 @@ def _expected(source, alignment):
                 if sound_end > n["end"]:
                     unsupported(n["locations"][0], "Staccato minimum exceeds authored duration.")
             start, end = clock.at(n["start"]), clock.at(sound_end)
+            if source.format == 'songsterr':
+                from .verify_staccato_bends import reconstruct
+                evidence = reconstruct(n, part, clock, sound_end)
+                if evidence:
+                    result['staccato_bends'].append(evidence)
             if n["start"] < 0 or sound_end <= n["start"]:
                 unsupported(n["locations"][0], "Strum exceeds its sounding interval; no attack or endpoint was repaired.")
             mapped_start, mapped_end = recording.at(start), recording.at(end)
@@ -569,6 +578,7 @@ def _expected(source, alignment):
     result['harmonic_ties'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['tied_mutes'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['muted_tie_identities'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
+    result['staccato_bends'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['muted_slides'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['strums'].sort(key=lambda r:(r['trackId'],r['occurrence'],r['time'],r['sourceId']))
     result["mapped_end"] = recording.at(clock.at(clock.quarters))

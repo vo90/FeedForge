@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const CURRENT_PRESERVATION_CONTRACT = 30;
+const CURRENT_PRESERVATION_CONTRACT = 31;
 const KNOWN_PRESERVATION_CONTRACTS = Array.from({ length: CURRENT_PRESERVATION_CONTRACT }, (_, i) => i + 1);
 const DIGEST = /^[a-f0-9]{64}$/;
 const digest = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');

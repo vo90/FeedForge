@@ -15,6 +15,7 @@ gesture handlers including `Ss` (slides). `Cs` changes `offTick` relative to
 contains the same order and formula.
 
 Conversion keeps the authored slide type/target and bend curve over the
-shortened performed interval. Written notation stays separate. Tied-staccato
-combinations still fail explicitly until whole-tie articulation is supported;
-the importer never creates an attack to make a tie pass.
+shortened performed interval. Written notation stays separate. Plain tied
+staccato and verified tied finger bends are covered by `songsterr-tied-articulation.md`
+and `songsterr-staccato-bends.md`; other combined tied pitch gestures remain
+explicit limitations. The importer never creates an attack to make a tie pass.
