@@ -102,7 +102,8 @@ def _verify_ending_order(performance, measures):
 
 
 def align_from_songsterr(performance: dict, audio: dict, synchronization: dict | None,
-                        metadata: dict, *, allow_ending_candidate: bool = False, _opening_probe: bool = False) -> dict:
+                        metadata: dict, *, allow_ending_candidate: bool = False, allow_padding_candidate: bool = False,
+                        _opening_probe: bool = False) -> dict:
     """Return verified source timing or a typed reason for matcher fallback."""
     if not all(isinstance(value, dict) for value in (performance, audio, metadata)):
         _unavailable("invalid_input")
@@ -243,6 +244,8 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
         # an accepted map; repair must rerun ALL playable-event checks.
         result['status']='needs_opening_check'
         return result
+    from .ending_padding import candidate
+    padding = candidate(performance, result, audio) if allow_padding_candidate else None
     for track in performance.get("tracks", []):
         notes = [(note, note.get("t")) for note in track.get("notes", [])]
         notes += [(note, note.get("t", chord.get("t"))) for chord in track.get("chords", []) for note in chord.get("notes", [])]
@@ -271,7 +274,7 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
                 if (not isinstance(point, dict) or not _number(point.get("t")) or not _number(point.get("v"))
                         or point["t"] < 0 or point["t"] > sustain + _EPSILON):
                     _unavailable("invalid_bend_timing")
-            if mapped_end > duration + 0.0000011:
+            if mapped_end > duration + 0.0000011 and padding is None:
                 mapped = {**note, "t": round(mapped_start, 6), "sus": round(mapped_end - mapped_start, 6)}
                 if 'whammy' in note:
                     from ..whammy import retime_whammy
@@ -298,6 +301,9 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
             checked += 1
     if not checked:
         _unavailable("no_playable_notes")
+    if padding is not None:
+        result.update(status='needs_padding_check', paddingCandidate=padding)
+        return result
     if trimmed:
         result["terminalSustains"] = policy_for(duration)
         result["diagnostics"]["shortenedFinalSustains"] = trimmed

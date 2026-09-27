@@ -14,13 +14,16 @@ from .compatibility import summary as compatibility_summary, new_report, add_fin
 from .synchronization import align_from_songsterr
 
 
-def _choose_alignment(performance: dict, audio: dict, request: dict, progress=None) -> dict:
+def _choose_alignment(performance: dict, audio: dict, request: dict, progress=None, *, allow_padding=True) -> dict:
     """Use recording-specific source timing first; estimate only when unavailable."""
     if progress:
         progress({"stage": "aligning", "message": "Checking Songsterr's recording timing."})
     try:
         alignment = align_from_songsterr(performance, audio, request.get("synchronization"),
-                                        request.get("metadata") or {}, allow_ending_candidate=True)
+                                        request.get("metadata") or {}, allow_ending_candidate=True,
+                                        allow_padding_candidate=allow_padding)
+        if alignment.get('paddingCandidate'):
+            return _choose_padding(performance, audio, alignment, request, progress)
         if alignment.get("endingCandidate"):
             if progress:
                 progress({"stage": "aligning", "message": "Checking the earlier song before cutting the tab at the audio ending."})
@@ -36,7 +39,10 @@ def _choose_alignment(performance: dict, audio: dict, request: dict, progress=No
         if progress:
             progress({'stage':'aligning','message':'Checking the opening chords against the recording.'})
         try:
-            alignment=repair(performance,audio,request.get('synchronization'),request.get('metadata') or {})
+            alignment=repair(performance,audio,request.get('synchronization'),request.get('metadata') or {},
+                             allow_padding_candidate=allow_padding)
+            if alignment.get('paddingCandidate'):
+                return _choose_padding(performance, audio, alignment, request, progress)
             if alignment.get('endingCandidate'):
                 from .ending_cutoff import authorize
                 alignment=authorize(performance,audio,alignment)
@@ -58,9 +64,27 @@ def _choose_alignment(performance: dict, audio: dict, request: dict, progress=No
     return alignment
 
 
+def _choose_padding(performance, audio, alignment, request, progress):
+    from .ending_padding import authorize
+    if progress:
+        progress({'stage': 'aligning', 'message': 'Checking the recording and its ending before preserving a short note tail.'})
+    try:
+        return authorize(performance, audio, alignment)
+    except ImportFailure as denied:
+        # Re-run the established policy without padding. Do not make accepted
+        # simple sustain trims depend on this stricter optional acoustic check.
+        try:
+            result = _choose_alignment(performance, audio, request, progress, allow_padding=False)
+        except ImportFailure as exc:
+            exc.diagnostics['endingPaddingDeclined'] = denied.diagnostics
+            raise
+        result['endingPaddingDeclined'] = denied.diagnostics
+        return result
+
+
 def _alignment_summary(alignment: dict) -> dict:
     # Full timing survives in the evidence store, not the bounded history ledger.
-    return {key: value for key, value in alignment.items() if key not in {"anchors", "tempos", "recordingSync", "sourceTiming", "timingAssessment"}}
+    return {key: value for key, value in alignment.items() if key not in {"anchors", "tempos", "recordingSync", "sourceTiming", "timingAssessment", "endingPaddingSync", "endingPaddingDeclined"}}
 
 
 def run_import(request: dict, progress=None) -> dict:
@@ -99,15 +123,29 @@ def run_import(request: dict, progress=None) -> dict:
                               managed_retries=request.get("managedRetries") is True, defer_encoding=True)
         alignment = _choose_alignment(performance, audio, request, progress)
         from .preparation import finalize
-        audio,alignment=finalize(performance,audio,alignment,job)
+        try:
+            audio,alignment=finalize(performance,audio,alignment,job)
+        except ImportFailure as exc:
+            if exc.code != 'ending_padding_unconfirmed':
+                raise
+            alignment=_choose_alignment(performance,audio,request,progress,allow_padding=False)
+            alignment['endingPaddingDeclined']=exc.diagnostics
+            audio,alignment=finalize(performance,audio,alignment,job)
         if alignment.get('mapping')=='piecewise-linear':
             from .local_sync import assess
             from .ending_cutoff import mapped_tracks
             if progress:
                 progress({'stage':'aligning','message':'Checking timing across the recording.'})
-            alignment['timingAssessment']=assess(mapped_tracks(performance,alignment),audio['path'],audio['duration'],alignment['provenance']['mapHash'])
+            tracks, path, duration = mapped_tracks(performance,alignment), audio['path'], audio['duration']
+            if alignment.get('endingPadding'):
+                from .ending_padding import original_tracks
+                from .preparation import recording_view
+                tracks=original_tracks(tracks,alignment['preparation']['seconds'])
+                path=recording_view(path,alignment['preparation'])
+                duration=alignment['endingPadding']['originalDuration']
+            alignment['timingAssessment']=assess(tracks,path,duration,alignment['provenance']['mapHash'])
         alignment_recipe = {key: alignment[key] for key in
-                            ("method", "offset", "scale", "mapping", "provenance", "terminalSustains", "terminalSlides", "recordingEnd") if key in alignment}
+                            ("method", "offset", "scale", "mapping", "provenance", "terminalSustains", "terminalSlides", "recordingEnd", "endingPadding") if key in alignment}
         alignment_recipe.setdefault("method", VERSION)
         recipe = {"version": 8, "preservationContract": CONTRACT_VERSION, "source": "songsterr", "songId": metadata.get("songId"),
                   "revisionId": metadata.get("revisionId"), "scoreHash": score_hash, "audioHash": audio["hash"],
@@ -155,6 +193,7 @@ def run_import(request: dict, progress=None) -> dict:
             summary['timingAssessment']={k:alignment['timingAssessment'][k] for k in
                 ('version','status','everyNoteVerified','windowCount','supportedWindows','suspectedMismatchWindows')}
         summary['preparationSeconds']=alignment.get('preparation',{}).get('seconds',0)
+        summary['endingSilenceSeconds']=alignment.get('endingPadding',{}).get('seconds',0)
         if verification.get("adjustments"):
             summary["adjustments"] = verification["adjustments"]
         if verification.get("omissions"):

@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 35
+VERSION = 36
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -675,7 +675,14 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 if len(full)!=1:raise ValueError('Timing assessment requires one full recording.')
                 stored=_json(z,recipe.get('timingAssessmentFile',''),check)
                 check.equal('timing_assessment_receipt','import/timing-assessment',alignment.get('timingAssessment'),stored)
-                fresh=assess(tracks,io.BytesIO(z.read(full[0]['file'])),manifest['duration'],alignment['provenance']['mapHash'])
+                path,duration=io.BytesIO(z.read(full[0]['file'])),manifest['duration']
+                if alignment.get('endingPadding'):
+                    from .ending_padding import original_tracks
+                    from .preparation import recording_view
+                    tracks=original_tracks(tracks,alignment['preparation']['seconds'])
+                    path=recording_view(path,alignment['preparation'])
+                    duration=alignment['endingPadding']['originalDuration']
+                fresh=assess(tracks,path,duration,alignment['provenance']['mapHash'])
                 compare_assessment(fresh,stored,check)
                 report['timing']['acousticAssessment']={k:fresh[k] for k in
                     ('version','status','everyNoteVerified','windowCount','supportedWindows','suspectedMismatchWindows')}
@@ -878,6 +885,10 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             ending_adjustments = _ending_adjustments(wanted, alignment, recipe, z, duration, source, check, manifest, report["timing"])
             from .preparation import verify as verify_preparation
             verify_preparation(wanted,alignment,recipe,z,manifest,check)
+            from .ending_padding import verify as verify_ending_padding
+            verify_ending_padding(wanted,alignment,recipe,z,manifest,check)
+            if alignment.get('endingPadding'):
+                report['scope'].append('verified_short_ending_silence')
             adjustments = _terminal_adjustments(wanted, alignment, recipe, z, duration, source, check)
             if ending_adjustments:
                 adjustments = {**(adjustments or {}), **ending_adjustments}
@@ -909,6 +920,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 # The independent event comparison and audio bounds below,
                 # not the penultimate grid boundary, prove that no playable
                 # event was lost or extends beyond the recording.
+            if alignment.get('endingPadding') or alignment.get("provenance", {}).get("terminalBeyondAudio") in {"silent_notation_only", "recorded_sustain_adjustments"} or adjustments:
                 for key in ("beats", "sections", "time_signatures", "tempos"):
                     wanted[key] = [item for item in wanted[key] if item["time"] <= duration]
             refs = [manifest.get("preview"), manifest.get("song_timeline")]

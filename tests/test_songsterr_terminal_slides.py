@@ -189,7 +189,7 @@ def test_tampered_package_cannot_pass(completed_slide, tmp_path, change):
         assert any(e['code'] == 'ending_audio_sync' for e in result['errors']), result
 
 
-def test_no_late_attack_still_requires_acoustic_check_and_never_falls_back(recording, tmp_path, monkeypatch):
+def test_no_late_attack_cutoff_still_requires_acoustic_check_and_never_falls_back(recording, tmp_path, monkeypatch):
     from feedback_converter.song_import import worker, ending_cutoff
     _, performance, audio, timing, _ = source_case(recording, tmp_path)
     def refuse(*args):
@@ -197,7 +197,7 @@ def test_no_late_attack_still_requires_acoustic_check_and_never_falls_back(recor
     monkeypatch.setattr(ending_cutoff, 'authorize', refuse)
     monkeypatch.setattr(worker, 'align_audio', lambda *a, **kw: pytest.fail('must not bypass failed acoustic check'))
     with pytest.raises(ImportFailure, match='inconclusive'):
-        worker._choose_alignment(performance, audio, {'synchronization': timing, 'metadata': META})
+        worker._choose_alignment(performance, audio, {'synchronization': timing, 'metadata': META}, allow_padding=False)
 
 
 @pytest.mark.parametrize('missing', ['recordingEnd', 'recordingSync', 'terminalSlides'])

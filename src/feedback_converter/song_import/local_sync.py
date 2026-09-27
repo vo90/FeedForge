@@ -251,7 +251,7 @@ def propose(tracks, score_boundaries, audio_boundaries, pitch, flux):
             'heldOutPitch':[round(float(v),6) for v in hp[0]], 'maxOnsetError':round(max(peak_errors),6)}
 
 
-def repair(performance, audio, synchronization, metadata):
+def repair(performance, audio, synchronization, metadata, *, allow_padding_candidate=False):
     from .synchronization import align_from_songsterr
     from .audio import ImportFailure
     original=deepcopy(synchronization)
@@ -270,7 +270,8 @@ def repair(performance, audio, synchronization, metadata):
         raise ImportFailure('source_sync_unavailable','The opening timing could not be corrected confidently.',{'openingRepair':proposal})
     applied=deepcopy(original); applied['points'][:2]=proposal['replacementBoundaries']
     try:
-        result=align_from_songsterr(performance,audio,applied,metadata,allow_ending_candidate=True)
+        result=align_from_songsterr(performance,audio,applied,metadata,allow_ending_candidate=True,
+                                   allow_padding_candidate=allow_padding_candidate)
     except ImportFailure as exc:
         exc.diagnostics['openingRepair']=proposal
         raise

@@ -221,6 +221,9 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     """Only write inside directory. Publishing/collision handling belongs to the app."""
     if alignment.get("status") != "validated":
         raise ImportFailure("alignment_failed", "The recording has not passed synchronization checks.")
+    if alignment.get('endingPadding') and (source_path is None or (recipe or {}).get('preservationContract',0)<36
+            or 'recordingSamplesSha256' not in alignment['endingPadding']):
+        raise ImportFailure('alignment_failed','Ending silence requires confirmed recording evidence and the original tab.')
     if alignment.get("terminalSlides") is not None and (not slides_allowed(alignment, audio["duration"])
             or source_path is None or (recipe or {}).get("preservationContract", 0) < 33):
         raise ImportFailure("alignment_failed", "A final slide-out cutoff requires verified recording timing, the original tab and contract 33.")
@@ -364,7 +367,9 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     if alignment.get("sourceTiming") is not None:
         _write_json(package / "import/source-timing.json", alignment["sourceTiming"])
         manifest.setdefault("song_import", {})["sourceTimingFile"] = "import/source-timing.json"
-    for key, filename in [('openingRepair','opening-repair'),('timingAssessment','timing-assessment')]:
+    for key, filename in [('openingRepair','opening-repair'),('timingAssessment','timing-assessment'),
+                          ('endingPadding','ending-padding'),('endingPaddingSync','ending-padding-sync'),
+                          ('endingPaddingDeclined','ending-padding-declined')]:
         if alignment.get(key) is not None:
             _write_json(package / f'import/{filename}.json', alignment[key])
             manifest.setdefault('song_import', {})[key+'File'] = f'import/{filename}.json'

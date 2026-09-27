@@ -29,11 +29,13 @@ const buttonText = (html) => [...html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/butt
 
 test('opening repair, acoustic evidence and preparation are distinguished', () => {
   const html = job({ state: 'completed', verification: { status: 'passed', timing: 'source_map_repaired',
-    timingAssessment: { windowCount: 10, supportedWindows: 8, everyNoteVerified: false }, preparationSeconds: 1.83 } });
+    timingAssessment: { windowCount: 10, supportedWindows: 8, everyNoteVerified: false }, preparationSeconds: 1.83,
+    endingSilenceSeconds: .43 } });
   assert.match(html, /opening corrected against the recording/);
   assert.match(html, /8 of 10 passages supported/);
   assert.match(html, /Individual notes may remain uncertain/);
   assert.match(html, /Preparation time added: 1.83 seconds/);
+  assert.match(html, /Ending silence added: 0.43 seconds to preserve the final note tails/);
   assert.doesNotMatch(html, /Timing: automatic estimate/);
 });
 
