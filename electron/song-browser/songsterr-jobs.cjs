@@ -310,6 +310,7 @@ class SongsterrJobs {
           }
           if (this.persistenceFailed) throw error;
           const code = job.controller.signal.aborted ? 'cancelled' : error.code;
+          if (code === 'cancelled') this._event(job, 'cancelled');
           if (!this.disposed && ['busy', 'service_cooldown'].includes(code)) {
             Object.assign(job.retry, { nextAt: code === 'busy' ? this.clock.now() + 1000 : error.nextAt, reason: code === 'busy' ? 'provider_busy' : 'service_cooldown' });
             this._set(job, 'retry_wait', { message: code === 'busy' ? 'Waiting for the Songsterr browser…' : 'Waiting for the service to accept requests…', error: '' });
@@ -409,11 +410,13 @@ class SongsterrJobs {
     if (!score.path) throw fileLocationError('The saved tab changed. Search for the song again to create a new import', 'cached_score', score.reason);
     if (await hashFile(score.path, job.controller.signal) !== job.cachedScoreHash) throw new Error('The saved tab changed. Search for the song again to create a new import.');
     check(job);
-    if ((retryAudioDetection || job.retry.reason === 'player_timeout') && !job.audio) {
+    if ((retryAudioDetection || job.audioDiscoveryPending || job.retry.reason === 'player_timeout') && !job.audio) {
+      job.audioDiscoveryPending = true; this._save();
       this._set(job, 'audio', { message: 'Checking Songsterr for the recording…' });
       const audio = await this.provider.findAudio(job.chart, { revisionId: String(job.metadata.revisionId), signal: job.controller.signal });
       check(job);
       if (audio) job.audio = audio;
+      job.audioDiscoveryPending = false; this._save();
     }
     if (!job.audio) throw Object.assign(new Error('No usable original audio was found. Choose an audio file or paste a link.'), { code: 'needs_audio' });
     // The recording service may only become known during this acquisition.

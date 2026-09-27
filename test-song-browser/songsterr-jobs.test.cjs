@@ -1153,3 +1153,15 @@ test('old failures, interrupted work and corrupt pending retry state never auto-
   assert.deepEqual(restored.snapshot().map(j => j.state), ['failed', 'needs_attention', 'needs_attention']);
   assert.equal(f.calls.length, 0); assert.equal(f.acquisitions.length, 0);
 });
+
+test('cached audio discovery survives provider busy and restart without using recovery credit', async t => {
+  const clock = retryClock(); let probes = 0;
+  const f = await fixture(t, { clock, missingAudio: true, findAudio: async () => {
+    if (++probes === 1) throw Object.assign(new Error('Busy'), { code: 'busy' }); return YOUTUBE;
+  } });
+  const job = f.enqueue(); await settle(f.jobs); f.jobs.retry(job.id); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'retry_wait'); assert.equal(f.jobs.jobs[0].retry.used, 0);
+  await f.jobs.dispose(); const restored = new SongsterrJobs(f.config); t.after(() => restored.dispose());
+  await settle(restored); await clock.advance(1000, restored);
+  assert.equal(restored.snapshot()[0].state, 'completed'); assert.equal(probes, 2); assert.equal(f.acquisitions.length, 1);
+});
