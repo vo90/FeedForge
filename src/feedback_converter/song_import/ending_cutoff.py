@@ -23,7 +23,9 @@ def mapped_tracks(performance, alignment):
 
 
 def authorize(performance, audio, alignment):
-    report = assess(mapped_tracks(performance, alignment), audio["path"], audio["duration"], alignment["provenance"]["mapHash"])
+    offset=alignment.get('preparation',{}).get('seconds',0)
+    report = assess(mapped_tracks(performance, alignment), audio["path"], audio["duration"], alignment["provenance"]["mapHash"],
+                    **({'analysis_origin':offset} if offset else {}))
     alignment["recordingSync"] = report
     if report["status"] != "supported":
         raise ImportFailure("alignment_failed", "The earlier tab could not be matched reliably to this recording, so its ending was not shortened.",

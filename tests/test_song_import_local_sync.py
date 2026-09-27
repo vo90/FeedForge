@@ -63,6 +63,15 @@ def test_empty_diagnostic_never_claims_verified():
     assert report['status']=='inconclusive' and not report['everyNoteVerified']
 
 
+def test_diagnostic_rounding_never_excuses_changed_status_or_clock():
+    from feedback_converter.song_import.verification import Check
+    fresh={'status':'inconclusive','bestOffset':.26,'jointBest':.42,'jointContrast':2.3997}
+    stored={**fresh,'jointBest':.42036,'jointContrast':2.4019}
+    check=Check();ls.compare_assessment(fresh,stored,check);assert not check.errors
+    for change in ({'status':'supported'},{'bestOffset':0},{'jointBest':.5}):
+        check=Check();ls.compare_assessment(fresh,{**stored,**change},check);assert check.errors
+
+
 def test_competing_repeated_opening_is_not_chosen_arbitrarily():
     tracks,bounds,points,pitch,flux=fixture()
     delay=round(.2/rs.DT)

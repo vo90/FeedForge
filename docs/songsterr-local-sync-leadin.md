@@ -78,6 +78,14 @@ and notation. Relative sustains/techniques retain their original mapped duration
 Negative silent score bars can become visible during the new preparation period;
 their retained downbeats are numbered consecutively and independently verified.
 
+Recording-end acoustic windows stay in the original recording coordinate system,
+so adding preparation cannot move a previously checked passage into another
+window. Their evidence is recomputed against the actual final encoded audio.
+Independent diagnostic score comparisons allow at most 0.005 absolute / 1%
+relative numerical differences at FFT frame boundaries. Decisions, offsets,
+coverage, recording identity and the microsecond chart checks remain exact under
+their existing contracts. Diagnostic metric tolerance cannot authorize a cutoff.
+
 Source tests: 1,769 passed, five existing skips; desktop/JavaScript tests: 771
 passed, two existing skips. The final UI subset adds a preparation/repair/evidence
 rendering check (19 passed). The shared-runtime and retained-corpus results are

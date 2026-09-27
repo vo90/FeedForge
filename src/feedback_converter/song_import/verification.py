@@ -606,7 +606,9 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
         audio_bytes = archive.read(full[0]["file"])
         check.equal("ending_audio_identity", "import/recording-sync", stored.get("audioSha256"), hashlib.sha256(audio_bytes).hexdigest())
         if not check.total_errors:
-            fresh = assess(tracks, io.BytesIO(audio_bytes), duration, alignment["provenance"]["mapHash"])
+            offset=alignment.get('preparation',{}).get('seconds',0)
+            fresh = assess(tracks, io.BytesIO(audio_bytes), duration, alignment["provenance"]["mapHash"],
+                           **({'analysis_origin':offset} if offset else {}))
             timing["independentAudioMatchAssessed"] = True
             check.equal("ending_audio_sync", "import/recording-sync", "supported", fresh["status"])
     return {"omittedEndingNotes": len(omissions)}
@@ -664,7 +666,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             _finite(manifest, "manifest", check)
             recipe = manifest.get("song_import", {})
             if alignment.get('timingAssessment') or recipe.get('timingAssessmentFile'):
-                from .local_sync import assess, independent_tracks
+                from .local_sync import assess, independent_tracks, compare_assessment
                 tracks,_=independent_tracks(source)
                 from .verify_timeline import RecordingMap
                 recording=RecordingMap(alignment)
@@ -677,7 +679,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 stored=_json(z,recipe.get('timingAssessmentFile',''),check)
                 check.equal('timing_assessment_receipt','import/timing-assessment',alignment.get('timingAssessment'),stored)
                 fresh=assess(tracks,io.BytesIO(z.read(full[0]['file'])),manifest['duration'],alignment['provenance']['mapHash'])
-                check.equal('timing_assessment_audio','import/timing-assessment',fresh,stored)
+                compare_assessment(fresh,stored,check)
                 report['timing']['acousticAssessment']={k:fresh[k] for k in
                     ('version','status','everyNoteVerified','windowCount','supportedWindows','suspectedMismatchWindows')}
             if alignment.get('openingRepair') or recipe.get('openingRepairFile'):
