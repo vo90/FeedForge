@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { httpTransport, networkTransport } = require('../../songsterr-retry.cjs');
 const { ORIGIN, MAX_MEASURES, numeric, publicAudio, check, failure, bounded } = require('./policy.cjs');
 
 const MAX_SYNC_BYTES = 2 * 1024 * 1024;
@@ -92,8 +93,8 @@ async function retrieveSynchronization(identity, { fetch, signal, timeoutMs = 15
       check(signal);
       if (response.url && response.url !== url) throw failure('restricted', 'Timing response changed destination.');
       if (response.status === 401 || response.status === 403) throw failure('restricted', 'Timing data is unavailable anonymously.');
-      if (response.status === 429) throw failure('rate_limited', 'Timing request limited.');
-      if (!response.ok) throw failure(response.status === 404 ? 'unavailable' : 'network_error', 'Timing request failed.');
+      if (!response.ok) throw Object.assign(failure(response.status === 429 ? 'rate_limited' : response.status === 404 ? 'unavailable' : 'network_error', 'Timing request failed.'),
+        { transport: httpTransport('synchronization', 'timing_map', response.status, response.headers) });
       if (Number(response.headers?.get?.('content-length')) > MAX_SYNC_BYTES) throw failure('too_large', 'Timing response is too large.');
       const type = response.headers?.get?.('content-type') || '';
       if (type && !/^(?:application\/(?:[a-z0-9.+-]+\+)?json|text\/plain)(?:;|$)/i.test(type)) throw failure('invalid_response', 'Unsupported timing response.');
@@ -121,7 +122,8 @@ async function retrieveSynchronization(identity, { fetch, signal, timeoutMs = 15
   } catch (error) {
     check(signal);
     if (error.code === 'cancelled') throw error;
-    return unavailableSynchronization(identity, error.source === 'songsterr' ? error.code : 'network_error');
+    const detail = error.transport || networkTransport(error, 'synchronization', 'timing_map');
+    return { ...unavailableSynchronization(identity, error.source === 'songsterr' ? error.code : 'network_error'), ...(detail ? { transport: detail } : {}) };
   } finally { signal?.removeEventListener('abort', abort); controller.abort(); }
 }
 

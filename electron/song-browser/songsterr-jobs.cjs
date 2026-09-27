@@ -8,8 +8,15 @@ const { normalizeOutputSettings } = require('./output-settings.cjs');
 const { inspectEvidence, reportBundle, compatibilityReport, compatibilityBacklog, CURRENT_PRESERVATION_CONTRACT, KNOWN_PRESERVATION_CONTRACTS } = require('./songsterr-evidence.cjs');
 const { waitForSharedOperation } = require('./shared-operation.cjs');
 const { unavailableSynchronization, synchronizationSummary, audioVideo } = require('./providers/songsterr/synchronization.cjs');
+const { transport, retryPlan } = require('./songsterr-retry.cjs');
+const { reportZip } = require('./songsterr-retry-report.cjs');
 const WAITING = new Set(['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed']);
 const ACTIVE = new Set(['queued', 'resolving', 'downloading', 'converting', 'audio', 'aligning', 'validating', 'saving']);
+const PENDING = (job) => ACTIVE.has(job.state) || WAITING.has(job.state) || job.state === 'retry_wait';
+const defaultClock = { now: () => Date.now(), setTimeout, clearTimeout, random: Math.random };
+function retryCycle(previous) { return { version: 1, cycle: crypto.randomUUID(), used: 0, events: [], cycles: [...(previous?.cycles || []), ...(previous?.cycle ? [previous.cycle] : [])].slice(-20) }; }
+function validRetry(retry) { return retry?.version === 1 && UUID.test(retry.cycle) && Number.isInteger(retry.used) && retry.used >= 0 && retry.used <= 2
+  && Array.isArray(retry.events) && retry.events.length <= 30 && Array.isArray(retry.cycles) && retry.cycles.length <= 20 && retry.cycles.every(id => UUID.test(id)); }
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 function clean(value) { return String(value || '').replace(/https?:\/\/[^\s]+/g, '[link]').slice(0, 1200); }
 function check(job) { if (job.controller.signal.aborted) throw Object.assign(new Error('Cancelled.'), { code: 'cancelled' }); }
@@ -63,23 +70,30 @@ function terminate(child) {
   } else child.kill('SIGTERM');
 }
 class SongsterrJobs {
-  constructor({ root, provider, runConverter, getConverterRecipe = async () => null, emit = () => {}, onCompleted = () => {}, tools = {}, artworkLookup = true }) {
+  constructor({ root, provider, runConverter, getConverterRecipe = async () => null, emit = () => {}, onCompleted = () => {}, tools = {}, artworkLookup = true, clock = defaultClock }) {
     Object.assign(this, { root: path.resolve(root), provider, runConverter, getConverterRecipe, emit, onCompleted, tools, artworkLookup });
     this.auditRoot = path.join(path.dirname(this.root), 'evidence');
+    this.clock = clock; this.cooldowns = {}; this.retryHistoryRoot = path.join(path.dirname(this.root), 'retry-history');
     fs.mkdirSync(this.root, { recursive: true }); this.jobs = []; this.disposed = false;
     const ledger = path.join(this.root, 'jobs.json');
     if (fs.existsSync(ledger)) {
       if (!fs.lstatSync(ledger).isFile() || fs.lstatSync(ledger).isSymbolicLink() || fs.statSync(ledger).size > 8 * 1024 ** 2) throw new Error('Songsterr history is not a supported local ledger.');
       const saved = JSON.parse(fs.readFileSync(ledger, 'utf8'));
       if (saved.version !== 1 || !Array.isArray(saved.jobs)) throw new Error('Songsterr import history could not be read.');
+      for (const service of ['songsterr', 'youtube', 'audio_host']) if (Number.isSafeInteger(saved.cooldowns?.[service]) && saved.cooldowns[service] > clock.now()) this.cooldowns[service] = saved.cooldowns[service];
       this.jobs = saved.jobs.filter((j) => UUID.test(j.id) && j.source === 'songsterr' && /^\d+$/.test(j.chart?.id)).slice(-100);
       for (const job of this.jobs) {
         job.controller = new AbortController();
         this.provider.restoreTrustedResult?.(job.chart);
         if (ACTIVE.has(job.state)) { job.state = 'needs_attention'; job.message = 'Import was interrupted. Retry to continue.'; }
+        if (job.state === 'retry_wait' && (!validRetry(job.retry) || !Number.isSafeInteger(job.retry.nextAt) || job.retry.nextAt <= 0)) {
+          job.state = 'needs_attention'; job.message = 'Saved retry information is invalid. Retry manually.';
+        }
+        if (job.retry && !validRetry(job.retry)) delete job.retry;
       }
     }
     this.ready = this._recover();
+    this.ready.then(() => this._start()).catch(() => {});
   }
   async _recover() {
     for (const job of this.jobs) {
@@ -96,7 +110,7 @@ class SongsterrJobs {
             if (!KNOWN_PRESERVATION_CONTRACTS.includes(contract) || saved.verification?.version !== contract || saved.verification.status !== 'passed'
                 || checked.verification.version !== contract || checked.verification.status !== 'passed') throw new Error('Unverified recovery receipt.');
           }
-          Object.assign(job, saved, { outputPath: output.path, state: 'completed', committed: true, message: 'FeedPak ready.',
+          Object.assign(job, saved, { retry: job.retry || saved.retry, outputPath: output.path, state: 'completed', committed: true, message: 'FeedPak ready.',
             error: '', pathValidation: undefined, outputVerification: saved.verification?.version === CURRENT_PRESERVATION_CONTRACT && saved.verification.status === 'passed' ? 'passed' : 'not_checked', controller: new AbortController() });
         }
       } catch { /* Preserve interrupted job and files for an explicit retry. */ }
@@ -125,7 +139,21 @@ class SongsterrJobs {
   auditBundle(id) {
     const job = this.jobs.find((entry) => entry.id === id);
     if (!job) throw new Error('The import no longer exists.');
-    return reportBundle(this.auditRoot, job.evidence);
+    if (!job.retry?.events?.length) return reportBundle(this.auditRoot, job.evidence);
+    const entries = [];
+    if (job.evidence) entries.push(['conversion-report.zip', fs.readFileSync(reportBundle(this.auditRoot, job.evidence))]);
+    const cycles = [...job.retry.cycles, job.retry.cycle], history = [];
+    for (const cycle of cycles) {
+      const file = containedFile(this.retryHistoryRoot, path.join(this.retryHistoryRoot, job.id, `${cycle}.json`));
+      if (!file.path || fs.statSync(file.path).size > 128 * 1024) throw new Error('The saved attempt history is unavailable.');
+      history.push(JSON.parse(fs.readFileSync(file.path, 'utf8')));
+    }
+    entries.push(['attempt-history.json', Buffer.from(JSON.stringify({ version: 1, jobId: job.id, retainedCycles: history }, null, 2))]);
+    const output = path.join(this.retryHistoryRoot, job.id, 'report.zip');
+    const temporary = output + '.' + crypto.randomUUID() + '.tmp';
+    try { fs.writeFileSync(temporary, reportZip(entries), { flag: 'wx' }); fs.renameSync(temporary, output); }
+    finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); }
+    return output;
   }
   compatibilityDetails(id) {
     const job = this.jobs.find(entry => entry.id === id);
@@ -151,7 +179,10 @@ class SongsterrJobs {
       await fs.promises.rm(directory, { recursive: true, force: true }).catch(() => {});
     }
   }
-  _save() { atomicJson(path.join(this.root, 'jobs.json'), { version: 1, jobs: this.jobs.map(record) }); }
+  _save() {
+    try { atomicJson(path.join(this.root, 'jobs.json'), { version: 1, cooldowns: this.cooldowns, jobs: this.jobs.map(record) }); }
+    catch (error) { this.persistenceFailed = true; throw error; }
+  }
   _set(job, state, extra = {}) { Object.assign(job, { state, updatedAt: Date.now() }, extra); this._save(); this.emit(this.public(job)); }
   public(job) {
     return { id: job.id, source: 'songsterr', sourceKey: job.sourceKey, songId: job.chart.id, title: job.chart.title, artist: job.chart.artist,
@@ -161,21 +192,24 @@ class SongsterrJobs {
       outputAvailable: job.state === 'completed' && Boolean(job.outputPath && fs.existsSync(job.outputPath)),
       warnings: job.warnings, alignment: job.alignment, coverage: job.coverage, synchronization: job.synchronizationSummary,
       verification: job.verification ? { ...job.verification, status: job.state === 'completed' ? job.outputVerification || 'not_checked' : job.verification.status } : undefined,
-      artwork: job.artwork, compatibility: job.compatibility, hasReport: Boolean(job.evidence),
+      artwork: job.artwork, compatibility: job.compatibility, hasReport: Boolean(job.evidence || job.retry?.events?.length),
+      retry: job.retry ? { attempt: job.retry.used + 1, maxAttempts: 3, nextAt: job.retry.nextAt, parked: job.retry.parked === true,
+        reason: job.retry.reason, failures: job.retry.events.filter(e => e.outcome === 'failed').length } : undefined,
       canRetry: WAITING.has(job.state) || job.state === 'failed' || job.state === 'cancelled',
       canRetryAudio: job.state === 'needs_audio' && !job.audio && Boolean(job.scorePath) && typeof this.provider.findAudio === 'function',
+      canRetryRecording: job.state === 'needs_audio' && Boolean(job.audio),
       canUseAccount: job.canUseAccount === true,
-      canCancel: ACTIVE.has(job.state) || WAITING.has(job.state) };
+      canCancel: PENDING(job) };
   }
   snapshot() { return this.jobs.map((job) => this.public(job)); }
   enqueue(chart, { outputDir, outputSettings }) {
-    if (this.disposed) throw new Error('Songsterr is closed.');
+    if (this.disposed || this.persistenceFailed) throw new Error('Reopen Songsterr before adding imports.');
     if (!path.isAbsolute(outputDir || '')) throw new Error('Choose an output folder in FeedForge Settings.');
-    const existing = this.jobs.find((job) => job.chart.id === String(chart.id) && (ACTIVE.has(job.state) || WAITING.has(job.state)));
+    const existing = this.jobs.find((job) => job.chart.id === String(chart.id) && PENDING(job));
     if (existing) return this.public(existing);
-    if (this.jobs.filter((job) => ACTIVE.has(job.state) || WAITING.has(job.state)).length >= 30) throw new Error('Finish or cancel some imports before adding more songs.');
+    if (this.jobs.filter(PENDING).length >= 30) throw new Error('Finish or cancel some imports before adding more songs.');
     const job = { id: crypto.randomUUID(), source: 'songsterr', sourceKey: `songsterr:${chart.id}`, chart: { ...chart, id: String(chart.id) },
-      state: 'queued', createdAt: Date.now(), outputDir: path.resolve(outputDir), outputSettings: normalizeOutputSettings(outputSettings), controller: new AbortController() };
+      state: 'queued', createdAt: this.clock.now(), retry: retryCycle(), outputDir: path.resolve(outputDir), outputSettings: normalizeOutputSettings(outputSettings), controller: new AbortController() };
     const previous = this.jobs;
     this.jobs = [...previous, job];
     while (this.jobs.length > 100) {
@@ -187,6 +221,7 @@ class SongsterrJobs {
     this.emit(this.public(job)); this._start(); return this.public(job);
   }
   retry(id, { audio, allowAccount } = {}) {
+    if (this.disposed || this.persistenceFailed) throw new Error('Reopen Songsterr before retrying.');
     const job = this.jobs.find((j) => j.id === id);
     if (!job || !this.public(job).canRetry || this.current === job) throw new Error('This import cannot be retried yet.');
     if (audio) job.audio = audio;
@@ -195,23 +230,77 @@ class SongsterrJobs {
     // supplied or previously chosen recording always keeps priority.
     job.retryAudioDetection = job.state === 'needs_audio' && !job.audio && Boolean(job.scorePath) && typeof this.provider.findAudio === 'function';
     job.controller = new AbortController(); job.committed = false; job.timedOut = false;
+    job.retry = retryCycle(job.retry);
     this._set(job, 'queued', { error: '', alignment: undefined, synchronizationSummary: undefined, pathValidation: undefined, message: 'Queued.' }); this._start(); return this.public(job);
   }
   async cancel(id) {
     const job = this.jobs.find((j) => j.id === id);
     if (!job || job.committed) return;
     job.controller.abort(); terminate(job.child);
-    if (this.current === job) { await job.done; } else this._set(job, 'cancelled', { message: 'Cancelled.', error: '' });
+    if (this.current === job) await job.done;
+    if (!job.committed && job.state !== 'cancelled') { this._event(job, 'cancelled'); this._set(job, 'cancelled', { message: 'Cancelled.', error: '' }); this._arm(); }
+  }
+  _event(job, outcome, extra = {}) {
+    if (!job.retry) job.retry = retryCycle();
+    const event = { time: this.clock.now(), attempt: job.retry.used + 1, outcome, stage: job.state,
+      songId: job.chart.id, revisionId: job.metadata?.revisionId || job.pinnedDescriptor?.revisionId,
+      scoreHash: job.cachedScoreHash, videoId: audioVideo(job.audio)?.videoId, evidence: job.evidence, ...extra };
+    // Repeated busy/cooldown admission is still the same attempt, not a new
+    // failure. Keep its one start record rather than evicting failed attempts.
+    if (outcome === 'started' && job.retry.events.at(-1)?.outcome === 'started' && job.retry.events.at(-1)?.attempt === event.attempt) job.retry.events[job.retry.events.length - 1] = event;
+    else job.retry.events = [...job.retry.events, event].slice(-30);
+    const directory = path.join(this.retryHistoryRoot, job.id);
+    fs.mkdirSync(directory, { recursive: true });
+    if (fs.lstatSync(this.retryHistoryRoot).isSymbolicLink() || fs.lstatSync(directory).isSymbolicLink()) throw new Error('Import history folder changed.');
+    try { atomicJson(path.join(directory, `${job.retry.cycle}.json`), { version: 1, jobId: job.id, cycle: job.retry.cycle, events: job.retry.events }); }
+    catch (error) { this.persistenceFailed = true; throw error; }
+  }
+  _cooldown(job) {
+    const services = ['songsterr'];
+    if (job.audio?.kind === 'url') services.push(audioVideo(job.audio) ? 'youtube' : 'audio_host');
+    return Math.max(0, ...services.map(s => this.cooldowns[s] || 0));
+  }
+  _arm() {
+    this.clock.clearTimeout(this.retryTimer); this.retryTimer = null;
+    if (this.disposed || this.persistenceFailed) return;
+    const times = this.jobs.filter(j => j.state === 'retry_wait' || j.state === 'queued')
+      .map(j => Math.max(j.state === 'retry_wait' ? j.retry.nextAt : 0, this._cooldown(j)));
+    if (!times.length) return;
+    this.retryTimer = this.clock.setTimeout(() => { this.retryTimer = null; this._start(); }, Math.min(2147483647, Math.max(1, Math.min(...times) - this.clock.now())));
+    this.retryTimer?.unref?.();
+  }
+  _scheduleFailure(job, error) {
+    if (job.controller.signal.aborted || job.committed || this.disposed) return false;
+    const terminal = ['cancelled', 'alignment_failed', 'needs_attention', 'needs_login', 'unsupported_score', 'invalid_score', 'revision_unavailable', 'access_denied', 'dependency_missing', 'import_file_location'].includes(error.code);
+    const detail = terminal ? null : transport(error.transport);
+    if (detail?.retryAfterAt) this.cooldowns[detail.service] = Math.max(this.cooldowns[detail.service] || 0, detail.retryAfterAt);
+    const plan = retryPlan(detail, job.retry.used, this.clock.now(), this.clock.random);
+    this._event(job, 'failed', { transport: detail, decision: plan ? plan.parked ? 'parked' : 'retry' : 'stop', nextAt: plan?.at });
+    if (!plan) return false;
+    Object.assign(job.retry, { used: job.retry.used + 1, nextAt: plan.at, reason: detail.reason, parked: plan.parked });
+    this._set(job, plan.parked ? 'needs_attention' : 'retry_wait', { error: '', message: plan.parked
+      ? 'The service requested a long wait. Retry after the displayed time.' : 'Temporary retrieval problem. Waiting to retry.' });
+    return true;
   }
   _start() {
-    if (this.draining || this.disposed) return;
+    if (this.draining || this.disposed || this.persistenceFailed) return;
+    this.clock.clearTimeout(this.retryTimer); this.retryTimer = null;
     this.draining = Promise.resolve().then(async () => {
       await this.ready;
-      while (!this.disposed) {
-        const job = this.jobs.find((j) => j.state === 'queued'); if (!job) break;
+      while (!this.disposed && !this.persistenceFailed) {
+        const job = this.jobs.filter(j => !j.controller.signal.aborted && (j.state === 'queued' || j.state === 'retry_wait')
+          && (j.state === 'queued' || j.retry.nextAt <= this.clock.now()) && this._cooldown(j) <= this.clock.now())
+          .sort((a, b) => (a.retry?.nextAt || a.createdAt) - (b.retry?.nextAt || b.createdAt))[0];
+        if (!job) break;
         this.current = job;
         job.done = new Promise((resolve) => { job.resolveDone = resolve; });
-        try { await this._work(job); }
+        try {
+          if (!job.retry) job.retry = retryCycle();
+          delete job.retry.nextAt; delete job.retry.parked;
+          this._event(job, 'started'); this._set(job, 'queued', { error: '' });
+          await this._work(job);
+          this._event(job, 'completed'); this._save();
+        }
         catch (error) {
           if (job.committed) {
             // The receipt and atomic link are authoritative even if history persistence failed.
@@ -219,11 +308,18 @@ class SongsterrJobs {
             this.emit(this.public(job));
             continue;
           }
+          if (this.persistenceFailed) throw error;
           const code = job.controller.signal.aborted ? 'cancelled' : error.code;
+          if (!this.disposed && ['busy', 'service_cooldown'].includes(code)) {
+            Object.assign(job.retry, { nextAt: code === 'busy' ? this.clock.now() + 1000 : error.nextAt, reason: code === 'busy' ? 'provider_busy' : 'service_cooldown' });
+            this._set(job, 'retry_wait', { message: code === 'busy' ? 'Waiting for the Songsterr browser…' : 'Waiting for the service to accept requests…', error: '' });
+            continue;
+          }
           job.canUseAccount = error.canUseAccount === true;
           if (error.pathValidation) job.pathValidation = error.pathValidation;
           for (const key of ['verification', 'evidence', 'warnings', 'compatibility']) if (error[key]) job[key] = error[key];
           if (code === 'alignment_failed' && error.alignment && typeof error.alignment === 'object' && !Array.isArray(error.alignment)) job.alignment = error.alignment;
+          if (this._scheduleFailure(job, error)) continue;
           this._set(job, WAITING.has(code) || code === 'cancelled' ? code : 'failed', { error: code === 'cancelled' ? '' : clean(error.message), message: code === 'cancelled' ? 'Cancelled.' : '' });
         } finally {
           job.child = null;
@@ -232,7 +328,14 @@ class SongsterrJobs {
           this.current = null; job.resolveDone();
         }
       }
-    }).finally(() => { this.draining = null; if (!this.disposed && this.jobs.some((j) => j.state === 'queued')) this._start(); });
+    }).catch((error) => {
+      // A ledger/history failure must never dispatch an unrecorded retry or spin.
+      this.persistenceFailed = true;
+      for (const job of this.jobs.filter(j => j.state === 'queued' || j.state === 'retry_wait' || ACTIVE.has(j.state))) {
+        job.state = 'needs_attention'; job.error = 'Import history could not be saved. Reopen FeedForge before retrying.';
+        this.emit(this.public(job));
+      }
+    }).finally(() => { this.draining = null; this._arm(); });
     this.draining.catch(() => {});
   }
   async _run(job, args, directory) {
@@ -251,13 +354,15 @@ class SongsterrJobs {
         onSpawn: (child) => { job.child = child; if (admission.signal.aborted) terminate(child); },
         onStderrLine: (line) => {
           if (!line.startsWith('FEEDFORGE_PROGRESS ')) return;
-          try { const progress = JSON.parse(line.slice(19)); if (['audio', 'aligning', 'converting', 'validating'].includes(progress.stage)) this._set(job, progress.stage, { message: clean(progress.message) }); } catch { /* Ignore unrelated output. */ }
+          try { const progress = JSON.parse(line.slice(19)); if (['audio', 'aligning', 'converting', 'validating'].includes(progress.stage)) this._set(job, progress.stage, { message: clean(progress.message) }); }
+          catch { if (this.persistenceFailed) { admission.abort(); terminate(job.child); } }
         } });
       job.child = null; check(job);
+      if (this.persistenceFailed) throw new Error('Import history could not be saved.');
       if (timedOut) throw timeoutError();
       if (typeof result?.stdout !== 'string' || result.stdout.length > 4 * 1024 * 1024) throw new Error('The converter returned an invalid response.');
       let parsed; try { parsed = JSON.parse(result.stdout); } catch { throw new Error('The converter returned an unreadable response.'); }
-      if (result.code !== 0 || parsed.ok !== true) throw Object.assign(new Error(clean(parsed.error) || 'Conversion failed.'), { code: parsed.code, alignment: parsed.alignment, verification: parsed.verification, evidence: parsed.evidence, warnings: parsed.warnings, compatibility: parsed.compatibility });
+      if (result.code !== 0 || parsed.ok !== true) throw Object.assign(new Error(clean(parsed.error) || 'Conversion failed.'), { code: parsed.code, transport: transport(parsed.transport), alignment: parsed.alignment, verification: parsed.verification, evidence: parsed.evidence, warnings: parsed.warnings, compatibility: parsed.compatibility });
       return parsed;
     } catch (error) {
       check(job);
@@ -274,21 +379,29 @@ class SongsterrJobs {
     const directory = path.join(this.root, job.id); fs.mkdirSync(directory, { recursive: true });
     const stat = fs.lstatSync(directory); if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('The import working folder is invalid.');
     check(job); job.converterRecipe = await waitForSharedOperation(this.getConverterRecipe(), job.controller.signal); check(job);
-    if ((!job.scorePath || !fs.existsSync(job.scorePath)) && !retryAudioDetection) {
+    if ((!job.scorePath || (!fs.existsSync(job.scorePath) && job.retry.used === 0)) && !retryAudioDetection) {
       this._set(job, 'resolving', { message: 'Finding the latest approved revision…', error: '' });
       // A cancelled provider may have finished writing before its promise rejects.
       // A fresh acquisition folder makes retry safe without overwriting that file.
       const acquisition = fs.mkdtempSync(path.join(directory, 'source-'));
       const acquired = await this.provider.acquire(job.chart, { directory: acquisition, signal: job.controller.signal, allowAccount: job.allowAccount === true,
+        pinnedDescriptor: job.pinnedDescriptor, onPinned: (descriptor) => {
+          check(job);
+          if (job.pinnedDescriptor && descriptor.revisionId !== job.pinnedDescriptor.revisionId) throw new Error('The approved revision changed.');
+          job.pinnedDescriptor = descriptor; if (!job.audio && descriptor.audio) job.audio = descriptor.audio;
+          this._save();
+        },
         onProgress: (p) => this._set(job, 'downloading', { message: clean(p?.message || 'Retrieving the approved tab…') }) });
       check(job);
       const source = containedFile(acquisition, acquired?.path);
       if (!source.path) throw fileLocationError('The source returned an invalid tab file', 'acquired_score', source.reason);
       if (String(acquired.metadata?.songId) !== job.chart.id || !/^\d+$/.test(String(acquired.metadata?.revisionId)) || acquired.metadata?.approval !== 'approved') throw new Error('The source did not identify an approved revision.');
+      if (job.pinnedDescriptor && String(acquired.metadata.revisionId) !== job.pinnedDescriptor.revisionId) throw new Error('The acquired tab differs from the pinned approved revision.');
       job.scorePath = acquired.path; job.metadata = acquired.metadata;
       job.cachedScoreHash = await hashFile(job.scorePath, job.controller.signal);
       job.sourceKey = `songsterr:${job.chart.id}:${job.metadata.revisionId}`;
       if (!job.audio && acquired.audio) job.audio = acquired.audio;
+      this._save();
     }
     if (String(job.metadata?.songId) !== job.chart.id || !/^\d+$/.test(String(job.metadata?.revisionId)) || job.metadata?.approval !== 'approved'
         || job.sourceKey !== `songsterr:${job.chart.id}:${job.metadata.revisionId}`) throw new Error('The saved tab revision is invalid. Search for the song again to create a new import.');
@@ -296,13 +409,16 @@ class SongsterrJobs {
     if (!score.path) throw fileLocationError('The saved tab changed. Search for the song again to create a new import', 'cached_score', score.reason);
     if (await hashFile(score.path, job.controller.signal) !== job.cachedScoreHash) throw new Error('The saved tab changed. Search for the song again to create a new import.');
     check(job);
-    if (retryAudioDetection && !job.audio) {
+    if ((retryAudioDetection || job.retry.reason === 'player_timeout') && !job.audio) {
       this._set(job, 'audio', { message: 'Checking Songsterr for the recording…' });
       const audio = await this.provider.findAudio(job.chart, { revisionId: String(job.metadata.revisionId), signal: job.controller.signal });
       check(job);
       if (audio) job.audio = audio;
     }
     if (!job.audio) throw Object.assign(new Error('No usable original audio was found. Choose an audio file or paste a link.'), { code: 'needs_audio' });
+    // The recording service may only become known during this acquisition.
+    // Recheck its shared cooldown before starting any downloader process.
+    if (this._cooldown(job) > this.clock.now()) throw Object.assign(new Error('Service cooldown'), { code: 'service_cooldown', nextAt: this._cooldown(job) });
     // Fetch once per conversion attempt, including old cached failed jobs.
     // Never retain the point array in the history ledger or reuse a previous
     // recording's map after the user supplies replacement audio.
@@ -316,15 +432,22 @@ class SongsterrJobs {
       } catch (error) {
         check(job);
         if (error.code === 'cancelled') throw error;
-        synchronization = unavailableSynchronization(syncIdentity, 'network_error');
+        if (error.code === 'busy') throw error;
+        synchronization = { ...unavailableSynchronization(syncIdentity, 'network_error'), transport: error.transport };
       }
     }
     check(job);
+    if (transport(synchronization.transport)) {
+      if (job.retry.used < 2) throw Object.assign(new Error('Songsterr timing retrieval temporarily failed.'), { code: 'network_error', transport: synchronization.transport });
+      this._event(job, 'timing_fallback', { transport: transport(synchronization.transport), decision: 'existing_alignment_fallback' });
+      const detail = transport(synchronization.transport);
+      if (detail.retryAfterAt) this.cooldowns[detail.service] = Math.max(this.cooldowns[detail.service] || 0, detail.retryAfterAt);
+    }
     job.synchronizationSummary = synchronizationSummary(synchronization);
     this._set(job, 'converting', { message: 'Preparing the tab and audio…' });
     const attempt = fs.mkdtempSync(path.join(directory, 'attempt-'));
     const requestPath = path.join(attempt, 'request.json');
-    atomicJson(requestPath, { scorePath: job.scorePath, metadata: job.metadata, audio: job.audio, synchronization, workDir: attempt,
+    atomicJson(requestPath, { managedRetries: true, scorePath: job.scorePath, metadata: job.metadata, audio: job.audio, synchronization, workDir: attempt,
       auditDir: this.auditRoot, artworkCacheDir: path.join(path.dirname(this.root), 'artwork-cache'), artworkLookup: this.artworkLookup,
       outputDir: job.outputDir, outputSettings: job.outputSettings, tools: this.tools });
     let result;
@@ -364,6 +487,6 @@ class SongsterrJobs {
     this._set(job, 'completed', { message: 'FeedPak ready.', error: '' });
     await Promise.resolve(this.onCompleted(this.public(job))).catch(() => {});
   }
-  async dispose() { this.disposed = true; for (const job of this.jobs) if (ACTIVE.has(job.state)) { job.controller.abort(); terminate(job.child); } await this.draining; }
+  async dispose() { this.disposed = true; this.clock.clearTimeout(this.retryTimer); for (const job of this.jobs) if (ACTIVE.has(job.state)) { job.controller.abort(); terminate(job.child); } await this.draining; }
 }
 module.exports = { SongsterrJobs, hashFile, atomicJson };

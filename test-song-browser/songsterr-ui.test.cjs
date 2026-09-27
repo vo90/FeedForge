@@ -27,6 +27,15 @@ test('completed partial charts identify omitted gameplay targets, not only displ
 });
 const buttonText = (html) => [...html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map((match) => match[1].replace(/<[^>]*>/g, '').trim());
 
+test('retry countdown retains Cancel and delays replacement-audio prompts until exhaustion', () => {
+  const html = job({ state: 'retry_wait', retry: { nextAt: Date.now() + 5000, attempt: 2, maxAttempts: 3 } });
+  assert.match(html, /attempt 2 of 3/); assert.match(html, /Retrying in/);
+  assert.ok(buttonText(html).includes('Cancel')); assert.ok(!buttonText(html).includes('Choose audio file'));
+  const exhausted = job({ state: 'needs_audio', canRetry: true, canRetryRecording: true });
+  assert.ok(buttonText(exhausted).includes('Retry same recording'));
+  assert.ok(buttonText(exhausted).includes('Choose audio file'));
+});
+
 test('completed imports distinguish limitations without implying a failed or fully supported chart', () => {
   assert.match(job({ state: 'completed', compatibility: { status: 'limitations' } }), /Ready with limitations/);
   assert.doesNotMatch(job({ state: 'failed', compatibility: { status: 'limitations' } }), /Ready with limitations/);

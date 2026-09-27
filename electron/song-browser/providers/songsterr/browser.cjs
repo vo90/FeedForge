@@ -8,6 +8,7 @@ const { readSongsterrPage, actOnSongsterrPage } = require('./dom.cjs');
 const { ORIGIN, MAX_TOTAL_BYTES, failure, check, clean, numeric, sourceFilename, songUrl, safeResult, allowedNavigation, allowedDownload, publicAudio, delay, bounded } = require('./policy.cjs');
 const { acquireAnonymous } = require('./acquire.cjs');
 const { retrieveSynchronization, unavailableSynchronization, audioVideo } = require('./synchronization.cjs');
+const { networkTransport } = require('../../songsterr-retry.cjs');
 
 class SongsterrProvider {
   constructor({ BrowserWindow, session, profilePath, onConnection = () => {}, onDiagnostic = () => {}, parent }) {
@@ -72,8 +73,10 @@ class SongsterrProvider {
     const wc = win.webContents;
     try { await bounded(wc.loadURL(url), signal, 30000, () => wc.stop()); }
     catch (error) {
-      check(signal); if (error.source === 'songsterr') throw error;
-      throw failure('network_error', 'The Songsterr page did not load. Please retry.');
+      check(signal);
+      const detail = networkTransport(error, 'score', 'page_load');
+      if (error.source === 'songsterr') throw Object.assign(error, { transport: detail });
+      throw Object.assign(failure('network_error', 'The Songsterr page did not load. Please retry.'), { transport: detail });
     }
     check(signal);
     if (!allowedNavigation(wc.getURL())) throw failure('unavailable', 'Songsterr redirected to an unsupported page.');
@@ -142,6 +145,10 @@ class SongsterrProvider {
       const eligibility = ['true', 'false', 'missing', 'other'].includes(page.playEligibility) ? page.playEligibility : 'missing';
       this.diagnostic('audio_probe_play_attribute_' + eligibility, 'ready');
       this.diagnostic('audio_probe_iframe', (page.audio || []).length ? 'ready' : 'unavailable');
+      if (['original_selection_timeout', 'full_mix_selection_timeout', 'iframe_timeout'].includes(reason)) {
+        throw Object.assign(failure('needs_audio', 'The original recording player did not become ready. Please retry.'),
+          { transport: { version: 1, phase: 'audio', operation: 'audio_probe', service: 'songsterr', reason: 'player_timeout' } });
+      }
       return null;
     };
     const found = () => { this.diagnostic('audio_probe_found', 'success'); return audio(); };
@@ -245,7 +252,7 @@ class SongsterrProvider {
         sortScope: 'loaded_results', ...(page.hasMore ? { message: 'Showing the loaded Songsterr results. Narrow the search for more specific matches.' } : {}) };
     } finally { this.searching = false; operation.release(); }
   }
-  async resolve(result, { signal } = {}) {
+  async resolve(result, { signal, onPinned = () => {} } = {}) {
     if (this.searching || this.resolving) throw failure('busy', 'The Songsterr catalogue is already being read.');
     const id = numeric(result?.id ?? result?.songId);
     const registered = id && this.results.get(id);
@@ -269,7 +276,8 @@ class SongsterrProvider {
       try {
         page = await this._wait(win, (value) => value.songId === id && value.historyReady === true, operation.signal);
       } catch (error) {
-        if (error.code === 'timeout') throw failure('revision_history_unavailable', 'Songsterr opened revision history, but its revision rows did not become ready. Please retry.');
+        if (error.code === 'timeout') throw Object.assign(failure('revision_history_unavailable', 'Songsterr opened revision history, but its revision rows did not become ready. Please retry.'),
+          { transport: networkTransport(error, 'score', 'revision_history') });
         throw error;
       }
       const revisions = (page.approvedRevisions || []).filter((revision) => numeric(revision.revisionId) && revision.approval === 'approved');
@@ -280,8 +288,11 @@ class SongsterrProvider {
       const revisionId = String(revisions[0].revisionId), url = `${registered.url}/r${revisionId}`;
       await this._navigate(win, url, operation.signal);
       page = await this._readyPinnedPage(win, id, revisionId, operation.signal);
+      const pinned = { ...registered, revisionId, approval: 'approved', approvedUrl: url, audioProbePending: true };
+      await onPinned(pinned);
       const audio = await this._discoverAudio(win, { songId: id, revisionId }, page, operation.signal);
       const descriptor = { ...registered, revisionId, approval: 'approved', approvedUrl: url, ...(audio ? { audio } : {}) };
+      await onPinned(descriptor);
       this.resolved.set(`${id}:${revisionId}`, descriptor);
       return descriptor;
     } finally { this.resolving = false; operation.release(); }
@@ -321,13 +332,24 @@ class SongsterrProvider {
       return sync;
     } finally { operation.release(); }
   }
-  async acquire(result, { directory, signal, onProgress = () => {}, allowAccount = false } = {}) {
+  async acquire(result, { directory, signal, onProgress = () => {}, allowAccount = false, pinnedDescriptor, onPinned = () => {} } = {}) {
     if (this.acquiring) throw failure('busy', 'Another Songsterr tab is being acquired.');
     if (!path.isAbsolute(directory || '')) throw failure('invalid_directory', 'Songsterr needs an absolute job folder.');
     const stat = await fsp.lstat(directory);
     if (!stat.isDirectory() || stat.isSymbolicLink()) throw failure('invalid_directory', 'Songsterr needs a regular job folder.');
-    let descriptor = this.resolved.get(`${numeric(result?.id ?? result?.songId)}:${numeric(result?.revisionId)}`);
-    if (!descriptor) descriptor = await this.resolve(result, { signal });
+    let descriptor = pinnedDescriptor || this.resolved.get(`${numeric(result?.id ?? result?.songId)}:${numeric(result?.revisionId)}`);
+    if (descriptor) {
+      const registered = this.results.get(String(result.id));
+      if (!registered || descriptor.id !== registered.id || descriptor.approval !== 'approved' || !numeric(descriptor.revisionId)
+          || descriptor.approvedUrl !== `${registered.url}/r${descriptor.revisionId}` || descriptor.title !== registered.title || descriptor.artist !== registered.artist) {
+        throw failure('invalid_result', 'The saved approved revision changed. Search again.');
+      }
+      if (descriptor.audioProbePending) {
+        const audio = await this.findAudio(result, { revisionId: descriptor.revisionId, signal });
+        descriptor = { ...descriptor, audioProbePending: false, ...(audio ? { audio } : {}) };
+      }
+      await onPinned(descriptor);
+    } else descriptor = await this.resolve(result, { signal, onPinned });
     const operation = this._controller(signal); this.acquiring = true;
     try {
       // The UI explicitly chooses the account retry. Never silently create an
@@ -405,7 +427,11 @@ class SongsterrProvider {
         entry = { state: 'created', url: parsed.url, copyId: parsed.id, createdAt: Date.now() };
         await this._saveCopy(key, entry);
       } catch (error) {
-        if (this.copies?.[key]?.state !== 'created') await this._saveCopy(key, { state: 'uncertain', createdAt: Date.now() }).catch(() => {});
+        if (this.copies?.[key]?.state !== 'created') {
+          await this._saveCopy(key, { state: 'uncertain', createdAt: Date.now() }).catch(() => {});
+          delete error.transport;
+          if (error.code !== 'cancelled') error.code = 'needs_attention';
+        }
         throw error;
       }
     } else {

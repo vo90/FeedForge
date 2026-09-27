@@ -35,7 +35,7 @@ def package(tmp_path, monkeypatch, offset):
     recording = tmp_path / 'recording.wav'
     sf.write(recording, .1 * np.sin(np.arange(round(duration * 22050)) * .1), 22050)
     monkeypatch.setattr(audio_module, '_public_url', lambda url: url)
-    monkeypatch.setattr(audio_module, '_download_youtube', lambda url, directory, tools:
+    monkeypatch.setattr(audio_module, '_download_youtube', lambda url, directory, tools, **kwargs:
                         (recording, {'kind': 'youtube', 'videoId': VIDEO, 'url': url}))
     monkeypatch.setattr(worker, 'align_audio', lambda *a, **kw: pytest.fail('The exact source map is usable.'))
     sync = {'version': 1, 'source': 'songsterr-video-points', **META, 'videoId': VIDEO,

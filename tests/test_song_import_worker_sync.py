@@ -112,7 +112,7 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
         samples[begin:begin + len(wave)] += wave
     sf.write(recording, samples, rate)
     monkeypatch.setattr(audio_module, "_public_url", lambda url: url)
-    monkeypatch.setattr(audio_module, "_download_youtube", lambda url, directory, tools:
+    monkeypatch.setattr(audio_module, "_download_youtube", lambda url, directory, tools, **kwargs:
                         (recording, {"kind": "youtube", "videoId": video_id, "url": url}))
     monkeypatch.setattr(worker, "align_audio", lambda *args, **kwargs: pytest.fail("must use supplied source timing"))
     synchronization = {"version": 1, "source": "songsterr-video-points", "songId": "12", "revisionId": "34",
@@ -174,7 +174,7 @@ def test_completed_package_verifies_several_silent_trailing_bars(tmp_path, monke
     samples[:22050 * 2] = .2 * np.sin(2 * np.pi * 440 * np.arange(22050 * 2) / 22050)
     sf.write(recording, samples, 22050)
     monkeypatch.setattr(audio_module, '_public_url', lambda url: url)
-    monkeypatch.setattr(audio_module, '_download_youtube', lambda url, directory, tools:
+    monkeypatch.setattr(audio_module, '_download_youtube', lambda url, directory, tools, **kwargs:
         (recording, {'kind': 'youtube', 'videoId': video_id, 'url': url}))
     monkeypatch.setattr(worker, 'align_audio', lambda *args, **kwargs: pytest.fail('must use the source map'))
     result = worker.run_import({'scorePath': str(score), 'audio': {'kind': 'url', 'url': f'https://www.youtube.com/watch?v={video_id}'},

@@ -3,8 +3,19 @@ import { AlertTriangle, Check, Download, FolderOpen, LoaderCircle, Search } from
 
 const ACTIVE = new Set(['queued', 'resolving', 'downloading', 'converting', 'audio', 'aligning', 'validating', 'saving']);
 const searchMemory = new WeakMap();
+ACTIVE.add('retry_wait');
 const LABELS = { queued: 'Queued', resolving: 'Checking revision', downloading: 'Retrieving tab', audio: 'Preparing audio', aligning: 'Aligning audio', converting: 'Creating FeedPak', validating: 'Validating', saving: 'Saving', completed: 'FeedPak ready', needs_audio: 'Audio needed', needs_login: 'Sign in needed', needs_attention: 'Needs attention', alignment_failed: 'Audio could not be aligned', failed: 'Failed', cancelled: 'Cancelled' };
 function errorText(value) { return typeof value === 'string' ? value : value?.message || value?.error || 'The operation failed. Please try again.'; }
+LABELS.retry_wait = 'Waiting to retry';
+
+function RetryStatus({ job }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { if (job.state !== 'retry_wait') return; const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, [job.state]);
+  if (job.state === 'retry_wait') return <p role="status">{job.retry?.reason === 'provider_busy' ? 'Waiting for the Songsterr browser.' : `Temporary retrieval problem. Retrying in ${Math.max(0, Math.ceil((job.retry.nextAt - now) / 1000))} seconds — attempt ${job.retry.attempt} of ${job.retry.maxAttempts}.`}</p>;
+  if (job.retry?.parked && job.retry.nextAt) return <p>Next eligible retry: {new Date(job.retry.nextAt).toLocaleString()}.</p>;
+  if (job.retry?.failures && job.state === 'completed') return <small>Completed after automatic recovery ({job.retry.attempt} of {job.retry.maxAttempts} attempts).</small>;
+  return null;
+}
 
 const CATEGORY = { unknown_semantics: 'Needs interpretation', source_interpretation: 'Needs interpretation', converter_gap: 'Converter support', game_representation: 'Game representation', game_limitation: 'Game limitation', source_structure: 'Source structure', conversion_check: 'Conversion check', audio_alignment: 'Audio alignment' };
 const WORK = { decision_required: 'Design decision needed', technical_work: 'Conversion work needed', display_limitation: 'Display limitation', gameplay_omission: 'Omitted from gameplay and scoring', fixed_verified: 'Resolved and verified' };
@@ -46,6 +57,7 @@ export function SongsterrJob({ job, api, action, busy }) {
     {job.verification?.omissions?.omittedNotes ? <p>{job.verification.omissions.omittedNotes} high-fret or connected slide events omitted from display and scoring. The complete original tab is saved inside the FeedPak.{job.verification.omissions.excludedTracks?.length ? ` ${job.verification.omissions.excludedTracks.length} arrangements had no supported notes remaining.` : ''}</p> : null}
     {active ? <progress className="sb-progress" aria-label={`${job.title}: ${LABELS[job.state]}`} /> : null}
     <p>{job.error || job.message}</p>
+    <RetryStatus job={job} />
     {job.revisionId ? <small>Approved revision {job.revisionId}</small> : null}
     {job.state === 'completed' ? <p>{job.verification?.status === 'passed' ? job.verification?.adjustments?.omittedEndingNotes ? 'Conversion checked against the source tab and recorded ending adjustments.' : job.verification?.adjustments?.terminalSustains ? 'Conversion checked against the source tab and recorded sustain adjustments.' : 'Conversion checked against the source tab.' : job.verification?.status === 'modified' ? 'This file has changed since conversion. The report describes the original import.' : 'Source verification is unavailable for this file.'}</p> : null}
     {job.state === 'completed' && job.verification?.status === 'passed' && job.verification?.adjustments?.omittedEndingNotes ? <p>{job.verification.adjustments.omittedEndingNotes} ending {job.verification.adjustments.omittedEndingNotes === 1 ? 'note omitted' : 'notes omitted'} at or after the audio ending. Earlier timing passed the audio check. The original tab and omission details are saved in the FeedPak.</p> : null}
@@ -56,6 +68,7 @@ export function SongsterrJob({ job, api, action, busy }) {
     {job.state === 'completed' ? <div className="sb-job-controls">{job.outputAvailable ? <button className="sb-text-button" disabled={busy} onClick={() => action(() => api.showOutput({ id: job.id }))}><FolderOpen size={14} /> Show file</button> : <span>The saved file has been moved or removed.</span>}</div> : null}
     {needsAudio ? <div className="st-audio-input">
       {job.state === 'needs_audio' && job.canRetryAudio ? <button className="sb-button" disabled={busy} onClick={() => action(() => api.retry({ id: job.id }))}>Retry audio detection</button> : null}
+      {job.state === 'needs_audio' && job.canRetryRecording ? <button className="sb-button" disabled={busy} onClick={() => action(() => api.retry({ id: job.id }))}>Retry same recording</button> : null}
       {job.state === 'alignment_failed' && job.canRetry ? <button className="sb-button" disabled={busy} onClick={() => action(() => api.retry({ id: job.id }))}>Retry synchronization</button> : null}
       <button className="sb-button" disabled={busy} onClick={() => action(() => api.chooseAudio({ id: job.id }))}>Choose audio file</button>
       <form onSubmit={(event) => { event.preventDefault(); action(() => api.useAudioUrl({ id: job.id, url })); }}>

@@ -81,7 +81,8 @@ def run_import(request: dict, progress=None) -> dict:
         if progress:
             progress({"stage": "audio", "message": "Preparing the full recording and song preview."})
         from .runtime import resolve_tools
-        audio = prepare_audio(request.get("audio"), job, tools=resolve_tools(request.get("tools") or {}))
+        audio = prepare_audio(request.get("audio"), job, tools=resolve_tools(request.get("tools") or {}),
+                              managed_retries=request.get("managedRetries") is True)
         alignment = _choose_alignment(performance, audio, request, progress)
         alignment_recipe = {key: alignment[key] for key in
                             ("method", "offset", "scale", "mapping", "provenance", "terminalSustains", "recordingEnd") if key in alignment}
@@ -156,7 +157,8 @@ def run_import(request: dict, progress=None) -> dict:
                              if alignment.get("method") == "songsterr-video-points-v1" else
                              ["Songsterr audio matching is experimental; this recording passed the current automatic checks."])}
     except ImportFailure as exc:
-        failed = {"ok": False, "code": exc.code, "error": str(exc), **({"alignment": exc.diagnostics} if exc.diagnostics else {})}
+        failed = {"ok": False, "code": exc.code, "error": str(exc), **({"alignment": exc.diagnostics} if exc.diagnostics else {}),
+                  **({"transport": exc.transport} if exc.transport else {})}
     except ImportError as exc:
         failed = {"ok": False, "code": "dependency_missing", "error": f"Song import needs an unavailable component: {exc.name or 'unknown'}."}
     except ScoreImportError as exc:

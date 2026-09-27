@@ -68,6 +68,14 @@ test('anonymous metadata mismatch, HTTP restrictions and network failures remain
   assert.deepEqual(await fs.readdir(directory), []);
 });
 
+test('anonymous retrieval carries retry-after and only known transport failures are eligible', async t => {
+  const directory = await temporary(t);
+  await assert.rejects(acquireAnonymous(descriptor, { directory, fetch: async () => response({}, 429, { 'Retry-After': '30' }) }), error =>
+    error.transport.status === 429 && error.transport.retryAfterAt > Date.now() && error.transport.operation === 'score_metadata');
+  await assert.rejects(acquireAnonymous(descriptor, { directory, fetch: async () => response({}, 403) }), error => !error.transport);
+  await assert.rejects(acquireAnonymous(descriptor, { directory, fetch: async () => { throw Object.assign(new Error('network'), { cause: { code: 'ECONNRESET' } }); } }), error => error.transport.reason === 'connection_reset');
+});
+
 test('mismatched revision never downloads parts or offers account copying', async (t) => {
   const root = await temporary(t), state = runtime(root);
   const directory = path.join(root, 'score'); await fs.mkdir(directory);
@@ -278,15 +286,16 @@ test('audio rediscovery uses the cached revision, selecting Original and Full mi
   assert.deepEqual(state.actions, ['selectOriginal', 'selectFullMix', 'play', 'pause']); assert.equal(state.requests.length, 0);
 });
 
-test('missing Original support or a bounded player wait returns absent audio and always pauses an attempted probe', async (t) => {
+test('missing Original stays absent while a stalled known player is retryable and always paused', async (t) => {
   const root = await temporary(t), state = runtime(root, { noOriginal: true }); t.after(() => state.provider.dispose());
   const noOriginalWin = state.provider._window(false); await state.provider._navigate(noOriginalWin, descriptor.approvedUrl);
   assert.equal(await state.provider._discoverAudio(noOriginalWin, { songId: result.id, revisionId: descriptor.revisionId }, noOriginalWin.webContents.page, undefined, 10), null); assert.deepEqual(state.actions, []);
   assert.ok(state.diagnostics.some((event) => event.code === 'audio_probe_original_unavailable' && event.outcome === 'unavailable'));
   const missing = runtime(root, { lazyAudio: true, noAudio: true }); t.after(() => missing.provider.dispose());
   const win = missing.provider._window(false); await missing.provider._navigate(win, descriptor.approvedUrl);
-  const value = await missing.provider._discoverAudio(win, { songId: result.id, revisionId: descriptor.revisionId }, win.webContents.page, undefined, 10);
-  assert.equal(value, null); assert.deepEqual(missing.actions, ['play', 'pause']); assert.equal(win.webContents.page.playing, false);
+  await assert.rejects(missing.provider._discoverAudio(win, { songId: result.id, revisionId: descriptor.revisionId }, win.webContents.page, undefined, 10),
+    error => error.code === 'needs_audio' && error.transport.reason === 'player_timeout');
+  assert.deepEqual(missing.actions, ['play', 'pause']); assert.equal(win.webContents.page.playing, false);
   assert.ok(missing.diagnostics.some((event) => event.code === 'audio_probe_iframe_timeout'));
   assert.ok(missing.diagnostics.some((event) => event.code === 'audio_probe_play_control' && event.outcome === 'ready'));
 });

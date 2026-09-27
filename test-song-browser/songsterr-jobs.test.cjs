@@ -107,6 +107,7 @@ async function fixture(t, options = {}) {
     return normalConverter(args, context);
   };
   const config = { root, provider, runConverter, getConverterRecipe: async () => ({ version: 'test' }),
+    ...(options.clock ? { clock: options.clock } : {}),
     onCompleted: (job) => completed.push(job.id) };
   const jobs = new SongsterrJobs(config);
   await jobs.ready;
@@ -980,4 +981,175 @@ test('cancelling timing retrieval never runs conversion or local fallback', asyn
   const queued = f.enqueue(); await entered.promise; await f.jobs.cancel(queued.id); await settle(f.jobs);
   assert.equal(f.jobs.snapshot()[0].state, 'cancelled'); assert.equal(f.calls.length, 0);
   assert.deepEqual(fs.readdirSync(f.outputDir), []);
+});
+
+function retryClock() {
+  let now = 100000, serial = 0; const timers = new Map();
+  return { now: () => now, random: () => 0, setTimeout: (fn, delay) => { const id = ++serial; timers.set(id, { fn, at: now + delay }); return id; },
+    clearTimeout: id => timers.delete(id), count: () => timers.size,
+    advance: async (ms, jobs) => { now += ms; for (const [id, timer] of [...timers]) if (timer.at <= now) { timers.delete(id); timer.fn(); } await settle(jobs); } };
+}
+const MEDIA_FAILURE = { version: 1, phase: 'audio', operation: 'audio_download', service: 'youtube', reason: 'media_url_expired', status: 403 };
+const failDownload = () => ({ code: 1, stdout: JSON.stringify({ ok: false, code: 'needs_audio', error: 'Temporary download failure.', transport: MEDIA_FAILURE }) });
+
+for (const failures of [0, 1, 2, 3]) test(`automatic retry has exactly ${Math.min(failures + 1, 3)} attempts for ${failures} temporary failures`, async t => {
+  let calls = 0; const clock = retryClock();
+  const f = await fixture(t, { clock, audio: YOUTUBE, runConverter: async (args, ctx, normal) => {
+    if (args[0] === '--song-import-file' && ++calls <= failures) return failDownload();
+    return normal(args, ctx);
+  } });
+  const queued = f.enqueue(); await settle(f.jobs);
+  if (failures) {
+    assert.equal(f.jobs.snapshot()[0].state, 'retry_wait');
+    assert.equal(f.enqueue().id, queued.id);
+    assert.equal(f.jobs.snapshot()[0].canRetry, false);
+    assert.throws(() => f.jobs.retry(queued.id));
+    await clock.advance(4999, f.jobs); assert.equal(calls, 1);
+    await clock.advance(1, f.jobs);
+    if (failures > 1) { await clock.advance(19999, f.jobs); assert.equal(calls, 2); await clock.advance(1, f.jobs); }
+  }
+  assert.equal(calls, Math.min(failures + 1, 3));
+  assert.equal(f.jobs.snapshot()[0].state, failures < 3 ? 'completed' : 'needs_audio');
+  assert.equal(f.acquisitions.length, 1);
+  assert.equal(f.completed.length, failures < 3 ? 1 : 0);
+  assert.equal(fs.readdirSync(f.outputDir).length, failures < 3 ? 1 : 0);
+  assert.deepEqual(f.jobs.jobs[0].audio, YOUTUBE);
+  assert.equal(f.jobs.jobs[0].retry.events.filter(e => e.outcome === 'started').length, calls);
+  assert.ok(fs.existsSync(path.join(f.jobs.retryHistoryRoot, queued.id, f.jobs.jobs[0].retry.cycle + '.json')));
+  assert.equal(clock.count(), 0);
+});
+
+test('waiting retries release the worker; cancel prevents a timer or manual race restarting work', async t => {
+  const clock = retryClock();
+  const f = await fixture(t, { clock, runConverter: async (args, ctx, normal) => args[0] === '--song-import-file' ? failDownload() : normal(args, ctx) });
+  const first = f.enqueue(); await settle(f.jobs);
+  const second = f.enqueue({ ...CHART, id: '124' }); await settle(f.jobs);
+  assert.deepEqual(f.acquisitions, ['123', '124']);
+  assert.equal(f.jobs.snapshot().filter(j => j.state === 'retry_wait').length, 2);
+  await f.jobs.cancel(first.id); await f.jobs.cancel(second.id);
+  const count = f.calls.length; await clock.advance(100000, f.jobs); assert.equal(f.calls.length, count);
+  assert.equal(clock.count(), 0);
+});
+
+test('saved retry resumes after receipt recovery without resetting its budget or source', async t => {
+  let calls = 0; const clock = retryClock();
+  const f = await fixture(t, { clock, runConverter: async (args, ctx, normal) => {
+    if (args[0] === '--song-import-file' && ++calls === 1) return failDownload(); return normal(args, ctx);
+  } });
+  const queued = f.enqueue(); await settle(f.jobs); const before = f.jobs.jobs[0].retry.cycle;
+  await f.jobs.dispose(); assert.equal(clock.count(), 0);
+  const restored = new SongsterrJobs(f.config); t.after(() => restored.dispose()); await settle(restored);
+  assert.equal(restored.snapshot()[0].state, 'retry_wait');
+  await clock.advance(5000, restored);
+  assert.equal(restored.snapshot()[0].state, 'completed'); assert.equal(restored.jobs[0].retry.cycle, before);
+  assert.equal(restored.jobs[0].retry.used, 1); assert.equal(f.acquisitions.length, 1); assert.equal(f.completed.length, 1);
+  await restored.dispose();
+  const recovered = new SongsterrJobs(f.config); t.after(() => recovered.dispose()); await settle(recovered);
+  assert.equal(recovered.snapshot()[0].state, 'completed'); await clock.advance(99999, recovered);
+  assert.equal(calls, 2); assert.equal(f.completed.length, 1); assert.equal(recovered.snapshot()[0].id, queued.id);
+});
+
+test('timing and download failures share credits; exhausted timing transport uses the existing fallback', async t => {
+  let syncCalls = 0, downloads = 0; const clock = retryClock();
+  const fact = { version: 1, phase: 'synchronization', operation: 'timing_map', service: 'songsterr', reason: 'timeout' };
+  const f = await fixture(t, { clock, audio: YOUTUBE, findSynchronization: async () => {
+    syncCalls++; return { ...unavailableSynchronization({}, 'timeout'), transport: fact };
+  }, runConverter: async (args, ctx, normal) => {
+    if (args[0] === '--song-import-file') { downloads++; return failDownload(); } return normal(args, ctx);
+  } });
+  f.enqueue(); await settle(f.jobs); assert.equal(downloads, 0);
+  await clock.advance(5000, f.jobs); assert.equal(downloads, 0);
+  await clock.advance(20000, f.jobs);
+  assert.equal(syncCalls, 3); assert.equal(downloads, 1); assert.equal(f.jobs.snapshot()[0].state, 'needs_audio');
+  assert.equal(f.jobs.jobs[0].retry.events.filter(e => e.outcome === 'timing_fallback').length, 1);
+});
+
+test('provider busy waits without consuming a credit and is cancellable', async t => {
+  let calls = 0; const clock = retryClock();
+  const f = await fixture(t, { clock, acquire: async (chart, ctx, normal) => { if (++calls === 1) throw Object.assign(new Error('Busy'), { code: 'busy' }); return normal(chart, ctx); } });
+  f.enqueue(); await settle(f.jobs); assert.equal(f.jobs.jobs[0].retry.used, 0);
+  await clock.advance(1000, f.jobs); assert.equal(f.jobs.snapshot()[0].state, 'completed');
+});
+
+test('Retry-After cools down the service across jobs and long requests park', async t => {
+  let calls = 0; const clock = retryClock();
+  const f = await fixture(t, { clock, acquire: async (chart, ctx, normal) => {
+    if (++calls === 1) throw Object.assign(new Error('Limited'), { code: 'rate_limited', transport: { version: 1, phase: 'score', operation: 'score_metadata', service: 'songsterr', reason: 'http', status: 429, retryAfterAt: clock.now() + 600000 } });
+    return normal(chart, ctx);
+  } });
+  f.enqueue(); await settle(f.jobs); assert.equal(f.jobs.snapshot()[0].retry.parked, true);
+  assert.equal(f.jobs.snapshot()[0].state, 'needs_attention');
+  f.enqueue({ ...CHART, id: '124' }); await settle(f.jobs); assert.equal(calls, 1);
+  await clock.advance(599999, f.jobs); assert.equal(calls, 1);
+  await clock.advance(1, f.jobs); assert.equal(calls, 2);
+  assert.equal(f.jobs.snapshot()[0].state, 'needs_attention');
+});
+
+test('automatic acquisition retries retain the descriptor even before a score file exists', async t => {
+  const clock = retryClock(); let calls = 0;
+  const descriptor = { id: CHART.id, revisionId: '456', approval: 'approved', audio: YOUTUBE };
+  const f = await fixture(t, { clock, acquire: async (chart, ctx, normal) => {
+    if (++calls === 1) { ctx.onPinned(descriptor); throw Object.assign(new Error('Reset'), { transport: { version: 1, phase: 'score', operation: 'score_part', service: 'songsterr', reason: 'connection_reset' } }); }
+    assert.deepEqual(ctx.pinnedDescriptor, descriptor); return normal(chart, ctx);
+  } });
+  f.enqueue(); await settle(f.jobs); await clock.advance(5000, f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'completed'); assert.deepEqual(f.jobs.jobs[0].audio, YOUTUBE);
+});
+
+test('cached tab tampering stops an automatic retry without reacquisition', async t => {
+  const clock = retryClock(); const f = await fixture(t, { clock, runConverter: async () => failDownload() });
+  f.enqueue(); await settle(f.jobs); fs.writeFileSync(f.jobs.jobs[0].scorePath, 'changed tab');
+  await clock.advance(5000, f.jobs); assert.equal(f.jobs.snapshot()[0].state, 'failed');
+  assert.equal(f.acquisitions.length, 1); assert.equal(f.calls.length, 1);
+});
+
+test('history persistence failure stops automatic dispatch without a loop', async t => {
+  const clock = retryClock(); const f = await fixture(t, { clock, runConverter: async () => failDownload() });
+  f.enqueue(); await settle(f.jobs);
+  const original = f.jobs._save.bind(f.jobs);
+  f.jobs._save = () => { f.jobs.persistenceFailed = true; throw new Error('Disk full'); };
+  await clock.advance(5000, f.jobs);
+  assert.equal(f.calls.length, 1); assert.equal(clock.count(), 0); assert.equal(f.jobs.snapshot()[0].state, 'needs_attention');
+  assert.throws(() => f.jobs.retry(f.jobs.jobs[0].id)); f.jobs._save = original;
+});
+
+test('manual retry starts a new bounded cycle retaining old history; unknown failures are not automatic', async t => {
+  const clock = retryClock(); const f = await fixture(t, { clock, runConverter: async () => ({ code: 1, stdout: JSON.stringify({ ok: false, code: 'needs_audio', error: 'Video unavailable' }) }) });
+  const first = f.enqueue(); await settle(f.jobs);
+  const cycle = f.jobs.jobs[0].retry.cycle; assert.equal(clock.count(), 0);
+  assert.equal(f.jobs.snapshot()[0].canRetryRecording, true);
+  f.jobs.retry(first.id); await settle(f.jobs);
+  assert.equal(f.jobs.jobs[0].retry.used, 0); assert.deepEqual(f.jobs.jobs[0].retry.cycles, [cycle]);
+  const zip = f.jobs.auditBundle(first.id); assert.ok(fs.statSync(zip).size > 0);
+});
+
+test('a recording discovered after queue admission still respects the other job service cooldown', async t => {
+  const clock = retryClock(); let downloads = 0;
+  const f = await fixture(t, { clock, audio: YOUTUBE, runConverter: async (args, ctx, normal) => {
+    if (args[0] === '--song-import-file' && ++downloads === 1) return { code: 1, stdout: JSON.stringify({ ok: false, code: 'needs_audio', error: 'Limited',
+      transport: { ...MEDIA_FAILURE, reason: 'http', status: 429, retryAfterAt: clock.now() + 30000 } }) };
+    return normal(args, ctx);
+  } });
+  f.enqueue(); await settle(f.jobs); f.enqueue({ ...CHART, id: '124' }); await settle(f.jobs);
+  assert.equal(f.acquisitions.length, 2); assert.equal(downloads, 1);
+  await clock.advance(29999, f.jobs); assert.equal(downloads, 1);
+  await clock.advance(1, f.jobs); assert.equal(downloads, 3);
+  assert.ok(f.jobs.snapshot().every(j => j.state === 'completed'));
+});
+
+test('real alignment failures stop even if a malformed worker attaches transport metadata', async t => {
+  const clock = retryClock(); const f = await fixture(t, { clock, runConverter: async () => ({ code: 1, stdout: JSON.stringify({ ok: false,
+    code: 'alignment_failed', error: 'Recording out of sync', transport: MEDIA_FAILURE }) }) });
+  f.enqueue(); await settle(f.jobs); assert.equal(f.jobs.snapshot()[0].state, 'alignment_failed');
+  assert.equal(f.jobs.jobs[0].retry.used, 0); assert.equal(clock.count(), 0);
+});
+
+test('old failures, interrupted work and corrupt pending retry state never auto-resume', async t => {
+  const f = await fixture(t); await f.jobs.dispose();
+  const data = ['failed', 'audio', 'retry_wait'].map((state, i) => ({ id: crypto.randomUUID(), chart: { ...CHART, id: String(125 + i) },
+    source: 'songsterr', state, outputDir: f.outputDir, retry: state === 'retry_wait' ? { version: 1, used: -1, nextAt: 1 } : undefined }));
+  fs.writeFileSync(path.join(f.root, 'jobs.json'), JSON.stringify({ version: 1, jobs: data }));
+  const restored = new SongsterrJobs(f.config); t.after(() => restored.dispose()); await settle(restored);
+  assert.deepEqual(restored.snapshot().map(j => j.state), ['failed', 'needs_attention', 'needs_attention']);
+  assert.equal(f.calls.length, 0); assert.equal(f.acquisitions.length, 0);
 });

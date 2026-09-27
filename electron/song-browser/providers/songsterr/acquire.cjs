@@ -3,6 +3,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const zlib = require('node:zlib');
+const { httpTransport, networkTransport } = require('../../songsterr-retry.cjs');
 const { ORIGIN, MAX_SCORE_BYTES, MAX_TOTAL_BYTES, MAX_TRACKS, MAX_MEASURES, failure, check, clean, numeric, sourceFilename, publicAudio, bounded } = require('./policy.cjs');
 
 // Metadata and parts must use the same approved revision. Tests inject a
@@ -15,6 +16,7 @@ function partUrl(songId, revisionId, image, index) {
   return `https://${host}.cloudfront.net/${songId}/${revisionId}/${image}/${index}.json`;
 }
 async function readJson(fetch, url, signal, budget) {
+  const operation = new URL(url).pathname.startsWith('/api/meta/') ? 'score_metadata' : 'score_part';
   check(signal);
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -24,8 +26,8 @@ async function readJson(fetch, url, signal, budget) {
       const response = await fetch(url, { method: 'GET', credentials: 'omit', redirect: 'error', signal: controller.signal, headers: { Accept: 'application/json' } });
       if (response.status === 401) throw failure('needs_login', 'Songsterr requires sign-in to retrieve this score.');
       if (response.status === 403) throw failure('access_denied', 'Songsterr did not allow anonymous access to this score.');
-      if (response.status === 429) throw failure('rate_limited', 'Songsterr is limiting requests. Please try again later.');
-      if (!response.ok) throw failure(response.status === 404 ? 'unavailable' : 'network_error', 'The Songsterr score could not be retrieved.');
+      if (!response.ok) throw Object.assign(failure(response.status === 429 ? 'rate_limited' : response.status === 404 ? 'unavailable' : 'network_error', 'The Songsterr score could not be retrieved.'),
+        { transport: httpTransport('score', operation, response.status, response.headers) });
       if (response.url && response.url !== url) throw failure('access_denied', 'The score request changed destination.');
       const length = Number(response.headers?.get?.('content-length'));
       if (length > MAX_SCORE_BYTES || length > budget.remaining) throw failure('score_too_large', 'This Songsterr score exceeds the supported size.');
@@ -51,8 +53,9 @@ async function readJson(fetch, url, signal, budget) {
     return await bounded(request(), signal, 30000, abort);
   } catch (error) {
     check(signal);
-    if (error.source === 'songsterr') throw error;
-    throw failure('network_error', 'The public score request failed. This does not establish that sign-in is required.');
+    const detail = error.transport || networkTransport(error, 'score', operation);
+    if (error.source === 'songsterr') throw Object.assign(error, { transport: detail });
+    throw Object.assign(failure('network_error', 'The public score request failed. This does not establish that sign-in is required.'), { transport: detail });
   } finally { signal?.removeEventListener('abort', abort); controller.abort(); }
 }
 function validateMeta(meta, descriptor) {

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
 import importlib.util
 import ipaddress
 import os
@@ -11,15 +12,17 @@ import socket
 import subprocess
 import urllib.parse
 import urllib.request
+from .transport import classify
 
 MAX_BYTES = 512 * 1024 * 1024
 MAX_DURATION = 1200.0
 
 
 class ImportFailure(ValueError):
-    def __init__(self, code: str, message: str, diagnostics: dict | None = None):
+    def __init__(self, code: str, message: str, diagnostics: dict | None = None, *, transport=None):
         super().__init__(message)
         self.code, self.diagnostics = code, diagnostics or {}
+        self.transport = transport
 
 
 def sha256_file(path: Path) -> str:
@@ -39,7 +42,7 @@ def _public_url(url: str) -> str:
         if not addresses or any(not ipaddress.ip_address(item[4][0]).is_global for item in addresses):
             raise ValueError("not public")
     except (ValueError, OSError) as exc:
-        raise ImportFailure("needs_audio", "The audio link does not resolve to a public server.") from exc
+        raise ImportFailure("needs_audio", "The audio link does not resolve to a public server.", transport=classify(exc)) from exc
     return url
 
 
@@ -64,10 +67,12 @@ def _download_direct(url: str, target: Path) -> None:
                 if total > MAX_BYTES:
                     raise ImportFailure("needs_audio", "The audio download is too large.")
                 output.write(chunk)
+            if length > 0 and total != length:
+                raise http.client.IncompleteRead(b"", length - total)
     except ImportFailure:
         raise
-    except (OSError, ValueError) as exc:
-        raise ImportFailure("needs_audio", "The audio link could not be downloaded. Choose another link or a local file.") from exc
+    except (OSError, ValueError, http.client.IncompleteRead) as exc:
+        raise ImportFailure("needs_audio", "The audio link could not be downloaded. Choose another link or a local file.", transport=classify(exc)) from exc
 
 
 def _tool(tools: dict, name: str) -> str | None:
@@ -75,17 +80,21 @@ def _tool(tools: dict, name: str) -> str | None:
     return str(value) if value and Path(str(value)).is_file() else shutil.which(name)
 
 
-def _run(command: list[str], timeout: int = 180) -> subprocess.CompletedProcess:
+def _run(command: list[str], timeout: int = 180, *, retrieval=False) -> subprocess.CompletedProcess:
     try:
         return subprocess.run(command, capture_output=True, timeout=timeout, check=True,
                               creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
     except FileNotFoundError as exc:
         raise ImportFailure("dependency_missing", "An audio processing tool is missing.") from exc
     except (subprocess.SubprocessError, OSError) as exc:
-        raise ImportFailure("needs_audio", "Audio processing failed or timed out. Choose a readable audio file.") from exc
+        detail = None
+        if retrieval and isinstance(exc, subprocess.CalledProcessError):
+            detail = classify((exc.stderr or b"").decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else exc.stderr,
+                              service="youtube", downloader=True)
+        raise ImportFailure("needs_audio", "Audio processing failed or timed out. Choose a readable audio file.", transport=detail) from exc
 
 
-def _download_youtube(url: str, directory: Path, tools: dict) -> tuple[Path, dict]:
+def _download_youtube(url: str, directory: Path, tools: dict, *, managed_retries=False) -> tuple[Path, dict]:
     # Only a selected video; never search, fetch a playlist, or discover browser cookies.
     if importlib.util.find_spec("yt_dlp") is None and not tools.get("ytDlp"):
         raise ImportFailure("dependency_missing", "YouTube audio requires the optional yt-dlp component.")
@@ -96,12 +105,14 @@ def _download_youtube(url: str, directory: Path, tools: dict) -> tuple[Path, dic
     runtime = tools.get("jsRuntime")
     if tools.get("ytDlp"):
         command = [str(tools["ytDlp"]), "--ignore-config", "--no-playlist", "--no-progress",
-                   "--max-filesize", str(MAX_BYTES), "--socket-timeout", "30", "--retries", "2",
+                   "--max-filesize", str(MAX_BYTES), "--socket-timeout", "30", "--retries", "0" if managed_retries else "2",
                    "--ffmpeg-location", ffmpeg, "--write-info-json", "-f", "bestaudio/best", "-o", template]
         if runtime:
             command += ["--js-runtimes", str(runtime)]
+        if managed_retries:
+            command += ["--fragment-retries", "0", "--extractor-retries", "0", "--file-access-retries", "0", "--abort-on-unavailable-fragments"]
         command += ["--", url]
-        _run(command, 240)
+        _run(command, 240, retrieval=True)
         import json
         info = json.loads((directory / "download.info.json").read_text(encoding="utf-8"))
     else:
@@ -114,11 +125,14 @@ def _download_youtube(url: str, directory: Path, tools: dict) -> tuple[Path, dic
         if runtime:
             kind, _, runtime_path = str(runtime).partition(":")
             options["js_runtimes"] = {kind: {"path": runtime_path} if runtime_path else {}}
+        if managed_retries:
+            options.update(retries=0, fragment_retries=0, extractor_retries=0, file_access_retries=0, skip_unavailable_fragments=False)
         try:
             with yt_dlp.YoutubeDL(options) as downloader:
                 info = downloader.extract_info(url, download=True)
         except Exception as exc:
-            raise ImportFailure("needs_audio", "YouTube audio is unavailable. Choose another link or a local audio file.") from exc
+            raise ImportFailure("needs_audio", "YouTube audio is unavailable. Choose another link or a local audio file.",
+                                transport=classify(exc, service="youtube", downloader=True)) from exc
     if not isinstance(info, dict) or info.get("_type") in {"playlist", "multi_video"}:
         raise ImportFailure("needs_audio", "Select one recording, not a playlist.")
     candidates = [p for p in directory.glob("download.*") if p.suffix not in {".json", ".part", ".ytdl"}]
@@ -127,7 +141,7 @@ def _download_youtube(url: str, directory: Path, tools: dict) -> tuple[Path, dic
     return candidates[0], {"kind": "youtube", "videoId": info.get("id"), "title": info.get("title"), "url": url}
 
 
-def prepare_audio(audio: dict | None, directory: Path, tools: dict | None = None) -> dict:
+def prepare_audio(audio: dict | None, directory: Path, tools: dict | None = None, *, managed_retries=False) -> dict:
     """Write full.ogg and preview.ogg in an owned, empty job directory."""
     import numpy as np
     import soundfile as sf
@@ -146,7 +160,7 @@ def prepare_audio(audio: dict | None, directory: Path, tools: dict | None = None
         host = urllib.parse.urlsplit(url).hostname or ""
         _public_url(url)
         if host.lower() in {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"}:
-            input_path, source = _download_youtube(url, directory, tools)
+            input_path, source = _download_youtube(url, directory, tools, managed_retries=managed_retries)
         else:
             input_path = directory / "download.audio"
             _download_direct(url, input_path)
