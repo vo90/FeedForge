@@ -12,6 +12,22 @@ from email.utils import parsedate_to_datetime
 RETRY_HTTP = {408, 429, 500, 502, 503, 504}
 
 
+def _downloader_http(error):
+    """yt-dlp preserves its typed network cause inside DownloadError.exc_info."""
+    seen = set()
+    for _ in range(6):
+        if not isinstance(error, BaseException) or id(error) in seen:
+            break
+        seen.add(id(error))
+        if isinstance(error, urllib.error.HTTPError):
+            return error.code, error.headers
+        if type(error).__module__ == 'yt_dlp.networking.exceptions' and type(error).__name__ == 'HTTPError':
+            return (None, None) if error.redirect_loop else (error.status, error.response.headers)
+        info = getattr(error, 'exc_info', None)
+        error = getattr(error, 'cause', None) or error.__cause__ or (info[1] if isinstance(info, tuple) and len(info) > 1 else None)
+    return None, None
+
+
 def retry_after(value):
     try:
         if not isinstance(value, str) or len(value) > 128 or not value.strip():
@@ -60,6 +76,10 @@ def classify(error, *, service="audio_host", downloader=False):
         return None
     if re.search(r"unable to download video data:.*http error 403\b", message):
         return {**fact, "reason": "media_url_expired", "status": 403}
+    typed_status, headers = _downloader_http(error)
+    if typed_status in RETRY_HTTP:
+        at = retry_after(headers.get('Retry-After') if headers else None)
+        return {**fact, 'reason': 'http', 'status': typed_status, **({'retryAfterAt': at} if at else {})}
     status = re.search(r"http error (408|429|500|502|503|504)\b", message)
     if status:
         return {**fact, "reason": "http", "status": int(status[1])}

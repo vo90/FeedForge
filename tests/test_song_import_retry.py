@@ -40,6 +40,15 @@ def test_http_retry_after_and_no_private_host_retry():
     assert 'secret' not in str(value)
     assert classify(urllib.error.HTTPError('https://host/', 403, 'denied', {}, None)) is None
     assert retry_after('bad') is None
+    from yt_dlp.networking import Response
+    from yt_dlp.networking.exceptions import HTTPError
+    from yt_dlp.utils import DownloadError
+    import io
+    response = Response(io.BytesIO(b''), 'https://host/secret', {'Retry-After': '30'}, status=429)
+    cause = HTTPError(response)
+    wrapped = DownloadError('Retrieval failed', exc_info=(type(cause), cause, None))
+    detail = classify(wrapped, service='youtube', downloader=True)
+    assert detail['status'] == 429 and detail['retryAfterAt'] > 0
 
 
 def test_module_ytdlp_failure_and_nested_retry_limits(tmp_path, monkeypatch):
