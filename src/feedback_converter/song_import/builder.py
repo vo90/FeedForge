@@ -364,6 +364,10 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     if alignment.get("sourceTiming") is not None:
         _write_json(package / "import/source-timing.json", alignment["sourceTiming"])
         manifest.setdefault("song_import", {})["sourceTimingFile"] = "import/source-timing.json"
+    for key, filename in [('openingRepair','opening-repair'),('timingAssessment','timing-assessment')]:
+        if alignment.get(key) is not None:
+            _write_json(package / f'import/{filename}.json', alignment[key])
+            manifest.setdefault('song_import', {})[key+'File'] = f'import/{filename}.json'
     if source_path is not None:
         from .pickup_archive import archive as pickup_archive
         pickups = pickup_archive(performance, alignment, source_path)

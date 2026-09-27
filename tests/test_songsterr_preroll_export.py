@@ -63,16 +63,23 @@ def test_complete_package_numbers_visible_downbeats_and_preserves_active_meter(t
         chart = json.loads(z.read(manifest['arrangements'][0]['file']))
         notation = json.loads(z.read(manifest['arrangements'][0]['notation']))
         downbeats = [b for b in timeline['beats'] if b['measure'] > 0]
-        assert downbeats[0]['time'] == pytest.approx(first_downbeat)
+        shift=manifest['song_import']['preparation']['seconds']
+        expected_boundaries=[offset+shift+t for t in [0,2,3.5] if offset+shift+t>=0]
+        assert downbeats[0]['time'] == pytest.approx(expected_boundaries[0],abs=1e-6)
         assert [b['measure'] for b in downbeats] == list(range(1, len(downbeats) + 1))
-        assert [(m['time'], m['ts']) for m in timeline['time_signatures']] == meters
+        expected_meters=[]
+        for t,ts in zip([0,2,3.5],[[4,4],[3,4],[5,4]]):
+            when=max(0,round(t+offset+shift,6))
+            if expected_meters and expected_meters[-1][0]==when:expected_meters[-1]=(when,ts)
+            else:expected_meters.append((when,ts))
+        assert [(m['time'], m['ts']) for m in timeline['time_signatures']] == expected_meters
         assert chart['beats'] == timeline['beats']
         assert chart['time_signatures'] == timeline['time_signatures']
-        assert [n['t'] for n in chart['notes']] == pytest.approx([3.5 + offset + i * .5 for i in range(5)])
+        assert [n['t'] for n in chart['notes']] == pytest.approx([3.5 + offset + shift + i * .5 for i in range(5)])
         assert [n['sus'] for n in chart['notes']] == [.5] * 5
         assert [m['idx'] for m in notation['measures']] == [1, 2, 3]
         assert [m['source_measure'] for m in notation['measures']] == [1, 2, 3]
-        assert notation['measures'][0]['t'] == offset
+        assert notation['measures'][0]['t'] == pytest.approx(offset+shift,abs=1e-6)
         assert z.read(manifest['song_import']['sourceFile']) == source.read_bytes()
 
 

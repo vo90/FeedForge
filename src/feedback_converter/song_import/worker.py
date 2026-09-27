@@ -31,6 +31,20 @@ def _choose_alignment(performance: dict, audio: dict, request: dict, progress=No
         if exc.code != "source_sync_unavailable":
             raise
         source_diagnostic = {**exc.diagnostics, "message": str(exc)}
+    if source_diagnostic.get('sourceSyncReason') == 'negative_note_time':
+        from .local_sync import repair
+        if progress:
+            progress({'stage':'aligning','message':'Checking the opening chords against the recording.'})
+        try:
+            alignment=repair(performance,audio,request.get('synchronization'),request.get('metadata') or {})
+            if alignment.get('endingCandidate'):
+                from .ending_cutoff import authorize
+                alignment=authorize(performance,audio,alignment)
+            return alignment
+        except ImportFailure as exc:
+            if exc.code != 'source_sync_unavailable':
+                raise
+            source_diagnostic.update(exc.diagnostics)
     if progress:
         progress({"stage": "aligning", "message": "Songsterr timing is unavailable for this recording. Matching audio automatically."})
     try:
@@ -46,7 +60,7 @@ def _choose_alignment(performance: dict, audio: dict, request: dict, progress=No
 
 def _alignment_summary(alignment: dict) -> dict:
     # Full timing survives in the evidence store, not the bounded history ledger.
-    return {key: value for key, value in alignment.items() if key not in {"anchors", "tempos", "recordingSync", "sourceTiming"}}
+    return {key: value for key, value in alignment.items() if key not in {"anchors", "tempos", "recordingSync", "sourceTiming", "timingAssessment"}}
 
 
 def run_import(request: dict, progress=None) -> dict:
@@ -82,8 +96,16 @@ def run_import(request: dict, progress=None) -> dict:
             progress({"stage": "audio", "message": "Preparing the full recording and song preview."})
         from .runtime import resolve_tools
         audio = prepare_audio(request.get("audio"), job, tools=resolve_tools(request.get("tools") or {}),
-                              managed_retries=request.get("managedRetries") is True)
+                              managed_retries=request.get("managedRetries") is True, defer_encoding=True)
         alignment = _choose_alignment(performance, audio, request, progress)
+        from .preparation import finalize
+        audio,alignment=finalize(performance,audio,alignment,job)
+        if alignment.get('mapping')=='piecewise-linear':
+            from .local_sync import assess
+            from .ending_cutoff import mapped_tracks
+            if progress:
+                progress({'stage':'aligning','message':'Checking timing across the recording.'})
+            alignment['timingAssessment']=assess(mapped_tracks(performance,alignment),audio['path'],audio['duration'],alignment['provenance']['mapHash'])
         alignment_recipe = {key: alignment[key] for key in
                             ("method", "offset", "scale", "mapping", "provenance", "terminalSustains", "terminalSlides", "recordingEnd") if key in alignment}
         alignment_recipe.setdefault("method", VERSION)
@@ -91,7 +113,7 @@ def run_import(request: dict, progress=None) -> dict:
                   "revisionId": metadata.get("revisionId"), "scoreHash": score_hash, "audioHash": audio["hash"],
                   "sourceMetadata": dict(performance.get("source") or {}),
                   "audioSource": {key: audio["source"][key] for key in ("kind", "videoId", "title", "sha256") if key in audio["source"]},
-                  "alignment": alignment_recipe}
+                  "alignment": alignment_recipe, 'preparation':alignment['preparation']}
         features = set()
         for track in performance.get("tracks", []):
             notes = list(track.get("notes", [])) + [note for chord in track.get("chords", []) for note in chord.get("notes", [])]
@@ -127,8 +149,12 @@ def run_import(request: dict, progress=None) -> dict:
                                  verification=verification, archive=Path(result["stagingPath"]), artwork=artwork, compatibility=compatibility)
         summary = {key: verification[key] for key in ("version", "status", "counts") if key in verification}
         summary["outputHash"] = evidence["outputHash"]
-        summary["timing"] = "source_map" if alignment.get("method") == "songsterr-video-points-v1" else "estimated"
+        summary["timing"] = ('source_map_repaired' if alignment.get('openingRepair') else 'source_map') if alignment.get("method") == "songsterr-video-points-v1" else "estimated"
         summary["compatibility"] = recipe["compatibility"]
+        if alignment.get('timingAssessment'):
+            summary['timingAssessment']={k:alignment['timingAssessment'][k] for k in
+                ('version','status','everyNoteVerified','windowCount','supportedWindows','suspectedMismatchWindows')}
+        summary['preparationSeconds']=alignment.get('preparation',{}).get('seconds',0)
         if verification.get("adjustments"):
             summary["adjustments"] = verification["adjustments"]
         if verification.get("omissions"):
@@ -151,6 +177,8 @@ def run_import(request: dict, progress=None) -> dict:
                 "verification": summary, "evidence": evidence, "compatibility": compatibility_summary(compatibility),
                 "artwork": {key: artwork[key] for key in ("status", "album", "year", "message", "reason") if key in artwork},
                 "warnings": list(performance.get("warnings", [])) + result["warnings"] +
+                            ([f"Audio timing check: {alignment['timingAssessment']['supportedWindows']} of {alignment['timingAssessment']['windowCount']} passages supported. These checks do not establish every note's timing; the imported source timing is retained outside any recorded opening repair."]
+                             if alignment.get('timingAssessment',{}).get('status')=='inconclusive' else []) +
                             (["Practice difficulty was requested. Verification covers the main chart and any declared omissions; generated levels are not source-authored."]
                              if (request.get("outputSettings") or {}).get("generateDifficulty") is True else []) +
                             (["Timing was imported from Songsterr for this tab revision and recording."]

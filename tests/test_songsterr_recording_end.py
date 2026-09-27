@@ -70,6 +70,23 @@ def test_source_map_alone_cannot_authorize_omissions(recording, tmp_path):
         build_feedpak(performance, audio, alignment, tmp_path, output_dir=tmp_path / 'out', source_path=source)
 
 
+def test_preparation_does_not_move_the_cutoff_evidence_windows(recording,tmp_path):
+    from feedback_converter.song_import.preparation import finalize
+    _,source,performance,audio,_,candidate=recording
+    original=authorize(performance,audio,deepcopy(candidate))
+    prepared,alignment=finalize(performance,audio,original,tmp_path)
+    assert alignment['preparation']['seconds']==2
+    assert alignment['recordingSync']['analysisOriginSeconds']==2
+    assert alignment['recordingSync']['status']=='supported'
+    assert alignment['recordingSync']['windowCount']==original['recordingSync']['windowCount']
+    result=build_feedpak(performance,prepared,alignment,tmp_path,output_dir=tmp_path/'out',source_path=source,
+        compatibility=performance['compatibilityReport'],recipe={'preservationContract':35,'audioSource':audio['source'],
+        'alignment':{'provenance':alignment['provenance']},'preparation':alignment['preparation']})
+    verified=verify_import(source,Path(result['stagingPath']),alignment,META)
+    assert verified['status']=='passed',verified
+    assert verified['adjustments']['omittedEndingNotes']==2
+
+
 @pytest.mark.parametrize('duration', [49.9, 40])
 def test_recording_missing_a_larger_section_is_not_a_final_cut(recording, duration):
     _, _, performance, audio, sync, _ = recording

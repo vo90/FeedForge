@@ -27,6 +27,16 @@ test('completed partial charts identify omitted gameplay targets, not only displ
 });
 const buttonText = (html) => [...html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map((match) => match[1].replace(/<[^>]*>/g, '').trim());
 
+test('opening repair, acoustic evidence and preparation are distinguished', () => {
+  const html = job({ state: 'completed', verification: { status: 'passed', timing: 'source_map_repaired',
+    timingAssessment: { windowCount: 10, supportedWindows: 8, everyNoteVerified: false }, preparationSeconds: 1.83 } });
+  assert.match(html, /opening corrected against the recording/);
+  assert.match(html, /8 of 10 passages supported/);
+  assert.match(html, /Individual notes may remain uncertain/);
+  assert.match(html, /Preparation time added: 1.83 seconds/);
+  assert.doesNotMatch(html, /Timing: automatic estimate/);
+});
+
 test('retry countdown retains Cancel and delays replacement-audio prompts until exhaustion', () => {
   const html = job({ state: 'retry_wait', retry: { nextAt: Date.now() + 5000, attempt: 2, maxAttempts: 3 } });
   assert.match(html, /attempt 2 of 3/); assert.match(html, /Retrying in/);

@@ -27,9 +27,9 @@ SPARSE_EXCLUSIONS = PITCH_EXCLUSIONS + ATTACK_EXCLUSIONS + (
     'harmonic_alias', 'pick_scrape_marks', 'slide_out', 'slide_out_marks', 'slide_in_marks', 'tr',
 )
 
-def features(path):
+def features(path, *, reference_hz=440.0):
     with sf.SoundFile(path) as reader:
-        if not 2 <= len(reader) / reader.samplerate <= 1200 or not 1 <= reader.channels <= 2:
+        if not 2 <= len(reader) / reader.samplerate <= 1202 or not 1 <= reader.channels <= 2:
             raise ValueError("The timing check needs a bounded mono or stereo recording.")
         rate = reader.samplerate
         mono = reader.read(dtype='float32', always_2d=True).mean(axis=1)
@@ -44,7 +44,7 @@ def features(path):
     freq = np.fft.rfftfreq(n, 1 / RATE)
     bank = np.zeros((len(MIDIS), len(freq)), dtype='float32')
     for i, midi in enumerate(MIDIS):
-        base = 440 * 2 ** ((midi - 69) / 12)
+        base = reference_hz * 2 ** ((midi - 69) / 12)
         for harmonic in range(1, 6):
             f = base * harmonic
             if f > 4900:
@@ -122,7 +122,7 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
 
 
-def assess(tracks, audio_path, duration, map_hash):
+def assess(tracks, audio_path, duration, map_hash, *, analysis_origin=0.0):
     """Assess already mapped track events without adjusting their positions.
 
     All non-silent body windows containing attacks must have supporting pitch
@@ -135,12 +135,29 @@ def assess(tracks, audio_path, duration, map_hash):
         audio_path.seek(0)
     else:
         audio_hash = hashlib.sha256(Path(audio_path).read_bytes()).hexdigest()
+    original_duration=duration
+    if analysis_origin:
+        import math
+        from copy import deepcopy
+        from .preparation import recording_view
+        if not math.isfinite(analysis_origin) or not 0<analysis_origin<=2:
+            raise ValueError('Invalid preparation origin for the recording check.')
+        if hasattr(audio_path,'seek'):audio_path.seek(0)
+        rate=sf.info(audio_path).samplerate
+        audio_path=recording_view(audio_path,{'frames':round(analysis_origin*rate)})
+        tracks=deepcopy(tracks)
+        for track in tracks:
+            for event in track['events']:
+                event['t']=round(event['t']-analysis_origin,6)
+                event['end']=round(event['end']-analysis_origin,6)
+        duration-=analysis_origin
     pitch, flux, signal = features(audio_path)
     actual_duration = len(signal) / RATE
     if abs(actual_duration - duration) > .001:
         raise ValueError("The timing check audio duration does not match the recording.")
     return {**assess_features(tracks, pitch, flux, duration),
-            "audioSha256": audio_hash, "audioDuration": duration, "mapHash": map_hash}
+            "audioSha256": audio_hash, "audioDuration": original_duration, "mapHash": map_hash,
+            **({'analysisOriginSeconds':analysis_origin} if analysis_origin else {})}
 
 
 def _attacks(events, left, right):
