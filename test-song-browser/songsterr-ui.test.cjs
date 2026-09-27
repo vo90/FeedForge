@@ -27,6 +27,21 @@ test('completed partial charts identify omitted gameplay targets, not only displ
 });
 const buttonText = (html) => [...html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map((match) => match[1].replace(/<[^>]*>/g, '').trim());
 
+test('Hybrid lead obligations do not conceal an incompatible capoed opening', () => {
+  const html = job({ state: 'completed', verification: { hybridLead: {
+    status: 'created', mainName: 'Electric lead', coverageStatus: 'complete', passageCount: 1,
+    tabActivity: { regions: [{ start: 0, end: 26.28, reason: 'only_incompatible_setup',
+      sources: [{ id: 'acoustic', name: 'Acoustic <capo 7>' }] }] },
+  } } });
+  assert.match(html, /Identified lead requirements accounted for/);
+  assert.match(html, /Guitar passages left unfilled/);
+  assert.match(html, /0:00–0:26/);
+  assert.match(html, /different tuning or capo/);
+  assert.match(html, /Acoustic &lt;capo 7&gt;/);
+  assert.match(html, /does not measure guitar sound/);
+  assert.doesNotMatch(html, /all.*guitar.*covered/i);
+});
+
 test('Hybrid choice and result explain the main, no-addition and separate-fallback outcomes', () => {
   const html = job({ state: 'awaiting_main_choice', canRetry: true, hybridLead: { enabled: true }, hybridChoice: {
     sourceSha256: 'source', tracks: [{ id: 'a', name: 'Lead A' }, { id: 'b', name: 'Clean B' }],

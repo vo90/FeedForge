@@ -108,7 +108,10 @@ def _score(p, candidate, main_id, preferred, required=None):
         rank = 0
     return (int(whole and evidence == 'named_soloist'), span if evidence == 'named_soloist' else 0,
             *(span if p['trackId'] == tid else 0 for tid in preferred),
-            span if evidence == 'dedicated_solo' else 0, span,
+            # A labelled Guitar Solo also outranks an inferred chorus/riff.
+            # Otherwise a long preceding tail plus a truncated solo can score
+            # more total activity than preserving the complete solo opening.
+            span if evidence == 'dedicated_solo' or candidate.get('labelledSolo') else 0, span,
             float(rank) * span, int(p['trackId'] == main_id) * .05 * span, -1)
 
 
@@ -365,25 +368,9 @@ def backbone(performance, options, main_id, alignment, audio_duration, originals
                   and not any(overlap((b['start'], b['end']), (p['start'], p['end'])) for p in regions)
                   and not any(overlap((b['start'], b['end']), (r['start'], r['end'])) for r in removed)]
     protected = union(main_slots + [(r['start'], r['end']) for r in kept] + [(p['start'], p['end']) for p in selected])
-    # Additional leads fill genuine remaining gaps as whole source phrases.
-    # All events from one source are collected before protection is updated,
-    # avoiding the old bug where that source blocked its own polyphony.
-    for tid in sorted(tracks, key=lambda t: (options.get('preferredTrackIds', []).index(t) if t in options.get('preferredTrackIds', []) else 128,
-                                            tracks[t]['name'].casefold(), t)):
-        if tid == main_id or roles[tid] != 'lead' or tracks[tid]['tuning'] != main['tuning'] or tracks[tid]['capo'] != main['capo']:
-            continue
-        from .hybrid_primary import _islands
-        allowed = [r for r in rows[tid] if r['available']]
-        unsupported = [x for x in limitations if x['trackId'] == tid and x['reason'] == 'unsupported_source_gesture']
-        holes = [(x['start'], x['end']) for x in unsupported]
-        for lo, hi in _islands(allowed):
-            for a, b in _windows(lo, hi, protected + holes):
-                c = {'id': '', 'trackId': tid, 'evidence': 'regional_lead', 'confidence': 'low', 'priority': 'lead'}
-                p = _passage(c, allowed, clock, a, b)
-                if (p and not any(overlap((p['start'], p['end']), x) for x in protected)
-                        and not any(_in_unsupported_gesture(row, bad) for row in p['events'] for bad in unsupported)):
-                    regions.append(p)
-                    protected = union(protected + [(p['start'], p['end'])])
+    # Only evidenced primary episodes reserve material here. Every optional
+    # lead, clean and rhythm phrase competes in the same guarded filler search;
+    # a track's name must not give its fragments a cost-free shortcut.
     return {'roles': roles, 'rows': rows, 'mainEvents': [ref(r) for r in kept], 'removedMain': removed,
             'mainProtected': main_slots + [(r['start'], r['end']) for r in kept],
             'passages': sorted(regions, key=lambda p: (p['start'], p['end'], p['trackId'])), 'protected': protected,
@@ -393,6 +380,7 @@ def backbone(performance, options, main_id, alignment, audio_duration, originals
 
 def finish(result, primary, performance, options, alignment):
     from .hybrid_lead import union
+    from .hybrid_selection import parse_track
     clock = Clock(performance['compositionContext']['timeline'])
     at = lambda q: map_time(alignment, clock.seconds(q), allow_negative=True)
     for p in result['passages']:
@@ -404,6 +392,20 @@ def finish(result, primary, performance, options, alignment):
         if 'ownedStart' in p:
             p['recordingOwnedStart'], p['recordingOwnedEnd'] = round(at(p['ownedStart']), 6), round(at(p['ownedEnd']), 6)
     main_id = result['mainTrackId']
+    source_tracks = {track['id']: track for track in performance['tracks']}
+
+    def credible_voice(tid):
+        role = primary['roles'].get(tid)
+        if role != 'main':
+            return role in {'lead', 'solo'}
+        requested = options.get('roles', {}).get(tid)
+        if requested is not None:
+            return requested in {'lead', 'solo'}
+        facts = parse_track(source_tracks[tid])
+        # 'main' is a structural role, not evidence for or against a parallel
+        # lead voice. Recover the actual source's lead/solo intent instead.
+        return facts['priorRole'] in {'lead', 'solo'} and (facts['lead'] or facts['solo'])
+
     chosen = {(p['trackId'], r['kind'], r['index']) for p in result['passages'] for r in p['events']}
     chosen.update((main_id, r['kind'], r['index']) for r in primary['mainEvents'])
     limitations = deepcopy(primary['limitations'])
@@ -424,8 +426,16 @@ def finish(result, primary, performance, options, alignment):
             by_key = {_key(row): row for row in primary['rows'][tid]}
             explained = all(any(_in_unsupported_gesture(by_key[_key(r)], x) for x in unsupported) for r in missing)
             reason = 'conflicting_primary' if others else 'unsupported_source_gesture' if explained else 'planning_limit' if primary['primaryBudgetLimited'] else 'unresolved_primary'
-            if c['evidence'] != 'named_soloist' and others:
-                reason = 'alternate_voice'
+            if c['evidence'] != 'named_soloist' and others and credible_voice(tid):
+                covered = union((other['start'], other['end']) for other in others
+                                if credible_voice(other['trackId']))
+                # A short parallel voice can replace the complete first
+                # gesture while this source's unique ending remains selected.
+                # Every missing whole gesture needs actual lead coverage; a
+                # chorus tail merely touching a solo cannot excuse its loss.
+                if all(any(a <= by_key[_key(r)]['start'] + EPS and b >= by_key[_key(r)]['end'] - EPS
+                           for a, b in covered) for r in missing):
+                    reason = 'alternate_voice'
             if reason != 'unsupported_source_gesture':
                 limitations.append({'trackId': tid, 'start': c['start'], 'end': c['end'], 'reason': reason})
         footprint = {'start': p['start'], 'end': p['end']} if p else {}

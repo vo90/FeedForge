@@ -186,6 +186,37 @@ def _fingerprint(rows, lo, hi, clock):
     return json.dumps(values, sort_keys=True, separators=(",", ":")) if values else None
 
 
+def _hand_endpoints(rows):
+    notes = [n for row in rows for n in row['notes']]
+    core = [n for n in notes if not n.get('ghost') and not n.get('mt')]
+    notes = core or notes
+    if not notes:
+        return {'entryFret': None, 'exitFret': None}
+    def position(onset):
+        frets = [n['f'] for n in notes if abs(n['t'] - onset) < EPS and 0 < n['f'] <= 24]
+        return median(frets) if frets else None
+    return {'entryFret': position(min(n['t'] for n in notes)),
+            'exitFret': position(max(n['t'] for n in notes))}
+
+
+def _fixed_events(primary, main, context, clock):
+    """Exact kept event positions around optional gaps, including solo donors."""
+    rows = primary.get('rows') if primary else None
+    if rows is None:
+        rows = {main['id']: event_rows(main, context['tracks'][main['id']], clock)}
+        selected = {(main['id'], row['kind'], row['index']) for row in rows[main['id']]}
+    else:
+        selected = {(main['id'], ref['kind'], ref['index']) for ref in primary['mainEvents']}
+        selected.update((p['trackId'], ref['kind'], ref['index']) for p in primary['passages'] for ref in p['events'])
+    groups = {}
+    for tid, events in rows.items():
+        for row in events:
+            if (tid, row['kind'], row['index']) in selected:
+                groups.setdefault((tid, row['start'], row['end']), []).append(row)
+    return [{'trackId': tid, 'start': start, 'end': end, **_hand_endpoints(events)}
+            for (tid, start, end), events in groups.items()]
+
+
 def passages(track, context, timeline, clock):
     rows = event_rows(track, context, clock)
     if not rows:
@@ -223,15 +254,12 @@ def passages(track, context, timeline, clock):
         # Keep pickups and internal rests; only unused leading/trailing silence
         # is outside the passage. Its final written slot remains protected.
         lo, hi = min(r["start"] for r in events), max(r["end"] for r in events)
-        def hand_position(row):
-            frets = [n["f"] for n in row["notes"] if 0 < n["f"] <= 24]
-            return median(frets) if frets else None
         out.append({"trackId": track["id"], "start": lo, "end": hi,
                     "activeQuarterBeats": round(sum(max(0, min(b, hi) - max(a, lo)) for a, b in active), 8),
                     "ghostOnly": all(n.get('ghost') for r in events for n in r['notes']),
                     "boundaries": [boundaries[a], boundaries[b]],
                     "boundaryQuarters": [a, b],
-                    "entryFret": hand_position(events[0]), "exitFret": hand_position(events[-1]),
+                    **_hand_endpoints(events),
                     "events": [{k: r[k] for k in ("kind", "index", "sourceIds", "occurrences")} for r in events]})
     return out
 
@@ -276,6 +304,7 @@ def _fill_gaps(performance, options, main_id, alignment, audio_duration, primary
     by_id = {t["id"]: t for t in performance["tracks"]}
     main = by_id[main_id]
     protected = primary["protected"] if primary else occupied(main, context["tracks"][main_id], clock)
+    fixed = _fixed_events(primary, main, context, clock)
 
     from functools import lru_cache
     @lru_cache(maxsize=50000)
@@ -345,16 +374,30 @@ def _fill_gaps(performance, options, main_id, alignment, audio_duration, primary
     # feasible incumbent instead of requiring the user to resolve search limits.
     from .hybrid_search import select_passages
     candidates.sort(key=lambda p: (p["end"], p["start"], p["trackId"]))
-    chosen_indices, best = [], 0.0
+    chosen_indices, best, utility = [], 0.0, 0.0
+    gap_selections = []
     states = operations = 0
     reasons = []
     for lo, hi in gaps:
         indices = [i for i, p in enumerate(candidates) if lo - EPS <= p["start"] and p["end"] <= hi + EPS]
+        left_anchor = max((p for p in fixed if p['end'] <= lo + EPS),
+                          key=lambda p: (p['end'], p['start'], p['trackId']), default=None)
+        right_anchor = min((p for p in fixed if p['start'] >= hi - EPS),
+                           key=lambda p: (p['start'], p['end'], p['trackId']), default=None)
         search = select_passages([candidates[i] for i in indices], guard, preferred,
                                  max_candidates=MAX_CANDIDATES, max_states=max(0, MAX_STATES - states),
-                                 max_operations=max(0, MAX_OPERATIONS - operations))
+                                 max_operations=max(0, MAX_OPERATIONS - operations),
+                                 left_anchor=left_anchor, right_anchor=right_anchor)
         chosen_indices.extend(indices[i] for i in search['indices'])
         best += search['activeQuarterBeats']
+        utility += search['utilityQuarterBeats']
+        if indices:
+            gap_selections.append({'start': lo, 'end': hi, 'leftAnchor': left_anchor, 'rightAnchor': right_anchor,
+                                   **{k: search[k] for k in ('activeQuarterBeats', 'utilityQuarterBeats', 'switches',
+                                                            'anchorTransitionBaselineQuarterBeats', 'transitions')},
+                                   'selected': [{'trackId': candidates[indices[i]]['trackId'],
+                                                 'start': candidates[indices[i]]['start'], 'end': candidates[indices[i]]['end']}
+                                                for i in search['indices']]})
         states += search['states']
         operations += search['operations']
         if search['reason']:
@@ -371,9 +414,10 @@ def _fill_gaps(performance, options, main_id, alignment, audio_duration, primary
             "excluded": excluded, "candidateCount": len(candidates), "status": "created" if selected else "no_additions",
             "protected": protected, "gaps": gaps, "addedQuarterBeats": sum(p["end"] - p["start"] for p in selected),
             "candidateDecisions": evaluated,
-            "selection": {"algorithm": "bounded-whole-phrase-dag-v1", "bestQuarterBeats": round(best, 6),
+            "selection": {"algorithm": "bounded-whole-phrase-dag-v2", "bestQuarterBeats": round(best, 6),
                           "activeQuarterBeats": round(best, 6), "candidateCount": len(candidates),
+                          "utilityQuarterBeats": round(utility, 6), "gaps": gap_selections,
                           "states": states, "operations": operations, "budgetLimited": bool(reasons),
                           "reason": ','.join(dict.fromkeys(reasons)) or None,
-                          "priority": "explicit-source-activity, activity-minus-switch-and-movement-cost, continuity, stable-id"},
+                          "priority": "explicit-source-activity, activity-minus-entry-return-switch-and-movement-cost, continuity, stable-id"},
             "unselected": [{k: p[k] for k in ("trackId", "start", "end", "boundaries")} for i, p in enumerate(candidates) if i not in chosen_set]}

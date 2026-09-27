@@ -263,17 +263,75 @@ def _local(track, rows, lo, hi, clock):
     if not notes:
         return None
     attacks = defaultdict(set)
+    voicings = defaultdict(list)
     pitches = []
     for note in notes:
         attacks[round(clock.quarter(note['t']), 8)].add(note['s'])
         if 0 <= note.get('f', -1) <= 24 and 0 <= note['s'] < len(track['tuning']):
-            pitches.append(track['tuning'][note['s']] + track.get('capo', 0) + note['f'])
+            pitch = track['tuning'][note['s']] + track.get('capo', 0) + note['f']
+            pitches.append(pitch)
+            voicings[round(clock.quarter(note['t']), 8)].append(pitch)
     expressive = sum(bool(n.get('bn') or n.get('bnv') or n.get('vb') or n.get('hp') or n.get('ho') or n.get('po')
                           or n.get('sl') is not None or n.get('slu') is not None) for n in notes) / len(notes)
     single = sum(len(v) == 1 for v in attacks.values()) / len(attacks)
+    times = sorted(attacks)
+    # Repeated four-attack cells can corroborate accompaniment, but repetition
+    # alone is not evidence against a lead motif. Exact pitches are used only
+    # for equality: globally transposing a passage leaves this measure intact.
+    cells = defaultdict(list)
+    for i in range(len(times) - 3):
+        key = tuple((tuple(sorted(voicings[t])), round(t - times[i], 5)) for t in times[i:i + 4])
+        cells[key].append(i)
+    repeated = set()
+    for starts in cells.values():
+        if len(starts) > 1 and starts[-1] - starts[0] >= 4:
+            repeated.update(i for start in starts for i in range(start, start + 4))
+    intervals = {round(b - a, 5) for a, b in zip(times, times[1:])}
+    active = _span((max(lo, clock.quarter(n['t'])), min(hi, clock.quarter(n['t'] + n.get('sus', 0))))
+                   for n in notes)
     return {'attacks': len(attacks), 'single': single, 'expressive': expressive,
             'pitch': median(pitches) if pitches else 0, 'variety': len(set(pitches)),
+            'palmMute': sum(bool(n.get('pm')) for n in notes) / len(notes),
+            'letRing': sum(bool(n.get('lr')) for n in notes) / len(notes),
+            'motifRepeat': len(repeated) / len(attacks),
+            'rhythmVariety': min(1, max(0, len(intervals) - 1) / 3),
+            'coverage': min(1, active / max(EPS, hi - lo)),
             'first': min(attacks), 'last': max(attacks)}
+
+
+def _musical_score(data):
+    """Bounded local evidence; neither register nor note density is a reward.
+
+    One expressive held note must not outvote a whole melodic phrase solely
+    because its expression fraction is 100%. Clean, low and polyphonic solos
+    remain possible: tone, absolute pitch and the whole-track role are absent.
+    """
+    phrase_support = min(1, data['attacks'] / 4)
+    backing_pattern = data['motifRepeat'] * max(data['letRing'], data['palmMute'])
+    return (2 * data['single'] + 4 * data['expressive'] * phrase_support
+            + min(data['variety'], 12) / 12 + .5 * data['rhythmVariety']
+            - .8 * data['palmMute'] - 1.2 * backing_pattern)
+
+
+def _clear_local_advantage(top, other):
+    """Require both a margin and a musical explanation, not a label advantage."""
+    expression = top['expressive'] - other['expressive']
+    corroborated_expression = (expression >= .35 or (expression >= .1 and
+        (top['rhythmVariety'] >= other['rhythmVariety'] + .3
+         or top['single'] >= other['single'] + .25
+         or (other['motifRepeat'] >= .5 and max(other['letRing'], other['palmMute']) >= .35))))
+    return (_musical_score(top) >= _musical_score(other) + .6 and top['attacks'] >= 4
+            and (corroborated_expression
+                 or (other['motifRepeat'] >= .5 and max(other['letRing'], other['palmMute']) >= .35
+                     and top['motifRepeat'] <= other['motifRepeat'] - .25)
+                 or (top['single'] >= other['single'] + .25 and top['rhythmVariety'] >= .3)))
+
+
+def _backing_context(data):
+    """Corroborated accompaniment, not merely a low score or a rhythm label."""
+    return (data['attacks'] >= 4 and data['expressive'] < .12
+            and ((data['motifRepeat'] >= .5 and max(data['letRing'], data['palmMute']) >= .35)
+                 or (data['single'] <= .25 and data['motifRepeat'] >= .5)))
 
 
 def _islands(rows):
@@ -340,7 +398,7 @@ def regional_candidates(performance, options, main_id, rows=None):
     # Explicit/dedicated solo sources retain complete activity islands, including
     # pickups before authored labels. Ghost-only fades are not primary material.
     for tid in sorted(tracks):
-        if roles.get(tid) == 'solo' or facts[tid]['dedicatedSolo']:
+        if roles.get(tid) == 'solo' or (facts[tid]['dedicatedSolo'] and not facts[tid]['effect']):
             for lo, hi in _islands(rows.get(tid, [])):
                 result.append(candidate(tid, lo, hi, 'solo', 'dedicated_solo', 'high'))
 
@@ -364,18 +422,55 @@ def regional_candidates(performance, options, main_id, rows=None):
         if len(people) == 1 and len(identities) > 1:
             named = []
 
-        def rank(tid):
-            f, data = facts[tid], local[tid]
-            role = (4 if f['dedicatedSolo'] or roles.get(tid) == 'solo' else
-                    3 if (f['lead'] or f['main'] or roles.get(tid) == 'lead') and not (f['harmony'] or f['extra']) else
-                    2 if f['priorRole'] == 'mixed' else 1 if f['harmony'] or f['extra'] else
-                    0 if f['rhythm'] else 2)
-            slide = 'slide' in f['toneTags'] and data['expressive'] >= .15 and data['attacks'] >= 4
-            melody = 2 * data['single'] + 4 * data['expressive'] + min(data['variety'], 12) / 12 + int(slide)
-            preference = preferred.index(tid) if tid in preferred else len(preferred)
-            return (-role, -round(melody, 4), -data['attacks'], preference, -int(tid == main_id), _canonical(tracks[tid]))
-
         pool = named or usable
+        # Secondary labels normally identify parallel/supporting layers. They
+        # cannot be an absolute veto when every ordinary source is demonstrably
+        # backing and the featured phrase happens to be stored on an extra tab.
+        def promoted_by_content(choices):
+            ordinary = [tid for tid in choices if not (facts[tid]['harmony'] or facts[tid]['extra'])]
+            if not ordinary or not all(_backing_context(local[tid]) for tid in ordinary):
+                return set()
+            return {tid for tid in choices if (facts[tid]['harmony'] or facts[tid]['extra'])
+                    and not _backing_context(local[tid])
+                    and all(_clear_local_advantage(local[tid], local[other]) for other in ordinary)}
+
+        eligible_pool = [tid for tid in pool if candidate(tid, lo, hi, 'solo', 'regional_lead', 'medium')['eligible']]
+        # Even a losing unavailable ordinary part cannot veto a playable
+        # secondary foreground. The strongest unavailable solo still competes
+        # above and remains documented if it wins the semantic comparison.
+        promoted_layers = promoted_by_content(pool) | promoted_by_content(eligible_pool)
+
+        def source_tier(tid):
+            f = facts[tid]
+            return (2 if f['dedicatedSolo'] or roles.get(tid) == 'solo' else
+                    0 if (f['harmony'] or f['extra']) and tid not in promoted_layers else 1)
+
+        def role_prior(tid):
+            f = facts[tid]
+            return .25 if (f['lead'] or f['main'] or roles.get(tid) == 'lead') else 0
+
+        def rank(tid):
+            # Ordinary lead/rhythm/clean labels are weak priors, after local
+            # evidence. A named guitarist's solo may live on their rhythm tab.
+            melody = _musical_score(local[tid])
+            preference = preferred.index(tid) if tid in preferred else len(preferred)
+            return (-source_tier(tid), -round(melody + role_prior(tid), 4), -round(melody, 4),
+                    preference, -int(tid == main_id), -round(local[tid]['coverage'], 6), _canonical(tracks[tid]))
+
+        def choice_evidence(tid, choices, reason):
+            rivals = [other for other in choices if other != tid and
+                      (source_tier(other) == source_tier(tid)
+                       or (source_tier(other) < source_tier(tid) and _clear_local_advantage(local[other], local[tid])))]
+            margin = min((_musical_score(local[tid]) - _musical_score(local[other]) for other in rivals), default=None)
+            return {'reason': reason, 'confidenceMargin': round(margin, 4) if margin is not None else None,
+                    'musicalScore': round(_musical_score(local[tid]), 4), 'rolePrior': role_prior(tid),
+                    'considered': [{'trackId': other, 'sourceTier': source_tier(other),
+                                    'layerPromotedByContent': other in promoted_layers,
+                                    'musicalScore': round(_musical_score(local[other]), 4),
+                                    'rolePrior': role_prior(other),
+                                    'local': {key: round(value, 6) for key, value in local[other].items()}}
+                                   for other in sorted(choices, key=rank)]}
+
         if solo:
             ordered = sorted(pool, key=rank)
             winner = ordered[0]
@@ -383,17 +478,24 @@ def regional_candidates(performance, options, main_id, rows=None):
             # happens to contain a few more bends in the next phrase. Retain a
             # coherent voice unless the rival has clear foreground evidence.
             incumbent = previous_primary if previous_primary in pool else main_id if main_id in pool else None
-            if incumbent is not None and rank(incumbent)[0] == rank(winner)[0]:
+            kept_incumbent = False
+            if incumbent is not None and source_tier(incumbent) == source_tier(winner):
                 top, prior = local[winner], local[incumbent]
-                clearly_ahead = (top['expressive'] >= prior['expressive'] + .15
-                                 and (top['pitch'] >= prior['pitch'] + 7 or top['single'] >= prior['single'] + .25))
+                clearly_ahead = _clear_local_advantage(top, prior)
                 preferred_incumbent = not preferred or winner not in preferred or (incumbent in preferred and preferred.index(incumbent) <= preferred.index(winner))
                 if not clearly_ahead and prior['attacks'] >= top['attacks'] * .5 and preferred_incumbent:
+                    kept_incumbent = winner != incumbent
                     winner = incumbent
             # A section naming multiple players describes parallel voices. Pick
             # a coherent default and preserve the alternatives for the planner.
             evidence = 'named_soloist' if named else 'regional_lead'
-            confidence = 'high' if named or facts[winner]['dedicatedSolo'] else 'medium'
+            rivals = [tid for tid in ordered if tid != winner and source_tier(tid) == source_tier(winner)]
+            secondary_challengers = [tid for tid in ordered if source_tier(tid) < source_tier(winner)
+                                     and _clear_local_advantage(local[tid], local[winner])]
+            clear = (not secondary_challengers and
+                     (not rivals or all(_clear_local_advantage(local[winner], local[tid]) for tid in rivals)))
+            confidence = ('high' if facts[winner]['dedicatedSolo'] or (named and clear) else
+                          'medium' if clear else 'low')
 
             def section_candidate(tid, evidence_kind, certainty, choices):
                 order_score = rank(tid)
@@ -401,9 +503,17 @@ def regional_candidates(performance, options, main_id, rows=None):
                         and any(lo - EPS <= clock.quarter(n['t']) < hi - EPS for n in r.get('notes', []))]
                 body_start, body_end = min(r['start'] for r in body), max(r['end'] for r in body)
                 alternatives = [other for other in choices if other != tid and rank(other)[0] == order_score[0]]
-                return candidate(tid, body_start, body_end, 'solo', evidence_kind, certainty, name, alternatives,
-                                 [3 if evidence_kind == 'named_soloist' else 1, -order_score[0], -order_score[1], -order_score[2]],
-                                 owned_start=min(lo, body_start), owned_end=hi)
+                value = candidate(tid, body_start, body_end, 'solo', evidence_kind, certainty, name, alternatives,
+                                  [3 if evidence_kind == 'named_soloist' else 1, -order_score[0], -order_score[1], -order_score[2]],
+                                  owned_start=min(lo, body_start), owned_end=hi)
+                value['labelledSolo'] = True
+                reason = ('coherent_incumbent' if kept_incumbent and tid == winner else
+                          'foreground_over_secondary_label' if tid in promoted_layers else
+                          'secondary_layer_uncertain' if secondary_challengers else
+                          'sole_primary_named_candidate' if named and not rivals else
+                          'clear_local_foreground' if clear else 'ambiguous_local_default')
+                value['selectionEvidence'] = choice_evidence(tid, choices, reason)
+                return value
 
             selected = section_candidate(winner, evidence, confidence, ordered)
             result.append(selected)
@@ -414,13 +524,34 @@ def regional_candidates(performance, options, main_id, rows=None):
                 # compatible alternate lead under the base's backing part.
                 compatible = [tid for tid in usable if candidate(tid, lo, hi, 'solo', 'regional_lead', 'medium')['eligible']]
                 named_compatible = [tid for tid in named if tid in compatible]
-                alternate_pool = named_compatible or [tid for tid in compatible
-                    if not (facts[tid]['harmony'] or facts[tid]['extra'])
-                    and (facts[tid]['lead'] or facts[tid]['dedicatedSolo'] or roles.get(tid) in {'lead', 'solo'})]
+                compatible_ordinary = [tid for tid in compatible if not (facts[tid]['harmony'] or facts[tid]['extra'])]
+                promoted_layers.update(promoted_by_content(compatible))
+                compatible_foreground = [tid for tid in compatible
+                    if tid in promoted_layers or (tid in compatible_ordinary
+                    and (facts[tid]['lead'] or facts[tid]['dedicatedSolo'] or roles.get(tid) in {'lead', 'solo'}
+                         or any(_clear_local_advantage(local[tid], local[other]) for other in compatible_ordinary
+                                if other != tid and (other == main_id or _backing_context(local[other])))))]
+                alternate_pool = named_compatible or compatible_foreground
+                if named_compatible and all(_backing_context(local[tid]) for tid in named_compatible):
+                    # Identity is useful when credible same-player foreground
+                    # remains. It must not turn their proven backing into a
+                    # solo while another player has the clear playable melody.
+                    alternate_pool = [*named_compatible, *(tid for tid in compatible_foreground if tid not in named_compatible
+                        and all(_clear_local_advantage(local[tid], local[other]) for other in named_compatible))]
                 if alternate_pool:
+                    # An excluded or differently tuned foreground cannot veto
+                    # the best musical choice among the playable substitutes.
+                    promoted_layers.update(promoted_by_content(alternate_pool))
                     alternate = min(alternate_pool, key=rank)
-                    fallback = section_candidate(alternate, 'named_soloist' if named_compatible else 'regional_lead',
-                                                 'high' if named_compatible else 'medium', alternate_pool)
+                    alternate_rivals = [tid for tid in alternate_pool if tid != alternate and source_tier(tid) == source_tier(alternate)]
+                    alternate_secondary = [tid for tid in alternate_pool if source_tier(tid) < source_tier(alternate)
+                                           and _clear_local_advantage(local[tid], local[alternate])]
+                    alternate_clear = (not alternate_secondary and
+                        (not alternate_rivals or all(_clear_local_advantage(local[alternate], local[tid]) for tid in alternate_rivals)))
+                    same_performer = alternate in named_compatible
+                    fallback = section_candidate(alternate, 'named_soloist' if same_performer else 'regional_lead',
+                                                 'high' if same_performer and alternate_clear else 'medium' if alternate_clear else 'low', alternate_pool)
+                    fallback['selectionEvidence'] = choice_evidence(alternate, alternate_pool, 'compatible_alternate')
                     fallback['fallbackForTrackId'] = winner
                     result.append(fallback)
                     previous_primary = alternate
@@ -431,22 +562,32 @@ def regional_candidates(performance, options, main_id, rows=None):
             base = local.get(main_id)
             foreground = []
             for tid in usable:
-                if tid == main_id or facts[tid]['harmony'] or facts[tid]['extra'] or facts[tid]['dedicatedSolo']:
+                if (tid == main_id or facts[tid]['dedicatedSolo']
+                        or ((facts[tid]['harmony'] or facts[tid]['extra']) and tid not in promoted_layers)):
                     continue
                 data = local[tid]
-                plausible = facts[tid]['lead'] or roles.get(tid) == 'lead' or facts[tid]['priorRole'] == 'unknown'
-                distinct = base is not None and (data['single'] > base['single'] + .2 or data['pitch'] >= base['pitch'] + 7)
+                # A rhythm tab can carry a featured line outside a labelled
+                # solo too. Replacing active base still needs multiple local
+                # clues, not merely its name, register, density or one bend.
+                plausible = not facts[tid]['bassRegisterLayer']
+                distinct = base is not None and (data['single'] > base['single'] + .2 or data['pitch'] >= base['pitch'] + 7
+                    or (base['motifRepeat'] >= .5 and max(base['letRing'], base['palmMute']) >= .35
+                        and data['motifRepeat'] <= base['motifRepeat'] - .25)
+                    or data['rhythmVariety'] >= base['rhythmVariety'] + .3)
                 expressive = data['expressive'] >= .12 and (base is None or data['expressive'] >= base['expressive'] + .1)
-                if plausible and distinct and expressive and data['attacks'] >= 4 and data['variety'] >= 3:
+                clear = base is not None and _clear_local_advantage(data, base)
+                if plausible and distinct and expressive and clear and data['attacks'] >= 4 and data['variety'] >= 3:
                     foreground.append(tid)
             if foreground:
                 winner = min(foreground, key=rank)
                 order_score = rank(winner)
                 for a, b in _islands([r for r in rows.get(winner, []) if lo - EPS <= r['start'] < hi - EPS]):
-                    result.append(candidate(winner, a, b, 'solo', 'regional_lead', 'medium', name,
-                                            [tid for tid in foreground if tid != winner],
-                                            [1, -order_score[0], -order_score[1], -order_score[2]],
-                                            owned_start=a, owned_end=min(b, hi)))
+                    value = candidate(winner, a, b, 'solo', 'regional_lead', 'medium', name,
+                                      [tid for tid in foreground if tid != winner],
+                                      [1, -order_score[0], -order_score[1], -order_score[2]],
+                                      owned_start=a, owned_end=min(b, hi))
+                    value['selectionEvidence'] = choice_evidence(winner, [main_id, *foreground], 'corroborated_regional_foreground')
+                    result.append(value)
     unique = {}
     for item in result:
         key = item['trackId'], item['start'], item['end'], item['ownedStart'], item['ownedEnd'], item['evidence']

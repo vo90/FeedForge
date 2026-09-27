@@ -118,10 +118,12 @@ def materialize(plan, originals, options, source_hash, audio_hash, duration, gen
             chart[ref["kind"]].append(event)
     for key in ("notes", "chords"):
         chart[key].sort(key=lambda e: e["t"])
-    # Fret 127 is an unpitched mute sentinel, valid only when supported by a
-    # referencing muted chord. An unselected donor chord supplies no such proof.
+    # Values above 24 need a referencing unpitched chord: fret 127 is a mute
+    # sentinel and other high positions may encode typed pick scrapes. Copying
+    # a donor's unused shape supplies no such proof. Keep all referenced shapes
+    # intact, including supported scrapes, and leave ordinary unused shapes alone.
     used_templates = {c['id'] for c in chart['chords']}
-    retained = [i for i,t in enumerate(chart['templates']) if i in used_templates or 127 not in t['frets']]
+    retained = [i for i,t in enumerate(chart['templates']) if i in used_templates or all(f <= 24 for f in t['frets'])]
     remap = {old:new for new,old in enumerate(retained)}
     chart['templates'] = [chart['templates'][i] for i in retained]
     for chord in chart['chords']:

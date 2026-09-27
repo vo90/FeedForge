@@ -6,7 +6,7 @@ reader. Coverage is checked even when a forged output has no silence at all.
 The v3 branch also establishes conservative named-owner/dedicated-solo
 expectations without trusting the producer's role map or ranking diagnostics.
 """
-from collections import defaultdict
+from collections import Counter, defaultdict
 from copy import deepcopy
 import math
 import re
@@ -119,9 +119,9 @@ def _events(chart, part, quarter_at, duration, source_format):
     return events
 
 
-def audit(charts, receipt, facts, options, quarter_at, recording_at, duration, source_format, check, *, source=None):
+def audit(charts, receipt, facts, options, quarter_at, recording_at, duration, source_format, check, *, source=None, musical_audit=None):
     if options.get('policy') == 'hybrid-lead-v3':
-        return _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, duration, source_format, check, source)
+        return _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, duration, source_format, check, source, musical_audit)
     return _audit_v2(charts, receipt, facts, options, quarter_at, recording_at, duration, source_format, check)
 
 
@@ -311,9 +311,9 @@ def _role_words(name):
     labels = {'guitar', 'lead', 'solo', 'rhythm', 'chord', 'chords', 'harmony', 'harmonies', 'double',
               'extra', 'extras', 'overdub', 'overdubs', 'background', 'delay', 'echo', 'effect', 'fx',
               'main', 'clean', 'acoustic', 'electric', 'classical'}
-    fields = str(name).split('|')
+    fields = re.sub(r'\bguitars\b', 'guitar', str(name), flags=re.I).split('|')
     if len(fields) == 1:
-        return _words(name)
+        return _words(fields[0])
     result = set()
     for field in fields:
         words = _words(field) - {'and', 'part', 'i', 'ii', 'iii', 'iv'}
@@ -353,7 +353,74 @@ def _solo_islands(values):
     return islands
 
 
-def regional_requirements(parts, rows, source, order, duration_quarters):
+def _local_texture(values, start, end):
+    """Conservative source facts for a contrast, never a lead-ranking score.
+
+    The audit needs corroborating evidence before it rejects a named performer's
+    otherwise credible voice. Register, note count and a track's rhythm label
+    cannot establish that a part is backing. Plain, low-register and polyphonic
+    solos remain possible; ambiguous voices stay alternatives.
+    """
+    attacks = defaultdict(list)
+    for row in values.values():
+        onset = row.get('onset', row['start'])
+        if start-EPS <= onset < end-EPS:
+            attacks[round(onset, 5)].extend(n for n in row['notes'] if not n.get('ghost') and not n.get('mt'))
+    attacks = {time: notes for time, notes in attacks.items() if notes}
+    notes = [n for members in attacks.values() for n in members]
+    if not notes:
+        return {'expressiveLine': False, 'plainLine': False, 'backingTexture': False}
+    count = len(notes)
+    signatures = Counter(tuple(sorted((n['s'], n['f']) for n in members)) for members in attacks.values())
+    expressive = sum(any(n.get('bn') or n.get('vb') or n.get('whammy') for n in members) for members in attacks.values())
+    changing = len({(n['s'], n['f']) for n in notes}) >= 4
+    muted = sum(bool(n.get('pm')) for n in notes) / count
+    ringing = sum(bool(n.get('lr')) for n in notes) / count
+    chordal = sum(len(members) >= 2 for members in attacks.values()) / len(attacks)
+    repeats = sum(n for n in signatures.values() if n >= 3) / len(attacks)
+    # Recurrent chord shapes or a recurrent let-ring texture independently
+    # corroborate backing. Neither a clean sound nor simple arpeggiation alone
+    # is a veto; it must lose to a separately supported foreground line.
+    backing = (len(attacks) >= 6 and expressive == 0 and repeats >= .6
+               and (chordal >= .6 or ringing >= .6 or muted >= .75))
+    return {'expressiveLine': expressive >= 2 and changing and muted < .5,
+            'plainLine': changing and chordal <= .25 and muted < .5 and ringing < .5,
+            'backingTexture': backing, 'chordalBacking': backing and chordal >= .6}
+
+
+def _credible_named_sources(candidates, parts, rows, start, end, available=None):
+    """Retain all credible alternatives unless a local contrast is decisive."""
+    ordinary, secondary, effects = [], [], []
+    for tid in candidates:
+        words = _role_words(parts[tid]['source'].name)
+        target = (effects if words & {'delay', 'echo', 'effect', 'fx'} else
+                  secondary if words & {'harmony', 'harmonies', 'double', 'extra', 'extras', 'overdub', 'overdubs', 'background'}
+                  else ordinary)
+        target.append(tid)
+    # Harmony can be the only tabbed rendition of a named solo, but an effect
+    # layer alone is never independent evidence of the guitarist's foreground.
+    texture = {tid: _local_texture(rows[tid], start, end) for tid in ordinary + secondary}
+    eligible = ordinary or secondary
+    # A source label such as Extra Lead can still contain the actual named
+    # solo. Admit it only when every ordinary candidate is independently
+    # established backing and the secondary voice has corroborating foreground
+    # evidence. An ambiguous ordinary line keeps precedence over an overdub.
+    # An unavailable ordinary source must not veto this playable alternative;
+    # it still participates below so a genuinely unique unavailable solo cannot
+    # disappear without its separate limitation disclosure.
+    available_ordinary = [tid for tid in ordinary if available is None or tid in available]
+    if available_ordinary and all(texture[tid]['backingTexture'] for tid in available_ordinary):
+        eligible = ordinary + [tid for tid in secondary if (available is None or tid in available)
+                               and (texture[tid]['expressiveLine'] or texture[tid]['plainLine']
+                                    and all(texture[o].get('chordalBacking') for o in available_ordinary))]
+    rejected = {tid for tid in eligible if texture[tid]['backingTexture'] and any(
+        other != tid and (texture[other]['expressiveLine']
+                         or texture[tid].get('chordalBacking') and texture[other]['plainLine'])
+        for other in eligible)}
+    return [tid for tid in eligible if tid not in rejected]
+
+
+def regional_requirements(parts, rows, source, order, duration_quarters, *, available=None):
     """Conservative musical expectations, with no producer roles or candidates.
 
     This is deliberately not a second scoring algorithm. Unique named soloists
@@ -391,19 +458,13 @@ def regional_requirements(parts, rows, source, order, duration_quarters):
                 # order. Instrument model words alone cannot establish a role.
                 if not any(wanted <= _words(field) for field in name.split('|')):
                     continue
-                words = _role_words(name)
-                if words & {'harmony', 'harmonies', 'extra', 'extras', 'overdub', 'overdubs', 'background', 'delay', 'echo', 'effect', 'fx'}:
-                    continue
-                if 'rhythm' in words and not words & {'lead', 'solo'}:
-                    continue
                 local = {k: r for k, r in rows[tid].items() if _touch((r['start'], r['end']), (start, end))
                          and any(not n.get('ghost') and not n.get('mt') for n in r['notes'])}
                 if not local:
                     continue
-                candidates.append((0 if words & {'lead', 'solo'} else 1, tid))
+                candidates.append(tid)
             if candidates:
-                best = min(rank for rank, _ in candidates)
-                credible.extend(tid for rank, tid in candidates if rank == best)
+                credible.extend(_credible_named_sources(candidates, parts, rows, start, end, available))
         if credible:
             owners = {}
             for tid in sorted(set(credible)):
@@ -484,7 +545,8 @@ def _unsupported_groups(part, quarter_at, duration, source_format='songsterr'):
     for lo, hi in sorted(spans):
         members = [r for r in values.values() if (r['start'], r['end']) == (lo, hi)]
         groups.append({'start': lo, 'end': hi, 'sourceIds': {sid for r in members for sid in r['sourceIds']},
-                       'occurrences': {o for r in members for o in r['occurrences']}})
+                       'occurrences': {o for r in members for o in r['occurrences']},
+                       'events': members})
     return groups
 
 
@@ -492,7 +554,7 @@ def _unsupported_regions(part, quarter_at, duration, source_format='songsterr'):
     return _joined([(g['start'], g['end']) for g in _unsupported_groups(part, quarter_at, duration, source_format)])
 
 
-def _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, duration, source_format, check, source):
+def _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, duration, source_format, check, source, musical_audit=None):
     main_id = options['mainTrackId']
     parts = {p['source'].id: p for p in facts['parts'] if p['source'].instrument == 'guitar'}
     rows = {tid: _events(chart, parts[tid], quarter_at, duration, source_format)
@@ -561,7 +623,18 @@ def _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, d
             if members & selected and not members <= selected:
                 check.fail('hybrid_primary_gesture', 'hybrid/events', 'Only part of an independently connected source gesture was retained.')
 
-    requirements = regional_requirements(parts, rows, source, facts['order'], quarter_at(duration))
+    available = {tid for tid in compatible-excluded if options.get('roles', {}).get(tid) != 'accompaniment'}
+    requirements = regional_requirements(parts, rows, source, facts['order'], quarter_at(duration), available=available)
+    if musical_audit is not None:
+        musical_audit.update({
+            'scope': 'named_soloists_and_dedicated_solo_bodies',
+            'requirementCountScope': 'retained_playable_source_events',
+            'requirementCount': len(requirements),
+            'uniqueOwnerCount': sum(len(r['owners']) == 1 for r in requirements),
+            'alternativeVoiceCount': sum(len(r['owners']) > 1 for r in requirements),
+            'namedSectionCount': sum(r['evidence'] == 'named_soloist' for r in requirements),
+            'unverifiedClaim': 'Unlabelled musical choices and listening quality are not established by this audit.',
+        })
     def mandated_hard_conflict(tid, key):
         """Prove a local impossible handover under whole-gesture composition.
 
@@ -604,6 +677,23 @@ def _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, d
                         if component and component <= selected:
                             return True
         return False
+    def retained_base_conflict(tid, lo, hi):
+        """A physical conflict can explain an omitted inferred passage only.
+
+        A retained base is not automatically an independent musical obligation.
+        Never let its occupancy excuse any named or dedicated source gesture.
+        The receipt's primaryEpisodes and priority labels are not evidence.
+        """
+        if tid == main_id:
+            return False
+        local = {key: row for key, row in rows[tid].items()
+                 if lo-EPS <= row['start'] and row['end'] <= hi+EPS}
+        if (not local or abs(min(row['start'] for row in local.values())-lo) > EPS
+                or abs(max(row['end'] for row in local.values())-hi) > EPS
+                or any(set(local) & requirement['owners'].get(tid, set()) for requirement in requirements)):
+            return False
+        return any(_touch((row['start'], row['end']), (rows[main_id][key]['start'], rows[main_id][key]['end']))
+                   for row in local.values() for key in valid_kept)
     alternative_islands = {}
     def alternate_selected(tid, lo, hi, *, dedicated_only=False):
         # A simultaneous alternative can never erase a uniquely named owner.
@@ -655,6 +745,23 @@ def _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, d
         return False
     unsupported_groups = {tid: _unsupported_groups(part, quarter_at, duration, source_format) for tid, part in parts.items()}
     unsupported = {tid: _joined([(g['start'], g['end']) for g in groups]) for tid, groups in unsupported_groups.items()}
+    # Projection can remove every event of a named solo, particularly when its
+    # source is labelled rhythm. Restore independently proven raw components
+    # for a disclosure-only pass. Never demand that impossible notes be played.
+    raw_rows = {tid: dict(values) for tid, values in rows.items()}
+    for tid, groups in unsupported_groups.items():
+        for index, group in enumerate(groups):
+            raw_rows[tid] = {key: row for key, row in raw_rows[tid].items()
+                             if not (set(row.get('sourceIds', [])) & group['sourceIds']
+                                     and set(row.get('occurrences', [])) & group['occurrences'])}
+            for event_index, event in enumerate(group['events']):
+                raw_rows[tid][('unsupported', index, event_index)] = event
+    raw_requirements = regional_requirements(parts, raw_rows, source, facts['order'], quarter_at(duration), available=available)
+    if musical_audit is not None:
+        musical_audit['unsupportedNamedRequirementCount'] = sum(
+            requirement['evidence'] == 'named_soloist'
+            and any(key[0] == 'unsupported' for members in requirement['owners'].values() for key in members)
+            for requirement in raw_requirements)
     limits = receipt.get('limitations', [])
     valid_limits = []
     for limit in limits:
@@ -673,7 +780,8 @@ def _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, d
             # mandatory and cannot be cancelled by this generic diagnostic.
             valid = (any(p['trackId'] != tid and _touch((lo, hi), (p['start'], p['end'])) for p in primary)
                      or any(lo-EPS <= r['start'] and r['end'] <= hi+EPS and mandated_hard_conflict(tid, key)
-                            for key, r in rows[tid].items()))
+                            for key, r in rows[tid].items())
+                     or retained_base_conflict(tid, lo, hi))
         elif reason == 'alternate_voice':
             valid = alternate_selected(tid, lo, hi)
         if not valid:
@@ -698,6 +806,27 @@ def _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, d
                        for g in unsupported_groups[tid])
         return all(any(covers(l, key) for l in valid_limits) for key in keys)
     known_missing = any(l['reason'] != 'alternate_voice' for l in valid_limits)
+    for requirement in raw_requirements:
+        if requirement['evidence'] != 'named_soloist':
+            continue
+        # A fully selected credible parallel voice satisfies the local musical
+        # requirement. Otherwise each omitted raw owner needs a real local
+        # setup/request/unsupported explanation, not a blanket completeness claim.
+        if any({(tid, *key) for key in members} <= selected for tid, members in requirement['owners'].items()):
+            continue
+        raw_owners = {tid: [raw_rows[tid][key] for key in members if key[0] == 'unsupported']
+                      for tid, members in requirement['owners'].items()}
+        raw_owners = {tid: groups for tid, groups in raw_owners.items() if groups}
+        if not raw_owners:
+            continue
+        known_missing = True
+        if not any(all(any(limit['trackId'] == tid and limit['reason'] in {
+                        'incompatible_setup', 'excluded_by_user', 'explicit_accompaniment', 'unsupported_source_gesture'}
+                        and limit['start']-EPS <= group['start'] and group['end'] <= limit['end']+EPS
+                        for limit in valid_limits) for group in groups) for tid, groups in raw_owners.items()):
+            check.fail('hybrid_regional_limitation', 'hybrid/limitations',
+                       'Unsupported named-solo source material was not disclosed locally.',
+                       {'owners': sorted(raw_owners), 'start': requirement['start'], 'end': requirement['end']})
     for requirement in requirements:
         satisfied = [(tid, members) for tid, members in requirement['owners'].items()
                      if {(tid, *key) for key in members} <= selected]

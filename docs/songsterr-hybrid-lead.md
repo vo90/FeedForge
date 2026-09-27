@@ -39,8 +39,24 @@ priority over another guitarist's solo. Scoped labels such as Solo Chords,
 Pre-Solo and non-guitar solos do not automatically identify a primary guitarist.
 Clean and polyphonic parts can carry the lead.
 
+Selection revision **2** asks what the lead guitarist would play locally. Among
+ordinary tracks, lead/rhythm/clean labels are weak clues. Local articulation,
+melodic texture, rhythmic variation and corroborated repeating accompaniment
+patterns carry more weight. Neither absolute register nor note density earns a
+solo by itself. A named player's rhythm-labelled track can contain their solo.
+Close alternatives retain coherent ownership and low confidence; receipts expose
+the considered sources, local measurements and selection reason.
+Extra and harmony labels normally favor a credible ordinary lead, but cannot
+hide a clear foreground line when all ordinary alternatives demonstrably play
+backing. Echo/effect layers are excluded from automatic primary ownership;
+an explicit source-review solo assignment remains respected.
+
 `hybrid_regional.py` assembles complete primary candidates and protects successive
-soloists. Unavoidable overlap between complete gestures at a named handover is
+soloists. Explicit guitar-solo sections outrank inferred chorus/riff material, so
+a preceding inferred tail cannot earn more activity by displacing a solo opening.
+Alternate-voice coverage requires every omitted whole gesture to be covered by
+another selected lead or solo. Partial handover conflicts are disclosed.
+Unavoidable overlap between complete gestures at a named handover is
 reported as limited coverage. Simultaneous leads use coherent alternatives, without
 claiming to copy every independent performance into one guitar. Chords, ties,
 forward technique links, grace relationships and source voice identity preserve
@@ -57,11 +73,19 @@ rests stay part of a phrase. The transition guard is the larger of 0.25 quarter
 beats and 125 ms under the actual recording map, with at least one beat remaining
 in a guarded gap. Primary handovers may use zero guard. `hybrid_search.py` uses a
 bounded chronological graph, useful activity, explicit source preferences and
-continuity costs. Search limits retain a feasible result. Unsupported local
+continuity costs. Every optional role uses this path, including additional lead
+tracks. Fixed primary material before and after a gap contributes entry and
+return costs, reduced when an authored rest permits repositioning. A fill is
+compared with leaving that gap empty. Whole phrases may therefore be omitted
+when only a fragment fits; the planner does not slice through them to maximize
+playing time. Mandatory short solos retain their primary path.
+Search limits retain a feasible result. Unsupported local
 gestures do not exclude every supported phrase in the same source.
 
 These are deterministic heuristics, not calibrated probabilities or a guarantee
-that every ambiguous musical choice matches a player's preference.
+that every ambiguous musical choice matches a player's preference. Section-level
+ownership cannot resolve every unmarked exchange within one section. Listening
+and playing review remains necessary for those cases.
 
 ## Source copying and independent evidence
 
@@ -69,6 +93,8 @@ Planning uses performed score coordinates, including repeat occurrences. Existin
 alignment and endpoint policies remain authoritative. Materialization copies
 supported events from already retimed originals, retaining technique fields and
 applying timing once. Templates are remapped without changing note contents.
+Unused template shapes above fret 24 are pruned because their muted/pick-scrape
+validity requires actual chord references. Referenced shapes remain intact.
 Optional practice difficulty is generated from the completed derived chart.
 
 `import/hybrid-lead.json` records options, source/audio identity, fixed setup,
@@ -82,7 +108,8 @@ incompatible tuning or an unsupported gesture. Accepted simultaneous voices are
 explained as alternatives. `addedSeconds` and `selectedSeconds` describe selected
 passage spans, not uninterrupted playing or note density.
 
-Preservation contract **34**, receipt version **3** and the explicit v3 policy
+Preservation contract **35**, receipt version **3**, selection revision **2** and
+the explicit v3 policy
 prevent prior results from satisfying new requests. Historical policy audit
 paths remain; older evidence is not presented as current verification. Queue
 publication requires current independent proof tied to the exact staged file.
@@ -91,7 +118,21 @@ publication requires current independent proof tied to the exact staged file.
 hashes and lineage. `verify_hybrid_priority.py` independently reconstructs hard
 source relationships and conservative named/dedicated solo requirements without
 importing selection code. Busy rhythm cannot satisfy another guitarist's solo
-merely by changing receipt roles. Unsupported omissions need local evidence.
+merely by changing receipt roles. Its categorical melody/backing contrasts are
+separate from the producer's numerical ranking. Unsupported omissions need local
+evidence, including wholly unsupported named solos. The audit declares its scope:
+it does not prove every unnamed foreground choice or subjective musical quality.
+Counts distinguish requirements in playable charts from named requirements
+containing unsupported raw source material that need local disclosure.
+
+`complete` coverage means identified lead requirements are accounted for; it
+does not mean every moment of source guitar activity has been filled. The
+`tabActivity` report measures unions of retained non-ghost guitar note durations
+in recording time. It reports unfilled spans separately for incompatible setup
+and available compatible material. The verifier recomputes these values from the
+verified original charts and actual Hybrid Lead. These are tab durations, not an
+audio analysis, and projected-out high frets remain in their separate omission
+report. The import result exposes unfilled regions of at least one second.
 
 Notation is selected by source identity/occurrence as well as phrase times.
 Where a contributing source has a notation limitation, the result declares
@@ -105,7 +146,9 @@ Tests cover fixed tuning, incompatible solo fallback, alternating soloists,
 single-guitar behavior, original preservation, nonlinear timing, connected
 techniques, same-source polyphony, source order, duplicate sources, bounded
 fallback, local omissions and deliberately forged membership/ownership evidence.
-Small optimizer instances are compared with exhaustive enumeration.
+Small optimizer instances are compared with exhaustive enumeration. A bounded
+actual-source Master of Puppets fixture requires James's 66-event melodic solo
+on the rhythm-labelled track and rejects self-consistent backing substitutions.
 
 Per-song retained-corpus results are recorded separately. This corpus informed
 the design and is a regression set, not an unbiased generalization estimate.

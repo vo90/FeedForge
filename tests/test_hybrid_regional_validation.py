@@ -171,6 +171,26 @@ def test_short_parallel_solo_cannot_erase_another_solo_tail(tmp_path, monkeypatc
             receipt = json.loads(z.read('import/hybrid-lead.json'))
         assert [(p['trackId'], p['start'], p['end']) for p in receipt['passages']] == [('2', 4, 8), ('1', 8, 12)]
         assert receipt['coverage']['status'] == 'complete'
+        assert any(limit['trackId'] == '1' and limit['reason'] == 'alternate_voice' for limit in receipt['limitations'])
+
+
+def test_parallel_solo_with_unique_tail_remains_complete_when_it_is_the_base(tmp_path):
+    from zipfile import ZipFile
+    from test_songsterr_hybrid_lead import build
+    doc = raw_score([measure(beat(3)) for _ in range(4)])
+    doc['tracks'][0]['name'] = 'Rhythm Guitar'
+    for tid, name in [(1, 'Guitar Solo A'), (2, 'Guitar Solo B')]:
+        doc['tracks'].append({**deepcopy(doc['tracks'][0]), 'id': tid, 'name': name})
+    doc['parts'].append({'measures': [measure(rest()), measure(beat(12)), measure(beat(14)), measure(rest())]})
+    doc['parts'].append({'measures': [measure(rest()), measure(beat(17)), measure(rest()), measure(rest())]})
+    *_, archive, report = build(tmp_path, doc, overrides={'mainTrackId': '1', 'preferredTrackIds': ['2']})
+    assert report['status'] == 'passed', report
+    with ZipFile(archive) as z:
+        receipt = json.loads(z.read('import/hybrid-lead.json'))
+    assert any(p['trackId'] == '2' and p['start'] == 4 and p['end'] == 8 for p in receipt['passages'])
+    assert len(receipt['mainEvents']) == 1 and len(receipt['removedMain']) == 1
+    assert receipt['coverage']['status'] == 'complete'
+    assert any(limit['trackId'] == '1' and limit['reason'] == 'alternate_voice' for limit in receipt['limitations'])
 
 
 @pytest.mark.parametrize('label', ['Pre-Solo (Adrian Smith)', 'Post Solo (Adrian Smith)', 'Tenor Saxophone Solo (Adrian Smith)'])
@@ -225,6 +245,33 @@ def test_planner_budget_cannot_excuse_missing_known_solo(tmp_path):
     receipt = receipt_for(rows, use_adrian=False, limited=True,
                           limitations=[{'trackId': '1', 'start': 4, 'end': 8, 'reason': 'planning_limit'}])
     assert 'hybrid_primary_coverage' in {e['code'] for e in inspect(source, facts, charts, receipt).errors}
+
+
+@pytest.mark.parametrize('requirement', ['inferred', 'named', 'dedicated'])
+def test_retained_base_physical_conflict_never_excuses_independently_required_solo(tmp_path, requirement):
+    source, facts, _, charts, rows = source_case(tmp_path, dedicated=requirement == 'dedicated')
+    if requirement != 'named':
+        for bar in source.bars:
+            bar.section = ''
+    receipt = receipt_for(rows, use_adrian=False, limited=True,
+                          limitations=[{'trackId': '1', 'start': 4, 'end': 8, 'reason': 'conflicting_primary'}])
+    # These forged priority claims must not give base backing a musical right
+    # to suppress either a named solo or an independently dedicated solo.
+    receipt['primaryEpisodes'] = [{'trackId': '0', 'start': 4, 'end': 8, 'evidence': 'named_soloist'}]
+    result = inspect(source, facts, charts, receipt)
+    if requirement == 'inferred':
+        assert not result.errors
+    else:
+        assert {'hybrid_regional_limitation', 'hybrid_primary_coverage'} <= {e['code'] for e in result.errors}
+
+
+def test_retained_base_conflict_requires_real_selected_overlap(tmp_path):
+    source, facts, _, charts, rows = source_case(tmp_path)
+    for bar in source.bars:
+        bar.section = ''
+    receipt = receipt_for(rows, use_adrian=False, limited=True,
+                          limitations=[{'trackId': '1', 'start': 3, 'end': 9, 'reason': 'conflicting_primary'}])
+    assert 'hybrid_regional_limitation' in {e['code'] for e in inspect(source, facts, charts, receipt).errors}
 
 
 def test_unsupported_ending_is_local_and_does_not_erase_supported_solo(tmp_path):

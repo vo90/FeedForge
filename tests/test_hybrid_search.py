@@ -71,13 +71,14 @@ def test_input_order_does_not_change_the_selected_sources():
         assert [(values[i]['trackId'], values[i]['start'], values[i]['end']) for i in result['indices']] == expected
 
 
-def independent_score(path, preferred):
+def independent_score(path, preferred, left_anchor=None, right_anchor=None):
     """The documented utility, evaluated independently for exhaustive checks."""
     activity = sum(round(p['activeQuarterBeats'] * 1_000_000) for p in path)
     priority = tuple(sum(round(p['activeQuarterBeats'] * 1_000_000) for p in path if p['trackId'] == tid)
                      for tid in preferred)
     switches = 0
     movement = 0
+    anchored_cost = 0
     for left, right in zip(path, path[1:]):
         same = left['trackId'] == right['trackId']
         if left['end'] + (0 if same else .25) > right['start'] + 1e-7:
@@ -85,7 +86,22 @@ def independent_score(path, preferred):
         switches += int(not same)
         if not same:
             movement += round(abs(left['exitFret'] - right['entryFret']) * 10_000)
-    return (priority, activity - 500_000 * switches - movement, -switches, activity,
+    if path:
+        for left, right, sign in ((left_anchor, path[0], 1), (path[-1], right_anchor, 1),
+                                  (left_anchor, right_anchor, -1)):
+            if left is None or right is None or left['trackId'] == right['trackId']:
+                continue
+            relief = max(1, right['start'] - left['end'])
+            distance = abs(left['exitFret'] - right['entryFret']) * 10_000
+            # Internal motion is in movement; anchored movement is included in
+            # anchored_cost so it is not subtracted twice from total utility.
+            anchored_cost += sign * round((500_000 + distance) / relief)
+            movement += sign * round(distance / relief)
+            switches += sign
+    internal_switches = sum(left['trackId'] != right['trackId'] for left, right in zip(path, path[1:]))
+    internal_movement = sum(round(abs(left['exitFret'] - right['entryFret']) * 10_000)
+                            for left, right in zip(path, path[1:]) if left['trackId'] != right['trackId'])
+    return (priority, activity - 500_000 * internal_switches - internal_movement - anchored_cost, -switches, activity,
             -len(path), len(path) * 2, -movement)
 
 
@@ -112,6 +128,79 @@ def test_bounded_dag_matches_exhaustive_small_phrase_plans():
         assert not result['budgetLimited']
         assert result['states'] == len(candidates)
         assert result['operations'] <= len(candidates) * (len(candidates) - 1) // 2
+
+
+@pytest.mark.parametrize('budget', [{}, {'max_states': 0}, {'max_operations': 0}])
+def test_fixed_entry_and_return_reject_a_tiny_low_fret_detour(budget):
+    left = phrase('main', 0, 3.75, fret=18)
+    right = phrase('main', 4.75, 8, fret=17)
+    result = select_passages([phrase('extra', 4, 4.5, fret=5)], guard,
+                             left_anchor=left, right_anchor=right, **budget)
+    assert result['indices'] == []
+    assert result['utilityQuarterBeats'] == 0
+
+
+@pytest.mark.parametrize('budget', [{}, {'max_states': 0}, {'max_operations': 0}, {'max_candidates': 1}])
+def test_fixed_return_movement_beats_alphabetical_source_order(budget):
+    candidates = [phrase('a-low', 1, 4, fret=2), phrase('z-near', 1, 4, fret=14)]
+    left = phrase('main', -1, 0, fret=15)
+    right = phrase('main', 5, 6, fret=16)
+    for values in (candidates, list(reversed(candidates))):
+        result = select_passages(values, guard, left_anchor=left, right_anchor=right, **budget)
+        assert [values[i]['trackId'] for i in result['indices']] == ['z-near']
+        assert len(result['transitions']) == 2
+        assert all(edge['fixedBoundary'] for edge in result['transitions'])
+
+
+def test_long_authored_rests_allow_a_useful_one_beat_fill():
+    result = select_passages([phrase('rhythm', 4, 5, fret=5)], guard,
+                             left_anchor=phrase('main', -1, 0, fret=9),
+                             right_anchor=phrase('main', 9, 10, fret=12))
+    assert result['indices'] == [0]
+    assert result['utilityQuarterBeats'] > .7
+
+
+def test_same_source_fixed_continuation_does_not_pay_a_source_switch():
+    result = select_passages([phrase('lead', 1, 1.125, fret=8)], guard,
+                             left_anchor=phrase('lead', -1, 0, fret=9),
+                             right_anchor=phrase('lead', 2, 3, fret=12))
+    assert result['indices'] == [0]
+    assert result['switches'] == 0
+    assert result['utilityQuarterBeats'] == .125
+
+
+def test_fixed_anchor_uses_the_ending_of_a_complete_connected_gesture():
+    from feedback_converter.song_import.hybrid_lead import _fixed_events
+    rows = [{'kind': 'notes', 'index': i, 'start': 0, 'end': 4,
+             'notes': [{'t': i, 'f': fret, 's': 1}]} for i, fret in enumerate((5, 17))]
+    primary = {'rows': {'main': rows}, 'mainEvents': [{'kind': 'notes', 'index': i} for i in range(2)],
+               'passages': []}
+    anchors = _fixed_events(primary, {'id': 'main'}, {}, None)
+    assert anchors == [{'trackId': 'main', 'start': 0, 'end': 4, 'entryFret': 5, 'exitFret': 17}]
+
+
+def test_anchor_aware_dag_matches_independent_exhaustive_plans():
+    rng = random.Random(729103)
+    for _ in range(60):
+        candidates = []
+        for i in range(7):
+            start = rng.randrange(1, 25) / 4
+            end = start + rng.randrange(1, 9) / 4
+            candidates.append(phrase(str(rng.randrange(3)), start, end,
+                                     active=(end - start) * rng.choice((.25, .5, 1)), fret=rng.randrange(1, 23)))
+        left = phrase(str(rng.randrange(3)), -2, -1, fret=rng.randrange(1, 23))
+        right = phrase(str(rng.randrange(3)), 9, 10, fret=rng.randrange(1, 23))
+        preferred = ['2'] if rng.randrange(2) else []
+        possible = []
+        for length in range(len(candidates) + 1):
+            for subset in combinations(candidates, length):
+                path = sorted(subset, key=lambda p: (p['end'], p['start'], p['trackId']))
+                score = independent_score(path, preferred, left, right)
+                if score is not None:
+                    possible.append(score)
+        result = select_passages(candidates, guard, preferred, left_anchor=left, right_anchor=right)
+        actual = independent_score([candidates[i] for i in result['indices']], preferred, left, right)
+        assert actual == max(possible)
 
 
 def test_local_omissions_reserve_the_written_slot_only():

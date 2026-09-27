@@ -68,6 +68,26 @@ def test_shared_technique_closure_keeps_the_pickup_before_ownership():
     assert passage['start'] == 3.75
 
 
+@pytest.mark.parametrize('bounded', [False, True])
+def test_labelled_solo_preserves_whole_opening_over_longer_inferred_chorus_tail(monkeypatch, bounded):
+    chorus = evidence('chorus', 'backing', 0, 10, 'regional_lead', ownedStart=0, ownedEnd=8)
+    solo = evidence('solo', 'lead', 7.5, 16, 'regional_lead', ownedStart=8, ownedEnd=16, labelledSolo=True)
+    chorus_rows = [event(0, 0, 6), event(1, 6, 10)]
+    # The pickup and first solo attack are one connected bend gesture.
+    solo_rows = [event(0, 7.5, 10), event(1, 8, 10, start=7.5), event(2, 10, 16)]
+    complete_chorus = regional._passage(chorus, chorus_rows, clock(), 0, 8)
+    complete_solo = regional._passage(solo, solo_rows, clock(), 8, 16)
+    late_solo = regional._passage(solo, solo_rows, clock(), 10, 16)
+    required = {'chorus': frozenset((r['kind'], r['index']) for r in chorus_rows),
+                'solo': frozenset((r['kind'], r['index']) for r in solo_rows)}
+    if bounded:
+        monkeypatch.setattr(regional, 'MAX_PRIMARY_EDGES', 0)
+    selected, _ = regional._select([complete_chorus, complete_solo, late_solo], [chorus, solo], 'lead', [], required)
+    assert [p['trackId'] for p in selected] == ['lead']
+    assert selected[0]['start'] == 7.5
+    assert {r['index'] for r in selected[0]['events']} == {0, 1, 2}
+
+
 def test_zero_optional_variant_budget_keeps_full_known_primary_candidates(tmp_path, monkeypatch):
     from test_hybrid_lead_priority import solo_song
     from test_songsterr_hybrid_lead import prepared
@@ -214,3 +234,52 @@ def test_same_source_composite_cannot_bridge_an_unselected_source_event():
     a = regional._passage(first, [rows[0]], clock(), 0, 4)
     b = regional._passage(second, [rows[2]], clock(), 4, 8)
     assert regional._coalesced([a, b], {'1': rows}, clock(), {'a': first, 'b': second}, '0', [], {}) == []
+
+
+def test_extra_lead_does_not_reserve_a_gap_before_optional_optimization(tmp_path, monkeypatch):
+    from test_songsterr_hybrid_lead import song, prepared
+    from feedback_converter.song_import import hybrid_selection
+    from feedback_converter.song_import.hybrid_lead import plan
+    doc = song()
+    doc['tracks'][1]['name'] = 'Additional Lead Guitar'
+    _, performance, options = prepared(tmp_path, doc, overrides={'mainTrackId': '0'})
+    monkeypatch.setattr(hybrid_selection, 'regional_candidates', lambda *args, **kwargs: [])
+    primary = regional.backbone(performance, options, '0', {'offset': 0, 'scale': 1}, 8)
+    assert primary['passages'] == []
+    result = plan(performance, options, '0', {'offset': 0, 'scale': 1}, 8)
+    assert any(p['trackId'] == '1' and p['priority'] == 'accompaniment' for p in result['passages'])
+    assert result['selection']['algorithm'] == 'bounded-whole-phrase-dag-v2'
+
+
+def test_named_half_beat_solo_is_not_rejected_by_optional_fill_costs(tmp_path, monkeypatch):
+    from test_songsterr_hybrid_lead import song, prepared, rest
+    from test_song_import_score import beat, measure
+    from feedback_converter.song_import import hybrid_selection
+    from feedback_converter.song_import.hybrid_lead import plan
+    doc = song()
+    doc['parts'][1]['measures'][1] = measure(beat(12, duration=(1, 8)), rest((7, 8)))
+    _, performance, options = prepared(tmp_path, doc, overrides={'mainTrackId': '0'})
+    mandatory = [evidence('tiny-solo', '1', 4, 4.5)]
+    monkeypatch.setattr(hybrid_selection, 'regional_candidates', lambda *args, **kwargs: deepcopy(mandatory))
+    result = plan(performance, options, '0', {'offset': 0, 'scale': 1}, 8)
+    solo = next(p for p in result['passages'] if p['trackId'] == '1')
+    assert solo['evidence'] == 'named_soloist'
+    assert solo['start'] == 4 and solo['end'] == 4.5
+    assert solo['priority'] == 'solo'
+
+
+def test_optional_lead_phrase_cannot_be_sliced_at_a_base_gap(tmp_path, monkeypatch):
+    from test_songsterr_hybrid_lead import song, prepared, rest
+    from test_song_import_score import beat, measure
+    from feedback_converter.song_import import hybrid_selection
+    from feedback_converter.song_import.hybrid_lead import plan
+    doc = song()
+    doc['tracks'][1]['name'] = 'Additional Lead Guitar'
+    doc['parts'][1]['measures'] = [measure(beat(5, duration=(1, 4)), beat(7, duration=(1, 4)), rest((1, 2))),
+                                    measure(rest()), measure(rest()), measure(rest())]
+    _, performance, options = prepared(tmp_path, doc, overrides={'mainTrackId': '0'})
+    monkeypatch.setattr(hybrid_selection, 'regional_candidates', lambda *args, **kwargs: [])
+    result = plan(performance, options, '0', {'offset': 0, 'scale': 1}, 8)
+    assert not any(p['trackId'] == '1' for p in result['passages'])
+    assert any(p['trackId'] == '1' and p['start'] == 0 and p['end'] == 2
+               and p['reason'] == 'crosses_primary_material' for p in result['candidateDecisions'])

@@ -333,6 +333,7 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         else:
             from .hybrid_lead import plan
             from .hybrid_materialize import materialize
+            from .hybrid_reporting import SELECTION_REVISION, activity_summary
             planning = deepcopy(performance)
             # Preserve raw evidence before high-fret projection so a local
             # unsupported gesture cannot erase an otherwise supported solo.
@@ -343,8 +344,10 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             planning["hybridRawTracks"] = original_tracks
             planning["hybridSourceOmissions"] = [*(omissions or {}).get("notes", []), *(omissions or {}).get("links", [])]
             composition = plan(planning, options, main_id, alignment, duration, original_charts)
+            composition['selectionRevision'] = SELECTION_REVISION
             chart, notation, derived, receipt = materialize(composition, original_charts, options,
                 recipe["scoreHash"], recipe["audioHash"], duration, settings.get("generateDifficulty") is True)
+            receipt['tabActivity'] = activity_summary(original_charts, performance['tracks'], main_id, chart)
             if derived["id"].lower() in used:
                 raise ImportFailure("hybrid_failed", "The derived arrangement ID collides with a source track.")
             _write_json(package / derived["file"], chart)
@@ -358,6 +361,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
                 "addedSeconds": receipt['addedSeconds'], "selectedSeconds": receipt['selectedSeconds'],
                 "primaryPassages": sum(p.get('priority') in {'solo','lead'} for p in receipt['passages']),
                 "replacedMainEvents": len(receipt.get('removedMain', [])), "coverageStatus": receipt['coverage']['status'],
+                "coverageScope": "identified_lead_requirements", "selectionRevision": SELECTION_REVISION,
+                "tabActivity": receipt['tabActivity'],
                 "baseTuning": receipt['baseSelection']['setup']['tuning'], "baseCapo": receipt['baseSelection']['setup']['capo'],
                 "limitations": [{**row, "name": next((t['name'] for t in performance['tracks'] if t['id'] == row['trackId']), row['trackId'])} for row in receipt.get('limitations', [])],
                 "planningLimited": bool(receipt.get('primaryBudgetLimited') or receipt.get('selection', {}).get('budgetLimited')),

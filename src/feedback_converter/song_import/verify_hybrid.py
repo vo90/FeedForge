@@ -84,6 +84,8 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
     check.equal("hybrid_receipt", "song_import/hybridLeadFile", "import/hybrid-lead.json", recipe.get("hybridLeadFile"))
     from .verification import _json
     receipt = _json(z, "import/hybrid-lead.json", check)
+    if regional_policy and recipe.get('preservationContract', 0) >= 35:
+        check.equal('hybrid_selection_revision', 'hybrid/selectionRevision', 2, receipt.get('selectionRevision'))
     for key, expected in (("version", 3 if regional_policy else 2 if primary_policy else 1), ("policy", policy), ("sourceSha256", source_hash), ("options", options), ("audioSha256", recipe.get("audioHash"))):
         check.equal("hybrid_receipt", "hybrid/" + key, expected, receipt.get(key))
     if "archiveSha256" in receipt or "outputHash" in receipt:
@@ -167,10 +169,11 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
         origin = clock.measure_starts[occurrence]
         occupied_q.extend((float(origin + b["q"]), float(origin + b["q"] + b["length"])) for b in main_part.beats[bi] if not b["rest"])
     occupied_q.extend((quarter_at(a), quarter_at(b)) for a, b in protected)
+    musical_audit = {}
     if primary_policy:
         from .verify_hybrid_priority import audit
         all_charts = {a['id']: _json(z, a['file'], check) for a in originals if a.get('type') in {'guitar','lead','rhythm'}}
-        kept, removed, event_facts, primary_protected = audit(all_charts, receipt, facts, options, quarter_at, at, manifest['duration'], source.format, check, source=source)
+        kept, removed, event_facts, primary_protected = audit(all_charts, receipt, facts, options, quarter_at, at, manifest['duration'], source.format, check, source=source, musical_audit=musical_audit)
         for kind in ('notes','chords'):
             expected_chart[kind] = [e for i,e in enumerate(main[kind]) if (kind,i) in kept]
         occupied_q = [(event_facts[main_id][k]['start'],event_facts[main_id][k]['end']) for k in kept]
@@ -329,13 +332,29 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
         expected_chart[key].sort(key=lambda e: e["t"])
     if primary_policy:
         referenced = {c['id'] for c in expected_chart['chords']}
-        indices = [i for i,t in enumerate(expected_chart['templates']) if i in referenced or 127 not in t['frets']]
+        indices = [i for i,t in enumerate(expected_chart['templates']) if i in referenced or max(t['frets'], default=-1) <= 24]
         ids = {old:new for new,old in enumerate(indices)}
         expected_chart['templates'] = [expected_chart['templates'][i] for i in indices]
         for chord in expected_chart['chords']:
             chord['id'] = ids[chord['id']]
     actual_chart = {k: v for k, v in chart.items() if k not in {"phrases", "ext"}}
     check.equal("hybrid_chart", arr["file"], expected_chart, actual_chart)
+    if regional_policy and recipe.get('preservationContract', 0) >= 35:
+        # Interval arithmetic is descriptive, not a shared musical oracle.
+        # Rebuild its inputs from independently verified originals and the
+        # actual hybrid chart; receipt text cannot excuse absent activity.
+        from .hybrid_reporting import activity_summary
+        tracks = [{'id': tid, 'name': part['source'].name, 'instrument': part['source'].instrument,
+                   'tuning': list(part['source'].tuning), 'capo': part['source'].capo}
+                  for tid, part in parts.items()]
+        activity = activity_summary({tid: {'chart': original} for tid, original in all_charts.items()},
+                                    tracks, main_id, chart)
+        check.equal('hybrid_tab_activity', 'hybrid/tabActivity', activity, receipt.get('tabActivity'))
+        summary = recipe.get('hybridLeadResult', {})
+        check.equal('hybrid_tab_activity', 'song_import/hybridLeadResult/tabActivity', activity, summary.get('tabActivity'))
+        check.equal('hybrid_selection_revision', 'song_import/hybridLeadResult/selectionRevision', 2, summary.get('selectionRevision'))
+        check.equal('hybrid_coverage_scope', 'song_import/hybridLeadResult/coverageScope',
+                    'identified_lead_requirements', summary.get('coverageScope'))
     check.equal("hybrid_status", "hybrid/status", "created" if receipt.get("passages") else "no_additions", receipt.get("status"))
     check.equal("hybrid_count", "arrangements/event_count", len(chart["notes"]) + len(chart["chords"]), arr.get("event_count"))
     check.equal("hybrid_count", "arrangements/note_count", len(chart["notes"]) + sum(len(c["notes"]) for c in chart["chords"]), arr.get("note_count"))
@@ -345,7 +364,8 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
     elif receipt.get("notationStatus") != "source_only":
         check.fail("hybrid_notation", "hybrid", "Notation was lost without a declared source limitation.")
     return {"status": receipt["status"], "passageCount": len(receipt.get("passages", [])), "mainTrackId": main_id,
-            **({'policy': policy, 'primaryCoverage': 'checked'} if primary_policy else {})}
+            **({'policy': policy, 'primaryCoverage': 'checked'} if primary_policy else {}),
+            **({'musicalAudit': musical_audit} if regional_policy else {})}
 
 
 def _notation(z, arr, receipt, source_rows, check):
