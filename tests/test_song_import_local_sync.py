@@ -141,6 +141,31 @@ def test_worker_repair_uses_real_encoded_audio_and_independent_source(tmp_path,m
         assert verify_import(source,archive,changed)['status']=='failed'
 
 
+def test_worker_audit_maps_rational_terminal_boundary_only_once(tmp_path,monkeypatch):
+    import json
+    from feedback_converter.song_import import worker, audio as audio_module
+    raw={'format':'songsterr','songId':12,'revisionId':34,'title':'Rational ending','artist':'Synthetic',
+         'tracks':[{'id':0,'name':'Lead','instrumentId':29,'tuning':[64,59,55,50,45,40]}],
+         'parts':[{'automations':{'tempo':[{'measure':0,'position':0,'bpm':115}]},'measures':[
+             {'signature':[4,4],'voices':[{'beats':[{'duration':[1,1],'notes':[{'string':5,'fret':5}]}]}]}
+             for _ in range(3)]}]}
+    source=tmp_path/'source.json';source.write_text(json.dumps(raw),encoding='utf8')
+    rate=22050;recording=tmp_path/'recording.wav'
+    sf.write(recording,.15*np.sin(2*np.pi*110*np.arange(rate*8)/rate),rate,subtype='FLOAT')
+    monkeypatch.setattr(audio_module,'_public_url',lambda url:url)
+    monkeypatch.setattr(audio_module,'_download_youtube',lambda *a,**kw:(recording,{'kind':'youtube','videoId':'abcdefghijk'}))
+    result=worker.run_import({'scorePath':str(source),'audio':{'kind':'url','url':'https://youtu.be/abcdefghijk'},
+        'artworkLookup':False,'metadata':{'songId':'12','revisionId':'34','approval':'approved'},
+        'synchronization':{'version':1,'source':'songsterr-video-points','songId':'12','revisionId':'34',
+            'videoId':'abcdefghijk','status':'done','feature':None,'points':[0,2.1,4.2,6.3]},
+        'workDir':str(tmp_path/'work'),'outputDir':str(tmp_path/'out')})
+    # 720/115 seconds rounds upwards past the exact last score boundary.
+    # This must not be rejected by the diagnostic audit's second interpolation.
+    assert result['ok'],result
+    assert result['verification']['status']=='passed'
+    assert result['verification']['timingAssessment']['everyNoteVerified'] is False
+
+
 @pytest.mark.parametrize('offset',[0,.26,-.26])
 def test_clock_audit_distinguishes_supported_from_displaced_patterns(offset):
     duration=50

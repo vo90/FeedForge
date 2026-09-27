@@ -666,14 +666,11 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             _finite(manifest, "manifest", check)
             recipe = manifest.get("song_import", {})
             if alignment.get('timingAssessment') or recipe.get('timingAssessmentFile'):
-                from .local_sync import assess, independent_tracks, compare_assessment
-                tracks,_=independent_tracks(source)
-                from .verify_timeline import RecordingMap
-                recording=RecordingMap(alignment)
-                for track in tracks:
-                    for event in track['events']:
-                        event['t']=recording.at(event['t'])
-                        event['end']=recording.at(event['end'])
+                from .local_sync import assess, tracks_from_expected, compare_assessment
+                # The independent evaluator maps exact rational source times.
+                # Re-mapping its rounded unaligned output could put a terminal
+                # sustain just outside the score domain or shift an FFT frame.
+                tracks=tracks_from_expected(wanted)
                 full=[s for s in manifest.get('stems',[]) if s.get('id')=='full']
                 if len(full)!=1:raise ValueError('Timing assessment requires one full recording.')
                 stored=_json(z,recipe.get('timingAssessmentFile',''),check)

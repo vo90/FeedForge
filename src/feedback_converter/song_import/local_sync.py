@@ -281,9 +281,8 @@ def repair(performance, audio, synchronization, metadata):
     return result
 
 
-def independent_tracks(source):
-    from .verify_timeline import expected, Clock, visits
-    wanted=expected(source,{'offset':0,'scale':1})
+def tracks_from_expected(wanted):
+    """Use the independent evaluator's final clock without rounding it twice."""
     tracks=[]
     for part in wanted['parts']:
         src=part['source']
@@ -294,8 +293,14 @@ def independent_tracks(source):
                 'midi':src.tuning[n['s']]+src.capo+n['f'] if n['f']!=127 else None,
                 'effects':{k:v for k,v in n.items() if k not in {'t','sus','s','f'}}})
         tracks.append({'id':src.id,'instrument':src.instrument,'events':events})
+    return tracks
+
+
+def independent_tracks(source):
+    from .verify_timeline import expected, Clock, visits
+    wanted=expected(source,{'offset':0,'scale':1})
     clock=Clock(source,visits(source))
-    return tracks,[float(clock.at(q)) for q in [*clock.measure_starts,clock.quarters]]
+    return tracks_from_expected(wanted),[float(clock.at(q)) for q in [*clock.measure_starts,clock.quarters]]
 
 
 def verify_repair(source, alignment, stored, path, check):

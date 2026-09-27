@@ -86,7 +86,12 @@ relative numerical differences at FFT frame boundaries. Decisions, offsets,
 coverage, recording identity and the microsecond chart checks remain exact under
 their existing contracts. Diagnostic metric tolerance cannot authorize a cutoff.
 
-Source tests: 1,769 passed, five existing skips; desktop/JavaScript tests: 771
+The independent acoustic audit consumes the evaluator's mapped rational source
+events directly. It never rounds score seconds and then maps them a second time;
+that could incorrectly put a valid terminal sustain outside its timing domain.
+
+Source tests: 1,771 passed, five existing skips; desktop/JavaScript tests: 771
 passed, two existing skips. The final UI subset adds a preparation/repair/evidence
-rendering check (19 passed). The shared-runtime and retained-corpus results are
+rendering check (19 passed). The final clock regression and focused tests pass
+56 checks. The shared-runtime and retained-corpus results are
 recorded in the workspace verification report after acceptance.
