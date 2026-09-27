@@ -26,10 +26,13 @@ def authorize(performance, audio, alignment):
     report = assess(mapped_tracks(performance, alignment), audio["path"], audio["duration"], alignment["provenance"]["mapHash"])
     alignment["recordingSync"] = report
     if report["status"] != "supported":
-        raise ImportFailure("alignment_failed", "The earlier tab could not be matched reliably to this recording, so ending notes were not removed.",
+        raise ImportFailure("alignment_failed", "The earlier tab could not be matched reliably to this recording, so its ending was not shortened.",
                             {"sourceSyncReason": "ending_sync_inconclusive", "recordingSync": report})
     alignment["recordingEnd"] = {"version": 1, "policy": POLICY, "audioDuration": audio["duration"],
                                  "finalMeasureStart": alignment["anchors"][-2]["audio"], "syncEvidenceHash": digest(report)}
+    if (alignment.get("endingCandidate") or {}).get("directionalSlides"):
+        from .terminal_sustains import slides_policy_for
+        alignment["terminalSlides"] = slides_policy_for(audio["duration"])
     alignment.pop("endingCandidate", None)
     alignment["status"] = "validated"
     alignment["provenance"]["terminalBeyondAudio"] = "recorded_ending_cutoff"

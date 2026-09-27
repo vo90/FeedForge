@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 32
+VERSION = 33
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -413,8 +413,16 @@ def _terminal_adjustments(wanted, alignment, recipe, archive, duration, source, 
     gesture cannot validate itself just by being listed in its own report.
     """
     policy = alignment.get("terminalSustains")
+    slide_policy = alignment.get("terminalSlides")
+    from .terminal_sustains import slides_policy_for
+    slide_authorized = (slide_policy == slides_policy_for(duration)
+                        and recipe.get("terminalSlides") == slide_policy
+                        and recipe.get("preservationContract", 0) >= 33
+                        and alignment.get("recordingEnd") is not None)
+    if (slide_policy is not None or recipe.get("terminalSlides") is not None) and not slide_authorized:
+        check.fail("slide_cutoff_policy", "import", "The slide-out cutoff has no current recording-end authority.")
     if not policy:
-        if recipe.get("terminalSustains") or recipe.get("adjustmentsFile"):
+        if recipe.get("terminalSustains") or recipe.get("adjustmentsFile") or slide_policy is not None:
             check.fail("unexpected_adjustments", "import", "The package declares adjustments absent from its verified recording map.")
         return None
     required = {"version": 1, "policy": "trim-final-sustain-v1", "audioDuration": duration}
@@ -424,7 +432,7 @@ def _terminal_adjustments(wanted, alignment, recipe, archive, duration, source, 
         check.fail("adjustment_policy", "import", "The final-sustain policy or recording identity is invalid.")
         return None
     cutoff = math.floor(duration * 1_000_000) / 1_000_000
-    changes = []
+    changes, slide_count = [], 0
     for part in wanted["parts"]:
         for item in part["notes"]:
             note = item["note"]
@@ -470,13 +478,24 @@ def _terminal_adjustments(wanted, alignment, recipe, archive, duration, source, 
                     or any(k in note and note[k] is not None and note[k] != -1 for k in ("sl", "slu"))
                     or note.get("slide_out") and not note.get("slide_out_marks")
                     or note.get("bn") and not note.get("bnv")
-                    or any(p["end"] > shortened + TIME_TOLERANCE for p in note.get("slide_out_marks", []))
+                    or not slide_authorized and any(p["end"] > shortened + TIME_TOLERANCE for p in note.get("slide_out_marks", []))
                     or any(p["time"] > shortened + TIME_TOLERANCE for p in note.get("slide_in_marks", []))):
                 check.fail("adjustment_technique", item["locations"][0], "Shortening this note would change an authored bend or slide.")
                 continue
+            slide_changes = []
+            for index, mark in enumerate(note.get("slide_out_marks", [])):
+                if mark["end"] > shortened + TIME_TOLERANCE:
+                    if mark["start"] >= shortened:
+                        check.fail("slide_cutoff_start", item["locations"][0], "The cutoff would omit a slide segment's start.")
+                        continue
+                    slide_changes.append({"index": index, "direction": mark["direction"], "start": mark["start"],
+                                          "originalEnd": mark["end"], "exportedEnd": shortened})
+                    mark["end"] = shortened
+            slide_count += len(slide_changes)
             changes.append({"trackId": part["source"].id, "string": note["s"], "fret": note["f"],
                             "audioStart": round(start, 6), "originalDuration": round(sustain, 6),
-                            "exportedDuration": shortened, "trimmedSeconds": round(sustain - shortened, 6)})
+                            "exportedDuration": shortened, "trimmedSeconds": round(sustain - shortened, 6),
+                            **({"slideOuts": slide_changes} if slide_changes else {})})
             note["sus"] = shortened
             if "pick_scrape_marks" in note:
                 note["pick_scrape_marks"] = [{**m, "end": min(m["end"], shortened)}
@@ -487,7 +506,11 @@ def _terminal_adjustments(wanted, alignment, recipe, archive, duration, source, 
                 note["bnv"] = curve
     if not changes:
         check.fail("empty_adjustments", "import", "The package declares sustain adjustments without affected source notes.")
+    if slide_policy is not None and not slide_count:
+        check.fail("empty_slide_adjustments", "import", "The slide-out cutoff has no affected source interval.")
     detail = _json(archive, recipe.get("adjustmentsFile", ""), check)
+    if slide_policy is not None:
+        required = {**required, "directionalSlides": slide_policy}
     check.equal("adjustment_header", "import/adjustments", required, {k:v for k,v in detail.items() if k != "notes"})
     recorded = detail.get("notes")
     if not isinstance(recorded, list) or any(not isinstance(n, dict) for n in recorded):
@@ -499,18 +522,19 @@ def _terminal_adjustments(wanted, alignment, recipe, archive, duration, source, 
         where = f"import/adjustments/notes/{index}"
         check.equal("adjustment_fields", where, sorted(a), sorted(b))
         for field, value in a.items():
-            if field in {"trackId", "string", "fret"}:
+            if field in {"trackId", "string", "fret", "slideOuts"}:
                 check.equal("adjustment_identity", where + "/" + field, value, b.get(field))
             else:
                 check.near("adjustment_value", where + "/" + field, value, b.get(field))
-    return {"terminalSustains": len(changes), "maxShorteningSeconds": max((n["trimmedSeconds"] for n in changes), default=0)}
+    return {"terminalSustains": len(changes), "maxShorteningSeconds": max((n["trimmedSeconds"] for n in changes), default=0),
+            **({"terminalSlideOuts": slide_count} if slide_count else {})}
 
 
 def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, check, manifest, timing):
     """Independently derive omissions, then recheck audio from the raw-source map."""
     policy = alignment.get("recordingEnd")
     if not policy:
-        if any(recipe.get(k) for k in ("recordingEnd", "endingOmissionsFile", "recordingSyncFile")):
+        if any(recipe.get(k) for k in ("recordingEnd", "endingOmissionsFile", "recordingSyncFile", "terminalSlides")) or alignment.get("terminalSlides"):
             check.fail("unexpected_ending", "import", "Unapproved ending omissions were declared.")
         return None
     anchors = alignment.get("anchors", [])
@@ -551,7 +575,13 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
         if part["notes"] and not kept:
             check.fail("ending_track", "tracks/" + src.id, "The cutoff would remove an entire source arrangement.")
         part["notes"] = kept
-    if not omissions:
+    # A current directional-tail cutoff still needs full independent acoustic
+    # verification when there are no late attacks. Derive that fact from source.
+    has_slide_tail = any(n["note"]["t"] < duration < n["note"]["t"] + m["end"]
+                         and n["note"]["t"] + m["start"] < duration
+                         for p in wanted["parts"] for n in p["notes"]
+                         for m in n["note"].get("slide_out_marks", []))
+    if not omissions and not (has_slide_tail and alignment.get("terminalSlides") and recipe.get("preservationContract", 0) >= 33):
         check.fail("empty_ending", "import", "The declared cutoff has no omitted source notes.")
     ledger = _json(archive, recipe.get("endingOmissionsFile", ""), check)
     check.equal("ending_header", "import/ending", required, {k: v for k, v in ledger.items() if k != "notes"})

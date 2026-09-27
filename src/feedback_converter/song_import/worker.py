@@ -85,7 +85,7 @@ def run_import(request: dict, progress=None) -> dict:
                               managed_retries=request.get("managedRetries") is True)
         alignment = _choose_alignment(performance, audio, request, progress)
         alignment_recipe = {key: alignment[key] for key in
-                            ("method", "offset", "scale", "mapping", "provenance", "terminalSustains", "recordingEnd") if key in alignment}
+                            ("method", "offset", "scale", "mapping", "provenance", "terminalSustains", "terminalSlides", "recordingEnd") if key in alignment}
         alignment_recipe.setdefault("method", VERSION)
         recipe = {"version": 8, "preservationContract": CONTRACT_VERSION, "source": "songsterr", "songId": metadata.get("songId"),
                   "revisionId": metadata.get("revisionId"), "scoreHash": score_hash, "audioHash": audio["hash"],

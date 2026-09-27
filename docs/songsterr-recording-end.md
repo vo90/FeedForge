@@ -44,6 +44,11 @@ the existing sustain ledger. Unfinished pitch gestures crossing the boundary,
 partial staggered chords or removal of an entire arrangement still stop the
 import. All earlier attacks and techniques must remain unchanged.
 
+Contract 33 adds an explicit, independently verified exception for overlapping
+direction-only slide-outs; see `songsterr-terminal-slide-cutoff.md`. Timed pitch
+gestures remain protected. A slide cutoff triggers the acoustic check even when
+there are no omitted attacks.
+
 Original source bytes and written notation stay intact in the FeedPak. The
 versioned `import/recording-sync.json` records acoustic evidence bound to the
 exact packaged audio hash and timing map; the omission policy hashes that

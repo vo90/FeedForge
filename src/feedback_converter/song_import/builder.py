@@ -18,7 +18,7 @@ from ..output_naming import output_path, safe_path_segment
 from .alignment import map_time
 from .audio import ImportFailure
 from .synchronization import source_time_scale
-from .terminal_sustains import allowed as terminal_sustains_allowed, trim_held_note
+from .terminal_sustains import allowed as terminal_sustains_allowed, trim_held_note, slides_allowed
 from .ending_cutoff import allowed as ending_cutoff_allowed, omitted_note
 
 
@@ -150,7 +150,8 @@ def _retime_note(note: dict, alignment: dict, duration: float, *, chord_time: fl
     if terminal_sustains_allowed(alignment, duration):
         # Chord children inherit their attack from the chord. Supply it for the
         # policy check without changing the archived representation.
-        adjusted, _ = trim_held_note({**result, "t": round(start, 6)}, duration)
+        adjusted, _ = trim_held_note({**result, "t": round(start, 6)}, duration,
+                                     allow_directional_slides=slides_allowed(alignment, duration))
         if "t" not in result:
             adjusted.pop("t")
         result = adjusted
@@ -220,6 +221,9 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     """Only write inside directory. Publishing/collision handling belongs to the app."""
     if alignment.get("status") != "validated":
         raise ImportFailure("alignment_failed", "The recording has not passed synchronization checks.")
+    if alignment.get("terminalSlides") is not None and (not slides_allowed(alignment, audio["duration"])
+            or source_path is None or (recipe or {}).get("preservationContract", 0) < 33):
+        raise ImportFailure("alignment_failed", "A final slide-out cutoff requires verified recording timing, the original tab and contract 33.")
     settings = output_settings or {}
     original_tracks = performance.get("tracks", [])
     from .high_frets import project, archive_receipt, summary as omission_summary
@@ -295,9 +299,17 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
                 sustain = round(map_time(alignment, start + note.get("sus", 0)) - left, 6)
                 if left < duration and left + sustain > duration + 0.0000011:
                     exported = round(math.floor(duration * 1_000_000) / 1_000_000 - left, 6)
-                    sustain_adjustments.append({"trackId": track["id"], "string": note["s"], "fret": note["f"],
+                    detail = {"trackId": track["id"], "string": note["s"], "fret": note["f"],
                                                 "audioStart": round(left, 6), "originalDuration": sustain,
-                                                "exportedDuration": exported, "trimmedSeconds": round(sustain - exported, 6)})
+                                                "exportedDuration": exported, "trimmedSeconds": round(sustain - exported, 6)}
+                    marks = [{"index": i, "direction": p["direction"],
+                              "start": round(map_time(alignment, start + p["start"]) - left, 6),
+                              "originalEnd": round(map_time(alignment, start + p["end"]) - left, 6),
+                              "exportedEnd": exported} for i, p in enumerate(note.get("slide_out_marks", []))
+                             if map_time(alignment, start + p["end"]) - left > exported + 0.0000011]
+                    if marks:
+                        detail["slideOuts"] = marks
+                    sustain_adjustments.append(detail)
         if settings.get("generateDifficulty") is True:
             ensure_difficulty(chart, duration=duration)
         relative_file = f"arrangements/{ident}.json"
@@ -408,10 +420,13 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         if source_path is None:
             raise ImportFailure("unsupported_score", "Sustain adjustments require the retained original tab.")
         detail = {**alignment["terminalSustains"], "notes": sustain_adjustments}
+        if alignment.get("terminalSlides") is not None:
+            detail["directionalSlides"] = alignment["terminalSlides"]
+            manifest.setdefault("song_import", {})["terminalSlides"] = alignment["terminalSlides"]
         _write_json(package / "import/sustain-adjustments.json", detail)
         manifest.setdefault("song_import", {}).update(terminalSustains=alignment["terminalSustains"],
                                                        adjustmentsFile="import/sustain-adjustments.json")
-    if ending_omissions:
+    if cut_ending:
         if source_path is None:
             raise ImportFailure("unsupported_score", "Ending omissions require the retained original tab.")
         _write_json(package / "import/ending-omissions.json", {**alignment["recordingEnd"], "notes": ending_omissions})

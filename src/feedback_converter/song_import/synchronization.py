@@ -237,7 +237,7 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
                               "sourceSyncInferredBoundaryCount": inferred_count,
                               "sourceSyncUnusedTrailingPointCount": unused_count,
                               "sourceSyncSilentTerminalExtension": silent_terminal}})
-    checked, trimmed, late = 0, 0, 0
+    checked, trimmed, late, slide_trims = 0, 0, 0, 0
     for track in performance.get("tracks", []):
         notes = [(note, note.get("t")) for note in track.get("notes", [])]
         notes += [(note, note.get("t", chord.get("t"))) for chord in track.get("chords", []) for note in chord.get("notes", [])]
@@ -281,10 +281,15 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
                         mapped[key] = [{**p, **{k: round(_mapped_value(result, start + p[k]) - mapped_start, 6) for k in coordinates}}
                                        for p in mapped[key]]
                 try:
-                    _, adjustment = trim_held_note(mapped, duration)
+                    # This is only a candidate. Neither the builder nor verifier
+                    # permits a slide cutoff until the acoustic check authorizes it.
+                    slide_candidate = (allow_ending_candidate and points[-2] < duration < points[-1]
+                                       and points[-1] - duration <= 3.0 and points[-1] - points[-2] <= 8.0)
+                    _, adjustment = trim_held_note(mapped, duration, allow_directional_slides=slide_candidate)
                 except ImportFailure as exc:
                     _unavailable("terminal_technique_outside_recording", mappedNoteEnd=mapped_end, audioDuration=duration, message=str(exc))
                 trimmed += adjustment is not None
+                slide_trims += len((adjustment or {}).get("slideOuts", []))
             checked += 1
     if not checked:
         _unavailable("no_playable_notes")
@@ -293,7 +298,9 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
         result["diagnostics"]["shortenedFinalSustains"] = trimmed
         if silent_terminal:
             result["provenance"]["terminalBeyondAudio"] = "recorded_sustain_adjustments"
-    if late:
+    if late or slide_trims:
         result["status"] = "needs_ending_check"
         result["endingCandidate"] = {"lateNotes": late, "audioDuration": duration}
+        if slide_trims:
+            result["endingCandidate"]["directionalSlides"] = slide_trims
     return result

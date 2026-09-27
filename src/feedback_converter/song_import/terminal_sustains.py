@@ -19,12 +19,23 @@ def allowed(alignment: dict, duration: float) -> bool:
             and alignment.get("terminalSustains") == policy_for(duration))
 
 
-def trim_held_note(note: dict, duration: float) -> tuple[dict, dict | None]:
+def slides_policy_for(duration: float) -> dict:
+    return {"version": 1, "policy": "trim-final-directional-slide-v1", "audioDuration": duration}
+
+
+def slides_allowed(alignment: dict, duration: float) -> bool:
+    from .ending_cutoff import allowed as ending_allowed
+    return (alignment.get("terminalSlides") == slides_policy_for(duration)
+            and ending_allowed(alignment, duration))
+
+
+def trim_held_note(note: dict, duration: float, *, allow_directional_slides: bool = False) -> tuple[dict, dict | None]:
     """Trim duration only. Never omit an attack or alter a timed pitch gesture.
 
     Input is in recording seconds. Continuous flags such as vibrato/mute/accent
     remain unchanged. A finished bend/slide may retain a shortened held tail;
-    a gesture crossing the cut still requires another recording.
+    a timed pitch gesture crossing the cut still requires another recording.
+    Direction-only segments may be capped only with separate acoustic authority.
     """
     start, sustain = float(note["t"]), float(note.get("sus", 0))
     if not all(math.isfinite(v) for v in (start, sustain, duration)) or sustain < 0 or start < 0 or start >= duration:
@@ -49,10 +60,29 @@ def trim_held_note(note: dict, duration: float) -> tuple[dict, dict | None]:
     if (any(note.get(key) is not None and note[key] != -1 for key in ("sl", "slu"))
             or note.get("slide_out") and not note.get("slide_out_marks")
             or note.get("bn") and not note.get("bnv")
-            or any(p["end"] > shortened + EPSILON for p in note.get("slide_out_marks", []))
+            or not allow_directional_slides and any(p["end"] > shortened + EPSILON for p in note.get("slide_out_marks", []))
             or any(p["time"] > shortened + EPSILON for p in note.get("slide_in_marks", []))):
         raise ImportFailure("alignment_failed", "The audio ends during a bend or slide; it cannot be shortened as a held sustain.")
     adjusted = {**note, "sus": shortened}
+    slide_changes = []
+    if allow_directional_slides and note.get("slide_out_marks"):
+        marks, previous = [], 0.0
+        for index, mark in enumerate(note["slide_out_marks"]):
+            if (not isinstance(mark, dict) or set(mark) != {"direction", "start", "end"}
+                    or mark.get("direction") not in ("up", "down")
+                    or any(isinstance(mark.get(k), bool) or not isinstance(mark.get(k), (int, float))
+                           or not math.isfinite(mark[k]) for k in ("start", "end"))
+                    or not previous <= mark["start"] < mark["end"] <= sustain + EPSILON):
+                raise ImportFailure("alignment_failed", "The final slide-out has an invalid source interval.")
+            previous = mark["end"]
+            if mark["end"] > shortened + EPSILON:
+                if mark["start"] >= shortened:
+                    raise ImportFailure("alignment_failed", "The audio ends before the slide-out segment begins.")
+                slide_changes.append({"index": index, "direction": mark["direction"], "start": mark["start"],
+                                      "originalEnd": mark["end"], "exportedEnd": shortened})
+                mark = {**mark, "end": shortened}
+            marks.append(mark)
+        adjusted["slide_out_marks"] = marks
     if 'harmonic_changes' in note:
         from copy import deepcopy
         changes = deepcopy(note['harmonic_changes'])
@@ -76,4 +106,6 @@ def trim_held_note(note: dict, duration: float) -> tuple[dict, dict | None]:
     detail = {"string": note["s"], "fret": note["f"], "audioStart": round(start, 6),
               "originalDuration": round(sustain, 6), "exportedDuration": shortened,
               "trimmedSeconds": round(sustain - shortened, 6)}
+    if slide_changes:
+        detail["slideOuts"] = slide_changes
     return adjusted, detail

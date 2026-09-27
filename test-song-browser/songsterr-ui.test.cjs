@@ -77,6 +77,14 @@ test('ending omissions disclose the count, audio check and retained original', (
   assert.doesNotMatch(job({ state: 'completed', verification: { ...verification, status: 'modified' } }), /Earlier timing passed/);
 });
 
+test('directional slide cutoffs disclose the adjusted visual interval only after verification', () => {
+  const verification = { status: 'passed', adjustments: { terminalSustains: 1, terminalSlideOuts: 1 } };
+  assert.match(job({ state: 'completed', verification }), /1 directional slide-out ends with the audio after a timing check/);
+  assert.match(job({ state: 'completed', verification }), /original slide intervals and cutoff details are saved/);
+  assert.doesNotMatch(job({ state: 'failed', verification }), /directional slide-out ends/);
+  assert.doesNotMatch(job({ state: 'completed', verification: { ...verification, status: 'modified' } }), /directional slide-out ends/);
+});
+
 test('arrangement diagnostics do not imply a completed or partial import', () => {
   const html = render(compiled.exports.CompatibilityDetails, { report: { findingCount: 0, findings: [],
     arrangements: [{ trackIndex: 3, name: 'Bass', status: 'score_ready' }, { trackIndex: 8, name: 'Lead', status: 'blocked', message: 'Unresolved tie.' }] } });
