@@ -29,12 +29,20 @@ def notation_for(plan, originals):
     result = deepcopy(main)
     for staff in result["staves"]:
         staff["label"] = NAME
-    for measure in result['measures']:
+    kept_pairs = {(occurrence, source_id) for row in plan.get('mainEvents', [])
+                  for occurrence in row.get('occurrences', []) for source_id in row.get('sourceIds', [])}
+    removed_pairs = {(occurrence, source_id) for row in plan.get('removedMain', [])
+                     for occurrence in row.get('occurrences', []) for source_id in row.get('sourceIds', [])}
+    for occurrence, measure in enumerate(result['measures'], start=1):
         for staff in measure['staves'].values():
             for voice in staff['voices']:
-                voice['beats'] = [b for b in voice['beats'] if not any(
-                    b['t'] < r['recordingEnd'] - 1e-7 and b['t'] + b.get('duration_seconds', 0) > r['recordingStart'] + 1e-7
-                    for r in plan.get('removedMain', []))]
+                def retained(beat):
+                    if beat.get('rest'):
+                        return True
+                    ids = {beat.get('source_id'), *(note.get('source_id') for note in beat.get('notes', []))} - {None}
+                    pairs = {(occurrence, source_id) for source_id in ids}
+                    return not (pairs & removed_pairs) or bool(pairs & kept_pairs)
+                voice['beats'] = [beat for beat in voice['beats'] if retained(beat)]
     # Separate source voices preserve original written rhythms and ties. Empty
     # donor voices are not added. Base rests remain valid in their own voice.
     used = {v["v"] for m in result["measures"] for s in m["staves"].values() for v in s["voices"]}
@@ -42,12 +50,23 @@ def notation_for(plan, originals):
     voice_ids = {}
     for p in plan["passages"]:
         notation = originals[p["trackId"]]["notation"]
-        for target, source in zip(result["measures"], notation["measures"]):
+        selected_pairs = {(occurrence, source_id) for event in p['events']
+                          for occurrence in event.get('occurrences', []) for source_id in event.get('sourceIds', [])}
+        def selected_beat(beat, occurrence):
+            lo, hi = p['recordingStart'], p['recordingEnd']
+            if not (beat['t'] >= lo - 1.1e-6 and beat['t'] + beat.get('duration_seconds', 0) <= hi + 1.1e-6 and beat['t'] < hi - 1e-7):
+                return False
+            if 'ownedStart' not in p:
+                return True
+            if beat.get('rest'):
+                return (beat['t'] >= p['recordingOwnedStart'] - 1.1e-6
+                        and beat['t'] + beat.get('duration_seconds', 0) <= p['recordingOwnedEnd'] + 1.1e-6)
+            ids = {beat.get('source_id'), *(note.get('source_id') for note in beat.get('notes', []))} - {None}
+            return bool({(occurrence, source_id) for source_id in ids} & selected_pairs)
+        for occurrence, (target, source) in enumerate(zip(result["measures"], notation["measures"]), start=1):
             for staff_id, staff in source["staves"].items():
                 for voice in staff["voices"]:
-                    beats = [deepcopy(b) for b in voice["beats"] if b["t"] >= p["recordingStart"] - 1.1e-6
-                             and b["t"] + b.get("duration_seconds", 0) <= p["recordingEnd"] + 1.1e-6
-                             and b["t"] < p["recordingEnd"] - 1e-7]
+                    beats = [deepcopy(b) for b in voice["beats"] if selected_beat(b, occurrence)]
                     if not beats:
                         continue
                     key = (p["trackId"], voice["v"])
@@ -113,6 +132,10 @@ def materialize(plan, originals, options, source_hash, audio_hash, duration, gen
     for row in plan.get('coverage', {}).get('events', []):
         row['sourceIndex'] = row['index']
         row['index'] = originals[row['trackId']]['eventIndices'].get((row['kind'], row['index']))
+    for obligation in [*plan.get('obligations', []), *plan.get('primaryEpisodes', [])]:
+        for row in obligation.get('events', []):
+            row['sourceIndex'] = row['index']
+            row['index'] = originals.get(obligation['trackId'], {}).get('eventIndices', {}).get((row['kind'], row['index']))
     ident = "hybrid-lead-" + digest((POLICY + ':' + source_hash + ":" + plan["mainTrackId"]).encode())[:20]
     sources = []
     for track_id in dict.fromkeys([plan["mainTrackId"], *(p["trackId"] for p in plan["passages"])]):
@@ -120,7 +143,7 @@ def materialize(plan, originals, options, source_hash, audio_hash, duration, gen
         sources.append({"trackId": track_id, "arrangementId": row["manifest"]["id"], "file": row["manifest"]["file"],
                         "chartSha256": digest(encode(row["chart"])), **row["identity"],
                         **({"notationFile": row["manifest"]["notation"], "notationSha256": digest(encode(row["notation"]))} if row.get("notation") else {})})
-    receipt = {**deepcopy(plan), "version": 2, "policy": POLICY, "arrangementId": ident,
+    receipt = {**deepcopy(plan), "version": 3, "policy": POLICY, "arrangementId": ident,
                "sourceSha256": source_hash, "audioSha256": audio_hash, "options": deepcopy(options),
                "sources": sources, "chartSha256": digest(encode(chart)),
                "notationStatus": "composed" if notation else "source_only", "notationReason": notation_reason}

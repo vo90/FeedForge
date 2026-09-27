@@ -1,5 +1,5 @@
 'use strict';
-const POLICY = 'hybrid-lead-v2';
+const POLICY = 'hybrid-lead-v3';
 
 function normalizeHybridLead(value) {
   if (value == null) return { enabled: false };

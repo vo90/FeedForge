@@ -55,12 +55,9 @@ def test_solo_is_primary_even_when_background_fills_the_same_gap(tmp_path):
 @pytest.mark.parametrize('name',['Solo Chords','Solo and Harmonies'])
 def test_solo_chords_is_not_silently_classified_as_primary(tmp_path,name):
     from feedback_converter.song_import.hybrid_primary import resolve_roles
-    from feedback_converter.song_import.audio import ImportFailure
     _, p, options = prepared(tmp_path, solo_song())
     p['tracks'][1]['name'] = name
-    with pytest.raises(ImportFailure) as error:
-        resolve_roles(p, options, '0')
-    assert error.value.code == 'awaiting_main_choice'
+    assert resolve_roles(p, options, '0')['1'] != 'solo'
 
 
 def test_source_order_does_not_change_primary_plan(tmp_path):
@@ -101,29 +98,34 @@ def test_independent_gate_rejects_self_consistent_but_musically_wrong_plan(tmp_p
 
 @pytest.mark.parametrize('role', ['solo','lead'])
 @pytest.mark.parametrize('duplicate', [False,True])
-def test_parallel_primary_parts_require_priority_even_when_duplicated(tmp_path,role,duplicate):
+def test_parallel_primary_parts_choose_coherent_default_and_allow_priority(tmp_path,role,duplicate):
     from feedback_converter.song_import.hybrid_lead import plan
     from feedback_converter.song_import.audio import ImportFailure
     doc = solo_song()
     if duplicate: doc['parts'][2] = deepcopy(doc['parts'][1])
     _, p, options = prepared(tmp_path,doc,{'roles':{'1':role,'2':role}})
-    with pytest.raises(ImportFailure) as error:
-        plan(p,options,'0',{'status':'validated','offset':0,'scale':1},8)
-    assert error.value.code == 'awaiting_main_choice'
+    first = plan(p,options,'0',{'status':'validated','offset':0,'scale':1},8)
+    assert first == plan(p,options,'0',{'status':'validated','offset':0,'scale':1},8)
     out = tmp_path/'resolved';out.mkdir()
     *_, report = build(out,doc,overrides={'roles':{'1':role,'2':role},'preferredTrackIds':['1','2']})
     assert report['status'] == 'passed', report
 
 
 @pytest.mark.parametrize('fault', ['capo','unsupported_fret'])
-def test_required_solo_with_unrepresentable_material_requests_review(tmp_path,fault):
+def test_unrepresentable_solo_material_keeps_a_valid_limited_result(tmp_path,fault):
     from feedback_converter.song_import.audio import ImportFailure
     doc = solo_song()
     if fault == 'capo': doc['tracks'][1]['capo'] = 2
     else: doc['parts'][1]['measures'][1] = measure(beat(30))
-    with pytest.raises(ImportFailure) as error:
-        build(tmp_path,doc)
-    assert error.value.code == 'awaiting_main_choice'
+    *_, archive, report = build(tmp_path,doc)
+    assert report['status'] == 'passed', report
+    with ZipFile(archive) as z:
+        receipt = json.loads(z.read('import/hybrid-lead.json'))
+    assert receipt['coverage']['status'] == 'limited'
+    if fault == 'capo':
+        assert all(p['trackId'] != '1' for p in receipt['passages'])
+    else:
+        assert any(p['trackId'] == '1' for p in receipt['passages']), 'The supported later solo must remain.'
 
 
 def test_ghost_only_solo_tail_returns_to_main_without_cutting_primary_body(tmp_path):
@@ -207,15 +209,14 @@ def test_exact_primary_handover_survives_recording_rounding(tmp_path,tempo):
     assert report['status']=='passed',report
 
 
-def test_planning_budget_requests_a_source_choice(tmp_path,monkeypatch):
+def test_planning_budget_retains_a_valid_base(tmp_path,monkeypatch):
     import feedback_converter.song_import.hybrid_lead as composer
     from feedback_converter.song_import.audio import ImportFailure
     _,p,options=prepared(tmp_path)
     monkeypatch.setattr(composer,'MAX_CANDIDATES',0)
-    with pytest.raises(ImportFailure) as error:
-        composer.plan(p,options,'0',{'status':'validated','offset':0,'scale':1},8)
-    assert error.value.code=='awaiting_main_choice'
-    assert error.value.diagnostics['reviewReason']=='planning_limit'
+    result = composer.plan(p,options,'0',{'status':'validated','offset':0,'scale':1},8)
+    assert result['mainEvents']
+    assert result['selection']['budgetLimited']
 
 
 def test_repeated_chord_boundary_ignores_source_note_array_order(tmp_path):
@@ -233,9 +234,12 @@ def test_fully_unsupported_solo_remains_available_for_explicit_exclusion(tmp_pat
     from feedback_converter.song_import.audio import ImportFailure
     doc=solo_song()
     for bar in (1,2): doc['parts'][1]['measures'][bar]=measure(beat(30))
-    with pytest.raises(ImportFailure) as error: build(tmp_path,doc)
-    assert error.value.code=='awaiting_main_choice'
-    assert any(t['id']=='1' for t in error.value.diagnostics['tracks'])
+    *_, archive, report = build(tmp_path,doc)
+    assert report['status'] == 'passed', report
+    with ZipFile(archive) as z:
+        receipt = json.loads(z.read('import/hybrid-lead.json'))
+    assert receipt['coverage']['status'] == 'limited'
+    assert any(x['trackId'] == '1' and x['reason'] == 'unsupported_source_gesture' for x in receipt['limitations'])
     out=tmp_path/'excluded';out.mkdir()
     *_,report=build(out,doc,overrides={'excludedTrackIds':['1']})
     assert report['status']=='passed',report

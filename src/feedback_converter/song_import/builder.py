@@ -334,18 +334,15 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             from .hybrid_lead import plan
             from .hybrid_materialize import materialize
             planning = deepcopy(performance)
-            # Source-only omissions still protect the main. Donors with such
-            # omissions are excluded entirely rather than offering fragments.
+            # Preserve raw evidence before high-fret projection so a local
+            # unsupported gesture cannot erase an otherwise supported solo.
             main_id = hybrid_lead["mainTrackId"]
             options = hybrid_lead["options"]
             affected = {n["trackId"] for n in (omissions or {}).get("notes", [])}
             planning["hybridOmittedTracks"] = sorted(affected)
-            # Primary roles are resolved against the user's choices, before
-            # optional accompaniment omissions are applied by the planner.
+            planning["hybridRawTracks"] = original_tracks
+            planning["hybridSourceOmissions"] = [*(omissions or {}).get("notes", []), *(omissions or {}).get("links", [])]
             composition = plan(planning, options, main_id, alignment, duration, original_charts)
-            for row in composition["excluded"]:
-                if row["trackId"] in affected and row["trackId"] not in options.get("excludedTrackIds", []):
-                    row["reason"] = "source_omissions"
             chart, notation, derived, receipt = materialize(composition, original_charts, options,
                 recipe["scoreHash"], recipe["audioHash"], duration, settings.get("generateDifficulty") is True)
             if derived["id"].lower() in used:
@@ -361,6 +358,12 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
                 "addedSeconds": receipt['addedSeconds'], "selectedSeconds": receipt['selectedSeconds'],
                 "primaryPassages": sum(p.get('priority') in {'solo','lead'} for p in receipt['passages']),
                 "replacedMainEvents": len(receipt.get('removedMain', [])), "coverageStatus": receipt['coverage']['status'],
+                "baseTuning": receipt['baseSelection']['setup']['tuning'], "baseCapo": receipt['baseSelection']['setup']['capo'],
+                "limitations": [{**row, "name": next((t['name'] for t in performance['tracks'] if t['id'] == row['trackId']), row['trackId'])} for row in receipt.get('limitations', [])],
+                "planningLimited": bool(receipt.get('primaryBudgetLimited') or receipt.get('selection', {}).get('budgetLimited')),
+                "leadPassages": [{"name": original_charts[p['trackId']]['manifest']['name'], "start": p['recordingStart'], "end": p['recordingEnd'],
+                                  "section": p.get('sectionName', ''), "evidence": p.get('evidence'), "confidence": p.get('confidence')}
+                                 for p in receipt['passages'] if p.get('priority') in {'solo', 'lead'}],
                 "excluded": [{**row, "name": next((t["name"] for t in performance["tracks"] if t["id"] == row["trackId"]), row["trackId"])} for row in receipt["excluded"]],
                 "notationStatus": receipt["notationStatus"]}
     source = performance.get("source") or {}

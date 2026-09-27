@@ -3,7 +3,8 @@
 Does not import the composer, its context capture, or its materializer. Original
 charts are checked by verification.py first; this checker validates an exact
 copy/membership proof, original setup, written occupancy and whole boundaries.
-It deliberately does not require the producer's preferred musical choice.
+It does not reproduce the producer's musical scoring. Regional policies also
+check conservative independently established solo-owner obligations.
 """
 from copy import deepcopy
 from dataclasses import asdict
@@ -33,10 +34,12 @@ def partition(manifest, check, requested=None):
     if recipe.get("preservationContract", 0) < 32:
         check.fail("hybrid_contract", "song_import", "Hybrid Lead requires preservation contract 32.")
     policy = options.get('policy', POLICY)
-    if policy not in {POLICY, 'hybrid-lead-v2'}:
+    if policy not in {POLICY, 'hybrid-lead-v2', 'hybrid-lead-v3'}:
         check.fail('hybrid_policy', 'song_import/hybridLead', 'Unsupported musical policy.')
     if policy == 'hybrid-lead-v2' and recipe.get('preservationContract', 0) < 33:
         check.fail('hybrid_contract', 'song_import', 'Lead/solo-first composition requires preservation contract 33.')
+    if policy == 'hybrid-lead-v3' and recipe.get('preservationContract', 0) < 34:
+        check.fail('hybrid_contract', 'song_import', 'Regional lead composition requires preservation contract 34.')
     for a in derived:
         check.equal("hybrid_identity", "arrangements/derived", {"kind": policy, "receipt": "import/hybrid-lead.json"}, a["derived"])
     return [a for a in all_items if not a.get("derived")], derived
@@ -65,8 +68,9 @@ def _signature(part, bar):
 def verify(z, manifest, originals, derived, facts, source, alignment, source_hash, check):
     recipe = manifest.get("song_import", {})
     options = recipe.get("hybridLead", {"enabled": False})
-    primary_policy = options.get('policy') == 'hybrid-lead-v2'
-    policy = 'hybrid-lead-v2' if primary_policy else POLICY
+    regional_policy = options.get('policy') == 'hybrid-lead-v3'
+    primary_policy = regional_policy or options.get('policy') == 'hybrid-lead-v2'
+    policy = options.get('policy') if primary_policy else POLICY
     if options.get("enabled") is not True:
         return None
     playable_guitars = [a for a in originals if a.get("type") in {"guitar", "lead", "rhythm"}]
@@ -80,7 +84,7 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
     check.equal("hybrid_receipt", "song_import/hybridLeadFile", "import/hybrid-lead.json", recipe.get("hybridLeadFile"))
     from .verification import _json
     receipt = _json(z, "import/hybrid-lead.json", check)
-    for key, expected in (("version", 2 if primary_policy else 1), ("policy", policy), ("sourceSha256", source_hash), ("options", options), ("audioSha256", recipe.get("audioHash"))):
+    for key, expected in (("version", 3 if regional_policy else 2 if primary_policy else 1), ("policy", policy), ("sourceSha256", source_hash), ("options", options), ("audioSha256", recipe.get("audioHash"))):
         check.equal("hybrid_receipt", "hybrid/" + key, expected, receipt.get(key))
     if "archiveSha256" in receipt or "outputHash" in receipt:
         check.fail("hybrid_circular_hash", "hybrid", "Final archive hashes belong in external evidence.")
@@ -166,7 +170,7 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
     if primary_policy:
         from .verify_hybrid_priority import audit
         all_charts = {a['id']: _json(z, a['file'], check) for a in originals if a.get('type') in {'guitar','lead','rhythm'}}
-        kept, removed, event_facts, primary_protected = audit(all_charts, receipt, facts, options, quarter_at, at, manifest['duration'], source.format, check)
+        kept, removed, event_facts, primary_protected = audit(all_charts, receipt, facts, options, quarter_at, at, manifest['duration'], source.format, check, source=source)
         for kind in ('notes','chords'):
             expected_chart[kind] = [e for i,e in enumerate(main[kind]) if (kind,i) in kept]
         occupied_q = [(event_facts[main_id][k]['start'],event_facts[main_id][k]['end']) for k in kept]
@@ -215,19 +219,35 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
         # unlisted injected events. Whole written slots must also fit.
         refs = {(r["kind"], r["index"]) for r in passage["events"]}
         wanted_refs = set()
+        owned_a = at(passage.get('ownedStart', lo)) if regional_policy and primary_passage else a
+        owned_b = at(passage.get('ownedEnd', hi)) if regional_policy and primary_passage else b
+        if regional_policy and primary_passage and (owned_b <= owned_a or owned_a < -TOL or owned_b > manifest['duration']+TOL):
+            check.fail('hybrid_primary_boundary', 'hybrid/passages/ownedStart', 'Primary attack ownership has invalid recording bounds.')
+        if regional_policy and primary_passage:
+            check.near('hybrid_time', 'hybrid/passages/recordingOwnedStart', owned_a, passage.get('recordingOwnedStart'))
+            check.near('hybrid_time', 'hybrid/passages/recordingOwnedEnd', owned_b, passage.get('recordingOwnedEnd'))
         for kind in ("notes", "chords"):
             for index, event in enumerate(donor[kind]):
                 notes = [event] if kind == "notes" else [{"t": event["t"], **n} for n in event["notes"]]
                 start = min(n["t"] for n in notes)
                 end = max(n["t"] + n.get("sus", 0) for n in notes)
-                if a - TOL <= start < b - TOL:
+                if owned_a - TOL <= start < owned_b - TOL:
                     wanted_refs.add((kind, index))
                     if end > b + TOL:
                         check.fail("hybrid_cropped_tail", "hybrid/passages", "A selected note continues beyond the passage.")
+        if regional_policy and primary_passage:
+            spans = {(event_facts[tid][key]['start'], event_facts[tid][key]['end']) for key in wanted_refs}
+            wanted_refs.update(key for key, row in event_facts[tid].items() if (row['start'], row['end']) in spans)
+            for key in wanted_refs:
+                row = event_facts[tid][key]
+                if row['start'] < lo-1e-5 or row['end'] > hi+1e-5:
+                    check.fail('hybrid_cropped_tail', 'hybrid/passages', 'A hard source dependency is outside the complete primary footprint.')
         check.equal("hybrid_passage_membership", "hybrid/passages/events", sorted(wanted_refs), sorted(refs))
         if len(refs) != len(passage["events"]) or not refs:
             check.fail("hybrid_passage_membership", "hybrid/passages", "Duplicate or empty passage.")
         for beat in parts[tid]["notation_beats"]:
+            if regional_policy and primary_passage:
+                break  # Selected event footprints above close written dependencies.
             if beat["rest"]:
                 continue
             if beat["time"] < b - TOL and beat["end"] > a + TOL and (beat["time"] < a - TOL or beat["end"] > b + TOL):
@@ -342,29 +362,47 @@ def _notation(z, arr, receipt, source_rows, check):
     originals = {tid: _json(z, row["notationFile"], check) for tid, row in source_rows.items() if row.get("notationFile")}
     next_voice = max((v['v'] for m in main['measures'] for s in m['staves'].values() for v in s['voices']), default=-1) + 1
     voices = {}
-    def selected(beat, passage):
-        return beat['t'] >= passage['recordingStart'] - TOL and beat['t'] + beat.get('duration_seconds', 0) <= passage['recordingEnd'] + TOL and beat['t'] < passage['recordingEnd'] - 1e-7
+    selected_pairs = {id(p): {(sid, occurrence) for ref in p['events'] for sid in ref.get('sourceIds', [])
+                              for occurrence in ref.get('occurrences', [])} for p in receipt['passages']}
+    def selected(beat, passage, occurrence):
+        within = beat['t'] >= passage['recordingStart'] - TOL and beat['t'] + beat.get('duration_seconds', 0) <= passage['recordingEnd'] + TOL and beat['t'] < passage['recordingEnd'] - 1e-7
+        if not within or receipt.get('policy') != 'hybrid-lead-v3' or passage.get('priority') not in {'solo', 'lead'}:
+            return within
+        if beat.get('rest'):
+            return (beat['t'] >= passage.get('recordingOwnedStart', passage['recordingStart'])-TOL
+                    and beat['t'] + beat.get('duration_seconds', 0) <= passage.get('recordingOwnedEnd', passage['recordingEnd'])+TOL)
+        pairs = selected_pairs[id(passage)]
+        return ((beat.get('source_id'), occurrence) in pairs
+                or any((n.get('source_id'), occurrence) in pairs for n in beat.get('notes', [])))
     for passage in receipt['passages']:
-        for m in originals.get(passage['trackId'], {}).get('measures', []):
+        for occurrence, m in enumerate(originals.get(passage['trackId'], {}).get('measures', []), start=1):
             for s in m['staves'].values():
                 for voice in s['voices']:
                     key = (passage['trackId'], voice['v'])
-                    if key not in voices and any(selected(b, passage) for b in voice['beats']):
+                    if key not in voices and any(selected(b, passage, occurrence) for b in voice['beats']):
                         voices[key] = next_voice
                         next_voice += 1
     wanted = []
+    main_kept = {(sid, occurrence) for ref in receipt.get('mainEvents', [])
+                 for sid in ref.get('sourceIds', []) for occurrence in ref.get('occurrences', [])}
+    main_removed = {(sid, occurrence) for ref in receipt.get('removedMain', [])
+                    for sid in ref.get('sourceIds', []) for occurrence in ref.get('occurrences', [])}
+    def retain_main(beat, occurrence):
+        if receipt.get('policy') != 'hybrid-lead-v3':
+            return not any(beat['t'] < r['recordingEnd']-1e-7 and beat['t']+beat.get('duration_seconds', 0) > r['recordingStart']+1e-7 for r in receipt.get('removedMain', []))
+        identities = {(sid, occurrence) for sid in [beat.get('source_id'), *[n.get('source_id') for n in beat.get('notes', [])]] if sid is not None}
+        return bool(beat.get('rest') or identities & main_kept or not identities & main_removed)
     for tid, row in source_rows.items():
         if not row.get("notationFile"):
             check.fail("hybrid_notation", "hybrid", "A contributing source has no supported notation.")
             continue
         original = _json(z, row["notationFile"], check)
-        for measure in original["measures"]:
+        for occurrence, measure in enumerate(original["measures"], start=1):
             for staff in measure["staves"].values():
                 for voice in staff["voices"]:
                     for beat in voice["beats"]:
-                        keep_main = tid == receipt['mainTrackId'] and not any(beat['t'] < r['recordingEnd'] - 1e-7 and beat['t'] + beat.get('duration_seconds',0) > r['recordingStart'] + 1e-7 for r in receipt.get('removedMain',[]))
-                        if keep_main or any(p["trackId"] == tid and beat["t"] >= p["recordingStart"] - TOL and
-                            beat["t"] + beat.get("duration_seconds", 0) <= p["recordingEnd"] + TOL and beat["t"] < p["recordingEnd"] - 1e-7 for p in receipt["passages"]):
+                        keep_main = tid == receipt['mainTrackId'] and retain_main(beat, occurrence)
+                        if keep_main or any(p["trackId"] == tid and selected(beat, p, occurrence) for p in receipt["passages"]):
                             number = voice['v'] if tid == receipt['mainTrackId'] else voices[(tid, voice['v'])]
                             wanted.append([measure["idx"], number, voice.get('source_id'), beat])
     actual = [[m["idx"], v['v'], v.get('source_id'), b] for m in notation["measures"] for s in m["staves"].values() for v in s["voices"] for b in v["beats"]]

@@ -5,7 +5,6 @@ plan referencing original performed events; materialization happens separately.
 """
 from copy import deepcopy
 import json
-import math
 import re
 from statistics import median
 
@@ -13,11 +12,12 @@ from .audio import ImportFailure
 from .alignment import map_time
 from .hybrid_context import Clock
 
-POLICY = "hybrid-lead-v2"
+POLICY = "hybrid-lead-v3"
 NAME = "Hybrid Lead"
 EPS = 1e-7
 MAX_CANDIDATES = 20000
 MAX_STATES = 10000
+MAX_OPERATIONS = 500000
 
 
 def normalize_options(value=None):
@@ -64,13 +64,13 @@ def choose_main(performance, options, source_hash):
         raise ImportFailure("hybrid_choice_stale", "The tab changed. Choose the main guitar again.")
     if (set(options.get("excludedTrackIds", [])) | set(options.get("preferredTrackIds", [])) | set(options.get("roles", {}))) - ids:
         raise ImportFailure("hybrid_choice_stale", "A selected guitar is no longer available in this tab.")
-    if options.get("mainTrackId"):
-        if options["mainTrackId"] not in {t['id'] for t in guitars}:
-            raise ImportFailure("hybrid_choice_stale", "The chosen main guitar is no longer available.")
-        return options["mainTrackId"]
-    lead = [t for t in guitars if t.get("role") == "lead" and not re.search(r"\b(solo|delay|echo|effect)\b", t["name"], re.I)]
-    suggested = guitars[0]["id"] if len(guitars) == 1 else lead[0]["id"] if len(lead) == 1 else None
-    if suggested and not options.get("reviewSources"):
+    if options.get("mainTrackId") and options["mainTrackId"] not in {t['id'] for t in guitars}:
+        raise ImportFailure("hybrid_choice_stale", "The chosen main guitar is no longer available.")
+    from .hybrid_selection import select_base
+    selection = select_base(performance, options)
+    performance['hybridBaseSelection'] = deepcopy(selection)
+    suggested = selection['mainTrackId']
+    if not options.get("reviewSources"):
         return suggested
     from .hybrid_primary import suggested_role
     raise ImportFailure("awaiting_main_choice", "Choose the guitar that Hybrid Lead should follow.", {
@@ -82,7 +82,7 @@ def choose_main(performance, options, source_hash):
 
 def union(intervals):
     out = []
-    for a, b in sorted(intervals):
+    for a, b in sorted((a, b) for a, b in intervals):
         if out and a <= out[-1][1] + EPS:
             out[-1][1] = max(out[-1][1], b)
         else:
@@ -191,6 +191,11 @@ def passages(track, context, timeline, clock):
     if not rows:
         return []
     occupied_rows = occupied(track, context, clock)
+    # A phrase's enclosing span includes deliberate rests. Reward actual
+    # written/sounding activity, without rewarding dense chord note counts.
+    active = union([(b['start'], b['end']) for b in context['beats'] if not b['rest']] +
+                   [(clock.quarter(n['t']), clock.quarter(n['t'] + n.get('sus', 0)))
+                    for r in rows for n in r['notes']])
     end = timeline["measures"][-1]["quarter"] + timeline["measures"][-1]["quarters"]
     boundaries = {0.0: "song", end: "song"}
     for left, right in zip(occupied_rows, occupied_rows[1:]):
@@ -222,11 +227,37 @@ def passages(track, context, timeline, clock):
             frets = [n["f"] for n in row["notes"] if 0 < n["f"] <= 24]
             return median(frets) if frets else None
         out.append({"trackId": track["id"], "start": lo, "end": hi,
+                    "activeQuarterBeats": round(sum(max(0, min(b, hi) - max(a, lo)) for a, b in active), 8),
+                    "ghostOnly": all(n.get('ghost') for r in events for n in r['notes']),
                     "boundaries": [boundaries[a], boundaries[b]],
                     "boundaryQuarters": [a, b],
                     "entryFret": hand_position(events[0]), "exitFret": hand_position(events[-1]),
                     "events": [{k: r[k] for k in ("kind", "index", "sourceIds", "occurrences")} for r in events]})
     return out
+
+
+def omission_spans(performance, track_id, context, clock):
+    """Reserve unsupported local source slots, not the entire donor track."""
+    spans = []
+    for row in performance.get('hybridSourceOmissions', []):
+        if row.get('trackId') != track_id:
+            continue
+        lo = clock.quarter(row['scoreStart'])
+        hi = clock.quarter(row['scoreStart'] + row.get('scoreDuration', 0))
+        ids = set(row.get('sourceIds', row.get('source_ids', [])))
+        eligible = [b for b in context['beats'] if not b['rest']
+                    and (not ids or ids.intersection([b['sourceId'], *b['noteIds']]))]
+        # High-fret receipts round source seconds to microseconds. Recover an
+        # exact written onset before deciding which side of a bar it belongs to.
+        near = [b for b in eligible if abs(b['start'] - lo) <= 1e-5]
+        matching = near or [b for b in eligible if b['start'] - EPS <= lo < b['end'] - EPS]
+        if near:
+            lo = min(b['start'] for b in near)
+        end_matches = [b['end'] for b in eligible if abs(b['end'] - hi) <= 1e-5]
+        if end_matches:
+            hi = min(end_matches, key=lambda q: abs(q - hi))
+        spans.append([min([lo] + [b['start'] for b in matching]), max([hi] + [b['end'] for b in matching])])
+    return union(spans)
 
 
 def plan(performance, options, main_id, alignment, audio_duration, originals=None):
@@ -279,12 +310,9 @@ def _fill_gaps(performance, options, main_id, alignment, audio_duration, primary
         ident = track["id"]
         if ident == main_id:
             continue
-        if primary and primary['roles'].get(ident) in {'solo', 'lead'}:
-            continue
         reason = None
         if track["instrument"] != "guitar": reason = "not_guitar"
         elif ident in options.get("excludedTrackIds", []): reason = "excluded_by_user"
-        elif ident in performance.get("hybridOmittedTracks", []): reason = "source_omissions"
         elif track["tuning"] != main["tuning"] or track["capo"] != main["capo"]: reason = "incompatible_setup"
         elif re.search(r"\b(delay|echo|fx|effect)\b", track["name"], re.I): reason = "effect_layer"
         signature = None
@@ -298,74 +326,39 @@ def _fill_gaps(performance, options, main_id, alignment, audio_duration, primary
         signatures.add(signature)
         track_context = {**context["tracks"][ident], "sectionQuarters": [clock.quarter(s["time"]) for s in performance.get("sections", [])]}
         possible = passages(track, track_context, context["timeline"], clock)
+        unsupported = omission_spans(performance, ident, track_context, clock)
+        accepted = []
         for p in possible:
             conflict = any(p['start'] < b - EPS and p['end'] > a + EPS for a,b in protected)
             fits = any(lo - EPS <= p['start'] and p['end'] <= hi + EPS for lo,hi in gaps)
-            reason = ('crosses_primary_material' if conflict else 'transition_guard_or_small_gap' if not fits else
+            omitted = any(p['start'] < b - EPS and p['end'] > a + EPS or a == b and p['start'] - EPS <= a < p['end'] - EPS
+                          for a, b in unsupported)
+            reason = ('no_supported_passage' if p['ghostOnly'] else 'source_omissions' if omitted else 'crosses_primary_material' if conflict else 'transition_guard_or_small_gap' if not fits else
                       'past_recording_end' if map_time(alignment, clock.seconds(p['end']), allow_negative=True) > audio_duration + EPS else 'eligible_phrase')
             evaluated.append({k: deepcopy(p[k]) for k in ('trackId','start','end','boundaries','events')} | {'reason': reason})
-        accepted = [p for p in possible if any(lo - EPS <= p["start"] and p["end"] <= hi + EPS for lo, hi in gaps)
-                    and map_time(alignment, clock.seconds(p["end"]), allow_negative=True) <= audio_duration + EPS]
+            if reason == 'eligible_phrase':
+                accepted.append(p)
         candidates.extend(accepted)
         if not accepted:
             excluded.append({"trackId": ident, "reason": "no_complete_passage_fits", "candidateCount": len(possible)})
-    # Explicit source priorities are lexicographic. Otherwise maximize passage
-    # coverage; within one beat of that optimum compare confidence/continuity.
-    # Keep Pareto states per ending donor, never a fuzzy pairwise comparator.
+    # All candidates are whole, primary-safe passages. A bounded DAG keeps a
+    # feasible incumbent instead of requiring the user to resolve search limits.
+    from .hybrid_search import select_passages
     candidates.sort(key=lambda p: (p["end"], p["start"], p["trackId"]))
-    if len(candidates) > MAX_CANDIDATES:
-        from .hybrid_primary import review
-        review(performance, options, main_id, 'This tab has too many candidate passages. Exclude some accompaniment sources and retry.', reviewReason='planning_limit')
-    def select_gap(candidates):
-        states = [{"chosen": [], "end": -math.inf, "coverage": 0.0, "preference": tuple(0.0 for _ in preferred), "switches": 0, "confidence": 0, "comfort": 0.0}]
-        for i, p in enumerate(candidates):
-            extensions = []
-            for state in states:
-                last = candidates[state["chosen"][-1]] if state["chosen"] else None
-                same = last and last["trackId"] == p["trackId"]
-                distance = 0 if same or not last else max(guard(last["end"], 1), guard(p["start"], -1))
-                if state["end"] + distance > p["start"] + EPS:
-                    continue
-                coverage = p["end"] - p["start"]
-                preference = list(state["preference"])
-                if p["trackId"] in preferred:
-                    rank = preferred.index(p["trackId"])
-                    preference[rank] = round(preference[rank] + coverage, 8)
-                movement = 0.0 if not last or last["exitFret"] is None or p["entryFret"] is None else abs(last["exitFret"] - p["entryFret"])
-                extensions.append({"chosen": state["chosen"] + [i], "end": p["end"], "coverage": state["coverage"] + coverage,
-                                   "preference": tuple(preference), "comfort": state["comfort"] + movement,
-                                   "switches": state["switches"] + int(last is not None and not same),
-                                   "confidence": state["confidence"] + sum(b in {"song", "rest", "section"} for b in p["boundaries"])})
-            # A later-ending state cannot dominate an earlier one. Remove only
-            # states with the same last donor and no benefit in any objective.
-            pool = states + extensions
-            states = []
-            groups = {}
-            for s in sorted(pool, key=lambda s: (s["end"], -s["coverage"], tuple(-x for x in s["preference"]), s["switches"], -s["confidence"], s["comfort"], s["chosen"])):
-                last = candidates[s["chosen"][-1]] if s["chosen"] else None
-                donor = (last["trackId"], last["exitFret"]) if last else None
-                frontier = groups.setdefault(donor, [])
-                if any(t["coverage"] >= s["coverage"] - EPS and t["preference"] >= s["preference"] and
-                       t["switches"] <= s["switches"] and t["confidence"] >= s["confidence"] and t["comfort"] <= s["comfort"] for t in frontier):
-                    continue
-                frontier.append(s)
-                states.append(s)
-            if len(states) > MAX_STATES:
-                from .hybrid_primary import review
-                review(performance, options, main_id, 'This tab has too many competing passage plans. Exclude some accompaniment sources and retry.', reviewReason='planning_limit')
-        best_preference = max(s["preference"] for s in states)
-        preferred_states = [s for s in states if s["preference"] == best_preference]
-        best = max(s["coverage"] for s in preferred_states)
-        eligible = [s for s in preferred_states if s["coverage"] >= best - 1 - EPS]
-        chosen = min(eligible, key=lambda s: (s["switches"], -s["confidence"], s["comfort"], -s["coverage"], s["chosen"]))
-        return chosen["chosen"], best
-
     chosen_indices, best = [], 0.0
+    states = operations = 0
+    reasons = []
     for lo, hi in gaps:
         indices = [i for i, p in enumerate(candidates) if lo - EPS <= p["start"] and p["end"] <= hi + EPS]
-        selected_indices, coverage = select_gap([candidates[i] for i in indices])
-        chosen_indices.extend(indices[i] for i in selected_indices)
-        best += coverage
+        search = select_passages([candidates[i] for i in indices], guard, preferred,
+                                 max_candidates=MAX_CANDIDATES, max_states=max(0, MAX_STATES - states),
+                                 max_operations=max(0, MAX_OPERATIONS - operations))
+        chosen_indices.extend(indices[i] for i in search['indices'])
+        best += search['activeQuarterBeats']
+        states += search['states']
+        operations += search['operations']
+        if search['reason']:
+            reasons.extend(search['reason'].split(','))
     selected = [deepcopy(candidates[i]) for i in chosen_indices]
     for p in selected:
         p["recordingStart"] = round(map_time(alignment, clock.seconds(p["start"]), allow_negative=True), 6)
@@ -378,6 +371,9 @@ def _fill_gaps(performance, options, main_id, alignment, audio_duration, primary
             "excluded": excluded, "candidateCount": len(candidates), "status": "created" if selected else "no_additions",
             "protected": protected, "gaps": gaps, "addedQuarterBeats": sum(p["end"] - p["start"] for p in selected),
             "candidateDecisions": evaluated,
-            "selection": {"algorithm": "per-gap-pareto-interval-plan-v1", "bestQuarterBeats": best, "indifferenceQuarterBeats": 1,
-                          "priority": "explicit-source-order, coverage-band, fewer-switches, boundary-confidence, fret-movement, coverage, stable-id"},
+            "selection": {"algorithm": "bounded-whole-phrase-dag-v1", "bestQuarterBeats": round(best, 6),
+                          "activeQuarterBeats": round(best, 6), "candidateCount": len(candidates),
+                          "states": states, "operations": operations, "budgetLimited": bool(reasons),
+                          "reason": ','.join(dict.fromkeys(reasons)) or None,
+                          "priority": "explicit-source-activity, activity-minus-switch-and-movement-cost, continuity, stable-id"},
             "unselected": [{k: p[k] for k in ("trackId", "start", "end", "boundaries")} for i, p in enumerate(candidates) if i not in chosen_set]}

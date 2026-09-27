@@ -515,7 +515,7 @@ class SongsterrJobs {
     if (job.hybridLead?.enabled) {
       const proof = checked.verification.hybridLead, summary = result.verification.hybridLead, options = result.recipe.hybridLead;
       if (!proof || !['created', 'no_additions', 'not_applicable'].includes(proof.status) || summary?.status !== proof.status
-          || proof.status !== 'not_applicable' && (proof.policy !== 'hybrid-lead-v2' || proof.primaryCoverage !== 'checked'
+          || proof.status !== 'not_applicable' && (proof.policy !== 'hybrid-lead-v3' || proof.primaryCoverage !== 'checked'
             || summary.policy !== proof.policy || summary.primaryCoverage !== proof.primaryCoverage
             || options.sourceSha256 !== job.cachedScoreHash || !options.mainTrackId
             || proof.mainTrackId !== options.mainTrackId || summary.mainTrackId !== options.mainTrackId)) throw new Error('Hybrid Lead did not provide verified composition evidence.');

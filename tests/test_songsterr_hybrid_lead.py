@@ -51,7 +51,7 @@ def build(tmp_path, doc=None, enabled=True, mapped=False, difficulty=False, over
         alignment = {"status": "validated", "mapping": "piecewise-linear", "anchors": [
             {"score": 0, "audio": 0}, {"score": 2, "audio": 1.5}, {"score": 8, "audio": 8}],
             "tempos": [{"time": 0, "bpm": 160}, {"time": 1.5, "bpm": 120 / (6.5 / 6)}]}
-    recipe = {"preservationContract": 33, "source": "songsterr", "scoreHash": options["sourceSha256"], "audioHash": audio["hash"]}
+    recipe = {"preservationContract": 34, "source": "songsterr", "scoreHash": options["sourceSha256"], "audioHash": audio["hash"]}
     if enabled:
         recipe["hybridLead"] = options
     result = build_feedpak(p, audio, alignment, directory, output_dir=tmp_path / "out", recipe=recipe,
@@ -98,11 +98,12 @@ def test_single_guitar_creates_identical_arrangement(tmp_path):
         assert m["song_import"]["hybridLeadResult"]["status"] == "no_additions"
 
 
-def test_ambiguous_choice_is_hash_bound_and_bass_is_not_a_main(tmp_path):
+def test_automatic_choice_is_hash_bound_and_bass_is_not_a_main(tmp_path):
     source, p, options = prepared(tmp_path)
     p["tracks"][1]["role"] = "lead"
+    assert choose_main(p, {"enabled": True}, options["sourceSha256"]) in {'0', '1', '2'}
     with pytest.raises(ImportFailure) as error:
-        choose_main(p, {"enabled": True}, options["sourceSha256"])
+        choose_main(p, {"enabled": True, "reviewSources": True}, options["sourceSha256"])
     assert error.value.code == "awaiting_main_choice"
     assert len(error.value.diagnostics["tracks"]) == 3
     assert choose_main(p, options, options["sourceSha256"]) == "0"
@@ -213,7 +214,7 @@ def test_worker_asks_for_main_before_audio_preparation(tmp_path, monkeypatch):
     doc = song(); doc["tracks"][1]["name"] = "Other Lead Guitar"
     source = tmp_path / "source.json"; source.write_text(json.dumps(doc), encoding="utf-8")
     monkeypatch.setattr(worker, "prepare_audio", lambda *a, **kw: pytest.fail("Audio was prepared before source selection"))
-    result = run_import({"scorePath": str(source), "workDir": str(tmp_path / "work"), "outputDir": str(tmp_path / "out"), "hybridLead": {"enabled": True}})
+    result = run_import({"scorePath": str(source), "workDir": str(tmp_path / "work"), "outputDir": str(tmp_path / "out"), "hybridLead": {"enabled": True, "reviewSources": True}})
     assert result["code"] == "awaiting_main_choice"
     assert len(result["hybridChoice"]["tracks"]) == 3
     assert not (tmp_path / "out").exists()
