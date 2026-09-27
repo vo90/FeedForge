@@ -102,7 +102,7 @@ def _verify_ending_order(performance, measures):
 
 
 def align_from_songsterr(performance: dict, audio: dict, synchronization: dict | None,
-                        metadata: dict, *, allow_ending_candidate: bool = False) -> dict:
+                        metadata: dict, *, allow_ending_candidate: bool = False, _opening_probe: bool = False) -> dict:
     """Return verified source timing or a typed reason for matcher fallback."""
     if not all(isinstance(value, dict) for value in (performance, audio, metadata)):
         _unavailable("invalid_input")
@@ -238,6 +238,11 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
                               "sourceSyncUnusedTrailingPointCount": unused_count,
                               "sourceSyncSilentTerminalExtension": silent_terminal}})
     checked, trimmed, late, slide_trims = 0, 0, 0, 0
+    if _opening_probe:
+        # Structural evidence only. It can never be handed to the builder as
+        # an accepted map; repair must rerun ALL playable-event checks.
+        result['status']='needs_opening_check'
+        return result
     for track in performance.get("tracks", []):
         notes = [(note, note.get("t")) for note in track.get("notes", [])]
         notes += [(note, note.get("t", chord.get("t"))) for chord in track.get("chords", []) for note in chord.get("notes", [])]

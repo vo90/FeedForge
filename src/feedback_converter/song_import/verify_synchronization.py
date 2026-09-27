@@ -48,6 +48,23 @@ def verify_source_timing(source, alignment, recipe, timing, check):
               'inferredTrailing': max(0, required - len(points))}
     check.equal('source_timing_policy', 'alignment/provenance/boundaryPolicy', policy, provenance.get('boundaryPolicy'))
     anchors = alignment.get('anchors', [])
+    repair = alignment.get('openingRepair')
+    if repair:
+        if repair.get('version') != 'bounded-opening-map-v1' or repair.get('status') != 'supported':
+            fail('Unverified opening repair.'); return
+        if repair.get('originalBoundaries') != retained[:2] or repair.get('lockedBoundary') != retained[2]:
+            fail('Opening repair does not belong to this original map.'); return
+        replacement=repair.get('replacementBoundaries')
+        if (not isinstance(replacement,list) or len(replacement)!=2
+                or any(type(v) not in (int,float) or not math.isfinite(v) for v in replacement)
+                or not 0<=replacement[0]<replacement[1]<retained[2]):
+            fail('Invalid repaired opening boundaries.'); return
+        retained[:2]=replacement
+    preparation=alignment.get('preparation') or {}
+    offset=preparation.get('seconds',0)
+    if type(offset) not in (int,float) or not math.isfinite(offset) or not 0<=offset<=2:
+        fail('Invalid preparation offset.'); return
+    retained=[value+offset for value in retained]
     check.equal('source_timing_boundaries', 'alignment/anchors', required, len(anchors))
     for i, (quarter, audio, anchor) in enumerate(zip(boundaries, retained, anchors)):
         where = f'alignment/anchors/{i}'

@@ -141,7 +141,7 @@ def _download_youtube(url: str, directory: Path, tools: dict, *, managed_retries
     return candidates[0], {"kind": "youtube", "videoId": info.get("id"), "title": info.get("title"), "url": url}
 
 
-def prepare_audio(audio: dict | None, directory: Path, tools: dict | None = None, *, managed_retries=False) -> dict:
+def prepare_audio(audio: dict | None, directory: Path, tools: dict | None = None, *, managed_retries=False, defer_encoding=False) -> dict:
     """Write full.ogg and preview.ogg in an owned, empty job directory."""
     import numpy as np
     import soundfile as sf
@@ -185,10 +185,10 @@ def prepare_audio(audio: dict | None, directory: Path, tools: dict | None = None
             duration = len(reader) / reader.samplerate
             if not 2.0 <= duration <= MAX_DURATION or not 1 <= reader.channels <= 2:
                 raise ImportFailure("needs_audio", "Choose a mono or stereo recording between 2 seconds and 20 minutes.")
-            target = directory / "full.ogg"
+            target = directory / ("analysis.wav" if defer_encoding else "full.ogg")
             peak = 0.0
             with sf.SoundFile(target, "w", samplerate=reader.samplerate, channels=reader.channels,
-                              format="OGG", subtype="VORBIS") as writer:
+                               format="WAV" if defer_encoding else "OGG", subtype="FLOAT" if defer_encoding else "VORBIS") as writer:
                 for block in reader.blocks(blocksize=32768, dtype="float32", always_2d=True):
                     if not np.isfinite(block).all():
                         raise ImportFailure("needs_audio", "The recording contains invalid audio samples.")
@@ -215,7 +215,8 @@ def prepare_audio(audio: dict | None, directory: Path, tools: dict | None = None
                 # Source bytes identify the recording for semantic reuse; the
                 # encoded hash separately checks this particular output asset.
                 "hash": source["sha256"], "encodedHash": sha256_file(target),
-                "source": source, "previewStart": start}
+                "source": source, "previewStart": start,
+                **({"encodingSourcePath": str(decode_path)} if defer_encoding else {})}
     except ImportFailure:
         raise
     except (OSError, RuntimeError, ValueError) as exc:

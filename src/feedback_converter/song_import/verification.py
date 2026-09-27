@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 34
+VERSION = 35
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -663,6 +663,31 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             manifest = yaml.safe_load(z.read("manifest.yaml"))
             _finite(manifest, "manifest", check)
             recipe = manifest.get("song_import", {})
+            if alignment.get('timingAssessment') or recipe.get('timingAssessmentFile'):
+                from .local_sync import assess, independent_tracks
+                tracks,_=independent_tracks(source)
+                from .verify_timeline import RecordingMap
+                recording=RecordingMap(alignment)
+                for track in tracks:
+                    for event in track['events']:
+                        event['t']=recording.at(event['t'])
+                        event['end']=recording.at(event['end'])
+                full=[s for s in manifest.get('stems',[]) if s.get('id')=='full']
+                if len(full)!=1:raise ValueError('Timing assessment requires one full recording.')
+                stored=_json(z,recipe.get('timingAssessmentFile',''),check)
+                check.equal('timing_assessment_receipt','import/timing-assessment',alignment.get('timingAssessment'),stored)
+                fresh=assess(tracks,io.BytesIO(z.read(full[0]['file'])),manifest['duration'],alignment['provenance']['mapHash'])
+                check.equal('timing_assessment_audio','import/timing-assessment',fresh,stored)
+                report['timing']['acousticAssessment']={k:fresh[k] for k in
+                    ('version','status','everyNoteVerified','windowCount','supportedWindows','suspectedMismatchWindows')}
+            if alignment.get('openingRepair') or recipe.get('openingRepairFile'):
+                from .local_sync import verify_repair
+                from .preparation import recording_view
+                full=[s for s in manifest.get('stems',[]) if s.get('id')=='full']
+                if len(full)!=1:raise ValueError('Opening repair requires one full recording.')
+                recording=recording_view(io.BytesIO(z.read(full[0]['file'])),alignment.get('preparation'))
+                verify_repair(source,alignment,_json(z,recipe.get('openingRepairFile',''),check),recording,check)
+                report['scope'].append('verified_local_opening_repair')
             if recipe.get('pickupTimelineFile') or recipe.get('preservationContract', 0) >= 34 and any(b.pickup for b in source.bars):
                 from .verify_pickup import verify as verify_pickup
                 check.equal('pickup_clock', 'manifest/song_import/pickupTimelineFile',
@@ -852,6 +877,8 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 check.equal("omission_compatibility", "import/compatibility", omissions, compatibility.get("omissions"))
                 report["counts"]["expectedPlayableNotes"] = sum(len(p["notes"]) for p in wanted["parts"])
             ending_adjustments = _ending_adjustments(wanted, alignment, recipe, z, duration, source, check, manifest, report["timing"])
+            from .preparation import verify as verify_preparation
+            verify_preparation(wanted,alignment,recipe,z,manifest,check)
             adjustments = _terminal_adjustments(wanted, alignment, recipe, z, duration, source, check)
             if ending_adjustments:
                 adjustments = {**(adjustments or {}), **ending_adjustments}

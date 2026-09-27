@@ -198,7 +198,7 @@ def test_real_score_parser_worker_cli_and_feedpak_validator_end_to_end(tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr
     imported = json.loads(result.stdout)
     assert imported["ok"] and imported["coverage"]["notes"] == 48
-    assert imported["alignment"]["offset"] == pytest.approx(offset, abs=0.06)
+    assert imported["alignment"]["offset"] - imported['alignment']['preparation']['seconds'] == pytest.approx(offset, abs=0.06)
     assert imported["alignment"]["scale"] == pytest.approx(scale, abs=0.005)
     assert imported["relativePath"] == "Original band/Original band - Real song.feedpak"
     assert not (tmp_path / "library").exists()

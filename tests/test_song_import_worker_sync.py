@@ -123,7 +123,7 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
                "outputSettings": {"nameTemplate": "{artist} - {title}", "outputLayout": "artist", "generateDifficulty": precise_harmonic}}
     result = worker.run_import(request)
     assert result["ok"], result
-    assert result["recipe"]["preservationContract"] == result["verification"]["version"] == result["evidence"]["version"] == 34
+    assert result["recipe"]["preservationContract"] == result["verification"]["version"] == result["evidence"]["version"] == 35
     extensions = ["slide_in_marks", "slide_out", "slide_out_marks"]
     if precise_harmonic:
         extensions = ['hn', 'hps', *extensions]
@@ -144,14 +144,15 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
             retained = [n for phrase in chart['phrases'] for level in phrase['levels'] for n in level['notes'] if n.get('hn')]
             assert retained and all((n['f'], n['hn'], n['hps']) == (3, 3.2, 31) for n in retained)
             assert manifest['song_import']['compatibility'] == result['recipe']['compatibility']
-        assert [note["t"] for note in chart["notes"]] == pytest.approx(expected_starts)
+        assert [note["t"] for note in chart["notes"]] == pytest.approx([t+1 for t in expected_starts])
         assert [note["sus"] for note in chart["notes"]] == pytest.approx([0.525] * 4 + [0.675] * 4)
         assert chart["notes"][0]["slide_out_marks"] == [{"direction": "down", "start": 0, "end": .525}]
         assert chart["notes"][0]["slide_in_marks"] == [{"direction": "up", "time": 0}]
-        assert [beat["time"] for beat in chart["beats"]] == pytest.approx(expected_starts)
+        assert [beat["time"] for beat in chart["beats"]] == pytest.approx([t+1 for t in expected_starts])
         assert len(chart["tempos"]) == 2
         assert manifest["preview"] in archive.namelist()
-        assert manifest["duration"] == pytest.approx(6)
+        assert manifest["duration"] == pytest.approx(7)
+        assert manifest['song_import']['preparation']['seconds'] == 1
     changed = {**request, "synchronization": {**synchronization, "points": [1, 3.2, 5.8]}}
     retried = worker.run_import(changed)
     assert retried["ok"], retried
@@ -188,9 +189,9 @@ def test_completed_package_verifies_several_silent_trailing_bars(tmp_path, monke
         manifest = yaml.safe_load(archive.read('manifest.yaml'))
         chart = json.loads(archive.read(manifest['arrangements'][0]['file']))
         notation = json.loads(archive.read(manifest['arrangements'][0]['notation']))
-        assert manifest['duration'] == pytest.approx(3)
+        assert manifest['duration'] == pytest.approx(5)
         assert len(chart['notes']) == 1
-        assert chart['notes'][0]['t'] == 0 and chart['notes'][0]['sus'] == 2
+        assert chart['notes'][0]['t'] == 2 and chart['notes'][0]['sus'] == 2
         assert len(notation['measures']) == 5
-        assert notation['measures'][-1]['t'] == 8 and notation['measures'][-1]['duration_seconds'] == 2
-        assert all(b['time'] <= 3 for b in chart['beats'])
+        assert notation['measures'][-1]['t'] == 10 and notation['measures'][-1]['duration_seconds'] == 2
+        assert all(b['time'] <= 5 for b in chart['beats'])

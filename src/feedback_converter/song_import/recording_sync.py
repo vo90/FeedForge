@@ -27,9 +27,9 @@ SPARSE_EXCLUSIONS = PITCH_EXCLUSIONS + ATTACK_EXCLUSIONS + (
     'harmonic_alias', 'pick_scrape_marks', 'slide_out', 'slide_out_marks', 'slide_in_marks', 'tr',
 )
 
-def features(path):
+def features(path, *, reference_hz=440.0):
     with sf.SoundFile(path) as reader:
-        if not 2 <= len(reader) / reader.samplerate <= 1200 or not 1 <= reader.channels <= 2:
+        if not 2 <= len(reader) / reader.samplerate <= 1202 or not 1 <= reader.channels <= 2:
             raise ValueError("The timing check needs a bounded mono or stereo recording.")
         rate = reader.samplerate
         mono = reader.read(dtype='float32', always_2d=True).mean(axis=1)
@@ -44,7 +44,7 @@ def features(path):
     freq = np.fft.rfftfreq(n, 1 / RATE)
     bank = np.zeros((len(MIDIS), len(freq)), dtype='float32')
     for i, midi in enumerate(MIDIS):
-        base = 440 * 2 ** ((midi - 69) / 12)
+        base = reference_hz * 2 ** ((midi - 69) / 12)
         for harmonic in range(1, 6):
             f = base * harmonic
             if f > 4900:
