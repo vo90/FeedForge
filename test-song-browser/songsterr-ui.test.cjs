@@ -31,7 +31,8 @@ test('Hybrid choice and result explain the main, no-addition and separate-fallba
   const html = job({ state: 'awaiting_main_choice', canRetry: true, hybridLead: { enabled: true }, hybridChoice: {
     sourceSha256: 'source', tracks: [{ id: 'a', name: 'Lead A' }, { id: 'b', name: 'Clean B' }],
   } });
-  assert.match(html, /Main guitar/); assert.match(html, /Supplementary guitars/); assert.match(html, /Other queued songs can continue/);
+  assert.match(html, /Main guitar/); assert.match(html, /Guitar roles and priority/); assert.match(html, /Other queued songs can continue/);
+  assert.match(html, /Primary solo/); assert.match(html, /Additional lead/);
   assert.ok(buttonText(html).includes('Create Hybrid Lead &amp; continue'));
   assert.ok(buttonText(html).includes('Start separate originals-only import'));
   assert.ok(!buttonText(html).includes('Retry import'));

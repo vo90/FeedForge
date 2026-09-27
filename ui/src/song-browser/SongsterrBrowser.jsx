@@ -7,25 +7,30 @@ ACTIVE.add('retry_wait');
 const LABELS = { queued: 'Queued', resolving: 'Checking revision', downloading: 'Retrieving tab', audio: 'Preparing audio', aligning: 'Aligning audio', converting: 'Creating FeedPak', validating: 'Validating', saving: 'Saving', completed: 'FeedPak ready', needs_audio: 'Audio needed', needs_login: 'Sign in needed', needs_attention: 'Needs attention', alignment_failed: 'Audio could not be aligned', failed: 'Failed', cancelled: 'Cancelled' };
 function errorText(value) { return typeof value === 'string' ? value : value?.message || value?.error || 'The operation failed. Please try again.'; }
 LABELS.retry_wait = 'Waiting to retry';
-LABELS.awaiting_main_choice = 'Choose main guitar';
+LABELS.awaiting_main_choice = 'Review lead sources';
 
 export function HybridChoice({ job, api, action, busy }) {
   const choice = job.hybridChoice;
   const [main, setMain] = useState(choice?.suggestedMainTrackId || '');
   const [excluded, setExcluded] = useState(job.hybridLead?.excludedTrackIds || []);
   const [preferred, setPreferred] = useState(job.hybridLead?.preferredTrackIds || []);
+  const [roles, setRoles] = useState({ ...choice?.suggestedRoles, ...job.hybridLead?.roles, ...(choice?.ambiguousTrackId ? { [choice.ambiguousTrackId]: '' } : {}) });
   if (!choice) return null;
   return <form className="st-hybrid-choice" onSubmit={event => { event.preventDefault(); action(() => api.retry({ id: job.id, hybridLead: {
     enabled: true, mainTrackId: main, sourceSha256: choice.sourceSha256,
     excludedTrackIds: excluded.filter(id => id !== main), preferredTrackIds: preferred.filter(id => id !== main && !excluded.includes(id)),
+    roles: Object.fromEntries(choice.tracks.filter(track => track.id !== main && !excluded.includes(track.id)).map(track => [track.id, roles[track.id]])),
   } })); }}>
     <label>Main guitar <select required value={main} disabled={busy} onChange={event => setMain(event.target.value)}>
-      <option value="">Choose a guitar…</option>{choice.tracks.map(track => <option key={track.id} value={track.id}>{track.name}</option>)}
+      <option value="">Choose a guitar…</option>{choice.tracks.map(track => <option key={track.id} value={track.id} disabled={track.playable === false}>{track.name}</option>)}
     </select></label>
-    <p>Hybrid Lead keeps this guitar throughout the song and fills suitable rests from the others. Other queued songs can continue.</p>
-    <details><summary>Supplementary guitars</summary><p>Checked guitars may contribute. Use Prefer in your desired order; the first preferred guitar has highest priority.</p>
+    <p>Hybrid Lead follows this guitar, gives confirmed solos priority, then fills remaining rests. Originals stay unchanged. Other queued songs can continue.</p>
+    <details open><summary>Guitar roles and priority</summary><p>Identify the lead and solo sources first. Preference breaks ties within the same role; accompaniment cannot displace a primary solo.</p>
       {choice.tracks.filter(track => track.id !== main).map(track => <div key={track.id} className="sb-job-controls">
         <label><input type="checkbox" checked={!excluded.includes(track.id)} disabled={busy} onChange={event => setExcluded(event.target.checked ? excluded.filter(id => id !== track.id) : [...excluded, track.id])} /> {track.name}</label>
+        <select aria-label={`Role for ${track.name}`} required={!excluded.includes(track.id)} disabled={busy || excluded.includes(track.id)} value={roles[track.id] ?? ''} onChange={event => setRoles({ ...roles, [track.id]: event.target.value })}>
+          <option value="">Choose musical role…</option><option value="solo">Primary solo</option><option value="lead">Additional lead</option><option value="accompaniment">Accompaniment</option>
+        </select>
         <button type="button" className="sb-text-button" disabled={busy || excluded.includes(track.id)} onClick={() => setPreferred(preferred.includes(track.id) ? preferred.filter(id => id !== track.id) : [...preferred, track.id])}>
           {preferred.includes(track.id) ? `Priority ${preferred.indexOf(track.id) + 1} · Clear` : 'Prefer'}
         </button></div>)}
@@ -37,7 +42,8 @@ export function HybridChoice({ job, api, action, busy }) {
 function HybridResult({ result }) {
   if (!result) return null;
   if (result.status === 'not_applicable') return <p>Hybrid Lead: no usable guitar arrangement. Original arrangements imported.</p>;
-  return <div><p><strong>Hybrid Lead</strong> · Main: {result.mainName}. {result.status === 'no_additions' ? 'No additions — the main guitar was copied unchanged.' : `${result.passageCount} added passages from ${(result.contributors || []).map(t => t.name).join(', ')} (about ${Math.round(result.addedSeconds)} seconds).`}</p>
+  return <div><p><strong>Hybrid Lead</strong> · Main: {result.mainName}. {result.status === 'no_additions' ? 'No additions — the main guitar was copied unchanged.' : `${result.passageCount} selected passages from ${(result.contributors || []).map(t => t.name).join(', ')} (about ${Math.round(result.addedSeconds)} seconds of previously empty space filled).`}</p>
+    {result.coverageStatus === 'complete' ? <p>Primary coverage checked. {result.primaryPassages || 0} lead/solo passages; {result.replacedMainEvents || 0} main events replaced by primary material. All originals are preserved.</p> : null}
     {result.excluded?.length ? <details><summary>Sources without additions</summary><ul>{result.excluded.map(row => <li key={row.trackId}>{row.name || row.trackId}: {{ duplicate_source: 'Duplicates another guitar', another_passage_plan_selected: 'Another passage plan was selected', not_guitar: 'Bass or another instrument', incompatible_setup: 'Different tuning, strings or capo', excluded_by_user: 'Excluded by your choice', effect_layer: 'Echo or effect layer', duplicate_main: 'Duplicates the main guitar', source_omissions: 'Contains omitted source events', no_complete_passage_fits: 'No complete passage safely fits' }[row.reason] || row.reason}</li>)}</ul></details> : null}
     {result.notationStatus === 'source_only' ? <p>Written notation remains in the original source because a contributing guitar has a notation limitation.</p> : null}</div>;
 }

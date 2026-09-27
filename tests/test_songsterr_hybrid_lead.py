@@ -32,26 +32,26 @@ def song():
     return doc
 
 
-def prepared(tmp_path, doc=None):
+def prepared(tmp_path, doc=None, overrides=None):
     source = tmp_path / "score.json"
     source.write_text(json.dumps(doc or song()), encoding="utf-8")
     performance = load_performance(source, composition_context=True)
     source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
-    options = normalize_options({"enabled": True})
+    options = normalize_options({"enabled": True, **(overrides or {})})
     main = choose_main(performance, options, source_hash)
     options.update(mainTrackId=main, sourceSha256=source_hash)
     return source, performance, options
 
 
-def build(tmp_path, doc=None, enabled=True, mapped=False, difficulty=False):
-    source, p, options = prepared(tmp_path, doc)
+def build(tmp_path, doc=None, enabled=True, mapped=False, difficulty=False, overrides=None):
+    source, p, options = prepared(tmp_path, doc, overrides)
     _, audio, _, directory = inputs(tmp_path)
     alignment = {"status": "validated", "offset": 0, "scale": 1}
     if mapped:
         alignment = {"status": "validated", "mapping": "piecewise-linear", "anchors": [
             {"score": 0, "audio": 0}, {"score": 2, "audio": 1.5}, {"score": 8, "audio": 8}],
             "tempos": [{"time": 0, "bpm": 160}, {"time": 1.5, "bpm": 120 / (6.5 / 6)}]}
-    recipe = {"preservationContract": 32, "source": "songsterr", "scoreHash": options["sourceSha256"], "audioHash": audio["hash"]}
+    recipe = {"preservationContract": 33, "source": "songsterr", "scoreHash": options["sourceSha256"], "audioHash": audio["hash"]}
     if enabled:
         recipe["hybridLead"] = options
     result = build_feedpak(p, audio, alignment, directory, output_dir=tmp_path / "out", recipe=recipe,

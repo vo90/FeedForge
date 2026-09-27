@@ -337,12 +337,12 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             # Source-only omissions still protect the main. Donors with such
             # omissions are excluded entirely rather than offering fragments.
             main_id = hybrid_lead["mainTrackId"]
-            planning["tracks"] = [deepcopy(next(t for t in original_tracks if t["id"] == main_id)) if t["id"] == main_id else t for t in planning["tracks"]]
             options = hybrid_lead["options"]
             affected = {n["trackId"] for n in (omissions or {}).get("notes", [])}
-            planning_options = deepcopy(options)
-            planning_options["excludedTrackIds"] = list(dict.fromkeys(options.get("excludedTrackIds", []) + sorted(affected - {main_id})))
-            composition = plan(planning, planning_options, main_id, alignment, duration)
+            planning["hybridOmittedTracks"] = sorted(affected)
+            # Primary roles are resolved against the user's choices, before
+            # optional accompaniment omissions are applied by the planner.
+            composition = plan(planning, options, main_id, alignment, duration, original_charts)
             for row in composition["excluded"]:
                 if row["trackId"] in affected and row["trackId"] not in options.get("excludedTrackIds", []):
                     row["reason"] = "source_omissions"
@@ -358,7 +358,9 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             hybrid_summary = {"status": receipt["status"], "mainTrackId": main_id,
                 "mainName": original_charts[main_id]["manifest"]["name"], "passageCount": len(receipt["passages"]),
                 "contributors": [{"id": ident, "name": original_charts[ident]["manifest"]["name"]} for ident in dict.fromkeys(p["trackId"] for p in receipt["passages"])],
-                "addedSeconds": round(sum(p["recordingEnd"] - p["recordingStart"] for p in receipt["passages"]), 3),
+                "addedSeconds": receipt['addedSeconds'], "selectedSeconds": receipt['selectedSeconds'],
+                "primaryPassages": sum(p.get('priority') in {'solo','lead'} for p in receipt['passages']),
+                "replacedMainEvents": len(receipt.get('removedMain', [])), "coverageStatus": receipt['coverage']['status'],
                 "excluded": [{**row, "name": next((t["name"] for t in performance["tracks"] if t["id"] == row["trackId"]), row["trackId"])} for row in receipt["excluded"]],
                 "notationStatus": receipt["notationStatus"]}
     source = performance.get("source") or {}

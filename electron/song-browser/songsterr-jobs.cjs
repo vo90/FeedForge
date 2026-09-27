@@ -263,7 +263,7 @@ class SongsterrJobs {
       const options = normalizeHybridLead(hybridLead), choice = job.hybridChoice;
       if (!options.enabled || options.sourceSha256 !== job.cachedScoreHash || options.sourceSha256 !== choice?.sourceSha256
           || !choice.tracks.some(t => t.id === options.mainTrackId)
-          || [...options.excludedTrackIds, ...options.preferredTrackIds].some(id => !choice.tracks.some(t => t.id === id))) throw new Error('Choose available guitars for this exact tab revision.');
+          || [...options.excludedTrackIds, ...options.preferredTrackIds, ...Object.keys(options.roles)].some(id => !choice.tracks.some(t => t.id === id))) throw new Error('Choose available guitars for this exact tab revision.');
       delete options.reviewSources;
       job.hybridLead = options;
       delete job.hybridChoice;
@@ -515,7 +515,9 @@ class SongsterrJobs {
     if (job.hybridLead?.enabled) {
       const proof = checked.verification.hybridLead, summary = result.verification.hybridLead, options = result.recipe.hybridLead;
       if (!proof || !['created', 'no_additions', 'not_applicable'].includes(proof.status) || summary?.status !== proof.status
-          || proof.status !== 'not_applicable' && (options.sourceSha256 !== job.cachedScoreHash || !options.mainTrackId
+          || proof.status !== 'not_applicable' && (proof.policy !== 'hybrid-lead-v2' || proof.primaryCoverage !== 'checked'
+            || summary.policy !== proof.policy || summary.primaryCoverage !== proof.primaryCoverage
+            || options.sourceSha256 !== job.cachedScoreHash || !options.mainTrackId
             || proof.mainTrackId !== options.mainTrackId || summary.mainTrackId !== options.mainTrackId)) throw new Error('Hybrid Lead did not provide verified composition evidence.');
     }
     Object.assign(job, { outputRelativePath: result.relativePath, outputHash,

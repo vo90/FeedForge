@@ -29,6 +29,12 @@ def notation_for(plan, originals):
     result = deepcopy(main)
     for staff in result["staves"]:
         staff["label"] = NAME
+    for measure in result['measures']:
+        for staff in measure['staves'].values():
+            for voice in staff['voices']:
+                voice['beats'] = [b for b in voice['beats'] if not any(
+                    b['t'] < r['recordingEnd'] - 1e-7 and b['t'] + b.get('duration_seconds', 0) > r['recordingStart'] + 1e-7
+                    for r in plan.get('removedMain', []))]
     # Separate source voices preserve original written rhythms and ties. Empty
     # donor voices are not added. Base rests remain valid in their own voice.
     used = {v["v"] for m in result["measures"] for s in m["staves"].values() for v in s["voices"]}
@@ -63,6 +69,15 @@ def materialize(plan, originals, options, source_hash, audio_hash, duration, gen
     chart["name"] = NAME
     chart.pop("phrases", None)
     chart.pop("difficulty_provenance", None)
+    chart.pop('ext', None)
+    # Resolve lineage through existing endpoint projection before selecting.
+    for row in [*plan.get('mainEvents', []), *plan.get('removedMain', [])]:
+        row['sourceIndex'] = row['index']
+        row['index'] = base['eventIndices'][(row['kind'], row['index'])]
+    if 'mainEvents' in plan:
+        for kind in ('notes', 'chords'):
+            wanted = {r['index'] for r in plan['mainEvents'] if r['kind'] == kind}
+            chart[kind] = [e for i, e in enumerate(chart[kind]) if i in wanted]
     offsets = {plan["mainTrackId"]: 0}
     for p in plan["passages"]:
         original = originals[p["trackId"]]
@@ -84,17 +99,28 @@ def materialize(plan, originals, options, source_hash, audio_hash, duration, gen
             chart[ref["kind"]].append(event)
     for key in ("notes", "chords"):
         chart[key].sort(key=lambda e: e["t"])
+    # Fret 127 is an unpitched mute sentinel, valid only when supported by a
+    # referencing muted chord. An unselected donor chord supplies no such proof.
+    used_templates = {c['id'] for c in chart['chords']}
+    retained = [i for i,t in enumerate(chart['templates']) if i in used_templates or 127 not in t['frets']]
+    remap = {old:new for new,old in enumerate(retained)}
+    chart['templates'] = [chart['templates'][i] for i in retained]
+    for chord in chart['chords']:
+        chord['id'] = remap[chord['id']]
     if generate_difficulty:
         ensure_difficulty(chart, duration=duration)
     notation, notation_reason = notation_for(plan, originals)
-    ident = "hybrid-lead-" + digest((source_hash + ":" + plan["mainTrackId"]).encode())[:20]
+    for row in plan.get('coverage', {}).get('events', []):
+        row['sourceIndex'] = row['index']
+        row['index'] = originals[row['trackId']]['eventIndices'].get((row['kind'], row['index']))
+    ident = "hybrid-lead-" + digest((POLICY + ':' + source_hash + ":" + plan["mainTrackId"]).encode())[:20]
     sources = []
     for track_id in dict.fromkeys([plan["mainTrackId"], *(p["trackId"] for p in plan["passages"])]):
         row = originals[track_id]
         sources.append({"trackId": track_id, "arrangementId": row["manifest"]["id"], "file": row["manifest"]["file"],
                         "chartSha256": digest(encode(row["chart"])), **row["identity"],
                         **({"notationFile": row["manifest"]["notation"], "notationSha256": digest(encode(row["notation"]))} if row.get("notation") else {})})
-    receipt = {**deepcopy(plan), "version": 1, "policy": POLICY, "arrangementId": ident,
+    receipt = {**deepcopy(plan), "version": 2, "policy": POLICY, "arrangementId": ident,
                "sourceSha256": source_hash, "audioSha256": audio_hash, "options": deepcopy(options),
                "sources": sources, "chartSha256": digest(encode(chart)),
                "notationStatus": "composed" if notation else "source_only", "notationReason": notation_reason}

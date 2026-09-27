@@ -83,6 +83,9 @@ def run_import(request: dict, progress=None) -> dict:
         score_hash = sha256_file(score)
         try:
             main_id = choose_main(performance, hybrid_options, score_hash)
+            if main_id:
+                from .hybrid_primary import resolve_roles
+                resolve_roles(performance, {**hybrid_options, 'sourceSha256': score_hash}, main_id)
         except ImportFailure as choice:
             if choice.code != "awaiting_main_choice":
                 raise
@@ -145,7 +148,7 @@ def run_import(request: dict, progress=None) -> dict:
         summary["timing"] = "source_map" if alignment.get("method") == "songsterr-video-points-v1" else "estimated"
         summary["compatibility"] = recipe["compatibility"]
         if result.get("hybridLead"):
-            summary["hybridLead"] = result["hybridLead"]
+            summary["hybridLead"] = {**result["hybridLead"], **verification.get("hybridLead", {})}
         if verification.get("adjustments"):
             summary["adjustments"] = verification["adjustments"]
         if verification.get("omissions"):
@@ -174,6 +177,8 @@ def run_import(request: dict, progress=None) -> dict:
                              if alignment.get("method") == "songsterr-video-points-v1" else
                              ["Songsterr audio matching is experimental; this recording passed the current automatic checks."])}
     except ImportFailure as exc:
+        if exc.code == 'awaiting_main_choice':
+            return {'ok': False, 'code': exc.code, 'error': str(exc), 'hybridChoice': exc.diagnostics}
         failed = {"ok": False, "code": exc.code, "error": str(exc), **({"alignment": exc.diagnostics} if exc.diagnostics else {}),
                   **({"transport": exc.transport} if exc.transport else {})}
     except ImportError as exc:

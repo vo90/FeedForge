@@ -13,9 +13,11 @@ from .audio import ImportFailure
 from .alignment import map_time
 from .hybrid_context import Clock
 
-POLICY = "hybrid-lead-v1"
+POLICY = "hybrid-lead-v2"
 NAME = "Hybrid Lead"
 EPS = 1e-7
+MAX_CANDIDATES = 20000
+MAX_STATES = 10000
 
 
 def normalize_options(value=None):
@@ -23,11 +25,17 @@ def normalize_options(value=None):
         return {"enabled": False}
     if not isinstance(value, dict) or not isinstance(value.get("enabled", False), bool):
         raise ValueError("Hybrid Lead options must include a boolean enabled setting.")
-    if set(value) - {"enabled", "mainTrackId", "excludedTrackIds", "preferredTrackIds", "sourceSha256", "reviewSources"}:
+    if set(value) - {"enabled", "policy", "roles", "mainTrackId", "excludedTrackIds", "preferredTrackIds", "sourceSha256", "reviewSources"}:
         raise ValueError("Unknown Hybrid Lead option.")
     if not value.get("enabled"):
         return {"enabled": False}
-    out = {"enabled": True}
+    if value.get("policy", POLICY) != POLICY:
+        raise ValueError("This Hybrid Lead request uses an older musical policy. Review its sources again.")
+    out = {"enabled": True, "policy": POLICY}
+    roles = value.get("roles", {})
+    if not isinstance(roles, dict) or len(roles) > 128 or any(not isinstance(k, str) or not 0 < len(k) <= 160 or v not in {"solo", "lead", "accompaniment"} for k, v in roles.items()):
+        raise ValueError("Invalid Hybrid Lead source roles.")
+    out["roles"] = dict(sorted(roles.items()))
     for key in ("mainTrackId", "sourceSha256"):
         if key in value:
             if not isinstance(value[key], str) or not 0 < len(value[key]) <= 160:
@@ -51,22 +59,25 @@ def choose_main(performance, options, source_hash):
     guitars = [t for t in playable["tracks"] if t["instrument"] == "guitar" and (t["notes"] or t["chords"])]
     if not guitars:
         return None
-    ids = {t["id"] for t in guitars}
+    ids = {t['id'] for t in performance['tracks'] if t['instrument'] == 'guitar' and (t['notes'] or t['chords'])}
     if options.get("sourceSha256") and options["sourceSha256"] != source_hash:
         raise ImportFailure("hybrid_choice_stale", "The tab changed. Choose the main guitar again.")
-    if (set(options.get("excludedTrackIds", [])) | set(options.get("preferredTrackIds", []))) - ids:
+    if (set(options.get("excludedTrackIds", [])) | set(options.get("preferredTrackIds", [])) | set(options.get("roles", {}))) - ids:
         raise ImportFailure("hybrid_choice_stale", "A selected guitar is no longer available in this tab.")
     if options.get("mainTrackId"):
-        if options["mainTrackId"] not in ids:
+        if options["mainTrackId"] not in {t['id'] for t in guitars}:
             raise ImportFailure("hybrid_choice_stale", "The chosen main guitar is no longer available.")
         return options["mainTrackId"]
     lead = [t for t in guitars if t.get("role") == "lead" and not re.search(r"\b(solo|delay|echo|effect)\b", t["name"], re.I)]
     suggested = guitars[0]["id"] if len(guitars) == 1 else lead[0]["id"] if len(lead) == 1 else None
     if suggested and not options.get("reviewSources"):
         return suggested
+    from .hybrid_primary import suggested_role
     raise ImportFailure("awaiting_main_choice", "Choose the guitar that Hybrid Lead should follow.", {
         "sourceSha256": source_hash, "suggestedMainTrackId": suggested,
-        "tracks": [{k: t[k] for k in ("id", "name", "role", "tuning", "capo")} for t in guitars]})
+        'suggestedRoles': {t['id']: suggested_role(t) or '' for t in performance['tracks'] if t['id'] in ids},
+        "tracks": [{**{k: t[k] for k in ("id", "name", "role", "tuning", "capo")}, 'playable': any(g['id'] == t['id'] for g in guitars)}
+                   for t in performance['tracks'] if t['id'] in ids]})
 
 
 def union(intervals):
@@ -110,25 +121,47 @@ def event_rows(track, context, clock):
             rows.append({"kind": kind, "index": index, "start": start, "end": end,
                          "sourceIds": ids, "occurrences": sorted({b["occurrence"] for b in selected}),
                          "notes": notes})
+    grace_groups = []
     for grace in (b for b in beats if b["grace"]):
         following = next((b for b in beats if b["voice"] == grace["voice"] and not b["rest"] and not b["grace"] and b["start"] >= grace["end"] - EPS), None)
         if following:
             linked = set(grace["noteIds"] + following["noteIds"])
             touched = [r for r in rows if linked.intersection(r["sourceIds"]) and r["start"] < following["end"] + EPS and r["end"] > grace["start"] - EPS]
+            grace_groups.append([i for i,r in enumerate(rows) if any(r is item for item in touched)])
             for row in touched:
                 row["start"] = min(row["start"], grace["start"])
                 row["end"] = max(row["end"], following["end"])
-    # A destination hammer/pull or pitched slide needs its predecessor even if
-    # the source has a short sounding gap. Grace pickups are already in slots.
+    # ln belongs to the origin and points FORWARD. Build complete connected
+    # components without mutating times while discovering subsequent edges.
+    # Source voices remain distinct, even when they use the same string.
+    parent = list(range(len(rows)))
+    def root(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+    for group in grace_groups:
+        for i in group[1:]:
+            parent[root(i)] = root(group[0])
     per_string = {}
-    for row in sorted(rows, key=lambda r: r["start"]):
-        for note in row["notes"]:
-            prior = per_string.get(note["s"])
-            if prior and (note.get("ho") or note.get("po") or note.get("ln") or
-                          any(n.get("sl") is not None or n.get("slu") for n in prior["notes"] if n["s"] == note["s"])):
-                prior["end"] = max(prior["end"], row["end"])
-                row["start"] = min(row["start"], prior["start"])
-            per_string[note["s"]] = row
+    atoms = sorted(((n["t"], i, n) for i, row in enumerate(rows) for n in row["notes"]), key=lambda x: (x[0], x[1], x[2]["s"]))
+    for _, i, note in atoms:
+        ids = note.get("source_ids", [])
+        voices = {b["voice"] for sid in ids for b in by_id.get(sid, [])}
+        voice = tuple(sorted(voices)) or (0,)
+        key = (voice, note["s"])
+        prior = per_string.get(key)
+        if prior and prior[0] != i:
+            j, previous = prior
+            if previous.get("ln") or previous.get("sl") is not None or previous.get("slu") or note.get("ho") or note.get("po"):
+                parent[root(i)] = root(j)
+        per_string[key] = i, note
+    spans = {}
+    for i, row in enumerate(rows):
+        span = spans.setdefault(root(i), [row["start"], row["end"]])
+        span[:] = min(span[0], row["start"]), max(span[1], row["end"])
+    for i, row in enumerate(rows):
+        row["start"], row["end"] = spans[root(i)]
     return sorted(rows, key=lambda r: (r["start"], r["kind"], r["index"]))
 
 
@@ -196,7 +229,14 @@ def passages(track, context, timeline, clock):
     return out
 
 
-def plan(performance, options, main_id, alignment, audio_duration):
+def plan(performance, options, main_id, alignment, audio_duration, originals=None):
+    from .hybrid_primary import backbone, finish
+    primary = backbone(performance, options, main_id, alignment, audio_duration, originals)
+    result = _fill_gaps(performance, options, main_id, alignment, audio_duration, primary)
+    return finish(result, primary, performance, options, alignment)
+
+
+def _fill_gaps(performance, options, main_id, alignment, audio_duration, primary=None):
     context = performance.get("compositionContext")
     if not context or context.get("version") != 1:
         raise ImportFailure("hybrid_failed", "Hybrid Lead needs the performed written score context.")
@@ -204,7 +244,7 @@ def plan(performance, options, main_id, alignment, audio_duration):
     end = clock.quarter(performance["duration"])
     by_id = {t["id"]: t for t in performance["tracks"]}
     main = by_id[main_id]
-    protected = occupied(main, context["tracks"][main_id], clock)
+    protected = primary["protected"] if primary else occupied(main, context["tracks"][main_id], clock)
 
     from functools import lru_cache
     @lru_cache(maxsize=50000)
@@ -230,7 +270,7 @@ def plan(performance, options, main_id, alignment, audio_duration):
         if hi - lo >= 1 - EPS:
             gaps.append((lo, hi))
         left = max(left, b)
-    excluded, candidates = [], []
+    excluded, candidates, evaluated = [], [], []
     main_signature = _fingerprint(event_rows(main, context["tracks"][main_id], clock), 0, end, clock)
     signatures = {main_signature}
     preferred = options.get("preferredTrackIds", [])
@@ -239,9 +279,12 @@ def plan(performance, options, main_id, alignment, audio_duration):
         ident = track["id"]
         if ident == main_id:
             continue
+        if primary and primary['roles'].get(ident) in {'solo', 'lead'}:
+            continue
         reason = None
         if track["instrument"] != "guitar": reason = "not_guitar"
         elif ident in options.get("excludedTrackIds", []): reason = "excluded_by_user"
+        elif ident in performance.get("hybridOmittedTracks", []): reason = "source_omissions"
         elif track["tuning"] != main["tuning"] or track["capo"] != main["capo"]: reason = "incompatible_setup"
         elif re.search(r"\b(delay|echo|fx|effect)\b", track["name"], re.I): reason = "effect_layer"
         signature = None
@@ -255,6 +298,12 @@ def plan(performance, options, main_id, alignment, audio_duration):
         signatures.add(signature)
         track_context = {**context["tracks"][ident], "sectionQuarters": [clock.quarter(s["time"]) for s in performance.get("sections", [])]}
         possible = passages(track, track_context, context["timeline"], clock)
+        for p in possible:
+            conflict = any(p['start'] < b - EPS and p['end'] > a + EPS for a,b in protected)
+            fits = any(lo - EPS <= p['start'] and p['end'] <= hi + EPS for lo,hi in gaps)
+            reason = ('crosses_primary_material' if conflict else 'transition_guard_or_small_gap' if not fits else
+                      'past_recording_end' if map_time(alignment, clock.seconds(p['end']), allow_negative=True) > audio_duration + EPS else 'eligible_phrase')
+            evaluated.append({k: deepcopy(p[k]) for k in ('trackId','start','end','boundaries','events')} | {'reason': reason})
         accepted = [p for p in possible if any(lo - EPS <= p["start"] and p["end"] <= hi + EPS for lo, hi in gaps)
                     and map_time(alignment, clock.seconds(p["end"]), allow_negative=True) <= audio_duration + EPS]
         candidates.extend(accepted)
@@ -264,8 +313,9 @@ def plan(performance, options, main_id, alignment, audio_duration):
     # coverage; within one beat of that optimum compare confidence/continuity.
     # Keep Pareto states per ending donor, never a fuzzy pairwise comparator.
     candidates.sort(key=lambda p: (p["end"], p["start"], p["trackId"]))
-    if len(candidates) > 20000:
-        raise ImportFailure("hybrid_failed", "This tab exceeds the Hybrid Lead passage limit.")
+    if len(candidates) > MAX_CANDIDATES:
+        from .hybrid_primary import review
+        review(performance, options, main_id, 'This tab has too many candidate passages. Exclude some accompaniment sources and retry.', reviewReason='planning_limit')
     def select_gap(candidates):
         states = [{"chosen": [], "end": -math.inf, "coverage": 0.0, "preference": tuple(0.0 for _ in preferred), "switches": 0, "confidence": 0, "comfort": 0.0}]
         for i, p in enumerate(candidates):
@@ -300,8 +350,9 @@ def plan(performance, options, main_id, alignment, audio_duration):
                     continue
                 frontier.append(s)
                 states.append(s)
-            if len(states) > 10000:
-                raise ImportFailure("hybrid_failed", "Hybrid Lead has too many competing passage plans. Exclude some supplementary guitars and retry.")
+            if len(states) > MAX_STATES:
+                from .hybrid_primary import review
+                review(performance, options, main_id, 'This tab has too many competing passage plans. Exclude some accompaniment sources and retry.', reviewReason='planning_limit')
         best_preference = max(s["preference"] for s in states)
         preferred_states = [s for s in states if s["preference"] == best_preference]
         best = max(s["coverage"] for s in preferred_states)
@@ -326,6 +377,7 @@ def plan(performance, options, main_id, alignment, audio_duration):
     return {"version": 1, "policy": POLICY, "mainTrackId": main_id, "passages": selected,
             "excluded": excluded, "candidateCount": len(candidates), "status": "created" if selected else "no_additions",
             "protected": protected, "gaps": gaps, "addedQuarterBeats": sum(p["end"] - p["start"] for p in selected),
+            "candidateDecisions": evaluated,
             "selection": {"algorithm": "per-gap-pareto-interval-plan-v1", "bestQuarterBeats": best, "indifferenceQuarterBeats": 1,
                           "priority": "explicit-source-order, coverage-band, fewer-switches, boundary-confidence, fret-movement, coverage, stable-id"},
             "unselected": [{k: p[k] for k in ("trackId", "start", "end", "boundaries")} for i, p in enumerate(candidates) if i not in chosen_set]}

@@ -37,11 +37,14 @@ test('Hybrid main choice releases the queue, persists and resumes against the ca
   const choice = restored.snapshot().find(j => j.id === pending.id).hybridChoice;
   assert.equal(choice.tracks.length, 2);
   assert.throws(() => restored.retry(pending.id, { hybridLead: { enabled: true, mainTrackId: 'lead-a', sourceSha256: 'changed' } }), /exact tab revision/);
-  restored.retry(pending.id, { hybridLead: { enabled: true, mainTrackId: 'lead-b', sourceSha256: choice.sourceSha256, preferredTrackIds: ['lead-a'] } });
+  assert.throws(() => restored.retry(pending.id, { hybridLead: { enabled: true, mainTrackId: 'lead-b', sourceSha256: choice.sourceSha256, roles: { unknown: 'solo' } } }), /offered|source|guitar/i);
+  restored.retry(pending.id, { hybridLead: { enabled: true, mainTrackId: 'lead-b', sourceSha256: choice.sourceSha256, preferredTrackIds: ['lead-a'], roles: { 'lead-a': 'solo' } } });
   await settle(restored);
   const done = restored.snapshot().find(j => j.id === pending.id);
   assert.equal(done.state, 'completed');
   assert.equal(f.requests.at(-1).hybridLead.mainTrackId, 'lead-b');
+  assert.deepEqual(f.requests.at(-1).hybridLead.roles, { 'lead-a': 'solo' });
+  assert.equal(f.requests.at(-1).hybridLead.policy, 'hybrid-lead-v2');
   assert.deepEqual(f.acquisitions, ['123', '124']);
 });
 
@@ -92,6 +95,30 @@ test('packaged app and converter use the same preservation contract', () => {
   const { CURRENT_PRESERVATION_CONTRACT } = require('../electron/song-browser/songsterr-evidence.cjs');
   const source = fs.readFileSync(path.join(__dirname, '../src/feedback_converter/song_import/evidence.py'), 'utf8');
   assert.equal(CURRENT_PRESERVATION_CONTRACT, Number(source.match(/^CONTRACT_VERSION = (\d+)$/m)[1]));
+});
+
+test('Hybrid v1 output cannot satisfy the current request and role choices affect reuse', () => {
+  const { normalizeHybridLead, matchesHybridRequest } = require('../electron/song-browser/hybrid-lead-options.cjs');
+  const request = normalizeHybridLead({ enabled: true, roles: { solo: 'solo' } });
+  assert.equal(matchesHybridRequest(request, { enabled: true }), false);
+  assert.equal(matchesHybridRequest(request, { ...request, policy: 'hybrid-lead-v1' }), false);
+  assert.equal(matchesHybridRequest(request, { ...request, roles: { solo: 'accompaniment' } }), false);
+  assert.equal(matchesHybridRequest(request, request), true);
+  assert.throws(() => normalizeHybridLead({ enabled: true, policy: 'hybrid-lead-v1' }));
+});
+
+test('Hybrid publication requires independent primary coverage proof', async t => {
+  const f = await fixture(t, { runConverter: async (args, ctx, normal) => {
+    const result = await normal(args, ctx), parsed = JSON.parse(result.stdout);
+    if (parsed.verification?.hybridLead) delete parsed.verification.hybridLead.primaryCoverage;
+    return { ...result, stdout: JSON.stringify(parsed) };
+  } });
+  const j = f.jobs.enqueue(CHART, { outputDir: f.outputDir, hybridLead: { enabled: true, mainTrackId: 'main' } });
+  await settle(f.jobs);
+  assert.equal(f.jobs.snapshot().find(x => x.id === j.id).state, 'failed');
+  assert.match(f.jobs.snapshot().find(x => x.id === j.id).error, /verified composition evidence/);
+  assert.equal(f.completed.length, 0);
+  assert.deepEqual(fs.readdirSync(f.outputDir), []);
 });
 const RESPONSE = (value) => ({ code: 0, stdout: JSON.stringify({ ok: true, ...value }) });
 
@@ -165,7 +192,7 @@ async function fixture(t, options = {}) {
     const sourceHash = hash(fs.readFileSync(request.scorePath));
     const contract = options.contract || CURRENT;
     const hybridOptions = request.hybridLead?.enabled ? { ...request.hybridLead, sourceSha256: sourceHash } : undefined;
-    const hybridProof = hybridOptions ? { status: 'no_additions', mainTrackId: hybridOptions.mainTrackId } : undefined;
+    const hybridProof = hybridOptions ? { status: 'no_additions', mainTrackId: hybridOptions.mainTrackId, policy: 'hybrid-lead-v2', primaryCoverage: 'checked' } : undefined;
     const report = JSON.stringify({ version: contract, status: 'passed', sourceSha256: sourceHash, ...(hybridProof ? { hybridLead: hybridProof } : {}) }), verificationHash = hash(report);
     const record = JSON.stringify({ version: contract, outputHash, objects: { verification: verificationHash, source: sourceHash } });
     const id = hash(record);
