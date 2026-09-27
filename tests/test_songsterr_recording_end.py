@@ -239,3 +239,81 @@ def test_failed_acoustic_guard_does_not_fall_back_to_a_more_permissive_matcher(r
     monkeypatch.setattr(worker, 'align_audio', lambda *a, **kw: pytest.fail('must not bypass the acoustic guard'))
     with pytest.raises(ImportFailure, match='Insufficient earlier timing'):
         worker._choose_alignment(performance, audio, {'synchronization': sync, 'metadata': META})
+
+
+@pytest.fixture(scope='module')
+def sparse_completed(recording, tmp_path_factory):
+    _, source, performance, original_audio, sync, _ = recording
+    root = tmp_path_factory.mktemp('sparse-recording-end')
+    data, rate = sf.read(original_audio['path'], always_2d=True)
+    offset = 15.4
+    signal = np.concatenate([np.zeros((round(offset * rate), data.shape[1])), data])
+    wav = root / 'delayed.wav'
+    sf.write(wav, signal, rate)
+    media = root / 'media'
+    media.mkdir()
+    audio = prepare_audio({'kind': 'file', 'path': str(wav)}, media)
+    audio['source'].update(kind='youtube', videoId=VIDEO)
+    timing = {**sync, 'points': [t + offset for t in sync['points']]}
+    alignment = authorize(performance, audio, align_from_songsterr(
+        performance, audio, timing, META, allow_ending_candidate=True))
+    assert alignment['recordingSync']['sparseWindows'] == 1
+    job = root / 'job'
+    job.mkdir()
+    result = build_feedpak(performance, audio, alignment, job, output_dir=root / 'out', source_path=source,
+                          compatibility=performance['compatibilityReport'], recipe={
+                              'preservationContract': 32, 'audioSource': audio['source'],
+                              'sourceMetadata': dict(performance.get('source') or {}),
+                              'alignment': {'method': alignment['method'], 'provenance': alignment['provenance']}})
+    return source, performance, audio, alignment, Path(result['stagingPath'])
+
+
+def test_sparse_cutoff_package_is_independently_verified_without_retiming(sparse_completed):
+    source, performance, audio, alignment, archive = sparse_completed
+    report = verify_import(source, archive, alignment, META)
+    assert report['status'] == 'passed', report
+    assert report['adjustments']['omittedEndingNotes'] == 2
+    assert report['timing']['independentAudioMatchAssessed']
+    with zipfile.ZipFile(archive) as z:
+        manifest = yaml.safe_load(z.read('manifest.yaml'))
+        chart = json.loads(z.read(manifest['arrangements'][0]['file']))
+        assert chart['notes'][0]['t'] == pytest.approx(15.4)
+        assert [n['f'] for n in chart['notes']] == [n['f'] for n in performance['tracks'][0]['notes'][:206]]
+        assert z.read(manifest['song_import']['sourceFile']) == source.read_bytes()
+
+
+@pytest.mark.parametrize('change', ['bad_prefix', 'old_sync_version'])
+def test_forged_sparse_success_cannot_authorize_an_incorrect_package(sparse_completed, tmp_path, change):
+    source, _, _, original, archive = sparse_completed
+    alignment = deepcopy(original)
+    with zipfile.ZipFile(archive) as z:
+        files = {n: z.read(n) for n in z.namelist()}
+    manifest = yaml.safe_load(files['manifest.yaml'])
+    recipe = manifest['song_import']
+    stored = alignment['recordingSync']
+    if change == 'bad_prefix':
+        import io
+        data, rate = sf.read(io.BytesIO(files['audio/full.ogg']), always_2d=True)
+        data[:round(16 * rate)] = 0
+        replacement = tmp_path / 'bad-prefix.ogg'
+        with sf.SoundFile(replacement, 'w', samplerate=rate, channels=data.shape[1], format='OGG', subtype='VORBIS') as writer:
+            for start in range(0, len(data), 32768):
+                writer.write(data[start:start + 32768])
+        files['audio/full.ogg'] = replacement.read_bytes()
+        stored['audioSha256'] = hashlib.sha256(files['audio/full.ogg']).hexdigest()
+    else:
+        stored['version'] = 'mapped-pitch-onsets-v1'
+    alignment['recordingEnd']['syncEvidenceHash'] = digest(stored)
+    recipe['recordingEnd'] = deepcopy(alignment['recordingEnd'])
+    ledger = json.loads(files[recipe['endingOmissionsFile']])
+    ledger.update(alignment['recordingEnd'])
+    files[recipe['endingOmissionsFile']] = json.dumps(ledger).encode()
+    files[recipe['recordingSyncFile']] = json.dumps(stored).encode()
+    files['manifest.yaml'] = yaml.safe_dump(manifest).encode()
+    target = tmp_path / 'forged.feedpak'
+    with zipfile.ZipFile(target, 'w') as z:
+        for name, data in files.items():
+            z.writestr(name, data)
+    report = verify_import(source, target, alignment, META)
+    assert report['status'] == 'failed', report
+    assert any(e['code'] == ('ending_audio_sync' if change == 'bad_prefix' else 'ending_policy') for e in report['errors'])

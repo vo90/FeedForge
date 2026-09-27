@@ -135,7 +135,7 @@ def run_import(request: dict, progress=None) -> dict:
             summary["omissions"] = verification["omissions"]
         if alignment.get("recordingSync"):
             summary["recordingSync"] = {key: alignment["recordingSync"][key] for key in
-                                         ("version", "status", "windowCount", "supportedWindows", "everyNoteVerified")}
+                                         ("version", "status", "windowCount", "supportedWindows", "sparseWindows", "everyNoteVerified")}
         if (request.get("outputSettings") or {}).get("generateDifficulty") is True:
             summary["generatedDifficulty"] = {"requested": True, "sourceAuthored": False,
                                                "verificationScope": "source-chart-with-declared-omissions" if verification.get("omissions") else "full-source-chart"}

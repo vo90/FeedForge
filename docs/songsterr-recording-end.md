@@ -17,8 +17,10 @@ with an explanation, without falling back to an estimate to bypass the check.
 The check compares expected pitched notes and attacks with the decoded full
 recording in overlapping 16-second windows, eight seconds apart. At least three
 active windows are needed, and every active window must contain supporting
-pitch and onset evidence in at least one guitar/bass part. Sparse, silent,
-ambiguous or mismatched regions cannot grant approval. Individual parts may
+pitch and onset evidence in at least one guitar/bass part. Contract 32 adds a
+bounded sparse-boundary path with independent local and neighbouring-context
+evidence; see `songsterr-sparse-sync.md`. Insufficient, silent, ambiguous or
+mismatched evidence cannot grant approval. Individual parts may
 remain inconclusive when another part supports the shared song clock.
 
 Pitch evidence uses harmonic spectral contrast at 11025 Hz, with a roughly
