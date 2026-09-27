@@ -12,6 +12,81 @@ const { CURRENT_PRESERVATION_CONTRACT: CURRENT } = require('../electron/song-bro
 
 const CHART = { id: '123', title: 'Synthetic Song', artist: 'Synthetic Artist' };
 const SETTINGS = { outputLayout: 'flat', nameTemplate: '{artist} - {title}' };
+test('Hybrid main choice releases the queue, persists and resumes against the cached score hash', async t => {
+  const f = await fixture(t, { runConverter: async (args, ctx, normal) => {
+    if (args[0] === '--song-import-file') {
+      const request = JSON.parse(fs.readFileSync(args[1], 'utf8'));
+      if (request.hybridLead?.enabled && !request.hybridLead.mainTrackId) return { code: 1, stdout: JSON.stringify({
+        ok: false, code: 'awaiting_main_choice', error: 'Choose main guitar', hybridChoice: {
+          sourceSha256: crypto.createHash('sha256').update(fs.readFileSync(request.scorePath)).digest('hex'),
+          tracks: [{ id: 'lead-a', name: 'Lead A' }, { id: 'lead-b', name: 'Lead B' }],
+        },
+      }) };
+    }
+    return normal(args, ctx);
+  } });
+  const pending = f.jobs.enqueue(CHART, { outputDir: f.outputDir, hybridLead: { enabled: true } });
+  const ordinary = f.enqueue({ ...CHART, id: '124' });
+  await settle(f.jobs);
+  assert.equal(f.jobs.snapshot().find(j => j.id === pending.id).state, 'awaiting_main_choice');
+  assert.equal(f.jobs.snapshot().find(j => j.id === ordinary.id).state, 'completed');
+  await f.jobs.dispose();
+  const restored = new SongsterrJobs(f.config);
+  t.after(() => restored.dispose());
+  await settle(restored);
+  const choice = restored.snapshot().find(j => j.id === pending.id).hybridChoice;
+  assert.equal(choice.tracks.length, 2);
+  assert.throws(() => restored.retry(pending.id, { hybridLead: { enabled: true, mainTrackId: 'lead-a', sourceSha256: 'changed' } }), /exact tab revision/);
+  restored.retry(pending.id, { hybridLead: { enabled: true, mainTrackId: 'lead-b', sourceSha256: choice.sourceSha256, preferredTrackIds: ['lead-a'] } });
+  await settle(restored);
+  const done = restored.snapshot().find(j => j.id === pending.id);
+  assert.equal(done.state, 'completed');
+  assert.equal(f.requests.at(-1).hybridLead.mainTrackId, 'lead-b');
+  assert.deepEqual(f.acquisitions, ['123', '124']);
+});
+
+test('Hybrid settings distinguish pending imports and originals-only fallback creates a separate outcome', async t => {
+  const gate = deferred();
+  const f = await fixture(t, { acquire: async (chart, context, normal) => { await gate.promise; return normal(chart, context); },
+    runConverter: async (args, ctx, normal) => {
+      if (args[0] === '--song-import-file') {
+        const request = JSON.parse(fs.readFileSync(args[1], 'utf8'));
+        if (request.hybridLead?.enabled) return { code: 1, stdout: JSON.stringify({ ok: false, code: 'hybrid_failed', error: 'Synthetic composition failure.' }) };
+      }
+      return normal(args, ctx);
+    },
+  });
+  const hybrid = f.jobs.enqueue(CHART, { outputDir: f.outputDir, hybridLead: { enabled: true } });
+  const duplicate = f.jobs.enqueue(CHART, { outputDir: f.outputDir, hybridLead: { enabled: true } });
+  const normal = f.enqueue();
+  assert.equal(hybrid.id, duplicate.id);
+  assert.notEqual(hybrid.id, normal.id);
+  gate.resolve(); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot().find(j => j.id === hybrid.id).state, 'failed');
+  assert.equal(f.completed.length, 1);
+  const fallback = f.jobs.retry(hybrid.id, { originalsOnly: true });
+  assert.notEqual(fallback.id, hybrid.id);
+  assert.equal(fallback.originalsOnlyFrom, hybrid.id);
+  assert.equal(fallback.hybridLead.enabled, false);
+  await settle(f.jobs);
+  assert.equal(f.jobs.snapshot().find(j => j.id === fallback.id).state, 'completed');
+  assert.equal(f.jobs.snapshot().find(j => j.id === hybrid.id).state, 'failed');
+  assert.equal(f.acquisitions.length, 2, 'Fallback must reuse the exact retained tab, not acquire another revision.');
+});
+
+test('Hybrid publication rejects a successful originals-only response to an enabled request', async t => {
+  const f = await fixture(t, { runConverter: async (args, ctx, normal) => {
+    const result = await normal(args, ctx), parsed = JSON.parse(result.stdout);
+    if (parsed.recipe) delete parsed.recipe.hybridLead;
+    return { ...result, stdout: JSON.stringify(parsed) };
+  } });
+  const j = f.jobs.enqueue(CHART, { outputDir: f.outputDir, hybridLead: { enabled: true, mainTrackId: 'main' } });
+  await settle(f.jobs);
+  assert.equal(f.jobs.snapshot().find(x => x.id === j.id).state, 'failed');
+  assert.match(f.jobs.snapshot().find(x => x.id === j.id).error, /Hybrid Lead options/);
+  assert.equal(f.completed.length, 0);
+  assert.deepEqual(fs.readdirSync(f.outputDir), []);
+});
 
 test('packaged app and converter use the same preservation contract', () => {
   const { CURRENT_PRESERVATION_CONTRACT } = require('../electron/song-browser/songsterr-evidence.cjs');
@@ -89,7 +164,9 @@ async function fixture(t, options = {}) {
     const outputHash = hash(fs.readFileSync(stagingPath));
     const sourceHash = hash(fs.readFileSync(request.scorePath));
     const contract = options.contract || CURRENT;
-    const report = JSON.stringify({ version: contract, status: 'passed', sourceSha256: sourceHash }), verificationHash = hash(report);
+    const hybridOptions = request.hybridLead?.enabled ? { ...request.hybridLead, sourceSha256: sourceHash } : undefined;
+    const hybridProof = hybridOptions ? { status: 'no_additions', mainTrackId: hybridOptions.mainTrackId } : undefined;
+    const report = JSON.stringify({ version: contract, status: 'passed', sourceSha256: sourceHash, ...(hybridProof ? { hybridLead: hybridProof } : {}) }), verificationHash = hash(report);
     const record = JSON.stringify({ version: contract, outputHash, objects: { verification: verificationHash, source: sourceHash } });
     const id = hash(record);
     fs.mkdirSync(path.join(request.auditDir, 'objects'), { recursive: true });
@@ -97,8 +174,8 @@ async function fixture(t, options = {}) {
     fs.writeFileSync(path.join(request.auditDir, 'objects', verificationHash), report);
     fs.writeFileSync(path.join(request.auditDir, 'records', `${id}.json`), record);
     return RESPONSE({ stagingPath, relativePath: options.relativePath || 'Synthetic Artist - Synthetic Song.feedpak',
-      scoreHash: sourceHash, audioHash: 'audio-digest', recipe: { version: 3, preservationContract: contract, scoreHash: sourceHash, audioHash: 'audio-digest' },
-      verification: { version: contract, status: 'passed', outputHash }, evidence: { version: contract, id, sourceHash, verificationHash, outputHash },
+      scoreHash: sourceHash, audioHash: 'audio-digest', recipe: { version: 3, preservationContract: contract, scoreHash: sourceHash, audioHash: 'audio-digest', ...(hybridOptions ? { hybridLead: hybridOptions } : {}) },
+      verification: { version: contract, status: 'passed', outputHash, ...(hybridProof ? { hybridLead: hybridProof } : {}) }, evidence: { version: contract, id, sourceHash, verificationHash, outputHash },
       warnings: [], alignment: { status: 'validated' }, coverage: { arrangements: 1 } });
   }
   const runConverter = async (args, context) => {
@@ -135,7 +212,9 @@ test('Songsterr cancellation stops waiting for a shared converter recipe without
   let cancelled = false;
   const cancellation = f.jobs.cancel(first.id).then(() => { cancelled = true; });
   try {
-    await new Promise((resolve) => setImmediate(resolve));
+    // Cancellation includes async owned-cache cleanup. One event-loop turn
+    // does not imply that disk I/O finished, especially with corpus tests active.
+    await Promise.race([cancellation, new Promise((resolve) => setTimeout(resolve, 1000))]);
     assert.equal(cancelled, true, 'Cancellation must finish while the shared recipe remains pending.');
     await cancellation;
     assert.equal(f.jobs.snapshot()[0].state, 'cancelled');

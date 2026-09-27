@@ -70,7 +70,10 @@ def run_import(request: dict, progress=None) -> dict:
         if progress:
             progress({"stage": "converting", "message": "Reading the exported tab and expanding its performed timeline."})
         from .score import load_performance
-        performance = load_performance(score, metadata=request.get("metadata") or {})
+        from .hybrid_lead import normalize_options, choose_main
+        hybrid_options = normalize_options(request.get("hybridLead"))
+        performance = load_performance(score, metadata=request.get("metadata") or {},
+                                       **({"composition_context": True} if hybrid_options["enabled"] else {}))
         compatibility = performance.get("compatibilityReport") or new_report(request.get("metadata"))
         metadata = request.get("metadata") or {}
         # The original selected artist/title override metadata of an editor copy.
@@ -78,6 +81,15 @@ def run_import(request: dict, progress=None) -> dict:
             if metadata.get(key):
                 performance[key] = metadata[key]
         score_hash = sha256_file(score)
+        try:
+            main_id = choose_main(performance, hybrid_options, score_hash)
+        except ImportFailure as choice:
+            if choice.code != "awaiting_main_choice":
+                raise
+            return {"ok": False, "code": choice.code, "error": str(choice), "hybridChoice": choice.diagnostics}
+        if main_id:
+            hybrid_options = {**hybrid_options, "mainTrackId": main_id, "sourceSha256": score_hash}
+            hybrid_options.pop("reviewSources", None)
         if progress:
             progress({"stage": "audio", "message": "Preparing the full recording and song preview."})
         from .runtime import resolve_tools
@@ -93,6 +105,8 @@ def run_import(request: dict, progress=None) -> dict:
                   "audioSource": {key: audio["source"][key] for key in ("kind", "videoId", "title", "sha256") if key in audio["source"]},
                   "alignment": alignment_recipe}
         features = set()
+        if hybrid_options["enabled"]:
+            recipe["hybridLead"] = hybrid_options
         for track in performance.get("tracks", []):
             notes = list(track.get("notes", [])) + [note for chord in track.get("chords", []) for note in chord.get("notes", [])]
             features.update(key for key in ("ghost", "slide_out", "slide_out_marks", "slide_in_marks", "hn", "hps", "pick_scrape_marks", "harmonic_target", "harmonic_changes", "whammy") if any(note.get(key) for note in notes))
@@ -111,11 +125,12 @@ def run_import(request: dict, progress=None) -> dict:
             progress({"stage": "validating", "message": "Building and validating the FeedPak."})
         result = build_feedpak(performance, audio, alignment, job, output_dir=Path(request["outputDir"]),
                                output_settings=request.get("outputSettings"), recipe=recipe, artwork=artwork,
-                               source_path=score, compatibility=compatibility)
+                               source_path=score, compatibility=compatibility,
+                               hybrid_lead={"enabled": hybrid_options["enabled"], "mainTrackId": main_id, "options": hybrid_options})
         if progress:
             progress({"stage": "validating", "message": "Comparing the completed FeedPak with the original tab."})
         from .verification import verify_import
-        verification = verify_import(score, Path(result["stagingPath"]), alignment, metadata=metadata)
+        verification = verify_import(score, Path(result["stagingPath"]), alignment, metadata=metadata, hybrid_options=hybrid_options)
         verification["consumerCompatibility"] = recipe["compatibility"]
         if verification.get("status") != "passed":
             for finding in verification.get("unsupported", []) + verification.get("errors", []):
@@ -129,6 +144,8 @@ def run_import(request: dict, progress=None) -> dict:
         summary["outputHash"] = evidence["outputHash"]
         summary["timing"] = "source_map" if alignment.get("method") == "songsterr-video-points-v1" else "estimated"
         summary["compatibility"] = recipe["compatibility"]
+        if result.get("hybridLead"):
+            summary["hybridLead"] = result["hybridLead"]
         if verification.get("adjustments"):
             summary["adjustments"] = verification["adjustments"]
         if verification.get("omissions"):

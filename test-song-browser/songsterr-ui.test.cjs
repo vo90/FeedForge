@@ -27,6 +27,18 @@ test('completed partial charts identify omitted gameplay targets, not only displ
 });
 const buttonText = (html) => [...html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map((match) => match[1].replace(/<[^>]*>/g, '').trim());
 
+test('Hybrid choice and result explain the main, no-addition and separate-fallback outcomes', () => {
+  const html = job({ state: 'awaiting_main_choice', canRetry: true, hybridLead: { enabled: true }, hybridChoice: {
+    sourceSha256: 'source', tracks: [{ id: 'a', name: 'Lead A' }, { id: 'b', name: 'Clean B' }],
+  } });
+  assert.match(html, /Main guitar/); assert.match(html, /Supplementary guitars/); assert.match(html, /Other queued songs can continue/);
+  assert.ok(buttonText(html).includes('Create Hybrid Lead &amp; continue'));
+  assert.ok(buttonText(html).includes('Start separate originals-only import'));
+  assert.ok(!buttonText(html).includes('Retry import'));
+  assert.match(job({ state: 'completed', verification: { hybridLead: { status: 'no_additions', mainName: 'Lead A' } } }), /No additions/);
+  assert.match(job({ state: 'completed', originalsOnlyFrom: 'failed-hybrid' }), /separately requested originals-only import/);
+});
+
 test('retry countdown retains Cancel and delays replacement-audio prompts until exhaustion', () => {
   const html = job({ state: 'retry_wait', retry: { nextAt: Date.now() + 5000, attempt: 2, maxAttempts: 3 } });
   assert.match(html, /attempt 2 of 3/); assert.match(html, /Retrying in/);

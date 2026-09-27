@@ -7,6 +7,40 @@ ACTIVE.add('retry_wait');
 const LABELS = { queued: 'Queued', resolving: 'Checking revision', downloading: 'Retrieving tab', audio: 'Preparing audio', aligning: 'Aligning audio', converting: 'Creating FeedPak', validating: 'Validating', saving: 'Saving', completed: 'FeedPak ready', needs_audio: 'Audio needed', needs_login: 'Sign in needed', needs_attention: 'Needs attention', alignment_failed: 'Audio could not be aligned', failed: 'Failed', cancelled: 'Cancelled' };
 function errorText(value) { return typeof value === 'string' ? value : value?.message || value?.error || 'The operation failed. Please try again.'; }
 LABELS.retry_wait = 'Waiting to retry';
+LABELS.awaiting_main_choice = 'Choose main guitar';
+
+export function HybridChoice({ job, api, action, busy }) {
+  const choice = job.hybridChoice;
+  const [main, setMain] = useState(choice?.suggestedMainTrackId || '');
+  const [excluded, setExcluded] = useState(job.hybridLead?.excludedTrackIds || []);
+  const [preferred, setPreferred] = useState(job.hybridLead?.preferredTrackIds || []);
+  if (!choice) return null;
+  return <form className="st-hybrid-choice" onSubmit={event => { event.preventDefault(); action(() => api.retry({ id: job.id, hybridLead: {
+    enabled: true, mainTrackId: main, sourceSha256: choice.sourceSha256,
+    excludedTrackIds: excluded.filter(id => id !== main), preferredTrackIds: preferred.filter(id => id !== main && !excluded.includes(id)),
+  } })); }}>
+    <label>Main guitar <select required value={main} disabled={busy} onChange={event => setMain(event.target.value)}>
+      <option value="">Choose a guitar…</option>{choice.tracks.map(track => <option key={track.id} value={track.id}>{track.name}</option>)}
+    </select></label>
+    <p>Hybrid Lead keeps this guitar throughout the song and fills suitable rests from the others. Other queued songs can continue.</p>
+    <details><summary>Supplementary guitars</summary><p>Checked guitars may contribute. Use Prefer in your desired order; the first preferred guitar has highest priority.</p>
+      {choice.tracks.filter(track => track.id !== main).map(track => <div key={track.id} className="sb-job-controls">
+        <label><input type="checkbox" checked={!excluded.includes(track.id)} disabled={busy} onChange={event => setExcluded(event.target.checked ? excluded.filter(id => id !== track.id) : [...excluded, track.id])} /> {track.name}</label>
+        <button type="button" className="sb-text-button" disabled={busy || excluded.includes(track.id)} onClick={() => setPreferred(preferred.includes(track.id) ? preferred.filter(id => id !== track.id) : [...preferred, track.id])}>
+          {preferred.includes(track.id) ? `Priority ${preferred.indexOf(track.id) + 1} · Clear` : 'Prefer'}
+        </button></div>)}
+      <small>Only guitars with the same strings, tuning and capo can contribute.</small>
+    </details><button className="sb-button sb-primary" disabled={busy || !main}>Create Hybrid Lead & continue</button>
+  </form>;
+}
+
+function HybridResult({ result }) {
+  if (!result) return null;
+  if (result.status === 'not_applicable') return <p>Hybrid Lead: no usable guitar arrangement. Original arrangements imported.</p>;
+  return <div><p><strong>Hybrid Lead</strong> · Main: {result.mainName}. {result.status === 'no_additions' ? 'No additions — the main guitar was copied unchanged.' : `${result.passageCount} added passages from ${(result.contributors || []).map(t => t.name).join(', ')} (about ${Math.round(result.addedSeconds)} seconds).`}</p>
+    {result.excluded?.length ? <details><summary>Sources without additions</summary><ul>{result.excluded.map(row => <li key={row.trackId}>{row.name || row.trackId}: {{ duplicate_source: 'Duplicates another guitar', another_passage_plan_selected: 'Another passage plan was selected', not_guitar: 'Bass or another instrument', incompatible_setup: 'Different tuning, strings or capo', excluded_by_user: 'Excluded by your choice', effect_layer: 'Echo or effect layer', duplicate_main: 'Duplicates the main guitar', source_omissions: 'Contains omitted source events', no_complete_passage_fits: 'No complete passage safely fits' }[row.reason] || row.reason}</li>)}</ul></details> : null}
+    {result.notationStatus === 'source_only' ? <p>Written notation remains in the original source because a contributing guitar has a notation limitation.</p> : null}</div>;
+}
 
 function RetryStatus({ job }) {
   const [now, setNow] = useState(Date.now());
@@ -58,6 +92,9 @@ export function SongsterrJob({ job, api, action, busy }) {
     {active ? <progress className="sb-progress" aria-label={`${job.title}: ${LABELS[job.state]}`} /> : null}
     <p>{job.error || job.message}</p>
     <RetryStatus job={job} />
+    {job.state === 'awaiting_main_choice' ? <HybridChoice key={job.hybridChoice?.sourceSha256} job={job} api={api} action={action} busy={busy} /> : null}
+    {job.state === 'completed' ? <HybridResult result={job.verification?.hybridLead} /> : null}
+    {job.originalsOnlyFrom ? <p>This is a separately requested originals-only import.</p> : null}
     {job.revisionId ? <small>Approved revision {job.revisionId}</small> : null}
     {job.state === 'completed' ? <p>{job.verification?.status === 'passed' ? job.verification?.adjustments?.omittedEndingNotes ? 'Conversion checked against the source tab and recorded ending adjustments.' : job.verification?.adjustments?.terminalSustains ? 'Conversion checked against the source tab and recorded sustain adjustments.' : 'Conversion checked against the source tab.' : job.verification?.status === 'modified' ? 'This file has changed since conversion. The report describes the original import.' : 'Source verification is unavailable for this file.'}</p> : null}
     {job.state === 'completed' && job.verification?.status === 'passed' && job.verification?.adjustments?.omittedEndingNotes ? <p>{job.verification.adjustments.omittedEndingNotes} ending {job.verification.adjustments.omittedEndingNotes === 1 ? 'note omitted' : 'notes omitted'} at or after the audio ending. Earlier timing passed the audio check. The original tab and omission details are saved in the FeedPak.</p> : null}
@@ -86,7 +123,8 @@ export function SongsterrJob({ job, api, action, busy }) {
     <div className="sb-job-controls">
       {job.compatibility && api.compatibilityDetails ? <button className="sb-text-button" disabled={busy} onClick={() => action(async () => { const result = await api.compatibilityDetails({ id: job.id }); if (result?.ok === false) return result; setCompatibility(result); })}>View compatibility details</button> : null}
       {job.hasReport && api.exportReport ? <button className="sb-text-button" disabled={busy} onClick={() => action(() => api.exportReport({ id: job.id }))}>Save conversion report</button> : null}
-      {job.canRetry && !needsAudio && job.state !== 'needs_login' ? <button className="sb-text-button" disabled={busy} onClick={() => action(() => api.retry({ id: job.id }))}>Retry import</button> : null}
+      {job.canRetry && !needsAudio && !['needs_login', 'awaiting_main_choice'].includes(job.state) ? <button className="sb-text-button" disabled={busy} onClick={() => action(() => api.retry({ id: job.id }))}>Retry import</button> : null}
+      {job.canRetry && job.hybridLead?.enabled ? <button className="sb-text-button" disabled={busy} onClick={() => action(() => api.retry({ id: job.id, originalsOnly: true }))}>Start separate originals-only import</button> : null}
       {job.canCancel ? <button className="sb-text-button" disabled={busy} onClick={() => action(() => api.cancel({ id: job.id }))}>Cancel</button> : null}
     </div>
     <CompatibilityDetails report={compatibility} />
@@ -103,6 +141,7 @@ export default function SongsterrBrowser({ api: providedApi, outputApi: provided
   const [sort, setSort] = useState(saved?.sort || 'relevance'), [searching, setSearching] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [searchNotice, setSearchNotice] = useState(saved?.searchNotice || '');
   const [compatibilityList, setCompatibilityList] = useState(null);
+  const [hybridEnabled, setHybridEnabled] = useState(false), [reviewSources, setReviewSources] = useState(false);
   const searchGeneration = useRef(0), mounted = useRef(false), settingsSync = useRef(Promise.resolve());
   const settingsKey = JSON.stringify(outputSettings || {});
   useEffect(() => { if (api) searchMemory.set(api, { query, results, searched, sort, searchNotice }); }, [api, query, results, searched, sort, searchNotice]);
@@ -169,6 +208,10 @@ export default function SongsterrBrowser({ api: providedApi, outputApi: provided
       <div className="sb-job-controls"><button className="sb-button" disabled={!api || busy} onClick={() => action(() => api.showBrowser())}>Open Songsterr</button><button className="sb-button" disabled={!api || busy} onClick={() => action(() => api.signIn())}>Songsterr sign in</button></div></header>
     <div className="sb-output"><FolderOpen size={20} /><div><strong>FeedForge output folder</strong><p>{outputDir || 'Choose an output folder in Settings.'}</p><small>Uses the filename and folder layout from Settings.</small></div><button className="sb-button" onClick={onOpenOutputSettings}>Open Settings</button></div>
     <p className="st-experimental">Songsterr import is experimental. The latest approved revision and audio timing are checked before saving.</p>
+    <div className="st-hybrid-options"><label><input type="checkbox" checked={hybridEnabled} onChange={event => setHybridEnabled(event.target.checked)} /> Create Hybrid Lead</label>
+      <p>Add one guitar arrangement that keeps a main guitar and borrows complete passages during suitable rests. All originals are retained.</p>
+      {hybridEnabled ? <details><summary>Source choices</summary><label><input type="checkbox" checked={reviewSources} onChange={event => setReviewSources(event.target.checked)} /> Let me choose the main and supplementary guitars after downloading the tab</label><p>Otherwise an unambiguous lead is selected automatically. Ambiguous songs always ask.</p></details> : null}
+    </div>
     {api?.compatibilityList ? <details className="st-compatibility-list"><summary>Import compatibility</summary><p>Recorded features that need converter improvements or additional game support.</p>
       <button className="sb-button" disabled={busy} onClick={() => action(async () => { const result = await api.compatibilityList(); if (result?.ok === false) return result; setCompatibilityList(result); })}>Load compatibility list</button>
       <button className="sb-button" disabled={busy} onClick={() => action(() => api.exportCompatibility())}>Save compatibility list</button>
@@ -179,9 +222,9 @@ export default function SongsterrBrowser({ api: providedApi, outputApi: provided
     <div className="st-results-layout"><section aria-label="Songsterr search results"><div className="st-results-heading"><h2>{searched ? `${results.length} search results` : 'Discover your next song'}</h2><label>Sort these results <select value={sort} onChange={(e) => setSort(e.target.value)}><option value="relevance">Relevance</option><option value="title">Song title</option><option value="artist">Artist</option></select></label></div>
       {searchNotice ? <p>{searchNotice}</p> : null}
       {!results.length ? <p className="st-empty">{searched ? 'No matching songs. Try another artist or title.' : 'Search Songsterr to get started.'}</p> : ordered.map((song) => {
-        const job = [...jobs].reverse().find((entry) => entry.songId === String(song.id) && entry.state !== 'cancelled' && entry.state !== 'failed');
+        const job = [...jobs].reverse().find((entry) => entry.songId === String(song.id) && Boolean(entry.hybridLead?.enabled) === hybridEnabled && entry.state !== 'cancelled' && entry.state !== 'failed');
         const pending = job && job.state !== 'completed';
-        return <article className="sb-result" key={song.id}><div className="sb-result-info"><h3>{song.title}</h3><p className="sb-artist">{song.artist}</p><small>Songsterr · All playable guitar and bass tracks</small></div><div className="sb-result-actions"><button className="sb-button sb-primary" disabled={!api || busy || !outputDir || Boolean(pending)} onClick={() => action(() => api.enqueue({ id: String(song.id) }))}><Download size={16} />{pending ? LABELS[job.state] : 'Download & convert'}</button>{job?.state === 'completed' && job.outputAvailable ? <button className="sb-text-button" onClick={() => action(() => api.showOutput({ id: job.id }))}>Show saved FeedPak</button> : null}</div></article>;
+        return <article className="sb-result" key={song.id}><div className="sb-result-info"><h3>{song.title}</h3><p className="sb-artist">{song.artist}</p><small>Songsterr · All playable guitar and bass tracks</small></div><div className="sb-result-actions"><button className="sb-button sb-primary" disabled={!api || busy || !outputDir || Boolean(pending)} onClick={() => action(() => api.enqueue({ id: String(song.id), hybridLead: hybridEnabled ? { enabled: true, ...(reviewSources ? { reviewSources: true } : {}) } : { enabled: false } }))}><Download size={16} />{pending ? LABELS[job.state] : 'Download & convert'}</button>{job?.state === 'completed' && job.outputAvailable ? <button className="sb-text-button" onClick={() => action(() => api.showOutput({ id: job.id }))}>Show saved FeedPak</button> : null}</div></article>;
       })}</section><aside><h2>Song activity</h2><p>Songs are processed one at a time.</p><ul className="st-jobs">{[...jobs].reverse().map((job) => <SongsterrJob key={job.id} job={job} api={api} action={action} busy={busy} />)}</ul></aside></div>
   </section>;
 }

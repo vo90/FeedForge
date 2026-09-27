@@ -216,7 +216,7 @@ def _timeline_items(items: list, alignment: dict, duration: float, *, kind: str 
 def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Path,
                   *, output_dir: Path, output_settings: dict | None = None, recipe: dict | None = None,
                   artwork: dict | None = None, source_path: Path | None = None,
-                  compatibility: dict | None = None) -> dict:
+                  compatibility: dict | None = None, hybrid_lead: dict | None = None) -> dict:
     """Only write inside directory. Publishing/collision handling belongs to the app."""
     if alignment.get("status") != "validated":
         raise ImportFailure("alignment_failed", "The recording has not passed synchronization checks.")
@@ -248,6 +248,7 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             ending_omissions.extend(omitted_note(original_track["id"], n, alignment, start)
                                     for n, start in originals if map_time(alignment, start) >= duration)
     used = set()
+    original_charts = {}
     for index, track in enumerate(performance.get("tracks", [])):
         if track.get("instrument") not in {"guitar", "bass"}:
             raise ImportFailure("unsupported_score", "An unsupported instrument was included in the playable arrangements.")
@@ -311,8 +312,55 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             notation_file = f"notation/{ident}.json"
             _write_json(package / notation_file, _retime_notation(track["notation"], alignment))
             arrangements[-1]["notation"] = notation_file
+        if hybrid_lead and hybrid_lead.get("mainTrackId"):
+            indices = {}
+            for kind in ("notes", "chords"):
+                j = 0
+                for i, event in enumerate(track[kind]):
+                    if keep(event, event["t"]):
+                        indices[(kind, i)] = j
+                        j += 1
+            identity = performance["compositionContext"]["tracks"][track["id"]]
+            original_charts[track["id"]] = {"chart": chart, "manifest": arrangements[-1], "eventIndices": indices,
+                "identity": {k: identity[k] for k in ("sourceTrackId", "voices")},
+                "notation": _retime_notation(track["notation"], alignment) if track.get("notation") else None}
     if not arrangements:
         raise ImportFailure("unsupported_score", "The tab has no supported playable guitar or bass arrangements.")
+    hybrid_summary = None
+    if hybrid_lead and hybrid_lead.get("enabled"):
+        if not hybrid_lead.get("mainTrackId"):
+            hybrid_summary = {"status": "not_applicable", "reason": "No usable guitar arrangement."}
+        else:
+            from .hybrid_lead import plan
+            from .hybrid_materialize import materialize
+            planning = deepcopy(performance)
+            # Source-only omissions still protect the main. Donors with such
+            # omissions are excluded entirely rather than offering fragments.
+            main_id = hybrid_lead["mainTrackId"]
+            planning["tracks"] = [deepcopy(next(t for t in original_tracks if t["id"] == main_id)) if t["id"] == main_id else t for t in planning["tracks"]]
+            options = hybrid_lead["options"]
+            affected = {n["trackId"] for n in (omissions or {}).get("notes", [])}
+            planning_options = deepcopy(options)
+            planning_options["excludedTrackIds"] = list(dict.fromkeys(options.get("excludedTrackIds", []) + sorted(affected - {main_id})))
+            composition = plan(planning, planning_options, main_id, alignment, duration)
+            for row in composition["excluded"]:
+                if row["trackId"] in affected and row["trackId"] not in options.get("excludedTrackIds", []):
+                    row["reason"] = "source_omissions"
+            chart, notation, derived, receipt = materialize(composition, original_charts, options,
+                recipe["scoreHash"], recipe["audioHash"], duration, settings.get("generateDifficulty") is True)
+            if derived["id"].lower() in used:
+                raise ImportFailure("hybrid_failed", "The derived arrangement ID collides with a source track.")
+            _write_json(package / derived["file"], chart)
+            if notation:
+                _write_json(package / derived["notation"], notation)
+            _write_json(package / "import/hybrid-lead.json", receipt)
+            arrangements.append(derived)
+            hybrid_summary = {"status": receipt["status"], "mainTrackId": main_id,
+                "mainName": original_charts[main_id]["manifest"]["name"], "passageCount": len(receipt["passages"]),
+                "contributors": [{"id": ident, "name": original_charts[ident]["manifest"]["name"]} for ident in dict.fromkeys(p["trackId"] for p in receipt["passages"])],
+                "addedSeconds": round(sum(p["recordingEnd"] - p["recordingStart"] for p in receipt["passages"]), 3),
+                "excluded": [{**row, "name": next((t["name"] for t in performance["tracks"] if t["id"] == row["trackId"]), row["trackId"])} for row in receipt["excluded"]],
+                "notationStatus": receipt["notationStatus"]}
     source = performance.get("source") or {}
     coverage = {"arrangements": len(arrangements), "notes": sum(x["note_count"] for x in arrangements),
                 "excludedTrackWarnings": [str(message) for message in performance.get("warnings", [])
@@ -336,11 +384,15 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             pass
     if recipe:
         manifest["song_import"] = {**deepcopy(recipe), "coverage": coverage}
+    if hybrid_summary:
+        manifest.setdefault("song_import", {})["hybridLeadResult"] = hybrid_summary
+        if hybrid_summary["status"] != "not_applicable":
+            manifest["song_import"]["hybridLeadFile"] = "import/hybrid-lead.json"
     if 'sectionLabels' in source:
         manifest.setdefault('song_import', {}).setdefault('sourceMetadata', {})['sectionLabels'] = deepcopy(source['sectionLabels'])
     if source_path is not None:
         original = "import/source" + source_path.suffix.lower()
-        (package / "import").mkdir()
+        (package / "import").mkdir(exist_ok=True)
         shutil.copyfile(source_path, package / original)
         _write_json(package / "import/compatibility.json", compatibility)
         manifest.setdefault("song_import", {}).update(sourceFile=original, compatibilityFile="import/compatibility.json")
@@ -449,5 +501,6 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     return {"stagingPath": str(archive), "relativePath": destination.relative_to(output_dir).as_posix(),
             "title": title, "artist": artist, "duration": duration,
             "coverage": coverage,
+            **({"hybridLead": hybrid_summary} if hybrid_summary else {}),
             "warnings": list(validation.warnings) + ([f"Completed with omitted notes: {len(omissions['notes'])} unsupported high-fret or connected slide events are not displayed or scored. Original tab retained. Staff notation for affected arrangements is retained in the source only."]
                                                        if omissions and omissions["notes"] else [])}

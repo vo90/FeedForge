@@ -781,6 +781,7 @@ def gpif(data):
                         unsupported(loc, "Written duration is outside FeedPak notation v1; raw source must remain available.")
                     note_ids = _txt(beat, "Notes").split()
                     fact = {"q": q, "length": duration, "voice": str(voice_slot), "location": loc, "rest": not note_ids,
+                            "source_id": f"gpif:{tid}:{bi}:{vid}:{bid}",
                             "written_q": q, "notes": [], "notation": {"dur": int(denominator), "dot": dots,
                                 "tu": [int(tuplet.attrib["num"]), int(tuplet.attrib["den"])] if tuplet is not None else None}}
                     if _txt(beat, "Dynamic"):

@@ -7,7 +7,7 @@ from .model import ScoreImportError
 from .timeline import render
 
 
-def load_performance(path: Path | str, metadata: dict | None = None) -> dict:
+def load_performance(path: Path | str, metadata: dict | None = None, *, composition_context: bool = False) -> dict:
     """Read a GP7/8 score or Songsterr JSON and render its performed timeline.
 
     ``metadata`` comes from the original approved Songsterr revision and takes
@@ -91,4 +91,7 @@ def load_performance(path: Path | str, metadata: dict | None = None) -> dict:
         performance["compatibilityReport"] = report
         if performance.get('voiceProjection'):
             report['voiceProjection'] = performance['voiceProjection']
+    if composition_context:
+        from .hybrid_context import capture
+        performance["compositionContext"] = capture(score, performance)
     return performance
