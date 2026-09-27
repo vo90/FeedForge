@@ -19,6 +19,7 @@
 .st-results-layout aside { border:1px solid #2c4055; padding:16px; border-radius:12px; background:#101b29; }
 .st-jobs { padding:0; margin:0; list-style:none; display:grid; gap:12px; }
 .st-jobs .sb-job-top { flex-wrap:wrap; gap:10px; }
+.st-jobs .sb-job > small { display:block; margin-top:4px; }
 .st-jobs p { overflow-wrap:anywhere; font-size:13px; }
 .st-audio-input { display:grid; gap:10px; margin-top:15px; }
 .st-audio-input form { display:grid; gap:8px; }
