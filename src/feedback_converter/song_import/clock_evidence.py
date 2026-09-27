@@ -13,7 +13,7 @@ MAX_ENDING = 32.0
 
 def _joint(tracks, pitch, flux, duration, legacy):
     return ls.assess_features(tracks, pitch, flux, duration,
-        windows=[(w['start'], w['end']) for w in legacy['windows']])
+        windows=[(w['start'], w['end']) for w in legacy['windows']], unique_clock=True)
 
 
 def _reference_support(joint, duration):

@@ -102,7 +102,7 @@ def joint(pitch, flux, times, vectors, channel):
     return ps * valid, ac * valid
 
 
-def assess_features(tracks, pitch, flux, duration, *, windows=None):
+def assess_features(tracks, pitch, flux, duration, *, windows=None, unique_clock=False):
     rows = []
     # Non-overlapping windows provide coverage without inflating evidence counts.
     intervals = windows if windows is not None else [(left, min(float(left+16), duration)) for left in np.arange(0, duration, 16)]
@@ -127,11 +127,20 @@ def assess_features(tracks, pitch, flux, duration, *, windows=None):
             # An inconclusive acoustic observation does not prove source error.
             confident = float(ps[at].mean()) >= .12 and strength >= .15 and contrast >= 1.8
             supported = confident and scores[near].max() >= .90*strength
+            distant = float(scores[abs(lags) >= .20].max())
+            # Diagnostic near-matches are not sufficient authority to alter an
+            # ending: repeated riffs can match almost equally half a beat away.
+            # Keep the established diagnostic/opening rules unless requested by
+            # the recording-end fallback, which requires a distinct near peak.
+            if unique_clock:
+                supported = supported and distant < .90*float(scores[near].max())
             separated = scores[near].max() < .65*strength and abs(lag) >= .16
             parts.append({'trackId': track['id'], 'groups': len(selected),
                           'status': 'supported' if supported else 'suspected_mismatch' if confident and separated else 'inconclusive',
                           'bestOffset': round(lag, 3), 'jointContrast': round(contrast, 4),
                           'jointAtMap': round(float(scores[near].max()), 6), 'jointBest': round(strength, 6)})
+            if unique_clock:
+                parts[-1]['distantBest'] = round(distant, 6)
         active = any(any(left <= n['t'] < right for n in t['events']) for t in tracks)
         if active:
             status = 'supported' if any(p['status']=='supported' for p in parts) else 'inconclusive'
