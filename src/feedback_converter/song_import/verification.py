@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 33
+VERSION = 34
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -366,6 +366,7 @@ def _notation(archive, arrangement, wanted, check):
     check.equal("notation_measure_count", name, len(wanted["notation_measures"]), len(measures))
     for mi, (a, b) in enumerate(zip(wanted["notation_measures"], measures)):
         loc = name + f"/measures/{mi}"
+        check.equal('notation_pickup', loc, a.get('pickup', False), b.get('pickup', False))
         for key, value in a.items():
             if key in {"t", "duration_seconds", "tempo", "written_tempo"}:
                 check.near("notation_measure", loc + "/" + key, value, b.get(key), TIME_TOLERANCE if key in {"t", "duration_seconds"} else 1e-6)
@@ -662,6 +663,13 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             manifest = yaml.safe_load(z.read("manifest.yaml"))
             _finite(manifest, "manifest", check)
             recipe = manifest.get("song_import", {})
+            if recipe.get('pickupTimelineFile') or recipe.get('preservationContract', 0) >= 34 and any(b.pickup for b in source.bars):
+                from .verify_pickup import verify as verify_pickup
+                check.equal('pickup_clock', 'manifest/song_import/pickupTimelineFile',
+                            'import/pickup-timeline.json', recipe.get('pickupTimelineFile'))
+                verify_pickup(source, alignment, _json(z, recipe.get('pickupTimelineFile', ''), check),
+                              report['sourceSha256'], check)
+                report['scope'].append('pickup_display_clock')
             if "hasRasgueado" in source.ignored and recipe.get("preservationContract", 0) < 5:
                 check.fail("retained_rasgueado", "import", "The rasgueado instruction requires retained source and a verified compatibility report.")
             if recipe.get('preservationContract',0) < 27 and not recipe.get('voicesFile'):
