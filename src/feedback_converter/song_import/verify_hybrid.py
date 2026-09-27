@@ -279,6 +279,12 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
     for key in ("notes", "chords"):
         expected_chart[key].sort(key=lambda e: e["t"])
     actual_chart = {k: v for k, v in chart.items() if k not in {"phrases", "ext"}}
+    if manifest.get("song_import", {}).get("chartGuidancePolicy") == "feedforge-chart-guidance-v1":
+        # These two generated fields are independently checked against the
+        # final Hybrid events by verify_import. Keep exact musical comparison.
+        for key in ("anchors", "handshapes"):
+            expected_chart.pop(key, None)
+            actual_chart.pop(key, None)
     check.equal("hybrid_chart", arr["file"], expected_chart, actual_chart)
     check.equal("hybrid_status", "hybrid/status", "created" if receipt.get("passages") else "no_additions", receipt.get("status"))
     check.equal("hybrid_count", "arrangements/event_count", len(chart["notes"]) + len(chart["chords"]), arr.get("event_count"))

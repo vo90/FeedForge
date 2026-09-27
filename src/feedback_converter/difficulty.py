@@ -90,6 +90,13 @@ def ensure_difficulty(arrangement, *, beats=(), sections=(), duration=0):
                     clipped["start_time"] = max(left, shape["start_time"])
                     clipped["end_time"] = min(right, shape["end_time"])
                     level["handshapes"].append(clipped)
+            if arrangement.get("ext", {}).get("chartGuidance", {}).get("policy") == "feedforge-chart-guidance-v1":
+                from .chart_guidance import finalize
+                context = {k: deepcopy(arrangement[k]) for k in ("tuning", "capo", "centOffset", "templates") if k in arrangement}
+                context.update({"notes": level["notes"], "chords": level["chords"]})
+                finalize(context, window=(left, right))
+                for key in ("anchors", "handshapes", "ext"):
+                    level[key] = context[key]
             levels.append(level)
         phrases.append({"start_time": left, "end_time": right,
                         "max_difficulty": depth - 1, "levels": levels})

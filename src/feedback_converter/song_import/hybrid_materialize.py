@@ -8,6 +8,8 @@ import hashlib
 import json
 
 from ..difficulty import ensure_difficulty
+from ..chart_guidance import finalize as finalize_guidance
+from ..verify_chart_guidance import validate_arrangement as check_guidance
 from .audio import ImportFailure
 from .hybrid_lead import NAME, POLICY
 
@@ -84,8 +86,14 @@ def materialize(plan, originals, options, source_hash, audio_hash, duration, gen
             chart[ref["kind"]].append(event)
     for key in ("notes", "chords"):
         chart[key].sort(key=lambda e: e["t"])
+    # The base's generated positions no longer describe the completed Hybrid.
+    # Regenerate only fields with intact ownership, before all final hashes.
+    finalize_guidance(chart, regenerate=True)
     if generate_difficulty:
         ensure_difficulty(chart, duration=duration)
+    guidance_errors = check_guidance(chart, duration=duration)
+    if guidance_errors:
+        raise ImportFailure("guidance_failed", "Hybrid guidance failed validation: " + guidance_errors[0])
     notation, notation_reason = notation_for(plan, originals)
     ident = "hybrid-lead-" + digest((source_hash + ":" + plan["mainTrackId"]).encode())[:20]
     sources = []
