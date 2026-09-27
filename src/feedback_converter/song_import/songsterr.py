@@ -247,6 +247,10 @@ def parse(document: dict, *, track_indices=None) -> Score:
             raise ScoreImportError("Tracks disagree about alternate endings.")
         measures.append(Measure(n, d, Fraction(4 * n, d), any(m.get("repeatStart") for m in candidates),
                                 next(iter(repeat_values), 0), next(iter(ending_values), frozenset()), section))
+    from .songsterr_pickup import opening_length
+    actual_opening = opening_length(parts, measures[0].length)
+    measures[0].pickup = actual_opening < measures[0].length
+    measures[0].length = actual_opening
     tempo_events = {}
     part_clocks = []
     for part_index, part in enumerate(parts):
@@ -317,7 +321,7 @@ def parse(document: dict, *, track_indices=None) -> Score:
         instrument = _instrument(meta)
         inventory.inspect(meta, "Songsterr track", f"$.tracks[{index}]", playable={"id", "instrumentId", "midiProgram", "name", "instrument", "title", "type", "tuning", "capo", "isVocalTrack"},
                           retained={"views", "difficulty", "hash", "isEmpty"})
-        inventory.inspect(part, "Songsterr part", f"$.parts[{index}]", playable={"measures", "tuning", "automations", "capo"},
+        inventory.inspect(part, "Songsterr part", f"$.parts[{index}]", playable={"measures", "tuning", "automations", "capo", "anacrusis"},
                           retained={"name", "balance", "volume", "frets", "strings", "instrumentId", "instrument", "newLyrics", "withLyrics", "tuningFlat", "partId", "version", "songId", "revisionId"})
         if not instrument or track_indices is not None and index not in track_indices:
             warnings.append(f"Excluded non-guitar/bass track: {meta.get('name') or meta.get('instrument') or index}.")

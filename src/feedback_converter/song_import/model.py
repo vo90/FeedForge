@@ -89,6 +89,7 @@ class Measure:
     endings: frozenset[int] = frozenset()
     section: str = ""
     tempos: list[tuple[Fraction, float]] = field(default_factory=list)
+    pickup: bool = False
 
 
 @dataclass

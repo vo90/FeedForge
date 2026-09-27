@@ -192,13 +192,15 @@ def _expected(source, alignment):
                               "ts": list(bar.signature), "written_tempo": float(inherited_tempos[index]),
                               "tempo": float(inherited_tempos[index] / recording.ratio(clock.at(origin))),
                               "duration_seconds": round(recording.at(clock.at(origin + bar.length)) - start_time, 6)})
-        q = F(0)
+        if bar.pickup:
+            measure_facts[-1]['pickup'] = True
+        q = bar.length % F(4, bar.signature[1]) if bar.pickup else F(0)
         while q < bar.length:
             time = recording.at(clock.at(origin + q))
             if time >= 0:
-                if q == 0:
+                if q == 0 and not bar.pickup:
                     visible_downbeats += 1
-                result["beats"].append({"time": time, "measure": visible_downbeats if q == 0 else -1})
+                result["beats"].append({"time": time, "measure": visible_downbeats if q == 0 and not bar.pickup else -1})
             q += F(4, bar.signature[1])
         if bar.section:
             time = recording.at(clock.at(origin))

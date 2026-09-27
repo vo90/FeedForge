@@ -57,6 +57,8 @@ def render_notation(score, track, visits, at, performed_notes=()):
                    "ts": [source_measure.numerator, source_measure.denominator],
                    "tempo": written_tempos[index], "source_measure": index + 1,
                    "staves": {"staff": {"voices": []}}}
+        if source_measure.pickup:
+            measure['pickup'] = True
         if track.clefs and track.clefs[index]:
             measure["staves"]["staff"]["clef"] = track.clefs[index]
         for vi, voice in enumerate(track.written_bars[index]):

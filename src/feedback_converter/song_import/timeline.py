@@ -89,9 +89,11 @@ def _render(score: Score) -> dict:
         for pos, bpm in sorted(bar.tempos):
             current_bpm = bpm
             events.append((cursor + pos, bpm))
-        pos = Fraction(0)
+        # Pickup beat ticks count into the following downbeat. A fractional
+        # opening is not itself an accented downbeat or a fabricated extra beat.
+        pos = bar.length % Fraction(4, bar.denominator) if bar.pickup else Fraction(0)
         while pos < bar.length:
-            beat_positions.append((cursor + pos, occurrence + 1 if pos == 0 else -1))
+            beat_positions.append((cursor + pos, occurrence + 1 if pos == 0 and not bar.pickup else -1))
             pos += Fraction(4, bar.denominator)
         if bar.section:
             section_positions.append((cursor, bar.section))
@@ -403,7 +405,8 @@ def _render(score: Score) -> dict:
                                    "visit": occurrence_counts[index],
                                    "quarter": float(start), "quarters": float(bar.length),
                                    "start": at(start), "end": at(start + bar.length),
-                                   "numerator": bar.numerator, "denominator": bar.denominator})
+                                     "numerator": bar.numerator, "denominator": bar.denominator,
+                                     **({'pickup': True} if bar.pickup else {})})
     repeat_starts = []
     repeat_intervals = []
     multibar_endings = False

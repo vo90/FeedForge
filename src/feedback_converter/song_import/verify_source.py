@@ -80,10 +80,15 @@ class Bar:
     endings: frozenset = frozenset()
     section: str = ""
     tempos: dict = field(default_factory=dict)
+    actual_length: F | None = None
 
     @property
     def length(self):
-        return F(4 * self.signature[0], self.signature[1])
+        return self.actual_length if self.actual_length is not None else F(4 * self.signature[0], self.signature[1])
+
+    @property
+    def pickup(self):
+        return self.length < F(4 * self.signature[0], self.signature[1])
 
 
 @dataclass
@@ -386,6 +391,49 @@ def songsterr(document, *, track_indices=None):
                                    'labels': annotations})
         bars.append(Bar(signature, any(b.get("repeatStart") for b in samples), next(iter(repeats), 0),
                         next(iter(endings), frozenset()), next(iter(names), "")))
+    # Independently derive the explicit opening extent from source voices.
+    # Never import the producer's pickup helper or trust its serialized clock.
+    flags = {p.get('anacrusis', False) for p in raw_parts if type(p.get('anacrusis', False)) is bool}
+    if any(type(p.get('anacrusis', False)) is not bool for p in raw_parts) or len(flags) != 1:
+        unsupported('parts/anacrusis', 'Invalid or conflicting explicit pickup flags.')
+    if True in flags:
+        spans = set()
+        for pi, raw in enumerate(raw_parts):
+            loc = f'parts/{pi}/measures/0'
+            voices = raw['measures'][0].get('voices')
+            if not isinstance(voices, list) or not voices:
+                unsupported(loc, 'Missing explicit pickup voices.')
+            extent = F(0)
+            for voice in voices:
+                if not isinstance(voice, dict) or not isinstance(voice.get('beats'), list):
+                    unsupported(loc, 'Invalid explicit pickup voice.')
+                beats = voice['beats']
+                if (len(beats) == 1 and isinstance(beats[0], dict)
+                        and beats[0].get('type') == 1 and beats[0].get('rest') is True
+                        and fraction(beats[0].get('duration'), loc) == 1
+                        and not any(beats[0].get(k) for k in ('dots', 'tuplet', 'graceNote'))
+                        and isinstance(beats[0].get('notes'), list)
+                        and all(n.get('rest') is True for n in beats[0]['notes'])):
+                    extent = max(extent, bars[0].length)
+                    continue
+                cursor = F(0)
+                for beat in voice['beats']:
+                    if not isinstance(beat, dict):
+                        unsupported(loc, 'Invalid explicit pickup beat.')
+                    length = 4 * fraction(beat.get('duration'), loc)
+                    if length <= 0:
+                        unsupported(loc, 'Invalid explicit pickup beat length.')
+                    if beat.get('graceNote') not in (None, 'beforeBeat', 'onBeat'):
+                        unsupported(loc, 'Unknown explicit pickup grace timing.')
+                    if not beat.get('graceNote'):
+                        cursor += length
+                extent = max(extent, cursor)
+            if not 0 < extent <= bars[0].length:
+                unsupported(loc, 'Empty or overfull explicit pickup.')
+            spans.add(extent)
+        if len(spans) != 1:
+            unsupported('parts/anacrusis', 'Source parts disagree about pickup duration.')
+        bars[0].actual_length = spans.pop()
     all_clocks = []
     for pi, raw in enumerate(raw_parts):
         automations = raw.get("automations", {})

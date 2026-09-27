@@ -364,6 +364,12 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     if alignment.get("sourceTiming") is not None:
         _write_json(package / "import/source-timing.json", alignment["sourceTiming"])
         manifest.setdefault("song_import", {})["sourceTimingFile"] = "import/source-timing.json"
+    if source_path is not None:
+        from .pickup_archive import archive as pickup_archive
+        pickups = pickup_archive(performance, alignment, source_path)
+        if pickups:
+            _write_json(package / 'import/pickup-timeline.json', pickups)
+            manifest.setdefault('song_import', {})['pickupTimelineFile'] = 'import/pickup-timeline.json'
     if performance.get('mutedSlideEvidence'):
         if source_path is None or (recipe or {}).get('preservationContract', 0) < 28:
             raise ImportFailure('unsupported_score', 'Muted slides require the retained original tab and preservation contract 28.')
