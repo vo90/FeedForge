@@ -1,7 +1,8 @@
 """Bounded recording-clock diagnostics and opening repair, not tab correction.
 
 Scores are engineering evidence, never probabilities or proof of every note.
-The old recording-end authority is deliberately independent of this module.
+Recording-end authority reuses joint measurements but applies its own coverage
+and independently corroborated reference requirements.
 """
 from copy import deepcopy
 import math
@@ -101,11 +102,11 @@ def joint(pitch, flux, times, vectors, channel):
     return ps * valid, ac * valid
 
 
-def assess_features(tracks, pitch, flux, duration):
+def assess_features(tracks, pitch, flux, duration, *, windows=None):
     rows = []
     # Non-overlapping windows provide coverage without inflating evidence counts.
-    for left in np.arange(0, duration, 16):
-        right = min(float(left+16), duration)
+    intervals = windows if windows is not None else [(left, min(float(left+16), duration)) for left in np.arange(0, duration, 16)]
+    for left, right in intervals:
         parts = []
         for track in tracks:
             selected = groups(track, float(left), right-.2)

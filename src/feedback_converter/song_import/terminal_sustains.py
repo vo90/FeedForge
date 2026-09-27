@@ -14,9 +14,30 @@ def policy_for(duration: float) -> dict:
 
 
 def allowed(alignment: dict, duration: float) -> bool:
+    ending = alignment.get('endingPadding', {})
+    if ending.get('version') == 2:
+        from .ending_padding import MIXED_POLICY
+        cutoff = ending['originalDuration'] + alignment.get('preparation', {}).get('seconds', 0)
+        return (alignment.get('status') == 'validated' and ending.get('trimLongHeldTails') is True
+                and ending.get('policy') == MIXED_POLICY and 0 < ending['seconds'] <= 2
+                and alignment.get('method') == 'songsterr-video-points-v1' and alignment.get('mapping') == 'piecewise-linear'
+                and alignment.get('terminalSustains') == mixed_policy_for(cutoff)
+                and abs(duration-cutoff-ending['seconds']) <= EPSILON)
     return (alignment.get("method") == "songsterr-video-points-v1"
             and alignment.get("mapping") == "piecewise-linear"
             and alignment.get("terminalSustains") == policy_for(duration))
+
+
+def mixed_policy_for(cutoff):
+    return {'version':2,'policy':'trim-long-held-tail-with-padding-v1','audioDuration':cutoff,'onlyBeyondSeconds':2.0}
+
+
+def cutoff_for(alignment, duration, start, end):
+    policy = alignment.get('terminalSustains', {})
+    if policy.get('version') == 2:
+        cutoff=policy['audioDuration']
+        return cutoff if end > cutoff+2.0 else None
+    return duration
 
 
 def slides_policy_for(duration: float) -> dict:

@@ -87,6 +87,19 @@ def _alignment_summary(alignment: dict) -> dict:
     return {key: value for key, value in alignment.items() if key not in {"anchors", "tempos", "recordingSync", "sourceTiming", "timingAssessment", "endingPaddingSync", "endingPaddingDeclined"}}
 
 
+def _failure_message(exc):
+    """Keep the actionable source check visible when the fallback also fails."""
+    diagnostic = exc.diagnostics
+    ending = diagnostic.get('endingPaddingDeclined', {}).get('endingPaddingSync')
+    if not ending:
+        ending = diagnostic.get('sourceSynchronization', {}).get('endingPaddingSync')
+    if ending and exc.code in ('alignment_failed', 'source_sync_unavailable'):
+        if ending.get('status') == 'suspected_mismatch':
+            return 'The tab timing appears to differ from this recording. Its ending could not be adjusted safely. Choose audio that matches the tab.'
+        return 'Recording timing could not be confirmed through the ending. No FeedPak was saved. Choose another matching recording or audio file.'
+    return str(exc)
+
+
 def run_import(request: dict, progress=None) -> dict:
     job = None
     performance = alignment = None
@@ -194,6 +207,10 @@ def run_import(request: dict, progress=None) -> dict:
                 ('version','status','everyNoteVerified','windowCount','supportedWindows','suspectedMismatchWindows')}
         summary['preparationSeconds']=alignment.get('preparation',{}).get('seconds',0)
         summary['endingSilenceSeconds']=alignment.get('endingPadding',{}).get('seconds',0)
+        if alignment.get('endingPaddingSync'):
+            report=alignment['endingPaddingSync']
+            summary['endingTiming']={k:report[k] for k in ('version','status','everyNoteVerified')}
+            summary['endingTiming']['individualNotesUnassessed']=bool(report.get('endingEvidence'))
         if verification.get("adjustments"):
             summary["adjustments"] = verification["adjustments"]
         if verification.get("omissions"):
@@ -224,7 +241,7 @@ def run_import(request: dict, progress=None) -> dict:
                              if alignment.get("method") == "songsterr-video-points-v1" else
                              ["Songsterr audio matching is experimental; this recording passed the current automatic checks."])}
     except ImportFailure as exc:
-        failed = {"ok": False, "code": exc.code, "error": str(exc), **({"alignment": exc.diagnostics} if exc.diagnostics else {}),
+        failed = {"ok": False, "code": exc.code, "error": _failure_message(exc), **({"alignment": exc.diagnostics} if exc.diagnostics else {}),
                   **({"transport": exc.transport} if exc.transport else {})}
     except ImportError as exc:
         failed = {"ok": False, "code": "dependency_missing", "error": f"Song import needs an unavailable component: {exc.name or 'unknown'}."}

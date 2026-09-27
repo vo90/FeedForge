@@ -88,7 +88,11 @@ def finalize(performance,audio,alignment,directory):
     else:
         result['offset']+=offset
     for key in ('terminalSustains','terminalSlides'):
-        if key in result:result[key]['audioDuration']=prepared['duration']
+        if key in result:
+            if result[key].get('version') == 2:
+                result[key]['audioDuration'] += offset
+            else:
+                result[key]['audioDuration']=prepared['duration']
     result['preparation']=receipt
     # Check the actual encoded recording, not a pre-encoding approximation.
     if result.get('openingRepair'):
