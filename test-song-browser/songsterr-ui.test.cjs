@@ -27,6 +27,18 @@ test('completed partial charts identify omitted gameplay targets, not only displ
 });
 const buttonText = (html) => [...html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)].map((match) => match[1].replace(/<[^>]*>/g, '').trim());
 
+test('combined ending describes preserved tails and does not claim every note is verified', () => {
+  const verification = { status: 'passed', endingSilenceSeconds: .4,
+    endingTiming: { status: 'supported' }, adjustments: { terminalSustains: 2 } };
+  const html = job({ state: 'completed', verification });
+  assert.match(html, /2 final sustains shortened to the audio ending/);
+  assert.match(html, /Ending silence added: 0.40 seconds/);
+  assert.match(html, /This adds no missing music/);
+  assert.match(html, /does not verify every transcribed note/);
+  assert.doesNotMatch(job({ state: 'failed', verification }), /Recording timing supported/);
+  assert.doesNotMatch(job({ state: 'completed', verification: { ...verification, status: 'modified' } }), /Recording timing supported/);
+});
+
 test('opening repair, acoustic evidence and preparation are distinguished', () => {
   const html = job({ state: 'completed', verification: { status: 'passed', timing: 'source_map_repaired',
     timingAssessment: { windowCount: 10, supportedWindows: 8, everyNoteVerified: false }, preparationSeconds: 1.83,

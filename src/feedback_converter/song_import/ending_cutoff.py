@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from .alignment import map_time
 from .audio import ImportFailure
-from .recording_sync import assess, digest, VERSION
+from .recording_sync import assess, digest, VERSION, LEGACY_VERSION
 
 POLICY = "cut-at-recording-end-v1"
 
@@ -54,7 +54,7 @@ def allowed(alignment, duration):
             and anchors[-1]["audio"] - anchors[-2]["audio"] <= 8.0
             and policy == {"version": 1, "policy": POLICY, "audioDuration": duration,
                            "finalMeasureStart": alignment["anchors"][-2]["audio"], "syncEvidenceHash": digest(report)}
-            and report.get("version") == VERSION and report.get("status") == "supported"
+            and report.get("version") in (VERSION, LEGACY_VERSION) and report.get("status") == "supported"
             and report.get("audioDuration") == duration and report.get("mapHash") == alignment.get("provenance", {}).get("mapHash"))
 
 

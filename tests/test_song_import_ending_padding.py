@@ -208,3 +208,17 @@ def test_uncertain_padding_retains_existing_trim_fallback(monkeypatch):
     assert calls == [True, False]
     assert 'terminalSustains' in result and 'endingPadding' not in result
     assert result['endingPaddingDeclined']['sourceSyncReason'] == 'ending_padding_sync_inconclusive'
+
+
+@pytest.mark.parametrize('inventory_version, expected', [(36,'passed'), (999,'failed')])
+def test_previous_inventory_stays_readable_but_unknown_versions_fail(package,tmp_path,inventory_version,expected):
+    source,path,alignment,_=package
+    with ZipFile(path) as z: files={name:z.read(name) for name in z.namelist()}
+    manifest=yaml.safe_load(files['manifest.yaml'])
+    name=manifest['song_import']['compatibilityFile']
+    report=json.loads(files[name]); report['version']=inventory_version
+    files[name]=json.dumps(report).encode()
+    target=tmp_path/'inventory.feedpak'
+    with ZipFile(target,'w') as z:
+        for name,data in files.items():z.writestr(name,data)
+    assert verify_import(source,target,alignment,META)['status']==expected

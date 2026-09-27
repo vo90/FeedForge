@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 36
+VERSION = 37
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -280,7 +280,10 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
         check.fail("compatibility", "import/compatibility", "The compatibility report is incomplete.")
         return
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
-    check.equal("compatibility_version", "import/compatibility", VERSION, report.get("version"))
+    # Contract 37 changes ending authority, not this source-technique inventory.
+    # Preserve independent checks for the preceding published inventory schema.
+    if type(report.get('version')) is not int or report['version'] not in (36, VERSION):
+        check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     check.equal("compatibility_status", "import/compatibility", "limitations" if rows else "compatible", report.get("status"))
     target = report.get("target", {})
     check.equal("compatibility_target", "import/compatibility", "1.16.0", target.get("feedpak"))
@@ -415,6 +418,7 @@ def _terminal_adjustments(wanted, alignment, recipe, archive, duration, source, 
     """
     policy = alignment.get("terminalSustains")
     slide_policy = alignment.get("terminalSlides")
+    mixed = isinstance(policy,dict) and policy.get('version') == 2
     from .terminal_sustains import slides_policy_for
     slide_authorized = (slide_policy == slides_policy_for(duration)
                         and recipe.get("terminalSlides") == slide_policy
@@ -427,6 +431,14 @@ def _terminal_adjustments(wanted, alignment, recipe, archive, duration, source, 
             check.fail("unexpected_adjustments", "import", "The package declares adjustments absent from its verified recording map.")
         return None
     required = {"version": 1, "policy": "trim-final-sustain-v1", "audioDuration": duration}
+    if mixed:
+        ending=alignment.get('endingPadding',{})
+        duration=ending.get('originalDuration',0)+alignment.get('preparation',{}).get('seconds',0)
+        required={'version':2,'policy':'trim-long-held-tail-with-padding-v1','audioDuration':duration,'onlyBeyondSeconds':2.0}
+        if (ending.get('version')!=2 or ending.get('trimLongHeldTails') is not True
+                or recipe.get('preservationContract',0)<37 or slide_policy is not None):
+            check.fail('mixed_ending_policy','import','Held-tail shortening requires independent combined-ending authority.')
+            return None
     if (policy != required or recipe.get("terminalSustains") != required
             or recipe.get("preservationContract", 0) < 10 or source.format != "songsterr"
             or alignment.get("method") != "songsterr-video-points-v1" or alignment.get("mapping") != "piecewise-linear"):
@@ -438,6 +450,11 @@ def _terminal_adjustments(wanted, alignment, recipe, archive, duration, source, 
         for item in part["notes"]:
             note = item["note"]
             start, sustain = note["t"], note.get("sus", 0)
+            if mixed and start+sustain <= duration+2.0:
+                continue
+            if mixed and set(note)-{'s','f','t','sus','mt','vb','ac','pm','lr','ghost','hm','hp','hn','hps','st','tr'}:
+                check.fail('mixed_ending_technique',item['locations'][0],'Combined ending cannot shorten a timed gesture.')
+                continue
             if start < 0 or start >= duration:
                 check.fail("adjustment_attack", item["locations"][0], "A new attack lies outside the recording; it cannot be trimmed.")
                 continue
@@ -548,12 +565,12 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
         return None
     # The acoustic check is recomputed from independently reconstructed notes
     # and the actual packaged recording. A forged saved status cannot authorize it.
-    from .recording_sync import assess, digest, VERSION as SYNC_VERSION
+    from .recording_sync import assess, digest, VERSION as SYNC_VERSION, LEGACY_VERSION
     stored = _json(archive, recipe.get("recordingSyncFile", ""), check)
     required = {"version": 1, "policy": "cut-at-recording-end-v1", "audioDuration": duration,
                 "finalMeasureStart": anchors[-2]["audio"], "syncEvidenceHash": digest(stored)}
     if (policy != required or recipe.get("recordingEnd") != required
-            or alignment.get("recordingSync") != stored or stored.get("version") != SYNC_VERSION
+            or alignment.get("recordingSync") != stored or stored.get("version") not in (SYNC_VERSION, LEGACY_VERSION)
             or stored.get("status") != "supported" or stored.get("mapHash") != alignment.get("provenance", {}).get("mapHash")):
         check.fail("ending_policy", "import", "The ending cutoff has no matching current timing evidence.")
         return None
@@ -608,7 +625,7 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
         if not check.total_errors:
             offset=alignment.get('preparation',{}).get('seconds',0)
             fresh = assess(tracks, io.BytesIO(audio_bytes), duration, alignment["provenance"]["mapHash"],
-                           **({'analysis_origin':offset} if offset else {}))
+                           **({'analysis_origin':offset} if offset else {}), legacy=stored.get('version')==LEGACY_VERSION)
             timing["independentAudioMatchAssessed"] = True
             check.equal("ending_audio_sync", "import/recording-sync", "supported", fresh["status"])
     return {"omittedEndingNotes": len(omissions)}

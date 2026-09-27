@@ -12,6 +12,8 @@ from . import recording_sync as rs
 POLICY = 'preserve-existing-tail-v1'
 MAX_SECONDS = 2.0
 EPSILON = .0000011
+MIXED_POLICY = 'preserve-gesture-after-held-tail-trim-v1'
+PLAIN_FLAGS = {'mt', 'vb', 'ac', 'pm', 'lr', 'ghost', 'hm', 'hp', 'hn', 'hps', 'st', 'tr'}
 
 
 def bounds(tracks, duration):
@@ -30,9 +32,28 @@ def bounds(tracks, duration):
 def candidate(performance, alignment, audio):
     from .ending_cutoff import mapped_tracks
     try:
-        return bounds(mapped_tracks(performance, alignment), audio['duration'])
+        return plan_bounds(mapped_tracks(performance, alignment), audio['duration'])
     except (ImportFailure, ValueError, KeyError, TypeError):
         return None  # The ordinary structural/playable checks supply the error.
+
+
+def plan_bounds(tracks, duration):
+    ordinary = bounds(tracks, duration)
+    if ordinary:
+        return ordinary
+    events = [n for t in tracks for n in t['events']]
+    if (not events or not math.isfinite(duration) or duration <= 0
+            or any(not all(math.isfinite(n[k]) for k in ('t','end'))
+                   or not 0 <= n['t'] < duration or n['end'] < n['t'] for n in events)):
+        return None
+    long = [n for n in events if n['end'] > duration + MAX_SECONDS]
+    if not long or any(set(n.get('effects', {})) - PLAIN_FLAGS for n in long):
+        return None
+    retained = max([duration] + [n['end'] for n in events if n['end'] <= duration + MAX_SECONDS])
+    if retained <= duration + EPSILON:
+        return None  # The established held-tail trimming route already covers this.
+    return {'originalDuration':duration,'lastNoteEnd':retained,'trimLongHeldTails':True,
+            'sourceLastNoteEnd':max(n['end'] for n in events)}
 
 
 def original_tracks(tracks, seconds):
@@ -44,9 +65,9 @@ def original_tracks(tracks, seconds):
     return tracks
 
 
-def assess(tracks, path, duration, map_hash):
+def assess(tracks, path, duration, map_hash, *, legacy=False):
     from .local_sync import _hash
-    report = rs.assess(tracks, path, duration, map_hash)
+    report = rs.assess(tracks, path, duration, map_hash, **({'legacy':True} if legacy else {}))
     # WAV containers may contain timestamped PEAK headers. Bind decoded samples.
     report.update(audioSha256=_hash(path), audioHashKind='decoded-float32')
     # Require support in the actual ending region, not just earlier verses.
@@ -76,6 +97,10 @@ def authorize(performance, audio, alignment):
     result['endingPadding'] = {'version': 1, 'policy': POLICY, **spec,
         'originalFrames': info.frames, 'sampleRate': info.samplerate, 'frames': frames,
         'seconds': frames / info.samplerate, 'sourceSamplesSha256': _hash(audio['path'])}
+    if spec.get('trimLongHeldTails'):
+        from .terminal_sustains import mixed_policy_for
+        result['endingPadding'].update(version=2, policy=MIXED_POLICY)
+        result['terminalSustains'] = mixed_policy_for(audio['duration'])
     result['endingPaddingSync'] = report
     result.pop('paddingCandidate', None)
     result['status'] = 'validated'
@@ -114,9 +139,12 @@ def verify(wanted, alignment, recipe, archive, manifest, check):
                 recipe.get('alignment', {}).get('endingPadding'))
     stored = json.loads(archive.read(recipe['endingPaddingSyncFile']))
     check.equal('ending_padding_sync_receipt', 'import/ending-padding-sync', alignment.get('endingPaddingSync'), stored)
-    if (recipe.get('preservationContract', 0) < 36 or receipt.get('version') != 1 or receipt.get('policy') != POLICY
+    mixed = receipt.get('version') == 2 and receipt.get('policy') == MIXED_POLICY and receipt.get('trimLongHeldTails') is True
+    if (recipe.get('preservationContract', 0) < (37 if mixed else 36)
+            or not (mixed or receipt.get('version') == 1 and receipt.get('policy') == POLICY)
             or alignment.get('method') != 'songsterr-video-points-v1' or alignment.get('mapping') != 'piecewise-linear'
-            or any(alignment.get(k) for k in ('recordingEnd', 'terminalSustains', 'terminalSlides', 'paddingCandidate'))):
+            or any(alignment.get(k) for k in ('recordingEnd', 'terminalSlides', 'paddingCandidate'))
+            or bool(alignment.get('terminalSustains')) != mixed):
         raise ValueError('Invalid ending padding policy.')
     prep = alignment['preparation']
     rate, frames, original_frames = receipt['sampleRate'], receipt['frames'], receipt['originalFrames']
@@ -126,6 +154,19 @@ def verify(wanted, alignment, recipe, archive, manifest, check):
     duration = original_frames / rate
     tracks = original_tracks(tracks_from_expected(wanted), prep['seconds'])
     spec = bounds(tracks, duration)
+    if mixed:
+        # Reconstruct the mixed policy from independent raw-source events.
+        # The receipt cannot select which notes are shortened.
+        events = [n for t in tracks for n in t['events']]
+        long = [n for n in events if n['end'] > duration + 2.0]
+        if (not long or any(not 0 <= n['t'] < duration or n['end'] < n['t'] for n in events)
+                or any(set(n['effects']) - {'mt','vb','ac','pm','lr','ghost','hm','hp','hn','hps','st','tr'} for n in long)):
+            raise ValueError('Mixed ending would shorten an active gesture or omit an attack.')
+        remaining = max([duration]+[n['end'] for n in events if n['end'] <= duration+2.0])
+        if not duration+EPSILON < remaining <= duration+2.0:
+            raise ValueError('Mixed ending does not require bounded padding.')
+        spec={'originalDuration':duration,'lastNoteEnd':remaining}
+        check.near('ending_padding_source_last','ending-padding/sourceLastNoteEnd',max(n['end'] for n in events),receipt.get('sourceLastNoteEnd'))
     if spec is None:
         raise ValueError('The raw source has new attacks outside the recording or no eligible short tail.')
     check.near('ending_padding_original', 'ending-padding/originalDuration', duration, receipt['originalDuration'], 1e-10)
@@ -147,7 +188,7 @@ def verify(wanted, alignment, recipe, archive, manifest, check):
     recording = recording_view(io.BytesIO(archive.read(full[0]['file'])), prep)
     check.equal('ending_padding_recording', 'ending-padding/recordingSamplesSha256', _hash(recording), receipt.get('recordingSamplesSha256'))
     if not check.total_errors:
-        fresh = assess(tracks, recording, duration, alignment['provenance']['mapHash'])
+        fresh = assess(tracks, recording, duration, alignment['provenance']['mapHash'], legacy=stored.get('version') == rs.LEGACY_VERSION)
         check.equal('ending_padding_sync', 'import/ending-padding-sync', 'supported', fresh['status'])
         for key in ('audioSha256', 'audioDuration', 'mapHash', 'version', 'outroSupported'):
             check.equal('ending_padding_sync_identity', 'import/ending-padding-sync/' + key, fresh[key], stored.get(key))

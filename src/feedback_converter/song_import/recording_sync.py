@@ -12,7 +12,8 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
-VERSION = "mapped-pitch-onsets-v2"
+LEGACY_VERSION = "mapped-pitch-onsets-v2"
+VERSION = "recording-clock-v3"
 RATE = 11025
 HOP = 110
 DT = HOP / RATE
@@ -122,7 +123,7 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
 
 
-def assess(tracks, audio_path, duration, map_hash, *, analysis_origin=0.0):
+def assess(tracks, audio_path, duration, map_hash, *, analysis_origin=0.0, legacy=False):
     """Assess already mapped track events without adjusting their positions.
 
     All non-silent body windows containing attacks must have supporting pitch
@@ -155,7 +156,15 @@ def assess(tracks, audio_path, duration, map_hash, *, analysis_origin=0.0):
     actual_duration = len(signal) / RATE
     if abs(actual_duration - duration) > .001:
         raise ValueError("The timing check audio duration does not match the recording.")
-    return {**assess_features(tracks, pitch, flux, duration),
+    report = assess_features(tracks, pitch, flux, duration)
+    if legacy:
+        report['version'] = LEGACY_VERSION
+    elif report['status'] != 'supported':
+        from .clock_evidence import assess as assess_clock
+        report = assess_clock(tracks, audio_path, duration, pitch, flux, report)
+    else:
+        report.update(method='established-pitch-onset-check', referenceEvidence={'status':'default', 'referenceHz':440.0})
+    return {**report,
             "audioSha256": audio_hash, "audioDuration": original_duration, "mapHash": map_hash,
             **({'analysisOriginSeconds':analysis_origin} if analysis_origin else {})}
 

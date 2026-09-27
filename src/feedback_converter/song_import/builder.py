@@ -150,11 +150,14 @@ def _retime_note(note: dict, alignment: dict, duration: float, *, chord_time: fl
     if terminal_sustains_allowed(alignment, duration):
         # Chord children inherit their attack from the chord. Supply it for the
         # policy check without changing the archived representation.
-        adjusted, _ = trim_held_note({**result, "t": round(start, 6)}, duration,
-                                     allow_directional_slides=slides_allowed(alignment, duration))
-        if "t" not in result:
-            adjusted.pop("t")
-        result = adjusted
+        from .terminal_sustains import cutoff_for
+        cutoff = cutoff_for(alignment, duration, start, start+sustain)
+        if cutoff is not None:
+            adjusted, _ = trim_held_note({**result, "t": round(start, 6)}, cutoff,
+                                         allow_directional_slides=slides_allowed(alignment, duration))
+            if "t" not in result:
+                adjusted.pop("t")
+            result = adjusted
     return result
 
 
@@ -224,6 +227,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     if alignment.get('endingPadding') and (source_path is None or (recipe or {}).get('preservationContract',0)<36
             or 'recordingSamplesSha256' not in alignment['endingPadding']):
         raise ImportFailure('alignment_failed','Ending silence requires confirmed recording evidence and the original tab.')
+    if alignment.get('endingPadding',{}).get('version') == 2 and (recipe or {}).get('preservationContract',0)<37:
+        raise ImportFailure('alignment_failed','Combined ending handling requires current preservation evidence.')
     if alignment.get("terminalSlides") is not None and (not slides_allowed(alignment, audio["duration"])
             or source_path is None or (recipe or {}).get("preservationContract", 0) < 33):
         raise ImportFailure("alignment_failed", "A final slide-out cutoff requires verified recording timing, the original tab and contract 33.")
@@ -300,8 +305,10 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             for note, start in originals:
                 left = map_time(alignment, start)
                 sustain = round(map_time(alignment, start + note.get("sus", 0)) - left, 6)
-                if left < duration and left + sustain > duration + 0.0000011:
-                    exported = round(math.floor(duration * 1_000_000) / 1_000_000 - left, 6)
+                from .terminal_sustains import cutoff_for
+                cutoff = cutoff_for(alignment, duration, left, left+sustain)
+                if cutoff is not None and left < cutoff and left + sustain > cutoff + 0.0000011:
+                    exported = round(math.floor(cutoff * 1_000_000) / 1_000_000 - left, 6)
                     detail = {"trackId": track["id"], "string": note["s"], "fret": note["f"],
                                                 "audioStart": round(left, 6), "originalDuration": sustain,
                                                 "exportedDuration": exported, "trimmedSeconds": round(sustain - exported, 6)}
