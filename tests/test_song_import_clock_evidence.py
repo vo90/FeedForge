@@ -114,3 +114,20 @@ def test_weak_reference_without_held_out_support_cannot_authorize(sparse_audio,m
     report=ce.assess(tracks,path,duration,pitch,flux,original)
     assert report['referenceEvidence']['status']=='default'
     assert report['referenceEvidence']['referenceHz']==440
+
+
+def test_dense_recording_clock_rejects_competing_repeat(sparse_audio):
+    tracks,_,pitch,flux,duration=sparse_audio
+    # Distinct pitches support the original clock despite regularly spaced
+    # attacks. Duplicating the features half-way between attacks introduces
+    # a competing clock without changing the source or its correct near-match.
+    original={'windows':[{'start':0,'end':16}]}
+    assert ce._joint(tracks,pitch,flux,duration,original)['windows'][0]['status']=='supported'
+    offset=round(.25/rs.DT)
+    repeated_pitch=np.maximum(pitch,np.roll(pitch,offset,axis=0))
+    repeated_flux=np.maximum(flux,np.roll(flux,offset,axis=0))
+    diagnostic=ce.ls.assess_features(tracks,repeated_pitch,repeated_flux,duration,windows=[(0,16)])
+    assert diagnostic['windows'][0]['status']=='supported'
+    strict=ce._joint(tracks,repeated_pitch,repeated_flux,duration,original)
+    assert strict['windows'][0]['status']=='inconclusive'
+    assert strict['windows'][0]['parts'][0]['distantBest']>=.9*strict['windows'][0]['parts'][0]['jointAtMap']

@@ -6,9 +6,12 @@ or the recording's tuning. A supported clock is not a claim that every source
 note matches the performance.
 
 The existing conservative timing check remains the first path. If inconclusive,
-the fallback measures pitch and attack at the same offset. A bounded audio-only
-reference estimate can be used only when it improves support in both selection
-and held-out, non-overlapping body passages. The ending is excluded from reference
+the fallback measures pitch and attack at the same offset. A clock match must
+also beat competing offsets at least 200 ms away; a near-match to an equally
+plausible repeated riff cannot authorize the fallback. A bounded audio-only
+reference estimate can be used only when it improves body support and is
+corroborated in both selection and held-out, non-overlapping body passages.
+The ending is excluded from reference
 selection. Source tuning annotations alone never authorize a reference change.
 
 Sparse ending support requires at least three distinct supported times covering
