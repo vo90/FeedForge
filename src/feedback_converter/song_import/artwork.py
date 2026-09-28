@@ -29,7 +29,7 @@ import warnings
 
 from PIL import Image, ImageOps
 
-POLICY_VERSION = 2
+POLICY_VERSION = 3
 COVER_ENCODING = "jpeg-512-q90-v1"
 COVER_MAX_SIZE = 512
 USER_AGENT = "FeedForge/2.0.1 (album artwork; https://github.com/balki97/FeedForge)"
@@ -382,9 +382,37 @@ def _pages(client, entity, values, list_key, count_key, cap):
 _EXCLUDE = {"compilation", "live", "remix", "dj-mix", "mixtape/street", "demo", "interview", "audiobook", "spokenword"}
 
 
+def _cover_indexes(client, group):
+    """Prefer the matched edition, then album default, then verified editions.
+
+    Other editions only supply artwork. They never replace the original track
+    evidence, album/year, recording choice or audio synchronization.
+    """
+    yield "release", group["release"]["id"]
+    yield "release-group", group["id"]
+    from .album_match import _ids
+    editions = sorted(group.get("releases", {}).values(), key=lambda r: (str(r.get("date") or "9999"), r["id"]))
+    editions = [r for r in editions if r["id"] != group["release"]["id"]]
+    for edition in editions[:3]:
+        identifier = edition["id"]
+        if not _UUID.fullmatch(str(identifier)):
+            continue
+        full = client.json(f"https://musicbrainz.org/ws/2/release/{identifier}?fmt=json&inc=artist-credits+release-groups", "mb")
+        if (not full or full.get("id") != identifier or full.get("status") != "Official"
+                or (full.get("release-group") or {}).get("id") != group["id"]
+                or _ids(full) != group["artistIds"]):
+            continue
+        # A successful catalogue response explicitly reporting no front art
+        # does not need a second request to the image service.
+        if (full.get("cover-art-archive") or {}).get("front") is False:
+            continue
+        yield "release", identifier
+
+
 def _cover(client, group):
     unavailable = None
-    for kind, identifier in (("release", group["release"]["id"]), ("release-group", group["id"])):
+    attempted = set()
+    for kind, identifier in _cover_indexes(client, group):
         index_url = f"https://coverartarchive.org/{kind}/{identifier}"
         try:
             index = client.json(index_url, "caa")
@@ -401,28 +429,43 @@ def _cover(client, group):
         eligible = [item for item in images if isinstance(item, dict) and item.get("front") is True and item.get("approved") is True]
         if not eligible:
             continue
-        image = eligible[0]
-        thumbnails = image.get("thumbnails") if isinstance(image.get("thumbnails"), dict) else {}
-        image_url = thumbnails.get("500") or thumbnails.get("1200") or image.get("image")
-        if not isinstance(image_url, str):
-            continue
-        # Historical CAA indexes include HTTP links to their own image hosts.
-        # Upgrade those links; no plaintext request or arbitrary-host rewrite.
-        parsed = urlsplit(image_url)
-        if parsed.scheme == "http" and parsed.port in (None, 80) and not parsed.username and not parsed.password:
-            image_url = urlunsplit(("https", parsed.hostname or "", parsed.path, parsed.query, parsed.fragment))
-        try:
-            raw = client.get(image_url, "caa", IMAGE_LIMIT)
-        except _LookupFailure as exc:
-            if exc.reason != 'service_unavailable':
-                raise
-            unavailable = exc
-            continue
-        if raw:
-            release_url = str(index.get("release") or "")
-            cover_release = release_url.rstrip("/").split("/")[-1]
-            return raw, {"source": "cover-art-archive", "sourceUrl": index_url, "imageUrl": image_url,
-                         "artworkReleaseId": cover_release if _UUID.fullmatch(cover_release) else group["release"]["id"]}
+        release_url = str(index.get("release") or "")
+        cover_release = release_url.rstrip("/").split("/")[-1]
+        if not _UUID.fullmatch(cover_release) or (kind == "release" and cover_release != identifier):
+            raise _LookupFailure("invalid_artwork_metadata")
+        for image in eligible[:3]:
+            thumbnails = image.get("thumbnails") if isinstance(image.get("thumbnails"), dict) else {}
+            variants = 0
+            for image_url in (thumbnails.get("500"), thumbnails.get("1200"), image.get("image")):
+                if not isinstance(image_url, str) or not image_url:
+                    continue
+                # Historical CAA indexes include HTTP links to their own image
+                # hosts. Upgrade, then validate every address and redirect.
+                parsed = urlsplit(image_url)
+                if parsed.scheme == "http" and parsed.port in (None, 80) and not parsed.username and not parsed.password:
+                    image_url = urlunsplit(("https", parsed.hostname or "", parsed.path, parsed.query, parsed.fragment))
+                if image_url in attempted:
+                    continue
+                # Leave room for another edition instead of spending the whole
+                # request budget on different sizes served by one failing host.
+                if variants >= 2:
+                    break
+                variants += 1
+                attempted.add(image_url)
+                try:
+                    raw = client.get(image_url, "caa", IMAGE_LIMIT)
+                    if raw is None:
+                        continue
+                    # Decode here so a broken image can fall through to another
+                    # candidate. Only validated compact bytes enter the cache.
+                    raw = _normalize_image(raw)
+                except _LookupFailure as exc:
+                    if exc.reason not in {"service_unavailable", "invalid_cover_image", "response_too_large"}:
+                        raise
+                    unavailable = exc
+                    continue
+                return raw, {"source": "cover-art-archive", "sourceUrl": index_url, "imageUrl": image_url,
+                             "artworkReleaseId": cover_release}
     raise unavailable or _LookupFailure("cover_not_available")
 
 
@@ -537,8 +580,7 @@ def _album_cover(client, group, cache, now):
             return raw, {field: provenance[field] for field in (
                 "source", "sourceUrl", "imageUrl", "artworkReleaseId",
                 "releaseGroupId", "releaseId", "imageHash", "imageEncoding") if field in provenance}
-    image_bytes, provenance = _cover(client, group)
-    raw = _normalize_image(image_bytes)
+    raw, provenance = _cover(client, group)
     provenance.update({**identity, "imageHash": hashlib.sha256(raw).hexdigest(), "imageEncoding": COVER_ENCODING})
     _cache_write(shared, key, _result("matched", "album_cover", provenance=provenance), raw, now)
     return raw, provenance

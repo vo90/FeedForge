@@ -112,7 +112,8 @@ class Network:
                 offset = int(params["offset"][0])
                 return response({"release-count": len(records), "releases": records[offset:offset + 100]})
         if parts.hostname == "coverartarchive.org":
-            return response(self.cover)
+            return response({**self.cover, 'release': 'https://musicbrainz.org/release/'+parts.path.rsplit('/',1)[1]}
+                            if parts.path.startswith('/release/') else self.cover)
         if parts.hostname == "archive.org":
             return response(raw=self.image, headers={"Content-Type": "image/png"})
         pytest.fail(f"Unexpected network address: {url}")
@@ -743,7 +744,7 @@ def test_failed_release_image_can_fall_back_to_same_album_front(tmp_path):
     network.override = override
     result = network.resolve(tmp_path)
     assert result['status'] == 'matched'
-    assert '/release-group/' in result['provenance']['sourceUrl']
+    assert result['provenance']['imageUrl'].endswith('/original.png')
 
 
 def test_confirmed_metadata_survives_local_image_write_failure(tmp_path):
@@ -753,3 +754,89 @@ def test_confirmed_metadata_survives_local_image_write_failure(tmp_path):
     assert result['status'] == 'unavailable'
     assert result['albumStatus'] == 'matched' and result['album'] == 'Original Album'
     assert 'path' not in result
+
+
+@pytest.mark.parametrize('failure', ['missing', 'server', 'corrupt', 'oversized'])
+def test_failed_small_cover_uses_another_validated_size(tmp_path, failure):
+    from feedback_converter.song_import.artwork import _LookupFailure
+    network = Network()
+    small = 'https://archive.org/download/example/small.jpg'
+    network.cover['images'][0]['thumbnails']['500'] = small
+    def override(url):
+        if url == small:
+            if failure == 'oversized':
+                raise _LookupFailure('response_too_large')
+            return response(status={'missing':404, 'server':500}.get(failure,200), raw=b'corrupt')
+    network.override = override
+    result = network.resolve(tmp_path)
+    assert result['status'] == 'matched'
+    assert result['provenance']['imageUrl'].endswith('/front.png')
+    with Image.open(result['path']) as image:
+        assert image.format == 'JPEG' and max(image.size) == 512
+
+
+def test_next_approved_front_can_recover_and_duplicate_urls_are_not_retried(tmp_path):
+    network = Network()
+    bad = {'front':True, 'approved':True, 'image':'https://archive.org/broken',
+           'thumbnails':{'500':'https://archive.org/broken', '1200':'https://archive.org/broken'}}
+    network.cover['images'] = [bad, {**bad, 'approved':False, 'image':'https://archive.org/unapproved'}, network.cover['images'][0]]
+    network.override = lambda url: response(raw=b'bad') if url.endswith('/broken') else None
+    result = network.resolve(tmp_path)
+    assert result['status'] == 'matched'
+    assert sum(c['url'].endswith('/broken') for c in network.calls) == 1
+    assert not any(c['url'].endswith('/unapproved') for c in network.calls)
+
+
+@pytest.mark.parametrize('conflict', [None, 'group', 'artist', 'status'])
+def test_alternate_edition_must_be_verified_as_same_official_album(tmp_path, conflict):
+    network = Network()
+    alternative = release(50, date='2015')
+    alternative['release-group']['first-release-date']='2001-04-03'
+    network.releases[uid(2)].append(alternative)
+    def override(url):
+        if 'coverartarchive.org' in url:
+            if url.endswith('/'+uid(50)):
+                return response({**network.cover, 'release':'https://musicbrainz.org/release/'+uid(50)})
+            return response(status=500)
+        if urlsplit(url).path == '/ws/2/release/'+uid(50):
+            full={**alternative}
+            if conflict=='group': full['release-group']={**alternative['release-group'],'id':uid(99)}
+            if conflict=='artist': full['artist-credit']=credit('Other Artist')
+            if conflict=='status': full['status']='Bootleg'
+            return response(full)
+    network.override=override
+    result=network.resolve(tmp_path/'out', cache=tmp_path/'cache')
+    assert result['albumStatus']=='matched' and result['year']==2001
+    assert result['provenance']['releaseId']==uid(3)
+    assert result['provenance']['trackEvidence']['releaseId']==uid(3)
+    if conflict:
+        assert result['status']=='unavailable'
+        assert not any('coverartarchive.org/release/'+uid(50) in c['url'] for c in network.calls)
+    else:
+        assert result['status']=='matched'
+        assert result['provenance']['artworkReleaseId']==uid(50)
+        count=len(network.calls)
+        cached=network.resolve(tmp_path/'again',cache=tmp_path/'cache')
+        assert len(network.calls)==count
+        assert Path(cached['path']).read_bytes()==Path(result['path']).read_bytes()
+        assert cached['provenance']['artworkReleaseId']==uid(50)
+
+
+def test_cover_fallbacks_share_total_request_and_time_budgets(tmp_path):
+    from feedback_converter.song_import.artwork import MAX_REQUESTS, MAX_SECONDS
+    network = Network()
+    network.cover['images']=[{'front':True,'approved':True,'image':f'https://archive.org/{i}/original',
+        'thumbnails':{'500':f'https://archive.org/{i}/500','1200':f'https://archive.org/{i}/1200'}} for i in range(100)]
+    network.override=lambda url: response(status=500) if urlsplit(url).hostname=='archive.org' else None
+    result=network.resolve(tmp_path)
+    assert result['status']!='matched' and result['albumStatus']=='matched'
+    assert len(network.calls)<=MAX_REQUESTS
+    assert network.clock.value-1000<=MAX_SECONDS
+
+
+def test_index_cannot_substitute_another_release_identity(tmp_path):
+    network=Network()
+    network.cover['release']='https://musicbrainz.org/release/'+uid(99)
+    network.override=lambda url: response(network.cover) if 'coverartarchive.org' in url else None
+    result=network.resolve(tmp_path)
+    assert result['status']=='unavailable' and result['reason']=='invalid_artwork_metadata'
