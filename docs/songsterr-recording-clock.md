@@ -1,4 +1,44 @@
-# Recording timing and combined ending tails
+# Recording timing, phrase evidence and combined ending tails
+
+Preservation contract 38 adds `recording-clock-v4` with the bounded
+`ending-phrases-v1` fallback for short ending padding. Existing version-2 and
+version-3 evidence is replayed with its original rules. The separate policy that
+omits attacks after the recording still uses version 3; this change grants no new
+permission to omit notes.
+
+If the existing dense and sparse checks are inconclusive, source-selected phrases
+cover at most 32 seconds of ending plus eight seconds of preceding context.
+Sixteen-second overlapping source intervals bound each comparison. At least
+three ordinary attack groups spanning four seconds are needed. Pitch is sampled
+inside short notes, and static held/tremolo pitches supply bounded context only.
+Bass and guitar cues can also form one shared sequence; simultaneous cues and
+duplicate arrangements never count as extra independent timing evidence.
+
+Per-cue normalized pitch/attack evidence is combined geometrically at the same
+candidate offset. The expected clock must beat offsets at least 200 ms away.
+Earlier and later chronological halves must independently have audible evidence
+and agree with that clock. A loud final chord cannot compensate for a wrong
+earlier half. Two-second source-time bins keep rapid runs from outvoting sparse
+later cues. Twenty bounded linear-drift hypotheses (endpoint offsets between
+-0.8 and +0.8 seconds) must also score below the unchanged clock. These alternatives
+are diagnostics only. No unrestricted time warping, source retiming or transcription
+repair is performed.
+
+Coverage uses actual measured phrase endpoints and actual source attacks. It
+does not demand a cue before the first eligible event, or treat the entire span
+of an overlapping successful window as verified. Uncovered source attacks,
+inconsistent phrase offsets and insufficient ending support remain explicit.
+The final supported cue must still fall within two seconds of the recording end.
+
+The package verifier reconstructs notes from raw source, remeasures the original
+part of the encoded recording, and checks the versioned phrase evidence. Scalar
+feature metrics allow the existing small quantization tolerance; identity,
+coverage, selected cues and decisions must agree. Padded silence supplies no
+timing evidence. Regression fixtures include independently generated ambiguous
+audio, partial shifts with the final hit unchanged, drift, duplicated phrases,
+silence, gaps, interleaved instruments and a forged evidence receipt.
+
+## Earlier recording clock and ending policy
 
 Preservation contract 37 adds a recording-clock fallback and a combined ending
 policy. It does not alter source pitches, attacks, arrangement selection, scoring

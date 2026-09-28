@@ -13,7 +13,8 @@ import numpy as np
 import soundfile as sf
 
 LEGACY_VERSION = "mapped-pitch-onsets-v2"
-VERSION = "recording-clock-v3"
+PREVIOUS_VERSION = "recording-clock-v3"
+VERSION = "recording-clock-v4"
 RATE = 11025
 HOP = 110
 DT = HOP / RATE
@@ -123,13 +124,16 @@ def digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
 
 
-def assess(tracks, audio_path, duration, map_hash, *, analysis_origin=0.0, legacy=False):
+def assess(tracks, audio_path, duration, map_hash, *, analysis_origin=0.0, legacy=False, clock_version=None):
     """Assess already mapped track events without adjusting their positions.
 
     All non-silent body windows containing attacks must have supporting pitch
     AND attack evidence in at least one part. Other parts remain explicitly
     unassessed/inconclusive; this checks the shared recording clock, not tab quality.
     """
+    version = LEGACY_VERSION if legacy else clock_version or VERSION
+    if version not in (LEGACY_VERSION, PREVIOUS_VERSION, VERSION):
+        raise ValueError('Unknown recording-clock evidence version.')
     if hasattr(audio_path, "read"):
         audio_path.seek(0)
         audio_hash = hashlib.sha256(audio_path.read()).hexdigest()
@@ -157,14 +161,15 @@ def assess(tracks, audio_path, duration, map_hash, *, analysis_origin=0.0, legac
     if abs(actual_duration - duration) > .001:
         raise ValueError("The timing check audio duration does not match the recording.")
     report = assess_features(tracks, pitch, flux, duration)
-    if legacy:
+    if version == LEGACY_VERSION:
         report['version'] = LEGACY_VERSION
     elif report['status'] != 'supported':
         from .clock_evidence import assess as assess_clock
-        report = assess_clock(tracks, audio_path, duration, pitch, flux, report)
+        report = assess_clock(tracks, audio_path, duration, pitch, flux, report,
+                              phrases=version == VERSION)
     else:
         report.update(method='established-pitch-onset-check', referenceEvidence={'status':'default', 'referenceHz':440.0})
-    return {**report,
+    return {**report, 'version':version,
             "audioSha256": audio_hash, "audioDuration": original_duration, "mapHash": map_hash,
             **({'analysisOriginSeconds':analysis_origin} if analysis_origin else {})}
 

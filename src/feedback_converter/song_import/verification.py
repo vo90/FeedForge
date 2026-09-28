@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 37
+VERSION = 38
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -280,9 +280,9 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
         check.fail("compatibility", "import/compatibility", "The compatibility report is incomplete.")
         return
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
-    # Contract 37 changes ending authority, not this source-technique inventory.
+    # Contracts 37 and 38 change ending authority, not the technique inventory.
     # Preserve independent checks for the preceding published inventory schema.
-    if type(report.get('version')) is not int or report['version'] not in (36, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (36, 37, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     check.equal("compatibility_status", "import/compatibility", "limitations" if rows else "compatible", report.get("status"))
     target = report.get("target", {})
@@ -565,7 +565,7 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
         return None
     # The acoustic check is recomputed from independently reconstructed notes
     # and the actual packaged recording. A forged saved status cannot authorize it.
-    from .recording_sync import assess, digest, VERSION as SYNC_VERSION, LEGACY_VERSION
+    from .recording_sync import assess, digest, PREVIOUS_VERSION as SYNC_VERSION, LEGACY_VERSION
     stored = _json(archive, recipe.get("recordingSyncFile", ""), check)
     required = {"version": 1, "policy": "cut-at-recording-end-v1", "audioDuration": duration,
                 "finalMeasureStart": anchors[-2]["audio"], "syncEvidenceHash": digest(stored)}
@@ -625,7 +625,7 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
         if not check.total_errors:
             offset=alignment.get('preparation',{}).get('seconds',0)
             fresh = assess(tracks, io.BytesIO(audio_bytes), duration, alignment["provenance"]["mapHash"],
-                           **({'analysis_origin':offset} if offset else {}), legacy=stored.get('version')==LEGACY_VERSION)
+                           **({'analysis_origin':offset} if offset else {}), clock_version=stored['version'])
             timing["independentAudioMatchAssessed"] = True
             check.equal("ending_audio_sync", "import/recording-sync", "supported", fresh["status"])
     return {"omittedEndingNotes": len(omissions)}

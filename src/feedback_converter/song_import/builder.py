@@ -229,6 +229,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         raise ImportFailure('alignment_failed','Ending silence requires confirmed recording evidence and the original tab.')
     if alignment.get('endingPadding',{}).get('version') == 2 and (recipe or {}).get('preservationContract',0)<37:
         raise ImportFailure('alignment_failed','Combined ending handling requires current preservation evidence.')
+    if alignment.get('endingPaddingSync',{}).get('version') == 'recording-clock-v4' and (recipe or {}).get('preservationContract',0)<38:
+        raise ImportFailure('alignment_failed','Phrase timing evidence requires the current preservation contract.')
     if alignment.get("terminalSlides") is not None and (not slides_allowed(alignment, audio["duration"])
             or source_path is None or (recipe or {}).get("preservationContract", 0) < 33):
         raise ImportFailure("alignment_failed", "A final slide-out cutoff requires verified recording timing, the original tab and contract 33.")

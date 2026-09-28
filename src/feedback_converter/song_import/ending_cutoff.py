@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from .alignment import map_time
 from .audio import ImportFailure
-from .recording_sync import assess, digest, VERSION, LEGACY_VERSION
+from .recording_sync import assess, digest, PREVIOUS_VERSION, LEGACY_VERSION
 
 POLICY = "cut-at-recording-end-v1"
 
@@ -25,7 +25,7 @@ def mapped_tracks(performance, alignment):
 def authorize(performance, audio, alignment):
     offset=alignment.get('preparation',{}).get('seconds',0)
     report = assess(mapped_tracks(performance, alignment), audio["path"], audio["duration"], alignment["provenance"]["mapHash"],
-                    **({'analysis_origin':offset} if offset else {}))
+                    **({'analysis_origin':offset} if offset else {}), clock_version=PREVIOUS_VERSION)
     alignment["recordingSync"] = report
     if report["status"] != "supported":
         raise ImportFailure("alignment_failed", "The earlier tab could not be matched reliably to this recording, so its ending was not shortened.",
@@ -54,7 +54,7 @@ def allowed(alignment, duration):
             and anchors[-1]["audio"] - anchors[-2]["audio"] <= 8.0
             and policy == {"version": 1, "policy": POLICY, "audioDuration": duration,
                            "finalMeasureStart": alignment["anchors"][-2]["audio"], "syncEvidenceHash": digest(report)}
-            and report.get("version") in (VERSION, LEGACY_VERSION) and report.get("status") == "supported"
+            and report.get("version") in (PREVIOUS_VERSION, LEGACY_VERSION) and report.get("status") == "supported"
             and report.get("audioDuration") == duration and report.get("mapHash") == alignment.get("provenance", {}).get("mapHash"))
 
 

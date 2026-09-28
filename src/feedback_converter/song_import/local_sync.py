@@ -173,7 +173,7 @@ def compare_assessment(fresh, stored, check, path='import/timing-assessment'):
     one microsecond at an FFT frame boundary. Their chart comparison already
     enforces that tighter musical tolerance; feature scores are not note times.
     """
-    metrics={'jointAtMap','jointBest','jointContrast'}
+    metrics={'jointAtMap','jointBest','jointContrast','atMap','best','distantBest','contrast'}
     if isinstance(fresh,dict) and isinstance(stored,dict):
         check.equal('timing_assessment_fields',path,sorted(fresh),sorted(stored))
         for key,value in fresh.items():

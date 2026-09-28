@@ -86,7 +86,7 @@ def package(source_audio):
         build_feedpak(perf, audio, alignment, job, output_dir=root/'out')
     alignment = ep.authorize(perf, audio, alignment)
     prepared, alignment = finalize(perf, audio, alignment, job)
-    recipe = {'preservationContract': 36, 'audioSource': audio['source'], 'preparation': alignment['preparation'],
+    recipe = {'preservationContract': 38, 'audioSource': audio['source'], 'preparation': alignment['preparation'],
               'alignment': {'provenance': alignment['provenance'], 'endingPadding': alignment['endingPadding']}}
     result = build_feedpak(perf, prepared, alignment, job, output_dir=root/'out', source_path=source,
                           recipe=recipe, compatibility=perf['compatibilityReport'])
@@ -123,6 +123,28 @@ def test_support_only_earlier_in_song_cannot_authorize_padding(source_audio, mon
         'windows': [{'end': 40, 'status': 'supported'}]})
     with pytest.raises(ImportFailure, match='including its ending'):
         ep.authorize(perf, audio, alignment)
+
+
+@pytest.mark.parametrize('contract,clock',[(36,ep.rs.LEGACY_VERSION),(37,ep.rs.PREVIOUS_VERSION)])
+def test_prior_padded_package_is_verified_under_its_original_clock(package,tmp_path,contract,clock):
+    source,path,original,_=package
+    alignment=deepcopy(original)
+    with ZipFile(path) as z:files={name:z.read(name) for name in z.namelist()}
+    manifest=yaml.safe_load(files['manifest.yaml']);recipe=manifest['song_import']
+    recipe['preservationContract']=contract
+    stored=alignment['endingPaddingSync'];stored['version']=clock;stored.pop('phraseEvidence',None)
+    alignment['endingPadding']['syncEvidenceHash']=ep.rs.digest(stored)
+    files[recipe['endingPaddingSyncFile']]=json.dumps(stored).encode()
+    files[recipe['endingPaddingFile']]=json.dumps(alignment['endingPadding']).encode()
+    recipe['alignment']['endingPadding']=deepcopy(alignment['endingPadding'])
+    compatibility=json.loads(files[recipe['compatibilityFile']]);compatibility['version']=contract
+    files[recipe['compatibilityFile']]=json.dumps(compatibility).encode()
+    files['manifest.yaml']=yaml.safe_dump(manifest).encode()
+    target=tmp_path/'prior.feedpak'
+    with ZipFile(target,'w') as z:
+        for name,data in files.items():z.writestr(name,data)
+    report=verify_import(source,target,alignment,META)
+    assert report['status']=='passed',report
 
 
 def test_changed_decoder_source_cannot_reuse_timing_authority(package, source_audio, tmp_path):

@@ -65,9 +65,10 @@ def original_tracks(tracks, seconds):
     return tracks
 
 
-def assess(tracks, path, duration, map_hash, *, legacy=False):
+def assess(tracks, path, duration, map_hash, *, legacy=False, clock_version=None):
     from .local_sync import _hash
-    report = rs.assess(tracks, path, duration, map_hash, **({'legacy':True} if legacy else {}))
+    report = rs.assess(tracks, path, duration, map_hash, **({'legacy':True} if legacy else {}),
+                       **({'clock_version':clock_version} if clock_version else {}))
     # WAV containers may contain timestamped PEAK headers. Bind decoded samples.
     report.update(audioSha256=_hash(path), audioHashKind='decoded-float32')
     # Require support in the actual ending region, not just earlier verses.
@@ -138,6 +139,11 @@ def verify(wanted, alignment, recipe, archive, manifest, check):
     check.equal('ending_padding_recipe', 'manifest/song_import/alignment/endingPadding', receipt,
                 recipe.get('alignment', {}).get('endingPadding'))
     stored = json.loads(archive.read(recipe['endingPaddingSyncFile']))
+    allowed = {rs.LEGACY_VERSION, rs.PREVIOUS_VERSION}
+    if recipe.get('preservationContract',0)>=38:
+        allowed.add(rs.VERSION)
+    if stored.get('version') not in allowed:
+        raise ValueError('Recording-clock evidence is not supported by this preservation contract.')
     check.equal('ending_padding_sync_receipt', 'import/ending-padding-sync', alignment.get('endingPaddingSync'), stored)
     mixed = receipt.get('version') == 2 and receipt.get('policy') == MIXED_POLICY and receipt.get('trimLongHeldTails') is True
     if (recipe.get('preservationContract', 0) < (37 if mixed else 36)
@@ -188,7 +194,11 @@ def verify(wanted, alignment, recipe, archive, manifest, check):
     recording = recording_view(io.BytesIO(archive.read(full[0]['file'])), prep)
     check.equal('ending_padding_recording', 'ending-padding/recordingSamplesSha256', _hash(recording), receipt.get('recordingSamplesSha256'))
     if not check.total_errors:
-        fresh = assess(tracks, recording, duration, alignment['provenance']['mapHash'], legacy=stored.get('version') == rs.LEGACY_VERSION)
+        fresh = assess(tracks, recording, duration, alignment['provenance']['mapHash'], clock_version=stored['version'])
         check.equal('ending_padding_sync', 'import/ending-padding-sync', 'supported', fresh['status'])
         for key in ('audioSha256', 'audioDuration', 'mapHash', 'version', 'outroSupported'):
             check.equal('ending_padding_sync_identity', 'import/ending-padding-sync/' + key, fresh[key], stored.get(key))
+        if stored['version'] == rs.VERSION:
+            from .local_sync import compare_assessment
+            compare_assessment(fresh.get('phraseEvidence'), stored.get('phraseEvidence'), check,
+                               'import/ending-padding-sync/phraseEvidence')
