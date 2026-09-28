@@ -1,5 +1,10 @@
 # Recording timing, phrase evidence and combined ending tails
 
+Contract 39 adds a separate, bounded acceptance policy for an inconclusive
+ending with a supported song body. See `songsterr-ending-warning.md`. It retains
+the acoustic result and displays a warning; none of the acoustic rules below
+are weakened or relabelled by that policy.
+
 Preservation contract 38 adds `recording-clock-v4` with the bounded
 `ending-phrases-v1` fallback for short ending padding. Existing version-2 and
 version-3 evidence is replayed with its original rules. The separate policy that
@@ -88,5 +93,6 @@ Implementation and regression tests: `test_song_import_clock_evidence.py`,
 `test_songsterr_recording_end.py`, and `songsterr-ui.test.cjs`.
 
 Highway To Hell is an investigation case, never a source of special thresholds
-or hardcoded tuning/timestamps. If its ending remains uncertain it must continue
-to the existing audio fallback instead of being forced to pass.
+or hardcoded tuning/timestamps. An uncertain ending can use the general contract
+39 warning policy only when all its bounds are independently met; otherwise it
+continues to the existing audio fallback.

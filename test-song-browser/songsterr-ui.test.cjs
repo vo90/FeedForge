@@ -39,6 +39,16 @@ test('combined ending describes preserved tails and does not claim every note is
   assert.doesNotMatch(job({ state: 'completed', verification: { ...verification, status: 'modified' } }), /Recording timing supported/);
 });
 
+test('a completed ending warning is visible without presenting uncertain timing as supported', () => {
+  const verification = { status: 'passed', endingTiming: { status: 'inconclusive', warning: { status: 'accepted_with_warning' } } };
+  const html = job({ state: 'completed', verification });
+  assert.match(html, /Ending sync not independently confirmed/);
+  assert.match(html, /Songsterr timing retained/);
+  assert.doesNotMatch(html, /Recording timing supported through the ending/);
+  assert.doesNotMatch(job({ state: 'failed', verification }), /Ending sync not independently confirmed/);
+  assert.doesNotMatch(job({ state: 'completed', verification: { ...verification, status: 'modified' } }), /Ending sync not independently confirmed/);
+});
+
 test('opening repair, acoustic evidence and preparation are distinguished', () => {
   const html = job({ state: 'completed', verification: { status: 'passed', timing: 'source_map_repaired',
     timingAssessment: { windowCount: 10, supportedWindows: 8, everyNoteVerified: false }, preparationSeconds: 1.83,
