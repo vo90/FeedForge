@@ -314,6 +314,26 @@ def independent_tracks(source):
     return tracks_from_expected(wanted),[float(clock.at(q)) for q in [*clock.measure_starts,clock.quarters]]
 
 
+def compare_opening_evidence(fresh, stored, check):
+    """Permit one rounded diagnostic unit across BLAS reduction orders.
+
+    Timing coordinates, decisions, tuning and audio identity remain exact.
+    Only the rounded acoustic pitch scores and alternative ratio are metrics.
+    """
+    where = 'import/opening-repair'
+    check.equal('opening_repair_audio', where, sorted(fresh), sorted(stored))
+    for key, value in fresh.items():
+        actual = stored.get(key)
+        if key in ('fitPitch', 'heldOutPitch') and isinstance(actual, list):
+            check.equal('opening_repair_audio', where+'/'+key, len(value), len(actual))
+            for i, (expected, recorded) in enumerate(zip(value, actual)):
+                check.near('opening_repair_metric', f'{where}/{key}/{i}', expected, recorded, .0000011)
+        elif key == 'alternativeRatio':
+            check.near('opening_repair_metric', where+'/'+key, value, actual, .0000011)
+        else:
+            check.equal('opening_repair_audio', where+'/'+key, value, actual)
+
+
 def verify_repair(source, alignment, stored, path, check):
     """Re-evaluate acoustic gates from independent raw-source note reconstruction."""
     check.equal('opening_repair_receipt','import/opening-repair',alignment.get('openingRepair'),stored)
@@ -325,5 +345,5 @@ def verify_repair(source, alignment, stored, path, check):
     pitch,flux,_=rs.features(path,reference_hz=calibration['referenceHz'])
     fresh=propose(tracks,boundaries,alignment['sourceTiming']['points'],pitch,flux)
     fresh.update(tuning=calibration,audioSha256=_hash(path))
-    check.equal('opening_repair_audio','import/opening-repair',fresh,stored)
+    compare_opening_evidence(fresh, stored, check)
     check.equal('opening_repair_supported','import/opening-repair/status','supported',fresh['status'])
