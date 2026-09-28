@@ -44,3 +44,69 @@ def test_ghosts_bass_and_zero_duration_attacks_do_not_inflate_sustained_activity
                               [track('a'), track('bass', instrument='bass')], 'a', chart())
     assert report['sourceActiveSeconds'] == report['unfilledSeconds'] == 0
     assert report['regions'] == []
+
+
+def test_continuous_hybrid_rest_groups_source_regions_across_donor_rests():
+    base = chart((0, 1), (4, 5))
+    donor = chart((1.5, 2), (2.5, 3))
+    report = activity_summary({'a': {'chart': base}, 'b': {'chart': donor}, 'c': {'chart': donor}},
+                              [track('a'), track('b'), track('c')], 'a', base)
+    assert len(report['regions']) == 2
+    rest, = report['restWindows']
+    assert (rest['start'], rest['end'], rest['compatibleActiveSeconds']) == (1, 4, 1)
+    assert rest['maxCompatibleSourceAttacks'] == 2  # Doubled sources do not count four attacks.
+    assert rest['kind'] == 'new_attacks'
+
+
+def test_held_tail_is_not_reported_as_a_new_attack_opportunity():
+    base = chart((0, 1), (4, 5))
+    report = activity_summary({'a': {'chart': base}, 'b': {'chart': chart((0, 3))}},
+                              [track('a'), track('b')], 'a', base)
+    rest, = report['restWindows']
+    assert rest['kind'] == 'no_pitched_attacks'
+    assert rest['compatibleActiveSeconds'] == 2
+    assert rest['maxCompatibleSourceAttacks'] == 0
+
+
+def test_zero_duration_played_attack_splits_rest_without_inventing_sustain():
+    base = chart((0, 1), (2, 2), (4, 5))
+    donor = chart((1.5, 1.75), (2, 2), (2.5, 3))
+    report = activity_summary({'a': {'chart': base}, 'b': {'chart': donor}},
+                              [track('a'), track('b')], 'a', base)
+    assert report['hybridActiveSeconds'] == 2
+    assert [(r['start'], r['end'], r['maxCompatibleSourceAttacks']) for r in report['restWindows']] == [
+        (1, 2, 1), (2, 4, 1)]
+
+
+def test_muted_and_ghost_source_attacks_do_not_claim_pitched_fill_opportunities():
+    base = chart((0, 1), (4, 5))
+    donor = chart((1.5, 2), (2.5, 3))
+    donor['notes'][0]['mt'] = True
+    donor['notes'][1]['ghost'] = True
+    report = activity_summary({'a': {'chart': base}, 'b': {'chart': donor}},
+                              [track('a'), track('b')], 'a', base)
+    assert report['restWindows'][0]['maxCompatibleSourceAttacks'] == 0
+
+
+def test_legacy_activity_comparison_can_omit_new_diagnostics():
+    report = activity_summary({'a': {'chart': chart((0, 1))}}, [track('a')], 'a', chart(),
+                              include_rest_windows=False)
+    assert 'restWindows' not in report and 'restWindowScope' not in report
+
+
+def test_simultaneous_split_notes_count_as_one_source_attack():
+    base = chart((0, 1), (4, 5))
+    donor = chart((2, 3), (2, 3))
+    donor['notes'][1]['s'] = 1
+    report = activity_summary({'a': {'chart': base}, 'b': {'chart': donor}},
+                              [track('a'), track('b')], 'a', base)
+    assert report['restWindows'][0]['maxCompatibleSourceAttacks'] == 1
+
+
+def test_omitted_zero_duration_attacks_after_last_played_note_remain_visible():
+    base = chart((0, 1))
+    report = activity_summary({'a': {'chart': base}, 'b': {'chart': chart((2, 2), (3, 3))}},
+                              [track('a'), track('b')], 'a', base)
+    assert report['compatibleUnfilledSeconds'] == 0  # No invented sustained duration.
+    rest, = report['restWindows']
+    assert (rest['start'], rest['end'], rest['maxCompatibleSourceAttacks']) == (1, 3, 2)

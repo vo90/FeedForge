@@ -39,7 +39,7 @@ priority over another guitarist's solo. Scoped labels such as Solo Chords,
 Pre-Solo and non-guitar solos do not automatically identify a primary guitarist.
 Clean and polyphonic parts can carry the lead.
 
-Selection revision **2** asks what the lead guitarist would play locally. Among
+Selection revision **3** asks what the lead guitarist would play locally. Among
 ordinary tracks, lead/rhythm/clean labels are weak clues. Local articulation,
 melodic texture, rhythmic variation and corroborated repeating accompaniment
 patterns carry more weight. Neither absolute register nor note density earns a
@@ -62,6 +62,29 @@ claiming to copy every independent performance into one guitar. Chords, ties,
 forward technique links, grace relationships and source voice identity preserve
 complete gestures. Same-source polyphony is retained together.
 
+`hybrid_handover.py` refines chosen featured episodes inside genuine written
+rests. A compatible credible peer may contribute a complete melodic response
+while every already-selected owner event stays intact. An otherwise unknown-role
+source can qualify in a generic solo through strong local expressive/melodic
+evidence and a non-backing parent context; a missing performer name alone does
+not exclude a clear response. Automatic layer/effect exclusions and explicit
+accompaniment choices remain respected. Both base and donor peers
+use the same path. The physical episodes split around the response; independently
+verifiable original reservations keep unrelated backing out of the remaining
+solo rests. Continuous parallel harmonies remain one coherent voice. A response
+whose sustain crosses the owner's return is not cropped to fit. The receipt
+records local handover evidence and deterministic generation limits.
+
+A featured owner's unsupported gesture can also leave a playable hole. A
+compatible known or manually assigned lead may substitute there only when raw
+source evidence proves every authored note in the occupied slot belongs to an
+unsupported complete gesture at that performed occurrence. Missing or partial
+evidence keeps the slot protected. Supported owner notes and every selected
+event remain intact; the substitute must itself contain complete supported
+gestures. This applies between selected fragments of the same featured passage
+as well as inside an episode. The original unsupported-source limitation stays
+disclosed even when another guitarist supplies a playable replacement.
+
 Primary attack windows are distinct from complete event footprints. Pickups and
 tails can cross section markers without absorbing later unrelated backing notes.
 Small conflicts are resolved locally. Arbitrary cross-source note layering is
@@ -76,16 +99,26 @@ bounded chronological graph, useful activity, explicit source preferences and
 continuity costs. Every optional role uses this path, including additional lead
 tracks. Fixed primary material before and after a gap contributes entry and
 return costs, reduced when an authored rest permits repositioning. A fill is
-compared with leaving that gap empty. Whole phrases may therefore be omitted
-when only a fragment fits; the planner does not slice through them to maximize
-playing time. Mandatory short solos retain their primary path.
+compared with leaving that gap empty. `hybrid_variants.py` also offers bounded
+prefix/suffix/interior alternatives when an enclosing phrase crosses primary
+material or a transition guard. Touching same-source repeat phrases can also
+form a bounded combined candidate within a gap, so separate phrase recognition
+does not prevent a meaningful complete fill. Section and omission boundaries
+remain barriers. It favors existing musical boundaries, then safe
+bar cuts or complete source-group boundaries for syncopated ties. No event,
+written occupied slot or connected technique is sliced. These fallback variants
+need at least four active quarter beats and two pitched attacks, and pay a
+boundary cost in addition to entry/return costs. Original complete phrases keep
+their prior eligibility. Short incomplete responses can remain unfilled.
+Mandatory short solos retain their primary path.
 Search limits retain a feasible result. Unsupported local
 gestures do not exclude every supported phrase in the same source.
 
 These are deterministic heuristics, not calibrated probabilities or a guarantee
-that every ambiguous musical choice matches a player's preference. Section-level
-ownership cannot resolve every unmarked exchange within one section. Listening
-and playing review remains necessary for those cases.
+that every ambiguous musical choice matches a player's preference. The local
+handover pass recovers credible responses during actual owner rests; it does not
+establish every foreground change while both voices are playing. Listening and
+playing review remains necessary for those cases.
 
 ## Source copying and independent evidence
 
@@ -108,7 +141,7 @@ incompatible tuning or an unsupported gesture. Accepted simultaneous voices are
 explained as alternatives. `addedSeconds` and `selectedSeconds` describe selected
 passage spans, not uninterrupted playing or note density.
 
-Preservation contract **35**, receipt version **3**, selection revision **2** and
+Preservation contract **36**, receipt version **3**, selection revision **3** and
 the explicit v3 policy
 prevent prior results from satisfying new requests. Historical policy audit
 paths remain; older evidence is not presented as current verification. Queue
@@ -125,6 +158,21 @@ it does not prove every unnamed foreground choice or subjective musical quality.
 Counts distinguish requirements in playable charts from named requirements
 containing unsupported raw source material that need local disclosure.
 
+`verify_hybrid_opportunities.py` additionally checks recoverable peer gestures
+inside named parallel-solo rests and clear expressive unknown-source responses
+inside actual remaining chart rests in generic solo sections. The generic check
+recognizes simple held-note lead incumbents separately from the stronger evidence
+required to demand an unknown response. It does not demand replacing a sounding
+alternative voice. Named-owner checks retain their stronger rule that ordinary
+backing cannot hide a missing soloist. Optional source opportunities are
+reported separately as review candidates, not mandatory note-count targets.
+An additional check reconstructs raw unsupported owner and donor groups to
+detect compatible lead alternatives left out of proven unsupported-owner holes.
+Projected low-fret endpoints of an unsupported connected gesture cannot alone
+prove that either the incumbent or a replacement is playable.
+The verifier reconstructs complete boundaries and event membership independently;
+variant metadata or a handover label alone cannot authorize a cut or addition.
+
 `complete` coverage means identified lead requirements are accounted for; it
 does not mean every moment of source guitar activity has been filled. The
 `tabActivity` report measures unions of retained non-ghost guitar note durations
@@ -133,6 +181,10 @@ and available compatible material. The verifier recomputes these values from the
 verified original charts and actual Hybrid Lead. These are tab durations, not an
 audio analysis, and projected-out high frets remain in their separate omission
 report. The import result exposes unfilled regions of at least one second.
+`restWindows` groups source activity inside each continuous Hybrid Lead rest,
+even across short donor rests, and distinguishes new pitched attacks from held
+or muted material. Per-source attack counts avoid rewarding duplicate guitars;
+zero-duration played attacks interrupt a rest without inventing sustained time.
 
 Notation is selected by source identity/occurrence as well as phrase times.
 Where a contributing source has a notation limitation, the result declares
@@ -149,6 +201,12 @@ fallback, local omissions and deliberately forged membership/ownership evidence.
 Small optimizer instances are compared with exhaustive enumeration. A bounded
 actual-source Master of Puppets fixture requires James's 66-event melodic solo
 on the rhythm-labelled track and rejects self-consistent backing substitutions.
+Further regressions cover base/nonbase local handovers, preserved owner events,
+syncopated complete-group variants, small guard conflicts, source-boundary
+mutations, and conservative short-fragment exclusion.
+Unsupported-owner fallback tests cover exact source identity and occurrence,
+partial proof, retained parallel voices, donor playability and unchanged owner
+events.
 
 Per-song retained-corpus results are recorded separately. This corpus informed
 the design and is a regression set, not an unbiased generalization estimate.

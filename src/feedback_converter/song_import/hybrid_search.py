@@ -34,6 +34,7 @@ def select_passages(candidates, guard, preferred=(), *, max_candidates=20000,
     nodes = [p for _, p in indexed]
     priorities = {tid: i for i, tid in enumerate(dict.fromkeys(preferred))}
     activity = [max(0, round(p.get('activeQuarterBeats', p['end'] - p['start']) * UNITS)) for p in nodes]
+    boundary_cost = [max(0, round(p.get('boundaryCostQuarterBeats', 0) * UNITS)) for p in nodes]
     empty = ((0,) * len(priorities), 0, 0, 0, 0, 0, 0)
     reasons = []
     if len(nodes) > max_candidates:
@@ -73,7 +74,7 @@ def select_passages(candidates, guard, preferred=(), *, max_candidates=20000,
             preferences[priorities[p['trackId']]] += activity[index]
         cost, switched, movement = transition(left_anchor if last is None else nodes[last], p, anchored=last is None)
         confidence = sum(b in {'song', 'rest', 'section'} for b in p.get('boundaries', []))
-        return (tuple(preferences), score[1] + activity[index] - cost,
+        return (tuple(preferences), score[1] + activity[index] - cost - boundary_cost[index],
                 score[2] - switched, score[3] + activity[index], score[4] - 1,
                 score[5] + confidence, score[6] - movement)
 
@@ -156,6 +157,7 @@ def select_passages(candidates, guard, preferred=(), *, max_candidates=20000,
         'indices': [indexed[i][0] for i in best_path],
         'activeQuarterBeats': round(best_score[3] / UNITS, 6),
         'utilityQuarterBeats': round(best_score[1] / UNITS, 6),
+        'boundaryCostQuarterBeats': round(sum(boundary_cost[i] for i in best_path) / UNITS, 6),
         'preferredQuarterBeats': [round(n / UNITS, 6) for n in best_score[0]],
         'switches': -best_score[2],
         'anchorTransitionBaselineQuarterBeats': round(baseline[0] / UNITS, 6),

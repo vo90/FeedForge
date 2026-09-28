@@ -331,6 +331,9 @@ def _fill_gaps(performance, options, main_id, alignment, audio_duration, primary
             gaps.append((lo, hi))
         left = max(left, b)
     excluded, candidates, evaluated = [], [], []
+    from .hybrid_variants import generate, MAX_VARIANTS, MAX_WINDOW_CHECKS
+    variant_generation = {'candidateCount': 0, 'windowChecks': 0, 'budgetLimited': False,
+                          'minActiveQuarterBeats': 4.0, 'minimumPitchedAttacks': 2}
     main_signature = _fingerprint(event_rows(main, context["tracks"][main_id], clock), 0, end, clock)
     signatures = {main_signature}
     preferred = options.get("preferredTrackIds", [])
@@ -356,15 +359,35 @@ def _fill_gaps(performance, options, main_id, alignment, audio_duration, primary
         track_context = {**context["tracks"][ident], "sectionQuarters": [clock.quarter(s["time"]) for s in performance.get("sections", [])]}
         possible = passages(track, track_context, context["timeline"], clock)
         unsupported = omission_spans(performance, ident, track_context, clock)
-        accepted = []
-        for p in possible:
+        accepted, rejected_parents = [], []
+        def decision(p):
             conflict = any(p['start'] < b - EPS and p['end'] > a + EPS for a,b in protected)
             fits = any(lo - EPS <= p['start'] and p['end'] <= hi + EPS for lo,hi in gaps)
             omitted = any(p['start'] < b - EPS and p['end'] > a + EPS or a == b and p['start'] - EPS <= a < p['end'] - EPS
                           for a, b in unsupported)
-            reason = ('no_supported_passage' if p['ghostOnly'] else 'source_omissions' if omitted else 'crosses_primary_material' if conflict else 'transition_guard_or_small_gap' if not fits else
-                      'past_recording_end' if map_time(alignment, clock.seconds(p['end']), allow_negative=True) > audio_duration + EPS else 'eligible_phrase')
-            evaluated.append({k: deepcopy(p[k]) for k in ('trackId','start','end','boundaries','events')} | {'reason': reason})
+            return ('no_supported_passage' if p['ghostOnly'] else 'source_omissions' if omitted else 'crosses_primary_material' if conflict else 'transition_guard_or_small_gap' if not fits else
+                    'past_recording_end' if map_time(alignment, clock.seconds(p['end']), allow_negative=True) > audio_duration + EPS else 'eligible_phrase')
+        def record(p, reason):
+            evaluated.append({k: deepcopy(p[k]) for k in ('trackId','start','end','boundaries','events','boundaryQuarters','variant') if k in p}
+                             | {'reason': reason})
+        for p in possible:
+            reason = decision(p)
+            record(p, reason)
+            if reason == 'eligible_phrase':
+                accepted.append(p)
+            elif reason in {'crosses_primary_material', 'transition_guard_or_small_gap'}:
+                rejected_parents.append(p)
+        variants, generation = generate(rejected_parents, event_rows(track, track_context, clock), track_context,
+                                        context['timeline'], clock, gaps,
+                                        max_variants=max(0, MAX_VARIANTS - variant_generation['candidateCount']),
+                                        max_window_checks=max(0, MAX_WINDOW_CHECKS - variant_generation['windowChecks']),
+                                        adjacent_parents=[*accepted, *rejected_parents])
+        for field in ('candidateCount', 'windowChecks'):
+            variant_generation[field] += generation[field]
+        variant_generation['budgetLimited'] |= generation['budgetLimited']
+        for p in variants:
+            reason = decision(p)
+            record(p, reason)
             if reason == 'eligible_phrase':
                 accepted.append(p)
         candidates.extend(accepted)
@@ -374,10 +397,12 @@ def _fill_gaps(performance, options, main_id, alignment, audio_duration, primary
     # feasible incumbent instead of requiring the user to resolve search limits.
     from .hybrid_search import select_passages
     candidates.sort(key=lambda p: (p["end"], p["start"], p["trackId"]))
-    chosen_indices, best, utility = [], 0.0, 0.0
+    chosen_indices, best, utility, boundary_cost = [], 0.0, 0.0, 0.0
     gap_selections = []
     states = operations = 0
     reasons = []
+    if variant_generation['budgetLimited']:
+        reasons.append('variant_generation_limit')
     for lo, hi in gaps:
         indices = [i for i, p in enumerate(candidates) if lo - EPS <= p["start"] and p["end"] <= hi + EPS]
         left_anchor = max((p for p in fixed if p['end'] <= lo + EPS),
@@ -391,10 +416,11 @@ def _fill_gaps(performance, options, main_id, alignment, audio_duration, primary
         chosen_indices.extend(indices[i] for i in search['indices'])
         best += search['activeQuarterBeats']
         utility += search['utilityQuarterBeats']
+        boundary_cost += search['boundaryCostQuarterBeats']
         if indices:
             gap_selections.append({'start': lo, 'end': hi, 'leftAnchor': left_anchor, 'rightAnchor': right_anchor,
                                    **{k: search[k] for k in ('activeQuarterBeats', 'utilityQuarterBeats', 'switches',
-                                                            'anchorTransitionBaselineQuarterBeats', 'transitions')},
+                                                            'anchorTransitionBaselineQuarterBeats', 'boundaryCostQuarterBeats', 'transitions')},
                                    'selected': [{'trackId': candidates[indices[i]]['trackId'],
                                                  'start': candidates[indices[i]]['start'], 'end': candidates[indices[i]]['end']}
                                                 for i in search['indices']]})
@@ -414,10 +440,12 @@ def _fill_gaps(performance, options, main_id, alignment, audio_duration, primary
             "excluded": excluded, "candidateCount": len(candidates), "status": "created" if selected else "no_additions",
             "protected": protected, "gaps": gaps, "addedQuarterBeats": sum(p["end"] - p["start"] for p in selected),
             "candidateDecisions": evaluated,
-            "selection": {"algorithm": "bounded-whole-phrase-dag-v2", "bestQuarterBeats": round(best, 6),
+            "selection": {"algorithm": "bounded-whole-phrase-dag-v3", "bestQuarterBeats": round(best, 6),
+                          'variantGeneration': variant_generation,
                           "activeQuarterBeats": round(best, 6), "candidateCount": len(candidates),
                           "utilityQuarterBeats": round(utility, 6), "gaps": gap_selections,
+                          'boundaryCostQuarterBeats': round(boundary_cost, 6),
                           "states": states, "operations": operations, "budgetLimited": bool(reasons),
                           "reason": ','.join(dict.fromkeys(reasons)) or None,
-                          "priority": "explicit-source-activity, activity-minus-entry-return-switch-and-movement-cost, continuity, stable-id"},
+                          "priority": "explicit-source-activity, activity-minus-boundary-entry-return-switch-and-movement-cost, continuity, stable-id"},
             "unselected": [{k: p[k] for k in ("trackId", "start", "end", "boundaries")} for i, p in enumerate(candidates) if i not in chosen_set]}

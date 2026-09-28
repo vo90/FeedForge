@@ -10,6 +10,7 @@ from copy import deepcopy
 from dataclasses import asdict
 import hashlib
 import json
+import math
 import re
 
 from .verify_timeline import Clock, RecordingMap
@@ -85,7 +86,8 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
     from .verification import _json
     receipt = _json(z, "import/hybrid-lead.json", check)
     if regional_policy and recipe.get('preservationContract', 0) >= 35:
-        check.equal('hybrid_selection_revision', 'hybrid/selectionRevision', 2, receipt.get('selectionRevision'))
+        revision = 3 if recipe.get('preservationContract', 0) >= 36 else 2
+        check.equal('hybrid_selection_revision', 'hybrid/selectionRevision', revision, receipt.get('selectionRevision'))
     for key, expected in (("version", 3 if regional_policy else 2 if primary_policy else 1), ("policy", policy), ("sourceSha256", source_hash), ("options", options), ("audioSha256", recipe.get("audioHash"))):
         check.equal("hybrid_receipt", "hybrid/" + key, expected, receipt.get(key))
     if "archiveSha256" in receipt or "outputHash" in receipt:
@@ -302,6 +304,28 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
         signatures = [_signature(part, bi) for bi in order]
         sections = {starts[i] for i, bi in enumerate(order) if source.bars[bi].section}
         bounds = passage.get("boundaryQuarters", [])
+        variant = passage.get('variant')
+        safe_variant = regional_policy and recipe.get('preservationContract', 0) >= 36 and isinstance(variant, dict)
+        if variant is not None:
+            from .verify_hybrid_opportunities import active_quarters, pitched
+            parent_bounds = variant.get('parentBoundaryQuarters', []) if isinstance(variant, dict) else []
+            parent_labels = variant.get('parentBoundaries', []) if isinstance(variant, dict) else []
+            safe_variant = (safe_variant and variant.get('kind') == 'gap_safe_subphrase'
+                            and len(parent_bounds) == 2 and len(parent_labels) == 2
+                            and all(type(value) in (int, float) and math.isfinite(value)
+                                    for value in [*parent_bounds, variant.get('parentStart'), variant.get('parentEnd')])
+                            and parent_bounds[0] <= variant['parentStart'] + 1e-5
+                            and variant['parentStart'] <= lo + 1e-5
+                            and hi <= variant['parentEnd'] + 1e-5
+                            and variant['parentEnd'] <= parent_bounds[1] + 1e-5
+                            and all(label in {'song', 'section', 'rest', 'repeat'} for label in parent_labels))
+            if not safe_variant:
+                check.fail('hybrid_subphrase', 'hybrid/passages/variant', 'Invalid source subphrase provenance.')
+            if regional_policy:
+                members = {key: event_facts[tid][key] for key in refs if key in event_facts[tid]}
+                attacks = {round(row['onset'], 5) for row in members.values() if any(pitched(n) for n in row['notes'])}
+                if len(attacks) < 2 or active_quarters(members, parts[tid], lo, hi, quarter_at) < 4 - 1e-5:
+                    check.fail('hybrid_subphrase', 'hybrid/passages/variant', 'An optional subphrase needs four active beats and two pitched attacks.')
         if len(bounds) == 2:
             boundary_left, boundary_right = bounds
             complete = [(start, end) for start, end in intervals if boundary_left - 1e-7 <= start < boundary_right - 1e-7]
@@ -323,6 +347,12 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
                 j = boundary_index
                 valid = any(0 <= i and i + 2 * size <= len(order) and signatures[i:i + size] == signatures[i + size:i + 2 * size]
                             for size in (1, 2, 4) for i in (j, j - size, j - 2 * size))
+            if label in {'bar', 'gesture'} and safe_variant:
+                values = event_facts[tid].values()
+                edge = (boundary_index is not None if label == 'bar' else
+                        any(abs(q - value) <= 1e-5 for row in values for value in (row['start'], row['end'])))
+                valid = (edge and not any(row['start'] + 1e-5 < q < row['end'] - 1e-5 for row in values)
+                         and not any(start + 1e-5 < q < end - 1e-5 for start, end in intervals))
             if not valid:
                 check.fail("hybrid_boundary", f"hybrid/passages/{tid}/{q}/{label}", "A claimed musical boundary is unsupported by the source.")
         if len(passage.get("boundaryQuarters", [])) != 2 or len(passage.get("boundaries", [])) != 2:
@@ -348,11 +378,12 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
                    'tuning': list(part['source'].tuning), 'capo': part['source'].capo}
                   for tid, part in parts.items()]
         activity = activity_summary({tid: {'chart': original} for tid, original in all_charts.items()},
-                                    tracks, main_id, chart)
+                                    tracks, main_id, chart, include_rest_windows=recipe.get('preservationContract', 0) >= 36)
         check.equal('hybrid_tab_activity', 'hybrid/tabActivity', activity, receipt.get('tabActivity'))
         summary = recipe.get('hybridLeadResult', {})
         check.equal('hybrid_tab_activity', 'song_import/hybridLeadResult/tabActivity', activity, summary.get('tabActivity'))
-        check.equal('hybrid_selection_revision', 'song_import/hybridLeadResult/selectionRevision', 2, summary.get('selectionRevision'))
+        check.equal('hybrid_selection_revision', 'song_import/hybridLeadResult/selectionRevision',
+                    3 if recipe.get('preservationContract', 0) >= 36 else 2, summary.get('selectionRevision'))
         check.equal('hybrid_coverage_scope', 'song_import/hybridLeadResult/coverageScope',
                     'identified_lead_requirements', summary.get('coverageScope'))
     check.equal("hybrid_status", "hybrid/status", "created" if receipt.get("passages") else "no_additions", receipt.get("status"))

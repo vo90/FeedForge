@@ -257,7 +257,7 @@ def test_entirely_unsupported_named_rhythm_solo_cannot_silently_claim_complete(t
 
 @pytest.mark.parametrize('fault,code', [(None, None), ('revision', 'hybrid_selection_revision'),
                                       ('activity', 'hybrid_tab_activity'), ('scope', 'hybrid_coverage_scope')])
-def test_contract_35_checks_activity_against_actual_chart_and_limits_claims(tmp_path, fault, code):
+def test_contract_36_checks_activity_against_actual_chart_and_limits_claims(tmp_path, fault, code):
     from zipfile import ZipFile
     import yaml
     from test_songsterr_hybrid_lead import build
@@ -268,7 +268,7 @@ def test_contract_35_checks_activity_against_actual_chart_and_limits_claims(tmp_
     with ZipFile(original) as old, ZipFile(target, 'w') as new:
         manifest = yaml.safe_load(old.read('manifest.yaml'))
         receipt = json.loads(old.read('import/hybrid-lead.json'))
-        manifest['song_import']['preservationContract'] = 35
+        manifest['song_import']['preservationContract'] = 36
         summary = manifest['song_import']['hybridLeadResult']
         if fault == 'revision':
             receipt['selectionRevision'] = 1

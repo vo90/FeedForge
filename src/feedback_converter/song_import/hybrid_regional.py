@@ -354,27 +354,43 @@ def backbone(performance, options, main_id, alignment, audio_duration, originals
             break
     selected, bounded = _select(list(candidates_by_events.values()), evidence, main_id, preferred, requirements)
     bounded = bounded or generation_limited
+    from .hybrid_handover import refine_handovers
+    selected, handover_evidence, reservations, handovers = refine_handovers(
+        selected, evidence, rows, tracks, context, options, main_id, clock, limitations)
+    evidence.extend(handover_evidence)
+    bounded = bounded or handovers['budgetLimited']
     regions = [p for p in selected if p['trackId'] != main_id]
+    # Original solo reservations remain meaningful around a recovered response.
+    # Splitting its physical passages must not automatically revive unrelated
+    # base backing in the remaining rests, bypassing the optional-fill search.
+    reserved_regions = regions + [p for p in reservations if p['trackId'] != main_id]
+    handover_ids = {c['id'] for c in handover_evidence}
+    restored_main = {_key(r) for p in selected if p['trackId'] == main_id and p['obligationId'] in handover_ids
+                     for r in p['events']}
     kept, removed = [], []
     for r in rows[main_id]:
         if not r['available']:
             continue
-        blockers = [p for p in regions if overlap((r['start'], r['end']), (p['start'], p['end']))]
+        blockers = [p for p in reserved_regions if overlap((r['start'], r['end']), (p['start'], p['end']))]
+        if _key(r) in restored_main:
+            blockers = []
         if blockers:
             removed.append({**ref(r), 'start': r['start'], 'end': r['end'], 'supersededBy': sorted({p['trackId'] for p in blockers})})
         else:
             kept.append(r)
     main_slots = [(b['start'], min(b['end'], end)) for b in context['tracks'][main_id]['beats'] if not b['rest'] and b['start'] < end
-                  and not any(overlap((b['start'], b['end']), (p['start'], p['end'])) for p in regions)
+                  and not any(overlap((b['start'], b['end']), (p['start'], p['end'])) for p in reserved_regions)
                   and not any(overlap((b['start'], b['end']), (r['start'], r['end'])) for r in removed)]
-    protected = union(main_slots + [(r['start'], r['end']) for r in kept] + [(p['start'], p['end']) for p in selected])
+    protected = union(main_slots + [(r['start'], r['end']) for r in kept]
+                      + [(p['start'], p['end']) for p in [*selected, *reservations]])
     # Only evidenced primary episodes reserve material here. Every optional
     # lead, clean and rhythm phrase competes in the same guarded filler search;
     # a track's name must not give its fragments a cost-free shortcut.
     return {'roles': roles, 'rows': rows, 'mainEvents': [ref(r) for r in kept], 'removedMain': removed,
             'mainProtected': main_slots + [(r['start'], r['end']) for r in kept],
             'passages': sorted(regions, key=lambda p: (p['start'], p['end'], p['trackId'])), 'protected': protected,
-            'regionalEvidence': evidence, 'primaryEpisodes': selected, 'limitations': limitations, 'primaryBudgetLimited': bounded,
+            'regionalEvidence': evidence, 'primaryEpisodes': selected, 'primaryReservations': reservations,
+            'handovers': handovers, 'limitations': limitations, 'primaryBudgetLimited': bounded,
             'baseSelection': deepcopy(performance.get('hybridBaseSelection') or select_base(performance, {**options, 'mainTrackId': main_id}))}
 
 
@@ -387,7 +403,7 @@ def finish(result, primary, performance, options, alignment):
         p['priority'] = 'accompaniment'
     result['passages'] += primary['passages']
     result['passages'].sort(key=lambda p: (p['start'], p['end'], p['trackId']))
-    for p in [*result['passages'], *primary['removedMain']]:
+    for p in [*result['passages'], *primary['removedMain'], *primary['primaryReservations']]:
         p['recordingStart'], p['recordingEnd'] = round(at(p['start']), 6), round(at(p['end']), 6)
         if 'ownedStart' in p:
             p['recordingOwnedStart'], p['recordingOwnedEnd'] = round(at(p['ownedStart']), 6), round(at(p['ownedEnd']), 6)
@@ -463,7 +479,8 @@ def finish(result, primary, performance, options, alignment):
                 status, reason = 'source_limitation', 'recording_end'
             elif tid == main_id:
                 status, reason = 'superseded', 'regional_primary'
-                superseded = sorted({p['trackId'] for p in primary['passages'] if overlap((r['start'], r['end']), (p['start'], p['end']))})
+                superseded = sorted({p['trackId'] for p in [*primary['passages'], *primary['primaryReservations']]
+                                     if p['trackId'] != main_id and overlap((r['start'], r['end']), (p['start'], p['end']))})
             elif tid in {x['trackId'] for x in setup_excluded}:
                 status, reason = 'excluded', excluded[tid]['reason']
             elif primary['roles'][tid] == 'solo' and not any(c['trackId'] == tid and overlap((r['start'], r['end']), (c['start'], c['end'])) for c in primary['regionalEvidence']):
@@ -486,6 +503,7 @@ def finish(result, primary, performance, options, alignment):
                   coverage={'status': 'limited' if limited else 'complete', 'events': audit},
                   obligations=obligations, limitations=limitations, regionalEvidence=primary['regionalEvidence'],
                   primaryEpisodes=deepcopy(primary['primaryEpisodes']),
+                  primaryReservations=deepcopy(primary['primaryReservations']), handovers=deepcopy(primary['handovers']),
                   baseSelection=primary['baseSelection'], primaryBudgetLimited=primary['primaryBudgetLimited'],
                   selectedSeconds=round(selected_seconds, 3), addedSeconds=round(added_seconds, 3),
                   status='created' if result['passages'] else 'no_additions')

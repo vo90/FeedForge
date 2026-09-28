@@ -248,7 +248,7 @@ def test_extra_lead_does_not_reserve_a_gap_before_optional_optimization(tmp_path
     assert primary['passages'] == []
     result = plan(performance, options, '0', {'offset': 0, 'scale': 1}, 8)
     assert any(p['trackId'] == '1' and p['priority'] == 'accompaniment' for p in result['passages'])
-    assert result['selection']['algorithm'] == 'bounded-whole-phrase-dag-v2'
+    assert result['selection']['algorithm'] == 'bounded-whole-phrase-dag-v3'
 
 
 def test_named_half_beat_solo_is_not_rejected_by_optional_fill_costs(tmp_path, monkeypatch):

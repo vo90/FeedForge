@@ -554,6 +554,66 @@ def _unsupported_regions(part, quarter_at, duration, source_format='songsterr'):
     return _joined([(g['start'], g['end']) for g in _unsupported_groups(part, quarter_at, duration, source_format)])
 
 
+def _supported_gestures(rows, unsupported_groups):
+    """Retain representable raw components by identity and performed occurrence.
+
+    Projected low endpoints linked to unavailable pitches are not independent
+    gestures. An unrelated supported voice or later repeat remains eligible.
+    """
+    identities = {}
+    for tid, groups in unsupported_groups.items():
+        by_source = defaultdict(set)
+        for group in groups:
+            for sid in group['sourceIds']:
+                by_source[sid].update(group['occurrences'])
+        identities[tid] = by_source
+    return {tid: {key: row for key, row in values.items() if not any(
+        identities.get(tid, {}).get(sid, set()) & set(row['occurrences']) for sid in row['sourceIds'])}
+        for tid, values in rows.items()}
+
+
+def _verified_reservations(receipt, rows, selected, compatible, excluded, duration_quarters, check):
+    """Prove the original complete owner behind physically split passages.
+
+    A label or a claimed region is insufficient to erase base material. Every
+    source attack in the original ownership window, with its hard closure,
+    must remain selected. Reservations never permit actual chart overlaps.
+    """
+    valid, seen = [], set()
+    for reservation in receipt.get('primaryReservations', []):
+        tid = reservation.get('trackId')
+        bounds = [reservation.get(k) for k in ('start', 'end', 'ownedStart', 'ownedEnd')]
+        numeric = all(type(v) in (int, float) and math.isfinite(v) for v in bounds)
+        if tid not in rows or tid not in compatible or tid in excluded or not numeric:
+            check.fail('hybrid_primary_reservation', 'hybrid/primaryReservations', 'Invalid reservation source or bounds.')
+            continue
+        lo, hi, owned_lo, owned_hi = bounds
+        if not 0 <= lo < hi <= duration_quarters + EPS or not 0 <= owned_lo < owned_hi <= duration_quarters + EPS:
+            check.fail('hybrid_primary_reservation', 'hybrid/primaryReservations', 'Reservation lies outside the source performance.')
+            continue
+        identity = tid, *bounds
+        if identity in seen:
+            check.fail('hybrid_primary_reservation', 'hybrid/primaryReservations', 'Duplicate original owner reservation.')
+            continue
+        seen.add(identity)
+        refs = {(ref.get('kind'), ref.get('index')) for ref in reservation.get('events', [])}
+        members = _closed_members(rows[tid], owned_lo, owned_hi)
+        correct = bool(members) and members == refs and len(refs) == len(reservation.get('events', []))
+        correct = correct and {(tid, *key) for key in members} <= selected
+        if correct:
+            correct = (abs(min(rows[tid][key]['start'] for key in members) - lo) <= EPS
+                       and abs(max(rows[tid][key]['end'] for key in members) - hi) <= EPS)
+        if not correct:
+            check.fail('hybrid_primary_reservation', 'hybrid/primaryReservations', 'Reservation is not a completely retained original owner episode.')
+            continue
+        for ref in reservation['events']:
+            row = rows[tid][(ref['kind'], ref['index'])]
+            for field in ('sourceIds', 'occurrences'):
+                check.equal('hybrid_event_lineage', 'hybrid/primaryReservations/' + field, row[field], ref.get(field))
+        valid.append(reservation)
+    return valid
+
+
 def _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, duration, source_format, check, source, musical_audit=None):
     main_id = options['mainTrackId']
     parts = {p['source'].id: p for p in facts['parts'] if p['source'].instrument == 'guitar'}
@@ -602,10 +662,12 @@ def _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, d
         if original:
             for field in ('sourceIds', 'occurrences'):
                 check.equal('hybrid_event_lineage', 'hybrid/mainEvents/'+field, original[field], ref.get(field))
+    reservations = _verified_reservations(receipt, rows, selected, compatible, excluded, quarter_at(duration), check)
+    replacements = primary + [p for p in reservations if p['trackId'] != main_id]
     # A primary replacement must justify every removed whole main gesture.
     for key in valid_removed:
         row = rows[main_id][key]
-        if not any(_touch((row['start'], row['end']), (p['start'], p['end'])) for p in primary):
+        if not any(_touch((row['start'], row['end']), (p['start'], p['end'])) for p in replacements):
             check.fail('hybrid_main_coverage', 'hybrid/removedMain', 'A main gesture disappeared without a primary replacement.')
     for ref in receipt.get('removedMain', []):
         row = rows[main_id].get((ref['kind'], ref['index']))
@@ -613,7 +675,7 @@ def _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, d
             for field in ('start', 'end'):
                 check.near('hybrid_main_coverage', 'hybrid/removedMain/'+field, row[field], ref.get(field), 1e-5)
                 check.near('hybrid_main_coverage', 'hybrid/removedMain/recording'+field.title(), recording_at(row[field]), ref.get('recording'+field.title()), 2*TOL)
-            targets = sorted({p['trackId'] for p in primary if _touch((row['start'], row['end']), (p['start'], p['end']))})
+            targets = sorted({p['trackId'] for p in replacements if _touch((row['start'], row['end']), (p['start'], p['end']))})
             check.equal('hybrid_main_coverage', 'hybrid/removedMain/supersededBy', targets, ref.get('supersededBy'))
     for tid, values in rows.items():
         groups = defaultdict(set)
@@ -625,6 +687,62 @@ def _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, d
 
     available = {tid for tid in compatible-excluded if options.get('roles', {}).get(tid) != 'accompaniment'}
     requirements = regional_requirements(parts, rows, source, facts['order'], quarter_at(duration), available=available)
+    from .verify_hybrid_opportunities import local_lead_audit, optional_fill_audit
+    def recoverable_peer(tid, start, end):
+        if options.get('roles', {}).get(tid) in {'lead', 'solo'}:
+            return True
+        words = _role_words(parts[tid]['source'].name)
+        # This added rest check is deliberately narrower than the established
+        # named-owner oracle. Ambiguous effect/harmony layers do not become new
+        # compulsory fills merely because one named guitarist is silent.
+        if words & {'delay', 'echo', 'effect', 'fx', 'harmony', 'harmonies', 'double', 'extra', 'extras', 'overdub', 'overdubs', 'background'}:
+            return False
+        texture = _local_texture(rows[tid], start, end)
+        return not texture['backingTexture'] and (bool(words & {'lead', 'solo', 'main'})
+                                                  or texture['expressiveLine'] or texture['plainLine'])
+    from .verify_timeline import Clock
+    independent_clock = Clock(source, facts['order'])
+    section_edges = [(float(independent_clock.measure_starts[i]), str(source.bars[bi].section))
+                     for i, bi in enumerate(facts['order']) if source.bars[bi].section]
+    section_edges.append((quarter_at(duration), ''))
+    featured_sections = [{'start': start, 'end': end, 'sectionName': label}
+                         for (start, label), (end, _) in zip(section_edges, section_edges[1:])
+                         if re.search(r'\bsolo\b', label, re.I)
+                         and not re.search(r'\b(?:pre|post)[\s-]*solo\b|\b(?:sax(?:ophone)?|tenor|bass|drum|keyboard|piano|organ|violin|vocal)\b', label, re.I)]
+    layers = {'delay', 'echo', 'effect', 'fx', 'harmony', 'harmonies', 'double', 'extra',
+              'extras', 'overdub', 'overdubs', 'background', 'bass', 'nashville'}
+    ordinary_sources = {tid for tid in available if not _role_words(parts[tid]['source'].name) & layers
+                        and not re.search(r'\b(?:effects?|feedback|bass|nashville)\b|\bhigh[\s-]*strung\b',
+                                          parts[tid]['source'].name, re.I)}
+    manual_leads = {tid for tid in available if options.get('roles', {}).get(tid) in {'lead', 'solo'}}
+    featured_sources = ordinary_sources | manual_leads
+    unknown_peers = {tid for tid in ordinary_sources-manual_leads if not _role_words(parts[tid]['source'].name)
+                     & {'lead', 'solo', 'rhythm', 'chord', 'chords', 'main'}}
+    def credible_incumbent(tid, start, end):
+        if tid in manual_leads:
+            return True
+        words = _role_words(parts[tid]['source'].name)
+        labelled = bool(words & {'lead', 'solo', 'main'}) or bool(re.search(r'\bsolos\b', parts[tid]['source'].name, re.I))
+        return labelled and not _local_texture(rows[tid], start, end)['backingTexture']
+    unsupported_groups = {tid: _unsupported_groups(part, quarter_at, duration, source_format) for tid, part in parts.items()}
+    unsupported = {tid: _joined([(g['start'], g['end']) for g in groups]) for tid, groups in unsupported_groups.items()}
+    # A low-fret endpoint retained by the original-chart projection is not a
+    # playable whole owner gesture if its raw linked destination was omitted.
+    # Exact source identity and performed occurrence prove that exception;
+    # unrelated written/physical owner material must continue to block fallback.
+    supported_rows = _supported_gestures(rows, unsupported_groups)
+    fallback_sources = manual_leads | {tid for tid in ordinary_sources
+                                      if _role_words(parts[tid]['source'].name) & {'lead', 'solo', 'main'}}
+    local_lead = local_lead_audit(rows, requirements, selected, available, recording_at,
+                                 peer_eligible=recoverable_peer, featured_sections=featured_sections,
+                                 featured_sources=featured_sources, unknown_peers=unknown_peers,
+                                 source_tunings={tid: parts[tid]['source'].tuning for tid in featured_sources},
+                                 incumbent_eligible=credible_incumbent, unsupported_spans=unsupported,
+                                 fallback_sources=fallback_sources, supported_rows=supported_rows,
+                                 quarter_at=quarter_at)
+    for opportunity in local_lead['unresolved']:
+        check.fail('hybrid_local_lead_coverage', 'hybrid/localLeadAudit',
+                   'A complete compatible lead response or proven unsupported-owner fallback is omitted.', opportunity)
     if musical_audit is not None:
         musical_audit.update({
             'scope': 'named_soloists_and_dedicated_solo_bodies',
@@ -633,7 +751,10 @@ def _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, d
             'uniqueOwnerCount': sum(len(r['owners']) == 1 for r in requirements),
             'alternativeVoiceCount': sum(len(r['owners']) > 1 for r in requirements),
             'namedSectionCount': sum(r['evidence'] == 'named_soloist' for r in requirements),
-            'unverifiedClaim': 'Unlabelled musical choices and listening quality are not established by this audit.',
+            'unverifiedClaim': 'Unlabelled musical choices beyond strongly evidenced peer responses and listening quality are not established by this audit.',
+            'localLeadAudit': local_lead,
+            'optionalFillAudit': optional_fill_audit(rows, parts, selected, compatible, excluded,
+                                                   quarter_at(duration), quarter_at, recording_at),
         })
     def mandated_hard_conflict(tid, key):
         """Prove a local impossible handover under whole-gesture composition.
@@ -743,8 +864,6 @@ def _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, d
             if members and {(other, *key) for key in members} <= selected:
                 return True
         return False
-    unsupported_groups = {tid: _unsupported_groups(part, quarter_at, duration, source_format) for tid, part in parts.items()}
-    unsupported = {tid: _joined([(g['start'], g['end']) for g in groups]) for tid, groups in unsupported_groups.items()}
     # Projection can remove every event of a named solo, particularly when its
     # source is labelled rhythm. Restore independently proven raw components
     # for a disclosure-only pass. Never demand that impossible notes be played.
@@ -911,7 +1030,7 @@ def _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, d
         elif key[0] == main_id:
             check.equal('hybrid_coverage', 'hybrid/coverage/event/status', 'superseded', row.get('status'))
             check.equal('hybrid_coverage', 'hybrid/coverage/event/reason', 'regional_primary', row.get('reason'))
-            targets = sorted({p['trackId'] for p in primary if _touch((original['start'], original['end']), (p['start'], p['end']))})
+            targets = sorted({p['trackId'] for p in replacements if _touch((original['start'], original['end']), (p['start'], p['end']))})
             check.equal('hybrid_coverage', 'hybrid/coverage/event/supersededBy', targets, row.get('supersededBy'))
         elif key[0] not in compatible or key[0] in excluded:
             check.equal('hybrid_coverage', 'hybrid/coverage/event/status', 'excluded', row.get('status'))
@@ -936,5 +1055,5 @@ def _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, d
              for b in parts[main_id]['notation_beats'] if not b['rest'] and float(b['time']) < duration]
     slots = [span for span in slots if not any(_touch(span, (rows[main_id][k]['start'], rows[main_id][k]['end'])) for k in valid_removed)]
     protected = _joined(slots + [(rows[main_id][k]['start'], rows[main_id][k]['end']) for k in valid_kept]
-                        + [(p['start'], p['end']) for p in primary])
+                        + [(p['start'], p['end']) for p in replacements])
     return set(valid_kept), set(valid_removed), rows, protected

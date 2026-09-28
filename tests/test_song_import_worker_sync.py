@@ -129,7 +129,7 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
         assert result['verification']['hybridLead']['policy'] == 'hybrid-lead-v3'
         assert result['verification']['hybridLead']['primaryCoverage'] == 'checked'
         assert result['verification']['hybridLead']['status'] == 'no_additions'
-    assert result["recipe"]["preservationContract"] == result["verification"]["version"] == result["evidence"]["version"] == 35
+    assert result["recipe"]["preservationContract"] == result["verification"]["version"] == result["evidence"]["version"] == 36
     extensions = ["slide_in_marks", "slide_out", "slide_out_marks"]
     if precise_harmonic:
         extensions = ['hn', 'hps', *extensions]
