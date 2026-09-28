@@ -1311,3 +1311,108 @@ test('cached audio discovery survives provider busy and restart without using re
   await settle(restored); await clock.advance(1000, restored);
   assert.equal(restored.snapshot()[0].state, 'completed'); assert.equal(probes, 2); assert.equal(f.acquisitions.length, 1);
 });
+
+const MISSING_RECORDING = { version: 1, phase: 'audio', operation: 'audio_download', service: 'youtube', reason: 'recording_unavailable' };
+const replacementAudio = (id = 'lmnopqrstuv') => ({ kind: 'url', videoId: id, url: 'https://www.youtube.com/watch?v=' + id });
+const unavailableRecording = () => ({ code: 1, stdout: JSON.stringify({ ok: false, code: 'needs_audio', error: 'Recording unavailable.', transport: MISSING_RECORDING }) });
+function recoveryMap(chart, context, patch = {}) {
+  const identity = { songId: chart.id, revisionId: context.revisionId, videoId: audioVideo(context.audio)?.videoId };
+  const entries = [{ ...identity, status: 'done', feature: 'alternative', tracks: null, trackHashes: null, problematic: null, points: [0, 2, 4], ...patch }];
+  return { ...selectSynchronization(entries, identity), selectionEvidence: { version: 1, policy: 'primary-before-alternative', response: entries } };
+}
+async function recoveryFixture(t, extra = {}) {
+  const f = await fixture(t, { clock: retryClock(), audio: YOUTUBE, findAudio: async () => replacementAudio(), findSynchronization: recoveryMap,
+    runConverter: async (args, ctx, normal) => args[0] === '--song-import-file' && JSON.parse(fs.readFileSync(args[1])).audio.videoId === YOUTUBE.videoId
+      ? unavailableRecording() : normal(args, ctx), ...extra });
+  await settle(f.jobs);
+  return f;
+}
+test('site-only recovery keeps score and settings, changes map with recording and records both attempts', async t => {
+  const f = await recoveryFixture(t); f.enqueue(); await settle(f.jobs);
+  const before = f.jobs.jobs[0].cachedScoreHash;
+  assert.equal(f.jobs.snapshot()[0].state, 'retry_wait'); assert.equal(f.jobs.jobs[0].retry.used, 1);
+  await f.config.clock.advance(5000, f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'completed'); assert.equal(f.acquisitions.length, 1);
+  assert.equal(f.jobs.jobs[0].cachedScoreHash, before);
+  assert.deepEqual(f.audioProbes[0].excludedVideoIds, [YOUTUBE.videoId]);
+  assert.equal(f.audioProbes[0].revisionId, '456');
+  assert.equal(f.requests[0].audio.videoId, 'lmnopqrstuv'); assert.equal(f.requests[0].synchronization.videoId, 'lmnopqrstuv');
+  assert.deepEqual(f.requests[0].outputSettings, SETTINGS);
+  const events = f.jobs.jobs[0].retry.events;
+  assert.ok(events.some(e => e.videoId === YOUTUBE.videoId && e.decision === 'rediscover_full_mix'));
+  assert.ok(events.some(e => e.previousVideoId === YOUTUBE.videoId && e.videoId === 'lmnopqrstuv'));
+});
+for (const candidate of [null, YOUTUBE]) test(`recovery stops for ${candidate ? 'the same failed video' : 'no replacement'}`, async t => {
+  const f = await recoveryFixture(t, { findAudio: async () => candidate }); f.enqueue(); await settle(f.jobs);
+  await f.config.clock.advance(5000, f.jobs); assert.equal(f.jobs.snapshot()[0].state, 'needs_audio');
+  assert.equal(f.calls.length, 1); assert.equal(f.config.clock.count(), 0); assert.equal(f.completed.length, 0);
+});
+for (const patch of [{ feature: 'backing' }, { feature: 'solo' }, { feature: 'playthrough' }, { tracks: [0] }, { trackHashes: ['guitar'] }, { problematic: true }, { revisionId: '789' }, { status: 'pending' }]) {
+  test(`recovery rejects unsuitable map ${JSON.stringify(patch)}`, async t => {
+    const f = await recoveryFixture(t, { findSynchronization: (chart, ctx) => recoveryMap(chart, ctx, ctx.audio.videoId === YOUTUBE.videoId ? {} : patch) });
+    f.enqueue(); await settle(f.jobs); await f.config.clock.advance(5000, f.jobs);
+    assert.equal(f.jobs.snapshot()[0].state, 'needs_audio'); assert.equal(f.calls.length, 1);
+  });
+}
+test('repeated unavailable full mixes exhaust the existing three total attempts', async t => {
+  let candidate = 0;
+  const f = await recoveryFixture(t, { findAudio: async () => replacementAudio(['lmnopqrstuv', 'wxyz0123456'][candidate++]), runConverter: async () => unavailableRecording() });
+  f.enqueue(); await settle(f.jobs); await f.config.clock.advance(5000, f.jobs); await f.config.clock.advance(20000, f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'needs_audio'); assert.equal(f.calls.length, 3); assert.equal(f.audioProbes.length, 2);
+  assert.deepEqual(f.audioProbes[1].excludedVideoIds, ['abcdefghijk', 'lmnopqrstuv']); assert.equal(f.config.clock.count(), 0);
+});
+test('recording recovery survives a saved wait and cancellation prevents it', async t => {
+  const f = await recoveryFixture(t); const job = f.enqueue(); await settle(f.jobs); await f.jobs.dispose();
+  const restored = new SongsterrJobs(f.config); t.after(() => restored.dispose()); await settle(restored);
+  assert.equal(restored.jobs[0].recordingRecovery.pending, true);
+  await f.config.clock.advance(5000, restored); assert.equal(restored.snapshot()[0].state, 'completed'); assert.equal(f.acquisitions.length, 1);
+  const g = await recoveryFixture(t); const cancelled = g.enqueue(); await settle(g.jobs); await g.jobs.cancel(cancelled.id);
+  await g.config.clock.advance(5000, g.jobs); assert.equal(g.audioProbes.length, 0); assert.equal(g.jobs.snapshot()[0].state, 'cancelled');
+});
+test('manual audio never switches automatically, even when it equals the old site video', async t => {
+  const f = await recoveryFixture(t, { missingAudio: true }); const job = f.enqueue(); await settle(f.jobs);
+  f.jobs.retry(job.id, { audio: YOUTUBE }); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'needs_audio'); assert.equal(f.audioProbes.length, 0); assert.equal(f.config.clock.count(), 0);
+  assert.equal(f.jobs.jobs[0].audioSelection.origin, 'user');
+  f.jobs.retry(job.id); await settle(f.jobs); assert.equal(f.audioProbes.length, 0);
+});
+test('legacy unknown-provenance job can explicitly recheck without silently changing ordinary retry', async t => {
+  const f = await recoveryFixture(t); const job = f.enqueue(); await settle(f.jobs); await f.jobs.dispose();
+  const file = path.join(f.root, 'jobs.json'), ledger = JSON.parse(fs.readFileSync(file));
+  delete ledger.jobs[0].audioSelection; delete ledger.jobs[0].recordingRecovery; ledger.jobs[0].state = 'needs_audio';
+  fs.writeFileSync(file, JSON.stringify(ledger));
+  const restored = new SongsterrJobs(f.config); t.after(() => restored.dispose()); await settle(restored);
+  restored.retry(job.id); await settle(restored); assert.equal(restored.snapshot()[0].state, 'needs_audio'); assert.equal(f.audioProbes.length, 0);
+  assert.equal(restored.snapshot()[0].canRefreshRecording, true);
+  restored.retry(job.id, { rediscoverAudio: true }); await settle(restored);
+  assert.equal(restored.snapshot()[0].state, 'completed'); assert.equal(f.acquisitions.length, 1);
+});
+test('cancelling while a replacement is being discovered cannot attach or publish its late result', async t => {
+  const entered = deferred(), answer = deferred();
+  const f = await recoveryFixture(t, { findAudio: async () => { entered.resolve(); return answer.promise; } });
+  const job = f.enqueue(); await settle(f.jobs);
+  const advance = f.config.clock.advance(5000, f.jobs); await entered.promise;
+  const cancelled = f.jobs.cancel(job.id); answer.resolve(replacementAudio()); await cancelled; await advance;
+  assert.equal(f.jobs.snapshot()[0].state, 'cancelled'); assert.deepEqual(f.jobs.jobs[0].audio, YOUTUBE); assert.equal(f.completed.length, 0);
+});
+
+test('same-recording manual retry after failed discovery does not rediscover', async t => {
+  const f = await recoveryFixture(t, { findAudio: async () => null }); const job = f.enqueue(); await settle(f.jobs);
+  await f.config.clock.advance(5000, f.jobs); assert.equal(f.jobs.snapshot()[0].state, 'needs_audio');
+  f.jobs.retry(job.id); await settle(f.jobs);
+  assert.equal(f.audioProbes.length, 1); assert.deepEqual(f.jobs.jobs[0].audio, YOUTUBE);
+  assert.equal(f.jobs.snapshot()[0].state, 'needs_audio'); assert.equal(f.config.clock.count(), 0);
+});
+
+test('replacement timing transport shares the remaining credit without rediscovery', async t => {
+  let probes = 0;
+  const f = await recoveryFixture(t, { findSynchronization: (chart, ctx) => {
+    if (++probes === 2) return { ...unavailableSynchronization({}, 'timeout'), transport: {
+      version: 1, phase: 'synchronization', operation: 'timing_map', service: 'songsterr', reason: 'timeout' } };
+    return recoveryMap(chart, ctx);
+  } });
+  f.enqueue(); await settle(f.jobs); await f.config.clock.advance(5000, f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'retry_wait'); assert.equal(f.jobs.jobs[0].retry.used, 2);
+  await f.config.clock.advance(20000, f.jobs); assert.equal(f.jobs.snapshot()[0].state, 'completed');
+  assert.equal(f.audioProbes.length, 1); assert.equal(f.requests[0].synchronization.videoId, 'lmnopqrstuv');
+});

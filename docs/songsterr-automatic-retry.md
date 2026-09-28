@@ -13,9 +13,14 @@ notation, alignment rejection, local IO, processing and unknown failures remain
 manual. The narrow YouTube media-download 403 signature re-extracts transport
 URLs for the selected recording; an arbitrary 403 is not enough.
 
+An exact YouTube `Video unavailable` failure may instead recheck Songsterr's
+Full mix player, only for a recording the site selected. It shares these two
+recovery credits, excludes already failed videos and requires a verified timing
+map for the replacement. See [full-mix recovery](songsterr-full-mix-recovery.md).
+
 The approved revision is saved before audio discovery, then the acquired tab and
-hash are reused. The selected original recording, output settings, verification
-and publication checks are unchanged. No account copy is recreated after an
+hash are reused. Output settings, verification and publication checks are
+unchanged. User-supplied audio is never automatically replaced. No account copy is recreated after an
 uncertain creation response. Managed downloader retries are zero at yt-dlp's
 download/fragment/extractor/file-access layers so they cannot multiply the budget.
 

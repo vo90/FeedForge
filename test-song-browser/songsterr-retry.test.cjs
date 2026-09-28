@@ -3,6 +3,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { transport, retryAfter, retryPlan, networkTransport } = require('../electron/song-browser/songsterr-retry.cjs');
 const FACT = { version: 1, phase: 'audio', operation: 'audio_download', service: 'youtube', reason: 'media_url_expired', status: 403 };
+test('unavailable recording requires explicit scheduler eligibility and shares the two credits', () => {
+  const fact = { version: 1, phase: 'audio', operation: 'audio_download', service: 'youtube', reason: 'recording_unavailable' };
+  assert.deepEqual(transport(fact), fact);
+  assert.equal(retryPlan(fact, 0, 1000), null);
+  assert.equal(retryPlan(fact, 0, 1000, () => 0, { recordingRecovery: true }).at, 6000);
+  assert.equal(retryPlan(fact, 2, 1000, () => 0, { recordingRecovery: true }), null);
+  for (const patch of [{ service: 'songsterr' }, { operation: 'audio_probe' }, { status: 403 }, { phase: 'score' }]) assert.equal(transport({ ...fact, ...patch }), null);
+});
 test('allowlist rejects broad errors, arbitrary statuses and cross-provider 403', () => {
   assert.equal(transport({ code: 'needs_audio' }), null);
   assert.equal(transport({ ...FACT, service: 'songsterr' }), null);

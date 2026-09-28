@@ -1,7 +1,7 @@
 'use strict';
 // Transport facts only. A generic needs_audio/timeout error is not retry evidence.
 const STATUSES = new Set([408, 429, 500, 502, 503, 504]);
-const REASONS = new Set(['timeout', 'connection_reset', 'temporary_dns', 'interrupted_transfer', 'http', 'media_url_expired', 'player_timeout']);
+const REASONS = new Set(['timeout', 'connection_reset', 'temporary_dns', 'interrupted_transfer', 'http', 'media_url_expired', 'player_timeout', 'recording_unavailable']);
 const OPERATIONS = { score: ['score_metadata', 'score_part', 'page_load', 'revision_history'],
   audio: ['audio_download', 'audio_probe'], synchronization: ['timing_map'] };
 const SERVICES = new Set(['songsterr', 'youtube', 'audio_host']);
@@ -11,6 +11,7 @@ function transport(value) {
   if (value.reason === 'http' && !STATUSES.has(value.status)) return null;
   if (value.reason === 'media_url_expired' && !(value.service === 'youtube' && value.operation === 'audio_download' && value.status === 403)) return null;
   if (value.reason === 'player_timeout' && value.operation !== 'audio_probe') return null;
+  if (value.reason === 'recording_unavailable' && !(value.service === 'youtube' && value.operation === 'audio_download' && value.phase === 'audio' && value.status == null)) return null;
   return { version: 1, phase: value.phase, operation: value.operation, service: value.service, reason: value.reason,
     ...(Number.isInteger(value.status) ? { status: value.status } : {}),
     ...(Number.isSafeInteger(value.retryAfterAt) && value.retryAfterAt > 0 ? { retryAfterAt: value.retryAfterAt } : {}) };
@@ -34,9 +35,10 @@ function networkTransport(error, phase, operation) {
     || (/^net::ERR_CONNECTION_RESET$/.test(error?.message || '') ? 'connection_reset' : null);
   return reason ? transport({ version: 1, phase, operation, service: 'songsterr', reason }) : null;
 }
-function retryPlan(failure, used, now, random = Math.random) {
+function retryPlan(failure, used, now, random = Math.random, { recordingRecovery = false } = {}) {
   const fact = transport(failure);
   if (!fact || !Number.isInteger(used) || used < 0 || used >= 2) return null;
+  if (fact.reason === 'recording_unavailable' && !recordingRecovery) return null;
   const base = [5000, 20000][used], jitter = Math.floor(Math.max(0, Math.min(1, random())) * 1000);
   const at = Math.max(now + base + jitter, fact.retryAfterAt || 0);
   return { at, parked: at - now > 300000, transport: fact };
