@@ -12,6 +12,7 @@ const { unavailableSynchronization, synchronizationSummary, audioVideo } = requi
 const { transport, retryPlan } = require('./songsterr-retry.cjs');
 const { reportZip } = require('./songsterr-retry-report.cjs');
 const { normalizeHybridLead, matchesHybridRequest } = require('./hybrid-lead-options.cjs');
+const { selectSiteAudio, isSiteAudio, validRecovery, startRecovery, verifiedRecoveryMap } = require('./songsterr-recording.cjs');
 const WAITING = new Set(['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed', 'awaiting_main_choice']);
 const ACTIVE = new Set(['queued', 'resolving', 'downloading', 'converting', 'audio', 'aligning', 'validating', 'saving']);
 const PENDING = (job) => ACTIVE.has(job.state) || WAITING.has(job.state) || job.state === 'retry_wait';
@@ -92,6 +93,10 @@ class SongsterrJobs {
           job.state = 'needs_attention'; job.message = 'Saved retry information is invalid. Retry manually.';
         }
         if (job.retry && !validRetry(job.retry)) delete job.retry;
+        if (job.recordingRecovery && !validRecovery(job.recordingRecovery)) {
+          delete job.recordingRecovery;
+          if (job.state !== 'completed') { job.state = 'needs_attention'; job.message = 'Saved recording recovery is invalid. Check Songsterr audio again.'; }
+        }
       }
     }
     this.ready = this._recover();
@@ -204,6 +209,7 @@ class SongsterrJobs {
       canRetry: WAITING.has(job.state) || job.state === 'failed' || job.state === 'cancelled',
       canRetryAudio: job.state === 'needs_audio' && !job.audio && Boolean(job.scorePath) && typeof this.provider.findAudio === 'function',
       canRetryRecording: job.state === 'needs_audio' && Boolean(job.audio),
+      canRefreshRecording: job.state === 'needs_audio' && Boolean(job.audio && job.scorePath) && typeof this.provider.findAudio === 'function',
       canUseAccount: job.canUseAccount === true,
       canCancel: PENDING(job) };
   }
@@ -230,7 +236,7 @@ class SongsterrJobs {
       if (!['.json', '.gp', '.gpif', '.xml'].includes(extension)) throw new Error('The retained tab format is unsupported.');
       job.scorePath = path.join(directory, 'source' + extension);
       fs.writeFileSync(job.scorePath, bytes, { flag: 'wx' });
-      for (const key of ['metadata', 'pinnedDescriptor', 'audio', 'cachedScoreHash', 'sourceKey', 'allowAccount']) {
+      for (const key of ['metadata', 'pinnedDescriptor', 'audio', 'audioSelection', 'recordingRecovery', 'cachedScoreHash', 'sourceKey', 'allowAccount']) {
         if (retainedFrom[key] !== undefined) job[key] = structuredClone(retainedFrom[key]);
       }
       if (job.audio?.kind === 'file' && within(oldRoot, path.resolve(job.audio.path))) {
@@ -251,10 +257,13 @@ class SongsterrJobs {
     try { this._save(); } catch (error) { this.jobs = previous; throw error; }
     this.emit(this.public(job)); this._start(); return this.public(job);
   }
-  retry(id, { audio, allowAccount, hybridLead, originalsOnly } = {}) {
+  retry(id, { audio, allowAccount, hybridLead, originalsOnly, rediscoverAudio = false } = {}) {
     if (this.disposed || this.persistenceFailed) throw new Error('Reopen Songsterr before retrying.');
     const job = this.jobs.find((j) => j.id === id);
     if (!job || !this.public(job).canRetry || this.current === job) throw new Error('This import cannot be retried yet.');
+    if (rediscoverAudio && (audio || job.state !== 'needs_audio' || !job.scorePath || typeof this.provider.findAudio !== 'function')) {
+      throw new Error('This import is not awaiting Songsterr audio recovery.');
+    }
     if (originalsOnly === true) {
       if (!job.hybridLead?.enabled) throw new Error('This import already uses original arrangements only.');
       return this.enqueue(job.chart, { outputDir: job.outputDir, outputSettings: job.outputSettings, hybridLead: { enabled: false }, originalsOnlyFrom: job.id, retainedFrom: job });
@@ -269,7 +278,9 @@ class SongsterrJobs {
       job.hybridLead = options;
       delete job.hybridChoice;
     } else if (job.state === 'awaiting_main_choice') throw new Error('Choose a main guitar before continuing.');
-    if (audio) job.audio = audio;
+    if (audio) { job.audio = audio; job.audioSelection = { version: 1, origin: 'user' }; delete job.recordingRecovery; }
+    if (!rediscoverAudio && job.recordingRecovery) job.recordingRecovery.pending = false;
+    if (rediscoverAudio) startRecovery(job, { explicit: true });
     if (allowAccount === true) job.allowAccount = true;
     // Audio discovery is an explicit, one-shot retry of the saved revision. A
     // supplied or previously chosen recording always keeps priority.
@@ -319,12 +330,17 @@ class SongsterrJobs {
     const terminal = ['cancelled', 'alignment_failed', 'needs_attention', 'needs_login', 'unsupported_score', 'invalid_score', 'revision_unavailable', 'access_denied', 'dependency_missing', 'import_file_location'].includes(error.code);
     const detail = terminal ? null : transport(error.transport);
     if (detail?.retryAfterAt) this.cooldowns[detail.service] = Math.max(this.cooldowns[detail.service] || 0, detail.retryAfterAt);
-    const plan = retryPlan(detail, job.retry.used, this.clock.now(), this.clock.random);
-    this._event(job, 'failed', { transport: detail, decision: plan ? plan.parked ? 'parked' : 'retry' : 'stop', nextAt: plan?.at });
+    const recordingRecovery = error.code === 'needs_audio' && detail?.reason === 'recording_unavailable'
+      && isSiteAudio(job) && Boolean(job.scorePath) && typeof this.provider.findAudio === 'function'
+      && !job.recordingRecovery?.failedVideoIds?.includes(audioVideo(job.audio)?.videoId);
+    const plan = retryPlan(detail, job.retry.used, this.clock.now(), this.clock.random, { recordingRecovery });
+    this._event(job, 'failed', { transport: detail, decision: plan ? plan.parked ? 'parked' : recordingRecovery ? 'rediscover_full_mix' : 'retry' : 'stop', nextAt: plan?.at });
     if (!plan) return false;
+    if (recordingRecovery) startRecovery(job);
     Object.assign(job.retry, { used: job.retry.used + 1, nextAt: plan.at, reason: detail.reason, parked: plan.parked });
     this._set(job, plan.parked ? 'needs_attention' : 'retry_wait', { error: '', message: plan.parked
-      ? 'The service requested a long wait. Retry after the displayed time.' : 'Temporary retrieval problem. Waiting to retry.' });
+      ? 'The service requested a long wait. Retry after the displayed time.' : recordingRecovery
+        ? 'The recording is unavailable. Rechecking Songsterr for a working full mix.' : 'Temporary retrieval problem. Waiting to retry.' });
     return true;
   }
   _start() {
@@ -434,7 +450,7 @@ class SongsterrJobs {
         pinnedDescriptor: job.pinnedDescriptor, onPinned: (descriptor) => {
           check(job);
           if (job.pinnedDescriptor && descriptor.revisionId !== job.pinnedDescriptor.revisionId) throw new Error('The approved revision changed.');
-          job.pinnedDescriptor = descriptor; if (!job.audio && descriptor.audio) job.audio = descriptor.audio;
+          job.pinnedDescriptor = descriptor; if (!job.audio && descriptor.audio) selectSiteAudio(job, descriptor.audio, descriptor.revisionId);
           this._save();
         },
         onProgress: (p) => this._set(job, 'downloading', { message: clean(p?.message || 'Retrieving the approved tab…') }) });
@@ -446,7 +462,7 @@ class SongsterrJobs {
       job.scorePath = acquired.path; job.metadata = acquired.metadata;
       job.cachedScoreHash = await hashFile(job.scorePath, job.controller.signal);
       job.sourceKey = `songsterr:${job.chart.id}:${job.metadata.revisionId}`;
-      if (!job.audio && acquired.audio) job.audio = acquired.audio;
+      if (!job.audio && acquired.audio) selectSiteAudio(job, acquired.audio);
       this._save();
     }
     if (String(job.metadata?.songId) !== job.chart.id || !/^\d+$/.test(String(job.metadata?.revisionId)) || job.metadata?.approval !== 'approved'
@@ -455,12 +471,27 @@ class SongsterrJobs {
     if (!score.path) throw fileLocationError('The saved tab changed. Search for the song again to create a new import', 'cached_score', score.reason);
     if (await hashFile(score.path, job.controller.signal) !== job.cachedScoreHash) throw new Error('The saved tab changed. Search for the song again to create a new import.');
     check(job);
+    if (job.recordingRecovery?.pending) {
+      if (!validRecovery(job.recordingRecovery)) throw Object.assign(new Error('Recording recovery is invalid.'), { code: 'needs_attention' });
+      this._set(job, 'audio', { message: 'Checking Songsterr for another full-song recording…' });
+      const previousVideoId = audioVideo(job.audio)?.videoId;
+      const audio = await this.provider.findAudio(job.chart, { revisionId: String(job.metadata.revisionId),
+        excludedVideoIds: [...job.recordingRecovery.failedVideoIds], signal: job.controller.signal });
+      check(job);
+      const candidate = audioVideo(audio);
+      if (!candidate || job.recordingRecovery.failedVideoIds.includes(candidate.videoId)) {
+        throw Object.assign(new Error('Songsterr did not provide another usable full mix. Choose a matching recording link or audio file.'), { code: 'needs_audio' });
+      }
+      selectSiteAudio(job, audio); job.recordingRecovery.pending = false;
+      for (const key of ['alignment', 'synchronizationSummary', 'verification', 'evidence', 'audioHash', 'recipe', 'outputVerification', 'compatibility', 'warnings']) delete job[key];
+      this._event(job, 'recording_selected', { previousVideoId, decision: 'check_replacement_map' }); this._save();
+    }
     if ((retryAudioDetection || job.audioDiscoveryPending || job.retry.reason === 'player_timeout') && !job.audio) {
       job.audioDiscoveryPending = true; this._save();
       this._set(job, 'audio', { message: 'Checking Songsterr for the recording…' });
       const audio = await this.provider.findAudio(job.chart, { revisionId: String(job.metadata.revisionId), signal: job.controller.signal });
       check(job);
-      if (audio) job.audio = audio;
+      if (audio) selectSiteAudio(job, audio);
       job.audioDiscoveryPending = false; this._save();
     }
     if (!job.audio) throw Object.assign(new Error('No usable original audio was found. Choose an audio file or paste a link.'), { code: 'needs_audio' });
@@ -492,6 +523,9 @@ class SongsterrJobs {
       if (detail.retryAfterAt) this.cooldowns[detail.service] = Math.max(this.cooldowns[detail.service] || 0, detail.retryAfterAt);
     }
     job.synchronizationSummary = synchronizationSummary(synchronization);
+    if (job.recordingRecovery?.requireMap && !verifiedRecoveryMap(synchronization, syncIdentity)) {
+      throw Object.assign(new Error('Songsterr could not verify a full-song timing map for the replacement recording. Choose a matching recording link or audio file.'), { code: 'needs_audio' });
+    }
     this._set(job, 'converting', { message: 'Preparing the tab and audio…' });
     const attempt = fs.mkdtempSync(path.join(directory, 'attempt-'));
     const requestPath = path.join(attempt, 'request.json');

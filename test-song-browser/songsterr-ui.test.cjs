@@ -17,6 +17,11 @@ const { SongsterrJob, default: SongsterrBrowser } = compiled.exports;
 const base = { id: 'job-songsterr-1', songId: '564073', title: 'Woodland Rites', artist: 'Green Lung', state: 'queued', canCancel: true, canRetry: false };
 const render = (Component, props) => renderToStaticMarkup(React.createElement(Component, props));
 const job = (change) => render(SongsterrJob, { job: { ...base, ...change }, api: {}, action() {}, busy: false });
+test('saved unavailable recordings offer explicit full-mix discovery separately from same-recording retry', () => {
+  const html = job({ state: 'needs_audio', canRetryRecording: true, canRefreshRecording: true });
+  assert.match(html, /Check Songsterr full mix/); assert.match(html, /Retry same recording/);
+  assert.doesNotMatch(job({ state: 'alignment_failed', canRefreshRecording: true }), /Check Songsterr full mix/);
+});
 test('completed partial charts identify omitted gameplay targets, not only display limitations', () => {
   const html = job({ state: 'completed', compatibility: { status: 'limitations' },
     verification: { omissions: { omittedNotes: 14, excludedTracks: ['lead'] } } });

@@ -34,6 +34,7 @@ async function fixture(t, options = {}) {
       return { path: destination, format: 'songsterr', metadata: { songId: chart.id, revisionId: '2585330', approval: 'approved', title: chart.title, artist: chart.artist } };
     }
     async signIn() { this.signInCalls = (this.signInCalls || 0) + 1; return { ok: true }; }
+    async findAudio() { this.audioChecks = (this.audioChecks || 0) + 1; return null; }
     async showBrowser() { this.showCalls = (this.showCalls || 0) + 1; return { ok: true }; }
     async dispose() { this.disposed = true; this.disposeCalls = (this.disposeCalls || 0) + 1; return options.dispose?.(); }
   }
@@ -183,6 +184,19 @@ test('audio URL IPC rejects local/non-HTTPS schemes and embedded credentials bef
   await f.waitState(queued.id, 'needs_audio'); assert.equal(f.acquisitions.length, 1, 'cached tab is reused');
   assert.equal(f.conversions.length, 1); assert.deepEqual(f.conversions[0].audio, { kind: 'url', url: 'https://www.youtube.com/watch?v=abcdefghijk' });
   assert.equal(f.conversions[0].outputSettings.nameTemplate, '{artist} - {title}');
+});
+
+test('only an explicit full-mix retry boolean enables rediscovery of existing audio through IPC', async t => {
+  const f = await fixture(t), job = await f.waitingJob();
+  await f.call('useAudioUrl', { id: job.id, url: 'https://www.youtube.com/watch?v=abcdefghijk' });
+  await f.waitState(job.id, 'needs_audio');
+  await f.call('retry', { id: job.id, rediscoverAudio: 'true' });
+  await f.waitState(job.id, 'needs_audio');
+  assert.equal(f.providers[0].audioChecks, undefined);
+  await f.call('retry', { id: job.id, rediscoverAudio: true });
+  await f.waitState(job.id, 'needs_audio');
+  assert.equal(f.providers[0].audioChecks, 1); assert.equal(f.acquisitions.length, 1);
+  assert.equal(f.providers[0].signInCalls, undefined);
 });
 
 test('audio selection uses the native dialog result and never accepts a renderer-provided local path', async (t) => {

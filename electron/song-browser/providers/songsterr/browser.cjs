@@ -114,9 +114,9 @@ class SongsterrProvider {
       throw error;
     }
   }
-  async _discoverAudio(win, identity, initialPage, signal, timeout = 8000) {
+  async _discoverAudio(win, identity, initialPage, signal, timeout = 8000, excludedVideoIds = []) {
     let page = initialPage, pauseNeeded = false;
-    const staleMixVideos = new Set();
+    const staleMixVideos = new Set(excludedVideoIds);
     const until = Date.now() + timeout;
     const validate = (value) => {
       check(signal);
@@ -299,19 +299,23 @@ class SongsterrProvider {
   }
   // A cached, verified score must retain its original revision when retrying
   // linked audio. No history lookup, account copy or score request is needed.
-  async findAudio(result, { revisionId, signal } = {}) {
+  async findAudio(result, { revisionId, signal, excludedVideoIds = [] } = {}) {
     if (this.searching || this.resolving) throw failure('busy', 'The Songsterr catalogue is already being read.');
     const id = numeric(result?.id ?? result?.songId), revision = numeric(revisionId);
     const registered = id && this.results.get(id);
     if (!registered || !revision || (result.url && songUrl(result.url)?.url !== registered.url)) {
       throw failure('invalid_result', 'The saved Songsterr song or revision could not be verified.');
     }
+    if (!Array.isArray(excludedVideoIds) || excludedVideoIds.length > 3 || excludedVideoIds.some(id => typeof id !== 'string' || !/^[\w-]{11}$/.test(id))) {
+      throw failure('invalid_result', 'The failed recording identities could not be verified.');
+    }
     const operation = this._controller(signal); this.resolving = true;
     try {
       const win = this._window(false);
       await this._navigate(win, `${registered.url}/r${revision}`, operation.signal);
       const page = await this._readyPinnedPage(win, id, revision, operation.signal);
-      return await this._discoverAudio(win, { songId: id, revisionId: revision }, page, operation.signal);
+      return await this._discoverAudio(win, { songId: id, revisionId: revision }, page, operation.signal,
+        excludedVideoIds.length ? 15000 : 8000, excludedVideoIds);
     } finally { this.resolving = false; operation.release(); }
   }
   // The trusted queue supplies the revision from its verified score receipt.

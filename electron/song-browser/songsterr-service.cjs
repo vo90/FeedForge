@@ -70,7 +70,7 @@ function registerSongsterr({ app, BrowserWindow, session, ipcMain, dialog, shell
     validateOutput(settings.outputDir);
     return jobs.enqueue(song, { ...settings, hybridLead });
   });
-  handler('retry', ({ id, allowAccount, hybridLead, originalsOnly }) => jobs.retry(String(id), { allowAccount: allowAccount === true, hybridLead, originalsOnly: originalsOnly === true }));
+  handler('retry', ({ id, allowAccount, hybridLead, originalsOnly, rediscoverAudio }) => jobs.retry(String(id), { allowAccount: allowAccount === true, hybridLead, originalsOnly: originalsOnly === true, rediscoverAudio: rediscoverAudio === true }));
   handler('cancel', async ({ id }) => { await jobs.cancel(String(id)); return { ok: true }; });
   handler('signIn', () => provider.signIn());
   handler('showBrowser', () => provider.showBrowser());

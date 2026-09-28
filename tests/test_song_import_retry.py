@@ -34,6 +34,38 @@ def test_non_transient_or_unknown_does_not_loop(error):
     assert classify(error, service='youtube', downloader=True) is None
 
 
+def test_unavailable_recording_fact_is_narrow_and_redacted():
+    message = 'ERROR: [youtube] abcdefghijk: Video unavailable'
+    fact = classify(message, service='youtube', downloader=True)
+    assert fact == dict(version=1, phase='audio', operation='audio_download', service='youtube', reason='recording_unavailable')
+    assert classify(message, service='audio_host', downloader=True) is None
+    for suffix in ['. Sign in to confirm your age', ': private video', '\nCookie: secret', '. Captcha required']:
+        assert classify(message + suffix, service='youtube', downloader=True) is None
+
+
+@pytest.mark.parametrize('external', [False, True])
+def test_unavailable_recording_is_carried_from_both_downloaders(tmp_path, monkeypatch, external):
+    message = 'ERROR: [youtube] abcdefghijk: Video unavailable'
+    monkeypatch.setattr(audio.importlib.util, 'find_spec', lambda name: True)
+    monkeypatch.setattr(audio, '_tool', lambda *args: 'ffmpeg')
+    if external:
+        def run(command, **kwargs):
+            raise subprocess.CalledProcessError(1, command, stderr=message.encode())
+        monkeypatch.setattr(audio.subprocess, 'run', run)
+    else:
+        class Downloader:
+            def __init__(self, settings): pass
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+            def extract_info(self, *args, **kwargs): raise Exception(message)
+        monkeypatch.setitem(sys.modules, 'yt_dlp', types.SimpleNamespace(YoutubeDL=Downloader))
+    with pytest.raises(audio.ImportFailure) as failure:
+        audio._download_youtube('https://youtube.com/watch?v=abcdefghijk', tmp_path,
+                                {'ytDlp': 'tool'} if external else {}, managed_retries=True)
+    assert failure.value.code == 'needs_audio'
+    assert failure.value.transport['reason'] == 'recording_unavailable'
+
+
 def test_http_retry_after_and_no_private_host_retry():
     value = classify(urllib.error.HTTPError('https://host/secret', 429, 'limited', {'Retry-After': '30'}, None))
     assert value['retryAfterAt'] > 0

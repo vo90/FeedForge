@@ -134,6 +134,7 @@ export function SongsterrJob({ job, api, action, busy }) {
     {needsAudio ? <div className="st-audio-input">
       {job.state === 'needs_audio' && job.canRetryAudio ? <button className="sb-button" disabled={busy} onClick={() => action(() => api.retry({ id: job.id }))}>Retry audio detection</button> : null}
       {job.state === 'needs_audio' && job.canRetryRecording ? <button className="sb-button" disabled={busy} onClick={() => action(() => api.retry({ id: job.id }))}>Retry same recording</button> : null}
+      {job.state === 'needs_audio' && job.canRefreshRecording ? <button className="sb-button" disabled={busy} onClick={() => action(() => api.retry({ id: job.id, rediscoverAudio: true }))}>Check Songsterr full mix</button> : null}
       {job.state === 'alignment_failed' && job.canRetry ? <button className="sb-button" disabled={busy} onClick={() => action(() => api.retry({ id: job.id }))}>Retry synchronization</button> : null}
       <button className="sb-button" disabled={busy} onClick={() => action(() => api.chooseAudio({ id: job.id }))}>Choose audio file</button>
       <form onSubmit={(event) => { event.preventDefault(); action(() => api.useAudioUrl({ id: job.id, url })); }}>

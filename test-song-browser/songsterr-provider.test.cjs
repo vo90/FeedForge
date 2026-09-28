@@ -139,7 +139,7 @@ function runtime(root, options = {}) {
           if (options.delayedAudioControls && wc.page.revisionId && wc.audioControlReads++ < 2) return { ...wc.page, originalAvailable: false, originalSelected: false, canPlay: false };
           if (options.delayedPlayControl && wc.page.revisionId && wc.audioControlReads++ < 2) return { ...wc.page, canPlay: false };
           if (wc.playerPending && !options.noAudio && wc.playerReads++ >= (options.delayedAudio ? 1 : 0)) {
-            wc.page.audio = ['https://www.youtube.com/embed/abcdefghijk']; wc.playerPending = false;
+            wc.page.audio = ['https://www.youtube.com/embed/' + (options.fallbackVideo || 'abcdefghijk')]; wc.playerPending = false;
           }
           return wc.page;
         }
@@ -298,6 +298,24 @@ test('missing Original stays absent while a stalled known player is retryable an
   assert.deepEqual(missing.actions, ['play', 'pause']); assert.equal(win.webContents.page.playing, false);
   assert.ok(missing.diagnostics.some((event) => event.code === 'audio_probe_iframe_timeout'));
   assert.ok(missing.diagnostics.some((event) => event.code === 'audio_probe_play_control' && event.outcome === 'ready'));
+});
+
+test('recovery waits past a failed iframe for the full-mix replacement and pauses afterward', async t => {
+  const root = await temporary(t), state = runtime(root, { fallbackVideo: 'lmnopqrstuv', delayedAudio: true });
+  t.after(() => state.provider.dispose());
+  await state.provider.search({ query: 'Green Lung' });
+  const audio = await state.provider.findAudio(result, { revisionId: descriptor.revisionId, excludedVideoIds: ['abcdefghijk'] });
+  assert.equal(audio.videoId, 'lmnopqrstuv');
+  assert.deepEqual(state.actions, ['play', 'pause']);
+});
+
+test('recovery cannot reaccept the excluded iframe or malformed exclusions', async t => {
+  const root = await temporary(t), state = runtime(root, { noAudio: true }); t.after(() => state.provider.dispose());
+  const win = state.provider._window(false); await state.provider._navigate(win, descriptor.approvedUrl);
+  const audio = await state.provider._discoverAudio(win, { songId: result.id, revisionId: descriptor.revisionId }, win.webContents.page, undefined, 10, ['abcdefghijk']);
+  assert.equal(audio, null); assert.deepEqual(state.actions, ['play', 'pause']);
+  await state.provider.search({ query: 'Green Lung' });
+  await assert.rejects(state.provider.findAudio(result, { revisionId: descriptor.revisionId, excludedVideoIds: ['../bad'] }), { code: 'invalid_result' });
 });
 
 test('a stale backing player that never updates cannot be accepted as Full mix', async (t) => {

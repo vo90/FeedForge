@@ -73,6 +73,10 @@ def classify(error, *, service="audio_host", downloader=False):
     # media-download message, not an arbitrary access-denied response.
     message = str(error)[-8000:].lower()
     if re.search(r"video (?:is )?(?:unavailable|private)|private video|sign in|sign-in|age.restrict|confirm.you.re|captcha|no space|permission denied|postprocess", message):
+        # A known unavailable video can prompt a site-only full-mix rediscovery.
+        # This fact alone never authorizes retrying or changing user audio.
+        if service == "youtube" and re.fullmatch(r"(?:error:\s*)?\[youtube\]\s+[\w-]{11}:\s+video unavailable\.?", message.strip()):
+            return {**fact, "reason": "recording_unavailable"}
         return None
     if re.search(r"unable to download video data:.*http error 403\b", message):
         return {**fact, "reason": "media_url_expired", "status": 403}
