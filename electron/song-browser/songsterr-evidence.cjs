@@ -2,7 +2,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const CURRENT_PRESERVATION_CONTRACT = 39;
+const CURRENT_PRESERVATION_CONTRACT = 40;
+const CHART_GUIDANCE_POLICY = 'feedforge-chart-guidance-v1';
 const KNOWN_PRESERVATION_CONTRACTS = Array.from({ length: CURRENT_PRESERVATION_CONTRACT }, (_, i) => i + 1);
 const DIGEST = /^[a-f0-9]{64}$/;
 const digest = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
@@ -97,4 +98,9 @@ function compatibilityBacklog(root) {
     groups: [...groups.values()].map(g => ({ ...g, affectedSongs: g.songs.size, songs: [...g.songs.values()] }))
       .sort((a, b) => b.affectedSongs - a.affectedSongs || a.feature.localeCompare(b.feature)) };
 }
-module.exports = { inspectEvidence, reportBundle, compatibilityReport, compatibilityBacklog, CURRENT_PRESERVATION_CONTRACT, KNOWN_PRESERVATION_CONTRACTS };
+function verifiedChartGuidance(proof, count) {
+  return proof?.policy === CHART_GUIDANCE_POLICY && proof.status === 'passed' && proof.sourceAuthored === false
+    && Number.isSafeInteger(count) && count > 0 && proof.arrangements === count;
+}
+module.exports = { inspectEvidence, reportBundle, compatibilityReport, compatibilityBacklog, CURRENT_PRESERVATION_CONTRACT, KNOWN_PRESERVATION_CONTRACTS,
+  CHART_GUIDANCE_POLICY, verifiedChartGuidance };

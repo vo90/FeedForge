@@ -63,14 +63,14 @@ function registerSongsterr({ app, BrowserWindow, session, ipcMain, dialog, shell
     } finally { if (searching === controller) searching = null; }
   });
   handler('cancelSearch', () => { searching?.abort(); return { ok: true }; });
-  handler('enqueue', ({ id }) => {
+  handler('enqueue', ({ id, hybridLead }) => {
     const song = results.get(String(id)); if (!song) throw new Error('Search for this song again before importing it.');
     const settings = getSettings();
     if (!settings.outputDir) throw new Error('Choose an output folder in FeedForge Settings.');
     validateOutput(settings.outputDir);
-    return jobs.enqueue(song, settings);
+    return jobs.enqueue(song, { ...settings, hybridLead });
   });
-  handler('retry', ({ id, allowAccount }) => jobs.retry(String(id), { allowAccount: allowAccount === true }));
+  handler('retry', ({ id, allowAccount, hybridLead, originalsOnly }) => jobs.retry(String(id), { allowAccount: allowAccount === true, hybridLead, originalsOnly: originalsOnly === true }));
   handler('cancel', async ({ id }) => { await jobs.cancel(String(id)); return { ok: true }; });
   handler('signIn', () => provider.signIn());
   handler('showBrowser', () => provider.showBrowser());

@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 39
+VERSION = 40
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -280,9 +280,9 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
         check.fail("compatibility", "import/compatibility", "The compatibility report is incomplete.")
         return
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
-    # Contracts 37 and 38 change ending authority, not the technique inventory.
-    # Preserve independent checks for the preceding published inventory schema.
-    if type(report.get('version')) is not int or report['version'] not in (36, 37, 38, VERSION):
+    # Historical Hybrid and ending contracts share the same inventory schema.
+    # Preserve independent checks when combining both features in contract 40.
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     check.equal("compatibility_status", "import/compatibility", "limitations" if rows else "compatible", report.get("status"))
     target = report.get("target", {})
@@ -631,7 +631,7 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
     return {"omittedEndingNotes": len(omissions)}
 
 
-def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: dict | None = None) -> dict:
+def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: dict | None = None, *, hybrid_options: dict | None = None, guidance_policy: str | None = None) -> dict:
     """Compare an immutable raw score with a completed staged FeedPak.
 
     Does not mutate sources, archive or alignment; performs no network I/O.
@@ -718,6 +718,8 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 verify_pickup(source, alignment, _json(z, recipe.get('pickupTimelineFile', ''), check),
                               report['sourceSha256'], check)
                 report['scope'].append('pickup_display_clock')
+            from copy import deepcopy
+            hybrid_facts = deepcopy(wanted) if recipe.get("hybridLead", {}).get("enabled") else None
             if "hasRasgueado" in source.ignored and recipe.get("preservationContract", 0) < 5:
                 check.fail("retained_rasgueado", "import", "The rasgueado instruction requires retained source and a verified compatibility report.")
             if recipe.get('preservationContract',0) < 27 and not recipe.get('voicesFile'):
@@ -955,6 +957,8 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             for reference in refs:
                 if not isinstance(reference, str) or reference not in names:
                     check.fail("missing_asset", "manifest", "A required package asset reference is missing.", actual=reference)
+            from .verify_hybrid import partition, verify as verify_hybrid
+            arrangements, derived = partition(manifest, check, hybrid_options)
             timeline = _json(z, manifest["song_timeline"], check)
             for key in ("beats", "sections", "time_signatures", "tempos"):
                 _timeline(wanted[key], timeline.get(key), check, "song_timeline/" + key)
@@ -998,6 +1002,30 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             report["counts"]["archivedNotes"] = actual_note_count
             report["counts"]["archivedChords"] = actual_chord_count
             report["counts"]["notationBeats"] = notation_beat_count
+            if hybrid_facts is not None:
+                report["hybridLead"] = verify_hybrid(z, manifest, arrangements, derived, hybrid_facts, source,
+                                                       alignment, report["sourceSha256"], check)
+                report["scope"].append("hybrid_main_preservation_and_source_passages")
+            from ..verify_chart_guidance import POLICY as guidance_version, validate_arrangement
+            declared = recipe.get("chartGuidancePolicy")
+            if guidance_policy is not None:
+                check.equal("guidance_policy", "manifest/song_import/chartGuidancePolicy", guidance_policy, declared)
+            guidance_count = 0
+            before_guidance = check.total_errors
+            for entry in manifest.get("arrangements", []):
+                chart = _json(z, entry["file"], check)
+                proof = chart.get("ext", {}).get("chartGuidance")
+                if declared is None and proof is None:
+                    continue  # Historical package; not certified as completed.
+                check.equal("guidance_policy", "manifest/song_import/chartGuidancePolicy", guidance_version, declared)
+                check.equal("guidance_ownership", entry["file"], ["anchors", "handshapes"], (proof or {}).get("fields"))
+                for error in validate_arrangement(chart, duration=duration):
+                    check.fail("chart_guidance", entry["file"], error)
+                guidance_count += 1
+            if declared is not None:
+                report["chartGuidance"] = {"policy": guidance_version, "status": "passed" if check.total_errors == before_guidance else "failed",
+                                           "arrangements": guidance_count, "sourceAuthored": False}
+                report["scope"].append("generated_chart_guidance")
         report["status"] = "failed" if check.total_errors else "passed"
     except UnverifiedFeature as exc:
         report["status"] = "failed" if check.total_errors else "unsupported"

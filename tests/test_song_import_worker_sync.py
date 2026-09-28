@@ -88,7 +88,8 @@ def test_job_history_keeps_map_identity_without_unbounded_anchor_lists():
 
 
 @pytest.mark.parametrize('precise_harmonic', [False, True])
-def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(tmp_path, monkeypatch, precise_harmonic):
+@pytest.mark.parametrize('hybrid', [False, True])
+def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(tmp_path, monkeypatch, precise_harmonic, hybrid):
     """Only inbound media is faked; parser, timing, audio encoding and builder run."""
     video_id = "abcdefghijk"
     measures = [{"signature": [4, 4], "voices": [{"beats": [
@@ -121,9 +122,14 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
                "metadata": {"songId": "12", "revisionId": "34", "approval": "approved", "title": "Test song", "artist": "Test artist"},
                "synchronization": synchronization, "workDir": str(tmp_path / "work"), "outputDir": str(tmp_path / "library"),
                "outputSettings": {"nameTemplate": "{artist} - {title}", "outputLayout": "artist", "generateDifficulty": precise_harmonic}}
+    request['hybridLead'] = {'enabled': hybrid}
     result = worker.run_import(request)
     assert result["ok"], result
-    assert result["recipe"]["preservationContract"] == result["verification"]["version"] == result["evidence"]["version"] == 39
+    if hybrid:
+        assert result['verification']['hybridLead']['policy'] == 'hybrid-lead-v3'
+        assert result['verification']['hybridLead']['primaryCoverage'] == 'checked'
+        assert result['verification']['hybridLead']['status'] == 'no_additions'
+    assert result["recipe"]["preservationContract"] == result["verification"]["version"] == result["evidence"]["version"] == 40
     extensions = ["slide_in_marks", "slide_out", "slide_out_marks"]
     if precise_harmonic:
         extensions = ['hn', 'hps', *extensions]
