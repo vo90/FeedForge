@@ -43,7 +43,7 @@ def test_mixed_ending_real_package(source_audio, tmp_path, dead):
     prepared, alignment = finalize(perf, audio, alignment, job)
     assert alignment['terminalSustains']['audioDuration'] == pytest.approx(53.9)
     assert prepared['duration'] == pytest.approx(54)
-    recipe = {'preservationContract':37, 'audioSource':audio['source'], 'preparation':alignment['preparation'],
+    recipe = {'preservationContract':38, 'audioSource':audio['source'], 'preparation':alignment['preparation'],
               'alignment':{'provenance':alignment['provenance'], 'endingPadding':alignment['endingPadding']}}
     built = build_feedpak(perf, prepared, alignment, job, output_dir=tmp_path/'out', source_path=source,
                          recipe=recipe, compatibility=perf['compatibilityReport'])

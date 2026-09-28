@@ -85,7 +85,7 @@ def sparse_ending(tracks, pitch, flux, duration, left):
             'everyNoteVerified':False}
 
 
-def assess(tracks, path, duration, pitch, flux, original):
+def assess(tracks, path, duration, pitch, flux, original, *, phrases=True):
     baseline=_joint(tracks,pitch,flux,duration,original)
     calibration=ls.tuning(path)
     reference={'status':'default','referenceHz':440.0,'hypothesis':calibration}
@@ -114,16 +114,24 @@ def assess(tracks, path, duration, pitch, flux, original):
                         'method':'established-pitch-onsets' if old['status']=='supported' else 'joint-pitch-attacks'})
     failed=[i for i,w in enumerate(windows) if w['status']!='supported']
     ending=None
+    phrase_evidence=None
     if (failed and failed[0]>=3 and failed==list(range(failed[0],len(windows)))
             and not any(w['status']=='suspected_mismatch' for w in windows)):
         ending=sparse_ending(tracks,pitch,flux,duration,windows[failed[0]]['start'])
         if ending['status']=='supported':
             for i in failed:
                 windows[i].update(status='supported',method='sparse-ending-clock',individualNotesUnassessed=True)
+        elif phrases:
+            from .phrase_clock import assess as assess_phrases
+            phrase_evidence=assess_phrases(tracks,pitch,flux,duration,windows[failed[0]]['start'])
+            if phrase_evidence['status']=='supported':
+                for i in failed:
+                    windows[i].update(status='supported',method='ending-phrase-clock',individualNotesUnassessed=True)
     mismatches=sum(w['status']=='suspected_mismatch' for w in windows)
     status='supported' if len(windows)>=3 and all(w['status']=='supported' for w in windows) else 'suspected_mismatch' if mismatches else 'inconclusive'
     return {**measured,'status':status,'windows':windows,'method':'joint-recording-clock',
             'supportedWindows':sum(w['status']=='supported' for w in windows),
             'suspectedMismatchWindows':mismatches,
             'referenceEvidence':reference,'endingEvidence':ending,
+            **({'phraseEvidence':phrase_evidence} if phrases else {}),
             'everyNoteVerified':False,'scope':'shared_recording_timing'}
