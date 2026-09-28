@@ -61,6 +61,52 @@ test('opening repair, acoustic evidence and preparation are distinguished', () =
   assert.doesNotMatch(html, /Timing: automatic estimate/);
 });
 
+test('Hybrid lead obligations do not conceal an incompatible capoed opening', () => {
+  const html = job({ state: 'completed', verification: { hybridLead: {
+    status: 'created', mainName: 'Electric lead', coverageStatus: 'complete', passageCount: 1,
+    tabActivity: { regions: [{ start: 0, end: 26.28, reason: 'only_incompatible_setup',
+      sources: [{ id: 'acoustic', name: 'Acoustic <capo 7>' }] }] },
+  } } });
+  assert.match(html, /Identified lead requirements accounted for/);
+  assert.match(html, /Guitar passages left unfilled/);
+  assert.match(html, /0:00–0:26/);
+  assert.match(html, /different tuning or capo/);
+  assert.match(html, /Acoustic &lt;capo 7&gt;/);
+  assert.match(html, /does not measure guitar sound/);
+  assert.doesNotMatch(html, /all.*guitar.*covered/i);
+});
+
+test('Hybrid choice and result explain the main, no-addition and separate-fallback outcomes', () => {
+  const html = job({ state: 'awaiting_main_choice', canRetry: true, hybridLead: { enabled: true }, hybridChoice: {
+    sourceSha256: 'source', tracks: [{ id: 'a', name: 'Lead A' }, { id: 'b', name: 'Clean B' }],
+  } });
+  assert.match(html, /Main guitar/); assert.match(html, /Guitar roles and priority/); assert.match(html, /Other queued songs can continue/);
+  assert.match(html, /Primary solo/); assert.match(html, /Additional lead/);
+  assert.ok(buttonText(html).includes('Create Hybrid Lead &amp; continue'));
+  assert.ok(buttonText(html).includes('Start separate originals-only import'));
+  assert.ok(!buttonText(html).includes('Retry import'));
+  assert.match(job({ state: 'completed', verification: { hybridLead: { status: 'no_additions', mainName: 'Lead A' } } }), /No additions/);
+  assert.match(job({ state: 'completed', originalsOnlyFrom: 'failed-hybrid' }), /separately requested originals-only import/);
+});
+
+test('Hybrid rests distinguish new attacks from tails and do not promise every fill is suitable', () => {
+  const html = job({ state: 'completed', verification: { hybridLead: {
+    status: 'created', mainName: 'Lead', coverageStatus: 'complete', passageCount: 1,
+    tabActivity: { restWindows: [
+      { start: 210.25, end: 223.05, kind: 'new_attacks', sourceAttacks: [{ id: '4', name: 'Clean <guitar>', compatible: true, count: 33 }] },
+      { start: 30, end: 32, kind: 'no_pitched_attacks', sourceAttacks: [] },
+    ] },
+    musicalAudit: { optionalFillAudit: { opportunityCount: 2 } },
+  } } });
+  assert.match(html, /3:30–3:43/);
+  assert.match(html, /one continuous Hybrid Lead rest/);
+  assert.match(html, /New pitched guitar notes are available/);
+  assert.match(html, /Held or muted material remains; no new pitched note attacks/);
+  assert.match(html, /Clean &lt;guitar&gt;/);
+  assert.match(html, /2 possible additional fill passages/);
+  assert.match(html, /fitting notes alone does not make a good phrase/);
+});
+
 test('retry countdown retains Cancel and delays replacement-audio prompts until exhaustion', () => {
   const html = job({ state: 'retry_wait', retry: { nextAt: Date.now() + 5000, attempt: 2, maxAttempts: 3 } });
   assert.match(html, /attempt 2 of 3/); assert.match(html, /Retrying in/);

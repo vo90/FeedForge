@@ -31,4 +31,11 @@
 .st-compatibility > ul { padding-left:18px; max-height:480px; overflow:auto; }
 .st-compatibility li { margin-bottom:16px; }
 .st-compatibility p { margin:6px 0; }
+.st-hybrid-options { margin:18px 0; padding:16px; border:1px solid #2c4055; border-radius:10px; }
+.st-hybrid-options > label { display:flex; align-items:center; gap:8px; font-weight:600; }
+.st-hybrid-options p { color:#b6c4d5; font-size:13px; }
+.st-hybrid-choice { display:grid; gap:10px; margin:14px 0; }
+.st-hybrid-choice > label { display:grid; gap:6px; }
+.st-hybrid-choice select { width:100%; max-width:100%; }
+.st-hybrid-choice .sb-job-controls { align-items:center; margin:10px 0; }
 @media(max-width:950px) { .st-results-layout { grid-template-columns:1fr; } .st-browser .sb-output,.st-results-heading { flex-wrap:wrap; } }

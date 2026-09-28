@@ -10,7 +10,8 @@ const { waitForSharedOperation } = require('./shared-operation.cjs');
 const { unavailableSynchronization, synchronizationSummary, audioVideo } = require('./providers/songsterr/synchronization.cjs');
 const { transport, retryPlan } = require('./songsterr-retry.cjs');
 const { reportZip } = require('./songsterr-retry-report.cjs');
-const WAITING = new Set(['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed']);
+const { normalizeHybridLead, matchesHybridRequest } = require('./hybrid-lead-options.cjs');
+const WAITING = new Set(['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed', 'awaiting_main_choice']);
 const ACTIVE = new Set(['queued', 'resolving', 'downloading', 'converting', 'audio', 'aligning', 'validating', 'saving']);
 const PENDING = (job) => ACTIVE.has(job.state) || WAITING.has(job.state) || job.state === 'retry_wait';
 const defaultClock = { now: () => Date.now(), setTimeout, clearTimeout, random: Math.random };
@@ -104,6 +105,7 @@ class SongsterrJobs {
         const output = containedFile(job.outputDir, saved.outputPath, { allowRootLink: true });
         if (saved.id === job.id && saved.outputHash && output.path
             && await hashFile(output.path) === saved.outputHash) {
+          if (!matchesHybridRequest(job.hybridLead, saved.recipe?.hybridLead)) throw new Error('Recovered Hybrid Lead options differ from the job.');
           if (saved.recipe?.preservationContract) {
             const checked = inspectEvidence(this.auditRoot, saved.evidence, saved.outputHash);
             const contract = saved.recipe.preservationContract;
@@ -163,6 +165,7 @@ class SongsterrJobs {
   }
   compatibilityList() { return compatibilityBacklog(this.auditRoot); }
   async _cleanAttempts(job) {
+    if (job.hybridLead?.enabled && ['failed', 'needs_attention'].includes(job.state)) return;
     const directory = path.join(this.root, job.id);
     if (!UUID.test(job.id) || path.dirname(directory) !== this.root || !fs.existsSync(directory) || fs.lstatSync(directory).isSymbolicLink()) return;
     for (const entry of await fs.promises.readdir(directory, { withFileTypes: true })) {
@@ -188,6 +191,8 @@ class SongsterrJobs {
     return { id: job.id, source: 'songsterr', sourceKey: job.sourceKey, songId: job.chart.id, title: job.chart.title, artist: job.chart.artist,
       state: job.state, message: clean(job.message), error: clean(job.error), createdAt: job.createdAt,
       revisionId: job.metadata?.revisionId, outputDir: job.outputDir, outputSettings: job.outputSettings,
+      hybridLead: job.hybridLead, hybridChoice: job.state === 'awaiting_main_choice' ? job.hybridChoice : undefined,
+      originalsOnlyFrom: job.originalsOnlyFrom,
       outputPath: job.state === 'completed' ? job.outputPath : undefined,
       outputAvailable: job.state === 'completed' && Boolean(job.outputPath && fs.existsSync(job.outputPath)),
       warnings: job.warnings, alignment: job.alignment, coverage: job.coverage, synchronization: job.synchronizationSummary,
@@ -202,14 +207,39 @@ class SongsterrJobs {
       canCancel: PENDING(job) };
   }
   snapshot() { return this.jobs.map((job) => this.public(job)); }
-  enqueue(chart, { outputDir, outputSettings }) {
+  enqueue(chart, { outputDir, outputSettings, hybridLead, originalsOnlyFrom, retainedFrom }) {
     if (this.disposed || this.persistenceFailed) throw new Error('Reopen Songsterr before adding imports.');
     if (!path.isAbsolute(outputDir || '')) throw new Error('Choose an output folder in FeedForge Settings.');
-    const existing = this.jobs.find((job) => job.chart.id === String(chart.id) && PENDING(job));
+    const options = normalizeHybridLead(hybridLead);
+    const existing = this.jobs.find((job) => job.chart.id === String(chart.id) && PENDING(job)
+      && JSON.stringify(normalizeHybridLead(job.hybridLead)) === JSON.stringify(options) && job.originalsOnlyFrom === originalsOnlyFrom);
     if (existing) return this.public(existing);
     if (this.jobs.filter(PENDING).length >= 30) throw new Error('Finish or cancel some imports before adding more songs.');
     const job = { id: crypto.randomUUID(), source: 'songsterr', sourceKey: `songsterr:${chart.id}`, chart: { ...chart, id: String(chart.id) },
-      state: 'queued', createdAt: this.clock.now(), retry: retryCycle(), outputDir: path.resolve(outputDir), outputSettings: normalizeOutputSettings(outputSettings), controller: new AbortController() };
+      state: 'queued', createdAt: this.clock.now(), retry: retryCycle(), outputDir: path.resolve(outputDir), outputSettings: normalizeOutputSettings(outputSettings),
+      hybridLead: options, ...(originalsOnlyFrom ? { originalsOnlyFrom } : {}), controller: new AbortController() };
+    if (retainedFrom?.scorePath) {
+      const oldRoot = path.join(this.root, retainedFrom.id), source = containedFile(oldRoot, retainedFrom.scorePath);
+      if (!source.path || fs.statSync(source.path).size > 80 * 1024 ** 2) throw new Error('The retained original tab is unavailable.');
+      const bytes = fs.readFileSync(source.path);
+      if (crypto.createHash('sha256').update(bytes).digest('hex') !== retainedFrom.cachedScoreHash) throw new Error('The retained original tab changed.');
+      const directory = path.join(this.root, job.id);
+      fs.mkdirSync(directory);
+      const extension = path.extname(source.path).toLowerCase();
+      if (!['.json', '.gp', '.gpif', '.xml'].includes(extension)) throw new Error('The retained tab format is unsupported.');
+      job.scorePath = path.join(directory, 'source' + extension);
+      fs.writeFileSync(job.scorePath, bytes, { flag: 'wx' });
+      for (const key of ['metadata', 'pinnedDescriptor', 'audio', 'cachedScoreHash', 'sourceKey', 'allowAccount']) {
+        if (retainedFrom[key] !== undefined) job[key] = structuredClone(retainedFrom[key]);
+      }
+      if (job.audio?.kind === 'file' && within(oldRoot, path.resolve(job.audio.path))) {
+        const audio = containedFile(oldRoot, job.audio.path);
+        if (!audio.path) throw new Error('The retained recording is unavailable.');
+        const target = path.join(directory, 'recording' + path.extname(audio.path));
+        fs.copyFileSync(audio.path, target, fs.constants.COPYFILE_EXCL);
+        job.audio.path = target;
+      }
+    }
     const previous = this.jobs;
     this.jobs = [...previous, job];
     while (this.jobs.length > 100) {
@@ -220,10 +250,24 @@ class SongsterrJobs {
     try { this._save(); } catch (error) { this.jobs = previous; throw error; }
     this.emit(this.public(job)); this._start(); return this.public(job);
   }
-  retry(id, { audio, allowAccount } = {}) {
+  retry(id, { audio, allowAccount, hybridLead, originalsOnly } = {}) {
     if (this.disposed || this.persistenceFailed) throw new Error('Reopen Songsterr before retrying.');
     const job = this.jobs.find((j) => j.id === id);
     if (!job || !this.public(job).canRetry || this.current === job) throw new Error('This import cannot be retried yet.');
+    if (originalsOnly === true) {
+      if (!job.hybridLead?.enabled) throw new Error('This import already uses original arrangements only.');
+      return this.enqueue(job.chart, { outputDir: job.outputDir, outputSettings: job.outputSettings, hybridLead: { enabled: false }, originalsOnlyFrom: job.id, retainedFrom: job });
+    }
+    if (hybridLead !== undefined) {
+      if (job.state !== 'awaiting_main_choice') throw new Error('The source choices are not awaiting a selection.');
+      const options = normalizeHybridLead(hybridLead), choice = job.hybridChoice;
+      if (!options.enabled || options.sourceSha256 !== job.cachedScoreHash || options.sourceSha256 !== choice?.sourceSha256
+          || !choice.tracks.some(t => t.id === options.mainTrackId)
+          || [...options.excludedTrackIds, ...options.preferredTrackIds, ...Object.keys(options.roles)].some(id => !choice.tracks.some(t => t.id === id))) throw new Error('Choose available guitars for this exact tab revision.');
+      delete options.reviewSources;
+      job.hybridLead = options;
+      delete job.hybridChoice;
+    } else if (job.state === 'awaiting_main_choice') throw new Error('Choose a main guitar before continuing.');
     if (audio) job.audio = audio;
     if (allowAccount === true) job.allowAccount = true;
     // Audio discovery is an explicit, one-shot retry of the saved revision. A
@@ -318,7 +362,7 @@ class SongsterrJobs {
           }
           job.canUseAccount = error.canUseAccount === true;
           if (error.pathValidation) job.pathValidation = error.pathValidation;
-          for (const key of ['verification', 'evidence', 'warnings', 'compatibility']) if (error[key]) job[key] = error[key];
+          for (const key of ['verification', 'evidence', 'warnings', 'compatibility', 'hybridChoice']) if (error[key]) job[key] = error[key];
           if (code === 'alignment_failed' && error.alignment && typeof error.alignment === 'object' && !Array.isArray(error.alignment)) job.alignment = error.alignment;
           if (this._scheduleFailure(job, error)) continue;
           this._set(job, WAITING.has(code) || code === 'cancelled' ? code : 'failed', { error: code === 'cancelled' ? '' : clean(error.message), message: code === 'cancelled' ? 'Cancelled.' : '' });
@@ -363,7 +407,7 @@ class SongsterrJobs {
       if (timedOut) throw timeoutError();
       if (typeof result?.stdout !== 'string' || result.stdout.length > 4 * 1024 * 1024) throw new Error('The converter returned an invalid response.');
       let parsed; try { parsed = JSON.parse(result.stdout); } catch { throw new Error('The converter returned an unreadable response.'); }
-      if (result.code !== 0 || parsed.ok !== true) throw Object.assign(new Error(clean(parsed.error) || 'Conversion failed.'), { code: parsed.code, transport: transport(parsed.transport), alignment: parsed.alignment, verification: parsed.verification, evidence: parsed.evidence, warnings: parsed.warnings, compatibility: parsed.compatibility });
+      if (result.code !== 0 || parsed.ok !== true) throw Object.assign(new Error(clean(parsed.error) || 'Conversion failed.'), { code: parsed.code, transport: transport(parsed.transport), alignment: parsed.alignment, verification: parsed.verification, evidence: parsed.evidence, warnings: parsed.warnings, compatibility: parsed.compatibility, hybridChoice: parsed.hybridChoice });
       return parsed;
     } catch (error) {
       check(job);
@@ -452,7 +496,7 @@ class SongsterrJobs {
     const requestPath = path.join(attempt, 'request.json');
     atomicJson(requestPath, { managedRetries: true, scorePath: job.scorePath, metadata: job.metadata, audio: job.audio, synchronization, workDir: attempt,
       auditDir: this.auditRoot, artworkCacheDir: path.join(path.dirname(this.root), 'artwork-cache'), artworkLookup: this.artworkLookup,
-      outputDir: job.outputDir, outputSettings: job.outputSettings, tools: this.tools });
+      outputDir: job.outputDir, outputSettings: job.outputSettings, tools: this.tools, hybridLead: normalizeHybridLead(job.hybridLead) });
     let result;
     try { result = await this._run(job, ['--song-import-file', requestPath], attempt); }
     finally { fs.unlinkSync(requestPath); }
@@ -467,6 +511,15 @@ class SongsterrJobs {
     const checked = inspectEvidence(this.auditRoot, result.evidence, outputHash);
     if (checked.verification.version !== CURRENT_PRESERVATION_CONTRACT || checked.verification.status !== 'passed') throw new Error('Source verification did not pass.');
     if (result.scoreHash !== job.cachedScoreHash || checked.record.objects.source !== job.cachedScoreHash) throw new Error('Source verification describes a different tab.');
+    if (!matchesHybridRequest(job.hybridLead, result.recipe?.hybridLead)) throw new Error('The completed arrangement does not match the requested Hybrid Lead options.');
+    if (job.hybridLead?.enabled) {
+      const proof = checked.verification.hybridLead, summary = result.verification.hybridLead, options = result.recipe.hybridLead;
+      if (!proof || !['created', 'no_additions', 'not_applicable'].includes(proof.status) || summary?.status !== proof.status
+          || proof.status !== 'not_applicable' && (proof.policy !== 'hybrid-lead-v3' || proof.primaryCoverage !== 'checked'
+            || summary.policy !== proof.policy || summary.primaryCoverage !== proof.primaryCoverage
+            || options.sourceSha256 !== job.cachedScoreHash || !options.mainTrackId
+            || proof.mainTrackId !== options.mainTrackId || summary.mainTrackId !== options.mainTrackId)) throw new Error('Hybrid Lead did not provide verified composition evidence.');
+    }
     Object.assign(job, { outputRelativePath: result.relativePath, outputHash,
       verification: result.verification, evidence: result.evidence, artwork: result.artwork, compatibility: result.compatibility, outputVerification: 'passed',
       scoreHash: result.scoreHash, audioHash: result.audioHash, recipe: result.recipe, alignment: result.alignment, coverage: result.coverage, warnings: result.warnings });
