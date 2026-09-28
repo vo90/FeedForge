@@ -120,6 +120,45 @@ test('Hybrid publication requires independent primary coverage proof', async t =
   assert.equal(f.completed.length, 0);
   assert.deepEqual(fs.readdirSync(f.outputDir), []);
 });
+test('app and converter require the same generated guidance policy', () => {
+  const { CHART_GUIDANCE_POLICY } = require('../electron/song-browser/songsterr-evidence.cjs');
+  const source = fs.readFileSync(path.join(__dirname, '../src/feedback_converter/chart_guidance.py'), 'utf8');
+  assert.equal(CHART_GUIDANCE_POLICY, source.match(/^POLICY = "([^"]+)"$/m)[1]);
+});
+
+for (const fault of ['recipe', 'summary', 'summary-count', 'durable-proof']) {
+  test(`publication requires current guidance evidence: ${fault}`, async t => {
+    const f = await fixture(t, { runConverter: async (args, ctx, normal) => {
+      const response = await normal(args, ctx);
+      if (args[0] !== '--song-import-file') return response;
+      const result = JSON.parse(response.stdout);
+      if (fault === 'recipe') delete result.recipe.chartGuidancePolicy;
+      if (fault === 'summary') delete result.verification.chartGuidance;
+      if (fault === 'summary-count') result.verification.chartGuidance.arrangements = 2;
+      if (fault === 'durable-proof') {
+        const request = JSON.parse(fs.readFileSync(args[1], 'utf8'));
+        const hash = data => crypto.createHash('sha256').update(data).digest('hex');
+        const record = JSON.parse(fs.readFileSync(path.join(request.auditDir, 'records', `${result.evidence.id}.json`), 'utf8'));
+        const proof = JSON.parse(fs.readFileSync(path.join(request.auditDir, 'objects', record.objects.verification), 'utf8'));
+        delete proof.chartGuidance;
+        const proofBytes = JSON.stringify(proof), proofHash = hash(proofBytes);
+        fs.writeFileSync(path.join(request.auditDir, 'objects', proofHash), proofBytes);
+        record.objects.verification = proofHash;
+        const bytes = JSON.stringify(record), id = hash(bytes);
+        fs.writeFileSync(path.join(request.auditDir, 'records', `${id}.json`), bytes);
+        Object.assign(result.evidence, { id, verificationHash: proofHash });
+      }
+      return { ...response, stdout: JSON.stringify(result) };
+    } });
+    const pending = f.enqueue();
+    await settle(f.jobs);
+    const finished = f.jobs.snapshot().find(j => j.id === pending.id);
+    assert.equal(finished.state, 'failed');
+    assert.match(finished.error, /arrangement guidance/);
+    assert.deepEqual(fs.readdirSync(f.outputDir), []);
+    assert.equal(f.completed.length, 0);
+  });
+}
 const RESPONSE = (value) => ({ code: 0, stdout: JSON.stringify({ ok: true, ...value }) });
 
 function deferred() {
@@ -193,7 +232,8 @@ async function fixture(t, options = {}) {
     const contract = options.contract || CURRENT;
     const hybridOptions = request.hybridLead?.enabled ? { ...request.hybridLead, sourceSha256: sourceHash } : undefined;
     const hybridProof = hybridOptions ? { status: 'no_additions', mainTrackId: hybridOptions.mainTrackId, policy: 'hybrid-lead-v3', primaryCoverage: 'checked' } : undefined;
-    const report = JSON.stringify({ version: contract, status: 'passed', sourceSha256: sourceHash, ...(hybridProof ? { hybridLead: hybridProof } : {}) }), verificationHash = hash(report);
+    const chartGuidance = { policy: 'feedforge-chart-guidance-v1', status: 'passed', arrangements: 1, sourceAuthored: false };
+    const report = JSON.stringify({ version: contract, status: 'passed', sourceSha256: sourceHash, chartGuidance, ...(hybridProof ? { hybridLead: hybridProof } : {}) }), verificationHash = hash(report);
     const record = JSON.stringify({ version: contract, outputHash, objects: { verification: verificationHash, source: sourceHash } });
     const id = hash(record);
     fs.mkdirSync(path.join(request.auditDir, 'objects'), { recursive: true });
@@ -201,8 +241,8 @@ async function fixture(t, options = {}) {
     fs.writeFileSync(path.join(request.auditDir, 'objects', verificationHash), report);
     fs.writeFileSync(path.join(request.auditDir, 'records', `${id}.json`), record);
     return RESPONSE({ stagingPath, relativePath: options.relativePath || 'Synthetic Artist - Synthetic Song.feedpak',
-      scoreHash: sourceHash, audioHash: 'audio-digest', recipe: { version: 3, preservationContract: contract, scoreHash: sourceHash, audioHash: 'audio-digest', ...(hybridOptions ? { hybridLead: hybridOptions } : {}) },
-      verification: { version: contract, status: 'passed', outputHash, ...(hybridProof ? { hybridLead: hybridProof } : {}) }, evidence: { version: contract, id, sourceHash, verificationHash, outputHash },
+      scoreHash: sourceHash, audioHash: 'audio-digest', recipe: { version: 3, preservationContract: contract, chartGuidancePolicy: chartGuidance.policy, scoreHash: sourceHash, audioHash: 'audio-digest', ...(hybridOptions ? { hybridLead: hybridOptions } : {}) },
+      verification: { version: contract, status: 'passed', outputHash, chartGuidance, ...(hybridProof ? { hybridLead: hybridProof } : {}) }, evidence: { version: contract, id, sourceHash, verificationHash, outputHash },
       warnings: [], alignment: { status: 'validated' }, coverage: { arrangements: 1 } });
   }
   const runConverter = async (args, context) => {

@@ -12,6 +12,7 @@ from .evidence import CONTRACT_VERSION, save_evidence
 from .model import ScoreImportError
 from .compatibility import summary as compatibility_summary, new_report, add_finding
 from .synchronization import align_from_songsterr
+from ..chart_guidance import POLICY as GUIDANCE_POLICY
 
 
 def _choose_alignment(performance: dict, audio: dict, request: dict, progress=None, *, allow_padding=True) -> dict:
@@ -179,7 +180,7 @@ def run_import(request: dict, progress=None) -> dict:
                   "revisionId": metadata.get("revisionId"), "scoreHash": score_hash, "audioHash": audio["hash"],
                   "sourceMetadata": dict(performance.get("source") or {}),
                   "audioSource": {key: audio["source"][key] for key in ("kind", "videoId", "title", "sha256") if key in audio["source"]},
-                  "alignment": alignment_recipe, 'preparation':alignment['preparation']}
+                  "alignment": alignment_recipe, 'preparation':alignment['preparation'], "chartGuidancePolicy": GUIDANCE_POLICY}
         features = set()
         if hybrid_options["enabled"]:
             recipe["hybridLead"] = hybrid_options
@@ -206,7 +207,8 @@ def run_import(request: dict, progress=None) -> dict:
         if progress:
             progress({"stage": "validating", "message": "Comparing the completed FeedPak with the original tab."})
         from .verification import verify_import
-        verification = verify_import(score, Path(result["stagingPath"]), alignment, metadata=metadata, hybrid_options=hybrid_options)
+        verification = verify_import(score, Path(result["stagingPath"]), alignment, metadata=metadata, hybrid_options=hybrid_options,
+                                     guidance_policy=GUIDANCE_POLICY)
         verification["consumerCompatibility"] = recipe["compatibility"]
         if verification.get("status") != "passed":
             for finding in verification.get("unsupported", []) + verification.get("errors", []):
@@ -231,6 +233,8 @@ def run_import(request: dict, progress=None) -> dict:
             summary['endingTiming']['individualNotesUnassessed']=bool(report.get('endingEvidence'))
             if alignment['endingPadding'].get('timingWarning'):
                 summary['endingTiming']['warning'] = alignment['endingPadding']['timingWarning']
+        if verification.get("chartGuidance"):
+            summary["chartGuidance"] = verification["chartGuidance"]
         if result.get("hybridLead"):
             summary["hybridLead"] = {**result["hybridLead"], **verification.get("hybridLead", {})}
         if verification.get("adjustments"):

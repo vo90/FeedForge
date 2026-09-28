@@ -14,6 +14,8 @@ from PIL import Image
 
 from ..feedpak_validator import require_valid_feedpak
 from ..difficulty import ensure_difficulty
+from ..chart_guidance import POLICY as GUIDANCE_POLICY, finalize as finalize_guidance
+from ..verify_chart_guidance import validate_arrangement as check_guidance
 from ..output_naming import output_path, safe_path_segment
 from .alignment import map_time
 from .audio import ImportFailure
@@ -325,8 +327,12 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
                     if marks:
                         detail["slideOuts"] = marks
                     sustain_adjustments.append(detail)
+        finalize_guidance(chart)
         if settings.get("generateDifficulty") is True:
             ensure_difficulty(chart, duration=duration)
+        guidance_errors = check_guidance(chart, duration=duration)
+        if guidance_errors:
+            raise ImportFailure("guidance_failed", "Arrangement guidance failed validation: " + guidance_errors[0])
         relative_file = f"arrangements/{ident}.json"
         _write_json(package / relative_file, chart)
         kind = "bass" if track["instrument"] == "bass" else str(track.get("role") or "guitar")
@@ -420,6 +426,7 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             pass
     if recipe:
         manifest["song_import"] = {**deepcopy(recipe), "coverage": coverage}
+    manifest.setdefault("song_import", {})["chartGuidancePolicy"] = GUIDANCE_POLICY
     if hybrid_summary:
         manifest.setdefault("song_import", {})["hybridLeadResult"] = hybrid_summary
         if hybrid_summary["status"] != "not_applicable":

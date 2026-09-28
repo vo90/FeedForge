@@ -383,6 +383,12 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
         for chord in expected_chart['chords']:
             chord['id'] = ids[chord['id']]
     actual_chart = {k: v for k, v in chart.items() if k not in {"phrases", "ext"}}
+    if manifest.get("song_import", {}).get("chartGuidancePolicy") == "feedforge-chart-guidance-v1":
+        # These two generated fields are independently checked against the
+        # final Hybrid events by verify_import. Keep exact musical comparison.
+        for key in ("anchors", "handshapes"):
+            expected_chart.pop(key, None)
+            actual_chart.pop(key, None)
     check.equal("hybrid_chart", arr["file"], expected_chart, actual_chart)
     if regional_policy and recipe.get('preservationContract', 0) >= 35:
         # Interval arithmetic is descriptive, not a shared musical oracle.

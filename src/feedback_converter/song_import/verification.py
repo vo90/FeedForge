@@ -631,7 +631,7 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
     return {"omittedEndingNotes": len(omissions)}
 
 
-def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: dict | None = None, *, hybrid_options: dict | None = None) -> dict:
+def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: dict | None = None, *, hybrid_options: dict | None = None, guidance_policy: str | None = None) -> dict:
     """Compare an immutable raw score with a completed staged FeedPak.
 
     Does not mutate sources, archive or alignment; performs no network I/O.
@@ -1006,6 +1006,26 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 report["hybridLead"] = verify_hybrid(z, manifest, arrangements, derived, hybrid_facts, source,
                                                        alignment, report["sourceSha256"], check)
                 report["scope"].append("hybrid_main_preservation_and_source_passages")
+            from ..verify_chart_guidance import POLICY as guidance_version, validate_arrangement
+            declared = recipe.get("chartGuidancePolicy")
+            if guidance_policy is not None:
+                check.equal("guidance_policy", "manifest/song_import/chartGuidancePolicy", guidance_policy, declared)
+            guidance_count = 0
+            before_guidance = check.total_errors
+            for entry in manifest.get("arrangements", []):
+                chart = _json(z, entry["file"], check)
+                proof = chart.get("ext", {}).get("chartGuidance")
+                if declared is None and proof is None:
+                    continue  # Historical package; not certified as completed.
+                check.equal("guidance_policy", "manifest/song_import/chartGuidancePolicy", guidance_version, declared)
+                check.equal("guidance_ownership", entry["file"], ["anchors", "handshapes"], (proof or {}).get("fields"))
+                for error in validate_arrangement(chart, duration=duration):
+                    check.fail("chart_guidance", entry["file"], error)
+                guidance_count += 1
+            if declared is not None:
+                report["chartGuidance"] = {"policy": guidance_version, "status": "passed" if check.total_errors == before_guidance else "failed",
+                                           "arrangements": guidance_count, "sourceAuthored": False}
+                report["scope"].append("generated_chart_guidance")
         report["status"] = "failed" if check.total_errors else "passed"
     except UnverifiedFeature as exc:
         report["status"] = "failed" if check.total_errors else "unsupported"

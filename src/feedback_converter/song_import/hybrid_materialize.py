@@ -8,6 +8,8 @@ import hashlib
 import json
 
 from ..difficulty import ensure_difficulty
+from ..chart_guidance import finalize as finalize_guidance
+from ..verify_chart_guidance import validate_arrangement as check_guidance
 from .audio import ImportFailure
 from .hybrid_lead import NAME, POLICY
 
@@ -88,7 +90,13 @@ def materialize(plan, originals, options, source_hash, audio_hash, duration, gen
     chart["name"] = NAME
     chart.pop("phrases", None)
     chart.pop("difficulty_provenance", None)
+    # The source's other extension receipts do not describe the derived chart.
+    # Keep guidance ownership until finalization can validate its digest and
+    # regenerate the two generated fields from the completed selection.
+    inherited_guidance = chart.get('ext', {}).get('chartGuidance')
     chart.pop('ext', None)
+    if inherited_guidance is not None:
+        chart['ext'] = {'chartGuidance': inherited_guidance}
     # Resolve lineage through existing endpoint projection before selecting.
     for row in [*plan.get('mainEvents', []), *plan.get('removedMain', [])]:
         row['sourceIndex'] = row['index']
@@ -128,8 +136,14 @@ def materialize(plan, originals, options, source_hash, audio_hash, duration, gen
     chart['templates'] = [chart['templates'][i] for i in retained]
     for chord in chart['chords']:
         chord['id'] = remap[chord['id']]
+    # The base's generated positions no longer describe the completed Hybrid.
+    # Regenerate only fields with intact ownership, before all final hashes.
+    finalize_guidance(chart, regenerate=True)
     if generate_difficulty:
         ensure_difficulty(chart, duration=duration)
+    guidance_errors = check_guidance(chart, duration=duration)
+    if guidance_errors:
+        raise ImportFailure("guidance_failed", "Hybrid guidance failed validation: " + guidance_errors[0])
     notation, notation_reason = notation_for(plan, originals)
     for row in plan.get('coverage', {}).get('events', []):
         row['sourceIndex'] = row['index']

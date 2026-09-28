@@ -5,7 +5,8 @@ const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { publishFeedpak } = require('./publication.cjs');
 const { normalizeOutputSettings } = require('./output-settings.cjs');
-const { inspectEvidence, reportBundle, compatibilityReport, compatibilityBacklog, CURRENT_PRESERVATION_CONTRACT, KNOWN_PRESERVATION_CONTRACTS } = require('./songsterr-evidence.cjs');
+const { inspectEvidence, reportBundle, compatibilityReport, compatibilityBacklog, CURRENT_PRESERVATION_CONTRACT, KNOWN_PRESERVATION_CONTRACTS,
+  CHART_GUIDANCE_POLICY, verifiedChartGuidance } = require('./songsterr-evidence.cjs');
 const { waitForSharedOperation } = require('./shared-operation.cjs');
 const { unavailableSynchronization, synchronizationSummary, audioVideo } = require('./providers/songsterr/synchronization.cjs');
 const { transport, retryPlan } = require('./songsterr-retry.cjs');
@@ -510,6 +511,10 @@ class SongsterrJobs {
         || result.verification.outputHash !== outputHash) throw new Error('The converter did not provide a current source verification. Update the converter and retry.');
     const checked = inspectEvidence(this.auditRoot, result.evidence, outputHash);
     if (checked.verification.version !== CURRENT_PRESERVATION_CONTRACT || checked.verification.status !== 'passed') throw new Error('Source verification did not pass.');
+    if (result.recipe?.chartGuidancePolicy !== CHART_GUIDANCE_POLICY
+        || !verifiedChartGuidance(checked.verification.chartGuidance, result.coverage?.arrangements)
+        || !verifiedChartGuidance(result.verification.chartGuidance, result.coverage?.arrangements))
+      throw new Error('The converter did not provide verified arrangement guidance. Update the converter and retry.');
     if (result.scoreHash !== job.cachedScoreHash || checked.record.objects.source !== job.cachedScoreHash) throw new Error('Source verification describes a different tab.');
     if (!matchesHybridRequest(job.hybridLead, result.recipe?.hybridLead)) throw new Error('The completed arrangement does not match the requested Hybrid Lead options.');
     if (job.hybridLead?.enabled) {
@@ -530,7 +535,8 @@ class SongsterrJobs {
       try {
         const checkedPrior = inspectEvidence(this.auditRoot, prior.evidence, prior.outputHash);
         canReuse = await hashFile(prior.outputPath, job.controller.signal) === prior.outputHash
-          && checkedPrior.verification.version === CURRENT_PRESERVATION_CONTRACT && checkedPrior.verification.status === 'passed';
+          && checkedPrior.verification.version === CURRENT_PRESERVATION_CONTRACT && checkedPrior.verification.status === 'passed'
+          && verifiedChartGuidance(checkedPrior.verification.chartGuidance, result.coverage?.arrangements);
       } catch { /* A missing historical report does not invalidate this fresh conversion. */ }
     }
     if (canReuse) {
