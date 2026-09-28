@@ -114,17 +114,24 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
     sf.write(recording, samples, rate)
     monkeypatch.setattr(audio_module, "_public_url", lambda url: url)
     monkeypatch.setattr(audio_module, "_download_youtube", lambda url, directory, tools, **kwargs:
-                        (recording, {"kind": "youtube", "videoId": video_id, "url": url}))
+                        (recording, {"kind": "youtube", "videoId": video_id, "url": url, "title": "Test artist - Test song (Official Audio)"}))
+    artwork_metadata = []
+    def album_lookup(metadata, *args, **kwargs):
+        artwork_metadata.append(metadata)
+        return {'status': 'unavailable', 'albumStatus': 'matched', 'album': 'Confirmed album', 'year': 2001}
+    monkeypatch.setattr('feedback_converter.song_import.artwork.resolve_album_art', album_lookup)
     monkeypatch.setattr(worker, "align_audio", lambda *args, **kwargs: pytest.fail("must use supplied source timing"))
     synchronization = {"version": 1, "source": "songsterr-video-points", "songId": "12", "revisionId": "34",
                        "videoId": video_id, "status": "done", "feature": None, "points": [1, 3.1, 5.8]}
-    request = {"scorePath": str(score), "audio": {"kind": "url", "url": f"https://www.youtube.com/watch?v={video_id}"}, "artworkLookup": False,
+    request = {"scorePath": str(score), "audio": {"kind": "url", "url": f"https://www.youtube.com/watch?v={video_id}"}, "artworkLookup": True,
                "metadata": {"songId": "12", "revisionId": "34", "approval": "approved", "title": "Test song", "artist": "Test artist"},
                "synchronization": synchronization, "workDir": str(tmp_path / "work"), "outputDir": str(tmp_path / "library"),
                "outputSettings": {"nameTemplate": "{artist} - {title}", "outputLayout": "artist", "generateDifficulty": precise_harmonic}}
     request['hybridLead'] = {'enabled': hybrid}
     result = worker.run_import(request)
     assert result["ok"], result
+    assert artwork_metadata[0]['audioTitle'] == 'Test artist - Test song (Official Audio)'
+    assert result['artwork']['albumStatus'] == result['recipe']['artwork']['albumStatus'] == 'matched'
     if hybrid:
         assert result['verification']['hybridLead']['policy'] == 'hybrid-lead-v3'
         assert result['verification']['hybridLead']['primaryCoverage'] == 'checked'

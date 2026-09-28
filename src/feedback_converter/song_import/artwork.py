@@ -29,17 +29,14 @@ import warnings
 
 from PIL import Image, ImageOps
 
-POLICY_VERSION = 1
+POLICY_VERSION = 2
 COVER_ENCODING = "jpeg-512-q90-v1"
 COVER_MAX_SIZE = 512
-USER_AGENT = "FeedForge/0.1.40 (album artwork; https://github.com/balki97/FeedForge)"
+USER_AGENT = "FeedForge/2.0.1 (album artwork; https://github.com/balki97/FeedForge)"
 JSON_LIMIT = 2 * 1024 * 1024
 IMAGE_LIMIT = 12 * 1024 * 1024
 MAX_REQUESTS = 24
 MAX_SECONDS = 45.0
-MAX_RECORDINGS = 100
-MAX_MATCHES = 4
-MAX_RELEASES = 300
 _UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
 _RATE_LOCK = threading.Lock()
 _LAST_MB = 0.0
@@ -254,7 +251,23 @@ class _Client:
                 raise _LookupFailure("service_unavailable")
             return response.body
 
-    def json(self, url, kind):
+    def json(self, url, kind, *, fresh=False):
+        # Share stable entity lookups between songs; searches still have their
+        # own complete-result checks and song-result cache. Never cache errors.
+        cache_file = None
+        self.last_json_cached = False
+        if kind == 'mb' and self.cache is not None and 'query=' not in url:
+            folder = self.cache / 'lookups'
+            try:
+                folder.mkdir(exist_ok=True)
+                cache_file = folder / (hashlib.sha256(url.encode()).hexdigest() + '.json')
+                if not fresh and cache_file.is_file() and cache_file.stat().st_size <= JSON_LIMIT:
+                    saved = json.loads(cache_file.read_text(encoding='utf8'))
+                    if saved.get('version') == POLICY_VERSION and 0 <= self.now() - saved['createdAt'] < 86400 and isinstance(saved.get('data'), dict):
+                        self.last_json_cached = True
+                        return saved['data']
+            except (OSError, ValueError, KeyError, TypeError):
+                pass
         raw = self.get(url, kind)
         if raw is None:
             return None
@@ -264,6 +277,11 @@ class _Client:
             raise _LookupFailure("invalid_metadata") from None
         if not isinstance(result, dict):
             raise _LookupFailure("invalid_metadata")
+        if cache_file is not None:
+            try:
+                _atomic_json(cache_file, {'version': POLICY_VERSION, 'createdAt': self.now(), 'data': result})
+            except OSError:
+                pass
         return result
 
 
@@ -361,96 +379,20 @@ def _pages(client, entity, values, list_key, count_key, cap):
             raise _LookupFailure("incomplete_catalogue", "ambiguous")
 
 
-def _recordings(client, metadata):
-    title, versions, details = _title_identity(metadata["title"])
-    # Search the song name; a recording's version often lives in disambiguation
-    # instead of its title. Keep those qualifiers as separate strict constraints.
-    escaped = lambda value: str(value).replace("\\", "\\\\").replace('"', '\\"')
-    query = f'recording:"{escaped(_search_title(metadata["title"]))}" AND artist:"{escaped(metadata["artist"])}"'
-    identifier = metadata.get("musicbrainzRecordingId")
-    if identifier:
-        record = client.json(f"https://musicbrainz.org/ws/2/recording/{identifier}?fmt=json&inc=artist-credits", "mb")
-        records = [record] if record and record.get("id") == identifier else []
-    else:
-        records = _pages(client, "recording", {"query": query}, "recordings", "count", MAX_RECORDINGS)
-    matches = []
-    for record in records:
-        # MusicBrainz models a standalone music video as a separate recording.
-        # It need not belong to an audio album (Rats is one real example). Album
-        # artwork matching uses the audio recording with the same song/version;
-        # it does not claim that its audio is identical to the selected video.
-        if record.get("video") is True:
-            continue
-        candidate_title, candidate_versions, candidate_details = _title_identity(record.get("title", ""), record.get("disambiguation", ""))
-        if title != candidate_title or _norm(metadata["artist"]) not in _artist_names(record):
-            continue
-        if versions != candidate_versions:
-            continue
-        # Several live dates or named remixes share generic qualifiers. Keep
-        # details when the source supplies more than a bare version label.
-        specific = {d for d in details if d not in {_norm(tag) for tag in versions}}
-        if specific and not specific.issubset(candidate_details):
-            continue
-        matches.append(record)
-    if len(matches) > MAX_MATCHES:
-        raise _LookupFailure("recording_ambiguous", "ambiguous")
-    return matches, versions
-
-
 _EXCLUDE = {"compilation", "live", "remix", "dj-mix", "mixtape/street", "demo", "interview", "audiobook", "spokenword"}
 
 
-def _album_for_recording(client, recording, metadata, versions):
-    releases = _pages(client, "release", {"recording": recording["id"], "inc": "release-groups+artist-credits"},
-                      "releases", "release-count", MAX_RELEASES)
-    groups = {}
-    for release in releases:
-        group = release.get("release-group") or {}
-        if not isinstance(group, dict) or not _UUID.fullmatch(str(group.get("id") or "")):
-            continue
-        if str(release.get("status", "")).lower() != "official" or str(group.get("primary-type", "")).lower() != "album":
-            continue
-        secondary = {str(item).lower() for item in group.get("secondary-types", [])}
-        permitted = ({"live"} if "live" in versions else set()) | ({"remix"} if "remix" in versions else set())
-        if (secondary & _EXCLUDE) - permitted or ("live" in versions and "live" not in secondary):
-            continue
-        album = str(group.get("title") or release.get("title") or "").strip()
-        if not album or (metadata.get("album") and _norm(metadata["album"]) not in {_norm(album), _norm(release.get("title"))}):
-            continue
-        # A same-song compilation by Various Artists cannot masquerade as the
-        # original artist's album even if its secondary-type tags are missing.
-        if _norm(metadata["artist"]) not in _artist_names(release):
-            continue
-        group_entry = groups.setdefault(group["id"], {"id": group["id"], "album": album, "dates": set(), "releases": []})
-        first_date = str(group.get("first-release-date") or "")
-        if re.fullmatch(r"\d{4}(?:-\d{2}){0,2}", first_date):
-            group_entry["dates"].add(first_date)
-        group_entry["releases"].append(release)
-    if not groups:
-        return None
-    if metadata.get("album"):
-        if len(groups) != 1:
-            raise _LookupFailure("album_ambiguous", "ambiguous")
-        selected = next(iter(groups.values()))
-    else:
-        if any(len(group["dates"]) != 1 for group in groups.values()):
-            raise _LookupFailure("album_date_unknown", "ambiguous")
-        ordered = sorted(groups.values(), key=lambda group: min(group["dates"]))
-        if len(ordered) > 1 and min(ordered[0]["dates"])[:4] == min(ordered[1]["dates"])[:4]:
-            # Partial dates cannot establish a unique original album.
-            first, second = min(ordered[0]["dates"]), min(ordered[1]["dates"])
-            if len(first) != 10 or len(second) != 10 or first == second:
-                raise _LookupFailure("album_ambiguous", "ambiguous")
-        selected = ordered[0]
-    dated = [r for r in selected["releases"] if re.fullmatch(r"\d{4}(?:-\d{2}){0,2}", str(r.get("date") or ""))]
-    selected["release"] = min(dated, key=lambda r: (r["date"], r["id"])) if dated else min(selected["releases"], key=lambda r: r["id"])
-    return selected
-
-
 def _cover(client, group):
+    unavailable = None
     for kind, identifier in (("release", group["release"]["id"]), ("release-group", group["id"])):
         index_url = f"https://coverartarchive.org/{kind}/{identifier}"
-        index = client.json(index_url, "caa")
+        try:
+            index = client.json(index_url, "caa")
+        except _LookupFailure as exc:
+            if exc.reason != 'service_unavailable':
+                raise
+            unavailable = exc
+            continue
         if not index:
             continue
         images = index.get("images")
@@ -469,13 +411,19 @@ def _cover(client, group):
         parsed = urlsplit(image_url)
         if parsed.scheme == "http" and parsed.port in (None, 80) and not parsed.username and not parsed.password:
             image_url = urlunsplit(("https", parsed.hostname or "", parsed.path, parsed.query, parsed.fragment))
-        raw = client.get(image_url, "caa", IMAGE_LIMIT)
+        try:
+            raw = client.get(image_url, "caa", IMAGE_LIMIT)
+        except _LookupFailure as exc:
+            if exc.reason != 'service_unavailable':
+                raise
+            unavailable = exc
+            continue
         if raw:
             release_url = str(index.get("release") or "")
             cover_release = release_url.rstrip("/").split("/")[-1]
             return raw, {"source": "cover-art-archive", "sourceUrl": index_url, "imageUrl": image_url,
                          "artworkReleaseId": cover_release if _UUID.fullmatch(cover_release) else group["release"]["id"]}
-    raise _LookupFailure("cover_not_available")
+    raise unavailable or _LookupFailure("cover_not_available")
 
 
 def _normalize_image(raw, *, reuse_encoded=False):
@@ -558,7 +506,7 @@ def _cache_write(cache, key, result, raw, now):
             finally:
                 temporary.unlink(missing_ok=True)
         _atomic_json(cache / f"{key}.json", {"version": POLICY_VERSION, "createdAt": now(),
-                                           "ttl": 30 * 86400 if raw else 86400, "result": result})
+                                           "ttl": 30 * 86400 if raw else (300 if result.get('reason') in {'service_unavailable', 'lookup_budget_exceeded'} else 86400), "result": result})
     except OSError:
         pass  # A cache is optional; never lose a fetched cover because it is unwritable.
 
@@ -600,7 +548,9 @@ def resolve_album_art(metadata: dict, directory: Path, cache_dir: Path | None = 
                       clock=time.monotonic, sleep=time.sleep, now=time.time) -> dict:
     """Return matched/unavailable/ambiguous; artwork never blocks song conversion.
 
-    ``metadata`` accepts title, artist, optional album/year/duration/audioKind.
+    ``metadata`` accepts title, artist, optional album and recording ID, and an
+    audioTitle corroborated by the selected source timing map. Album identity
+    and image availability are independent outcomes (albumStatus and status).
     Ambiguous recordings may identify the same album; in that case provenance
     records all recordingIds and matchingScope='album', without inventing one.
     The returned file is a compact JPEG, at most 512 pixels on its longest edge,
@@ -608,16 +558,17 @@ def resolve_album_art(metadata: dict, directory: Path, cache_dir: Path | None = 
     Different songs reuse a cover only after independently matching the same
     release-group and release IDs; shared covers expire after 30 days.
     """
+    cache, key, enrichment = None, None, {}
     try:
         if not isinstance(metadata, dict) or any(not isinstance(metadata.get(k), str) or not metadata[k].strip() or len(metadata[k]) > 300 for k in ("artist", "title")):
             return _result("unavailable", "metadata_missing")
-        values = {key: str(metadata.get(key) or "").strip() for key in ("artist", "title", "album")}
+        values = {key: str(metadata.get(key) or "").strip() for key in ("artist", "title", "album", "audioTitle")}
         if metadata.get("musicbrainzRecordingId"):
             identifier = str(metadata["musicbrainzRecordingId"]).lower()
             if not _UUID.fullmatch(identifier):
                 return _result("unavailable", "metadata_invalid")
             values["musicbrainzRecordingId"] = identifier
-        if len(values["album"]) > 300:
+        if len(values["album"]) > 300 or len(values["audioTitle"]) > 1000:
             return _result("unavailable", "metadata_invalid")
         key = hashlib.sha256(json.dumps([POLICY_VERSION, values], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
         cache = None
@@ -631,32 +582,29 @@ def resolve_album_art(metadata: dict, directory: Path, cache_dir: Path | None = 
         raw = None
         if cached:
             result, raw = cached
+            enrichment = {k: result[k] for k in ('albumStatus', 'album', 'year', 'provenance') if k in result}
         else:
             client = _Client(transport, cache, clock, sleep, now)
-            records, versions = _recordings(client, values)
-            if not records:
-                result = _result("unavailable", "recording_not_found")
-            else:
-                albums = [_album_for_recording(client, record, values, versions) for record in records]
-                if not any(albums):
-                    result = _result("unavailable", "album_not_found")
-                elif any(album is None for album in albums) or len({album["id"] for album in albums if album}) != 1:
-                    result = _result("ambiguous", "album_ambiguous")
-                else:
-                    group = albums[0]
-                    raw, provenance = _album_cover(client, group, cache, now)
-                    provenance.update({"policyVersion": POLICY_VERSION, "recordingIds": [record["id"] for record in records],
-                                       "recordingId": records[0]["id"] if len(records) == 1 else None,
-                                       "matchingScope": "recording-and-album" if len(records) == 1 else "album",
-                                       "matchBasis": "recording-id-artist-title-version-album" if values.get("musicbrainzRecordingId") else "artist-title-version-album", "audioRecordingVerified": False,
-                                       "releaseGroupId": group["id"], "releaseId": group["release"]["id"],
-                                       "albumSelection": "supplied-album" if values["album"] else "original-official-album",
-                                       "imageHash": hashlib.sha256(raw).hexdigest()})
-                    result = _result("matched", "album_cover", album=group["album"], provenance=provenance)
-                    dates = group["dates"]
-                    date = min(dates) if dates else str(group["release"].get("date") or "")
-                    if re.match(r"^\d{4}", date):
-                        result["year"] = int(date[:4])
+            from .album_match import select_album
+            group = select_album(client, values)
+            records = list(group["records"].values())
+            provenance = {"policyVersion": POLICY_VERSION, "recordingIds": [record["id"] for record in records],
+                          "recordingId": records[0]["id"] if len(records) == 1 else None,
+                          "matchingScope": "album", "audioRecordingVerified": False,
+                          "matchBasis": "recording-id-artist-title-version-album-track" if values.get("musicbrainzRecordingId") else "artist-title-version-album-track",
+                          "releaseGroupId": group["id"], "releaseId": group["release"]["id"],
+                          "albumSelection": "supplied-album" if values["album"] else "original-official-release",
+                          "releaseType": group["releaseType"], "lookupTitle": group["lookupTitle"],
+                          "versions": group["versions"], "trackEvidence": group["trackEvidence"]}
+            enrichment = {"albumStatus": "matched", "album": group["album"], "year": group["interval"][0].year,
+                          "provenance": provenance}
+            try:
+                raw, image_provenance = _album_cover(client, group, cache, now)
+                provenance.update(image_provenance)
+                result = _result("matched", "album_cover", **enrichment)
+            except _LookupFailure as exc:
+                result = _result(exc.status, exc.reason, **enrichment)
+                result["message"] = "Album identified. Its cover is currently unavailable; the song can still be converted."
             _cache_write(cache, key, result, raw, now)
         if raw is not None:
             destination = Path(directory)
@@ -667,8 +615,11 @@ def resolve_album_art(metadata: dict, directory: Path, cache_dir: Path | None = 
             return {**result, "path": str(image_path)}
         return result
     except _LookupFailure as exc:
-        return _result(exc.status, exc.reason)
+        result = _result(exc.status, exc.reason)
+        if cache is not None and key is not None:
+            _cache_write(cache, key, result, None, now)
+        return result
     except Exception:
         # Transport, malformed third-party records and local image writes are
         # optional enrichment failures, never a failed musical conversion.
-        return _result("unavailable", "lookup_failed")
+        return _result("unavailable", "lookup_failed", **enrichment)

@@ -195,9 +195,10 @@ def run_import(request: dict, progress=None) -> dict:
             from .artwork import resolve_album_art
             artwork = resolve_album_art({**metadata, "title": performance["title"], "artist": performance["artist"],
                                          "album": performance.get("album"), "duration": audio["duration"],
+                                         "audioTitle": audio["source"].get("title", "") if alignment.get("method") == "songsterr-video-points-v1" else "",
                                          "audioKind": audio["source"].get("kind")}, job / "artwork",
                                         cache_dir=Path(request.get("artworkCacheDir") or audit_root.parent / "artwork-cache"))
-        recipe["artwork"] = {key: artwork[key] for key in ("status", "album", "year", "provenance", "reason") if key in artwork}
+        recipe["artwork"] = {key: artwork[key] for key in ("status", "albumStatus", "album", "year", "provenance", "reason") if key in artwork}
         if progress:
             progress({"stage": "validating", "message": "Building and validating the FeedPak."})
         result = build_feedpak(performance, audio, alignment, job, output_dir=Path(request["outputDir"]),
@@ -257,7 +258,7 @@ def run_import(request: dict, progress=None) -> dict:
         return {"ok": True, **result, "scoreHash": score_hash, "audioHash": audio["hash"],
                 "recipe": recipe, "alignment": _alignment_summary(alignment),
                 "verification": summary, "evidence": evidence, "compatibility": compatibility_summary(compatibility),
-                "artwork": {key: artwork[key] for key in ("status", "album", "year", "message", "reason") if key in artwork},
+                "artwork": {key: artwork[key] for key in ("status", "albumStatus", "album", "year", "message", "reason") if key in artwork},
                 "warnings": list(performance.get("warnings", [])) + result["warnings"] +
                             ([alignment['endingPadding']['timingWarning']['message']]
                              if alignment.get('endingPadding',{}).get('timingWarning') else []) +
