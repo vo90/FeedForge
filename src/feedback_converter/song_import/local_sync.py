@@ -174,12 +174,18 @@ def compare_assessment(fresh, stored, check, path='import/timing-assessment'):
     enforces that tighter musical tolerance; feature scores are not note times.
     """
     metrics={'jointAtMap','jointBest','jointContrast','atMap','best','distantBest','contrast'}
+    rounded_metrics={'pitchAtMap','pitchShiftRank','pitchNearBest','pitchBest','pitchContrast',
+                     'attackAtMap','attackBest','attackNearBest','attackContrast'}
     if isinstance(fresh,dict) and isinstance(stored,dict):
         check.equal('timing_assessment_fields',path,sorted(fresh),sorted(stored))
         for key,value in fresh.items():
             actual=stored.get(key)
             if key in metrics and type(actual) in (int,float):
                 check.near('timing_assessment_metric',path+'/'+key,value,actual,max(.005,abs(value)*.01))
+            elif key in rounded_metrics:
+                # Scalar diagnostic reductions can straddle the last rounded
+                # decimal across BLAS thread counts. Decisions remain exact.
+                check.near('timing_assessment_metric',path+'/'+key,value,actual,.0000011)
             else:compare_assessment(value,actual,check,path+'/'+key)
     elif isinstance(fresh,list) and isinstance(stored,list):
         check.equal('timing_assessment_count',path,len(fresh),len(stored))
