@@ -15,7 +15,7 @@ def uid(number):
 
 
 def credit(name="Example Artist"):
-    return [{"name": name, "artist": {"id": uid(1), "name": name}}]
+    return [{"name": name, "artist": {"id": uid(1 if name == 'Example Artist' else 9876), "name": name}}]
 
 
 def recording(number=2, title="Example Song", disambiguation="", artist="Example Artist"):
@@ -73,6 +73,26 @@ class Network:
         parts = urlsplit(url)
         params = parse_qs(parts.query)
         if parts.hostname == "musicbrainz.org":
+            all_releases = [r for rows in self.releases.values() for r in rows]
+            if parts.path == '/ws/2/artist/':
+                return response({'count': 1, 'artists': [credit()[0]['artist']]})
+            if parts.path.startswith('/ws/2/artist/'):
+                return response(credit()[0]['artist'])
+            if parts.path.startswith('/ws/2/release-group/'):
+                identifier = parts.path.rsplit('/', 1)[1]
+                matches = [r for r in all_releases if r['release-group']['id'] == identifier]
+                if not matches:
+                    return response(status=404)
+                selected = min(matches, key=lambda r: r.get('date') or '9999')
+                return response({**selected['release-group'], 'artist-credit': selected['artist-credit']})
+            if parts.path.startswith('/ws/2/release/') and parts.path != '/ws/2/release/':
+                identifier = parts.path.rsplit('/', 1)[1]
+                selected = next((r for r in reversed(all_releases) if r['id'] == identifier), None)
+                if not selected:
+                    return response(status=404)
+                tracks = [{'position': i + 1, 'recording': rec} for i, rec in enumerate(self.records)
+                          if any(r['id'] == identifier for r in self.releases.get(rec['id'], []))]
+                return response({**selected, 'media': [{'position': 1, 'tracks': tracks}]})
             if parts.path.startswith("/ws/2/recording/") and parts.path != "/ws/2/recording/":
                 candidate = next((record for record in self.records if record["id"] == parts.path.rsplit("/", 1)[1]), None)
                 return response(candidate, status=200 if candidate else 404)
@@ -80,6 +100,14 @@ class Network:
                 offset = int(params["offset"][0])
                 return response({"count": len(self.records), "recordings": self.records[offset:offset + 100]})
             if parts.path == "/ws/2/release/":
+                if 'query' in params:
+                    import re
+                    query = params['query'][0]
+                    group = re.search(r'rgid:([\w-]+)', query).group(1)
+                    year = re.search(r'date:\[(\d{4})', query)
+                    rows = list({r['id']: r for r in all_releases if r['release-group']['id'] == group
+                                 and (not year or r['date'].startswith(year.group(1)))}.values())
+                    return response({'count': len(rows), 'releases': rows})
                 records = self.releases.get(params["recording"][0], [])
                 offset = int(params["offset"][0])
                 return response({"release-count": len(records), "releases": records[offset:offset + 100]})
@@ -329,7 +357,7 @@ def test_musicbrainz_rate_limit_and_single_bounded_retry(tmp_path):
     result = network.resolve(tmp_path)
     assert result["status"] == "matched"
     calls = [call for call in network.calls if "musicbrainz.org" in call["url"]]
-    assert len(calls) == 3
+    assert len(calls) == 5
     assert all(b["time"] - a["time"] >= 1 for a, b in zip(calls, calls[1:]))
     assert 2 in network.clock.sleeps
 
@@ -504,7 +532,7 @@ def test_negative_match_cache_expires_and_does_not_publish_a_placeholder(tmp_pat
     assert len(network.calls) == count
     network.clock.value += 86401
     network.resolve(tmp_path / "three", cache=cache)
-    assert len(network.calls) == count + 1
+    assert len(network.calls) > count
     assert not list(cache.glob("*.jpg"))
 
 
@@ -528,7 +556,7 @@ def test_transient_transport_timeout_retries_once_within_budget(tmp_path):
     network.override = transient
     result = network.resolve(tmp_path)
     assert result["status"] == "matched"
-    assert len([call for call in network.calls if "musicbrainz.org" in call["url"]]) == 3
+    assert len([call for call in network.calls if "musicbrainz.org" in call["url"]]) == 5
 
 
 def test_transport_exception_and_invalid_input_are_nonblocking(tmp_path):
@@ -542,3 +570,186 @@ def test_no_album_from_various_artist_compilation_with_missing_secondary_tag(tmp
     network = Network()
     network.releases[uid(2)] = [release(10, 11, "Collection", "1999", artist="Various Artists")]
     assert network.resolve(tmp_path)["reason"] == "album_not_found"
+
+
+def test_many_recordings_and_paginated_search_can_share_one_album(tmp_path):
+    network = Network()
+    network.records = [{**recording(100 + i), 'releases': [release()]} for i in range(125)]
+    network.releases = {r['id']: [release()] for r in network.records}
+    result = network.resolve(tmp_path)
+    assert result['status'] == 'matched'
+    assert len(result['provenance']['recordingIds']) == 125
+    assert result['provenance']['trackEvidence']['basis'] == 'original-year-release-track'
+    assert any('offset=100' in call['url'] for call in network.calls)
+    assert len(network.calls) < 10, 'album grouping must not browse every recording separately'
+
+
+def test_search_budget_rejects_partial_results_before_selecting_album(tmp_path):
+    network = Network()
+    network.override = lambda url: response({'count': 301, 'recordings': [recording()]}) if '/recording/' in url else None
+    assert network.resolve(tmp_path)['reason'] == 'incomplete_catalogue'
+    assert not any('coverartarchive' in call['url'] for call in network.calls)
+
+
+def test_original_ep_is_eligible_and_has_track_evidence(tmp_path):
+    network = Network()
+    network.releases[uid(2)][0]['release-group']['primary-type'] = 'EP'
+    result = network.resolve(tmp_path)
+    assert result['status'] == 'matched'
+    assert result['provenance']['releaseType'] == 'EP'
+
+
+def test_artist_credit_alias_requeries_verified_artist_id(tmp_path):
+    network = Network()
+    network.records[0]['artist-credit'][0]['name'] = 'The Example Artist'
+    result = network.resolve(tmp_path, artist='The Example Artist')
+    assert result['status'] == 'matched'
+    queries = [parse_qs(urlsplit(c['url']).query).get('query', [''])[0] for c in network.calls]
+    assert any('arid:' + uid(1) in q for q in queries)
+
+
+def test_chart_suffix_requires_matching_audio_and_keeps_source_title(tmp_path):
+    network = Network()
+    def query(url):
+        if '/recording/?' in url and 'Solo' in url:
+            return response({'count': 0, 'recordings': []})
+    network.override = query
+    result = network.resolve(tmp_path, title='Example Song Solo', audioTitle='Example Artist - Example Song (Official Audio)')
+    assert result['status'] == 'matched'
+    assert result['provenance']['lookupTitle'] == 'Example Song'
+    assert network.resolve(tmp_path / 'no-proof', title='Example Song Solo')['status'] == 'unavailable'
+    assert network.resolve(tmp_path / 'wrong-artist', title='Example Song Solo', audioTitle='Wrong Artist - Example Song')['status'] == 'unavailable'
+
+
+def test_real_song_title_ending_in_solo_is_not_shortened(tmp_path):
+    network = Network()
+    network.records[0]['title'] = 'Example Song Solo'
+    result = network.resolve(tmp_path, title='Example Song Solo', audioTitle='Example Artist - Example Song Solo')
+    assert result['status'] == 'matched'
+    assert result['provenance']['lookupTitle'] == 'Example Song Solo'
+
+
+def test_selected_audio_named_live_session_narrows_live_albums(tmp_path):
+    network = Network()
+    network.records = [recording(disambiguation='live')]
+    network.releases[uid(2)] = [release(10, 11, 'Evening Session Unplugged', '2001', ['Live']),
+                              release(12, 13, 'Other Concert', '2000', ['Live']), release()]
+    result = network.resolve(tmp_path, audioTitle='Example Artist - Example Song (Evening Session Unplugged)')
+    assert result['status'] == 'matched' and result['album'] == 'Evening Session Unplugged'
+    assert network.resolve(tmp_path / 'generic', title='Example Song (Live)')['reason'] == 'album_ambiguous'
+
+
+def test_wrong_audio_identity_cannot_force_live_version(tmp_path):
+    network = Network()
+    result = network.resolve(tmp_path, audioTitle='Different Artist - Example Song (Live)')
+    assert result['status'] == 'matched'
+    assert result['provenance']['versions'] == []
+
+
+def test_nonoverlapping_months_establish_original_album_without_inventing_day(tmp_path):
+    network = Network()
+    network.releases[uid(2)] = [release(date='2001-01'), release(10, 11, 'Later', '2001-11')]
+    result = network.resolve(tmp_path)
+    assert result['status'] == 'matched' and result['album'] == 'Original Album'
+
+
+def test_catalogue_candidate_must_have_actual_original_track(tmp_path):
+    network = Network()
+    def override(url):
+        if urlsplit(url).path == '/ws/2/release/' + uid(3):
+            return response({**release(), 'media': [{'tracks': [{'recording': recording(99, title='Other Song')}]}]})
+    network.override = override
+    assert network.resolve(tmp_path)['reason'] == 'album_track_unconfirmed'
+    assert not any('coverartarchive' in c['url'] for c in network.calls)
+
+
+def test_later_bonus_track_does_not_prove_original_album_membership(tmp_path):
+    network = Network()
+    bonus = release(date='2010')
+    bonus['release-group']['first-release-date'] = '2001'
+    network.releases[uid(2)] = [bonus]
+    assert network.resolve(tmp_path)['reason'] == 'album_track_unconfirmed'
+
+
+def test_album_metadata_survives_cover_service_failure(tmp_path):
+    network = Network()
+    network.override = lambda url: response(status=500) if 'coverartarchive.org' in url else None
+    result = network.resolve(tmp_path)
+    assert result['status'] == 'unavailable' and result['reason'] == 'service_unavailable'
+    assert result['albumStatus'] == 'matched'
+    assert (result['album'], result['year']) == ('Original Album', 2001)
+    assert 'path' not in result
+    assert result['provenance']['trackEvidence']['recordingId'] == uid(2)
+
+
+def test_transient_cover_failure_uses_short_cache_and_recovers(tmp_path):
+    network = Network()
+    network.override = lambda url: response(status=500) if 'coverartarchive.org' in url else None
+    first = network.resolve(tmp_path / 'first', cache=tmp_path / 'cache')
+    assert first['albumStatus'] == 'matched' and first['status'] == 'unavailable'
+    network.override = None
+    network.clock.value += 301
+    assert network.resolve(tmp_path / 'next', cache=tmp_path / 'cache')['status'] == 'matched'
+
+
+def test_alias_and_chart_suffix_require_combined_audio_proof(tmp_path):
+    network = Network()
+    network.records[0]['artist-credit'][0]['name'] = 'The Example Artist'
+    network.override = lambda url: response({'count': 0, 'recordings': []}) if '/recording/?' in url and 'Solo' in url else None
+    result = network.resolve(tmp_path, artist='The Example Artist', title='Example Song Solo',
+                             audioTitle='Example Artist - Example Song (Official Audio)')
+    assert result['status'] == 'matched' and result['provenance']['lookupTitle'] == 'Example Song'
+
+
+def test_audio_song_identity_is_not_a_substring(tmp_path):
+    network = Network()
+    network.records[0]['title'] = 'One'
+    network.override = lambda url: response({'count': 0, 'recordings': []}) if '/recording/?' in url and 'Solo' in url else None
+    result = network.resolve(tmp_path, title='One Solo', audioTitle='Example Artist - Stone')
+    assert result['status'] != 'matched'
+
+
+def test_album_preferred_to_earlier_ep_when_album_exists(tmp_path):
+    network = Network()
+    ep = release(10, 11, 'Early EP', '2000')
+    ep['release-group']['primary-type'] = 'EP'
+    network.releases[uid(2)].append(ep)
+    assert network.resolve(tmp_path)['album'] == 'Original Album'
+
+
+@pytest.mark.parametrize('version,artist,accepted', [
+    ('original stereo mix', 'Example Artist', True), ('live', 'Example Artist', False),
+    ('remix', 'Example Artist', False), ('', 'Different Artist', False)])
+def test_original_edition_track_identity_can_differ_but_performance_cannot(tmp_path, version, artist, accepted):
+    network = Network()
+    track = recording(99, disambiguation=version, artist=artist)
+    network.override = lambda url: response({**release(), 'media': [{'position': 1, 'tracks': [{'position': 2, 'recording': track}]}]}) if urlsplit(url).path == '/ws/2/release/' + uid(3) else None
+    result = network.resolve(tmp_path)
+    assert (result['status'] == 'matched') is accepted
+    if accepted:
+        assert result['provenance']['trackEvidence']['recordingId'] == uid(99)
+        assert result['provenance']['trackEvidence']['recordingMatch'] == 'exact-artist-title-version'
+
+
+def test_failed_release_image_can_fall_back_to_same_album_front(tmp_path):
+    network = Network()
+    def override(url):
+        if 'coverartarchive.org/release/' in url:
+            bad = {**network.cover, 'images': [{**network.cover['images'][0],
+                   'thumbnails': {'500': 'https://archive.org/missing.jpg'}}]}
+            return response(bad)
+        if url == 'https://archive.org/missing.jpg':
+            return response(status=500)
+    network.override = override
+    result = network.resolve(tmp_path)
+    assert result['status'] == 'matched'
+    assert '/release-group/' in result['provenance']['sourceUrl']
+
+
+def test_confirmed_metadata_survives_local_image_write_failure(tmp_path):
+    destination = tmp_path / 'blocked'
+    destination.write_text('not a directory')
+    result = Network().resolve(destination)
+    assert result['status'] == 'unavailable'
+    assert result['albumStatus'] == 'matched' and result['album'] == 'Original Album'
+    assert 'path' not in result

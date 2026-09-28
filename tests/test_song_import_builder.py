@@ -110,6 +110,26 @@ def test_builder_embeds_album_cover_without_overwriting_source_album(tmp_path, e
         assert archive.read(manifest["cover"]) == cover.read_bytes()
 
 
+@pytest.mark.parametrize('source_metadata', [False, True])
+def test_album_metadata_without_cover_preserves_all_musical_payloads(tmp_path, source_metadata):
+    performance, audio, alignment, job = inputs(tmp_path)
+    if source_metadata:
+        performance.update(album='Source album', year=2000)
+    before = build_feedpak(performance, audio, alignment, job, output_dir=tmp_path / 'out')
+    other = tmp_path / 'enriched'
+    other.mkdir()
+    after = build_feedpak(performance, audio, alignment, other, output_dir=tmp_path / 'out',
+                         artwork={'status': 'unavailable', 'albumStatus': 'matched', 'album': 'Catalog album', 'year': 2001})
+    with zipfile.ZipFile(before['stagingPath']) as a, zipfile.ZipFile(after['stagingPath']) as b:
+        manifest = yaml.safe_load(b.read('manifest.yaml'))
+        assert (manifest['album'], manifest['year']) == (('Source album', 2000) if source_metadata else ('Catalog album', 2001))
+        assert 'cover' not in manifest
+        assert a.namelist() == b.namelist()
+        for name in a.namelist():
+            if name != 'manifest.yaml':
+                assert a.read(name) == b.read(name), name
+
+
 def test_notation_uses_recording_time_but_keeps_written_values_and_lineage(tmp_path):
     performance, audio, alignment, job = inputs(tmp_path)
     performance["tracks"][0]["notes"][0]["source_ids"] = ["authored-note"]

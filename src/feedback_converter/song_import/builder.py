@@ -528,15 +528,16 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         _write_json(package / "import/recording-sync.json", alignment["recordingSync"])
         manifest.setdefault("song_import", {}).update(recordingEnd=alignment["recordingEnd"],
                     endingOmissionsFile="import/ending-omissions.json", recordingSyncFile="import/recording-sync.json")
+    if artwork and (artwork.get("albumStatus") == "matched" or artwork.get("status") == "matched"):
+        for key in ("album", "year"):
+            if key not in manifest and artwork.get(key):
+                manifest[key] = artwork[key]
     if artwork and artwork.get("status") == "matched" and artwork.get("path"):
         with Image.open(artwork["path"]) as cover:
             extension = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}[cover.format]
         cover_name = f"cover.{extension}"
         shutil.copyfile(artwork["path"], package / cover_name)
         manifest["cover"] = cover_name
-        for key in ("album", "year"):
-            if key not in manifest and artwork.get(key):
-                manifest[key] = artwork[key]
     (package / "manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False, allow_unicode=True), encoding="utf-8")
     validation = require_valid_feedpak(package)
     archive = directory / "result.feedpak"
