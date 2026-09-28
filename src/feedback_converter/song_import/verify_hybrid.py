@@ -86,7 +86,7 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
     from .verification import _json
     receipt = _json(z, "import/hybrid-lead.json", check)
     if regional_policy and recipe.get('preservationContract', 0) >= 35:
-        revision = 3 if recipe.get('preservationContract', 0) >= 36 else 2
+        revision = 4 if recipe.get('preservationContract', 0) >= 37 else 3 if recipe.get('preservationContract', 0) >= 36 else 2
         check.equal('hybrid_selection_revision', 'hybrid/selectionRevision', revision, receipt.get('selectionRevision'))
     for key, expected in (("version", 3 if regional_policy else 2 if primary_policy else 1), ("policy", policy), ("sourceSha256", source_hash), ("options", options), ("audioSha256", recipe.get("audioHash"))):
         check.equal("hybrid_receipt", "hybrid/" + key, expected, receipt.get(key))
@@ -310,7 +310,9 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
             from .verify_hybrid_opportunities import active_quarters, pitched
             parent_bounds = variant.get('parentBoundaryQuarters', []) if isinstance(variant, dict) else []
             parent_labels = variant.get('parentBoundaries', []) if isinstance(variant, dict) else []
-            safe_variant = (safe_variant and variant.get('kind') == 'gap_safe_subphrase'
+            retained_boundary = (isinstance(variant, dict) and variant.get('kind') == 'retained_optional_boundary'
+                                 and recipe.get('preservationContract', 0) >= 37)
+            safe_variant = (safe_variant and (variant.get('kind') == 'gap_safe_subphrase' or retained_boundary)
                             and len(parent_bounds) == 2 and len(parent_labels) == 2
                             and all(type(value) in (int, float) and math.isfinite(value)
                                     for value in [*parent_bounds, variant.get('parentStart'), variant.get('parentEnd')])
@@ -318,14 +320,19 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
                             and variant['parentStart'] <= lo + 1e-5
                             and hi <= variant['parentEnd'] + 1e-5
                             and variant['parentEnd'] <= parent_bounds[1] + 1e-5
-                            and all(label in {'song', 'section', 'rest', 'repeat'} for label in parent_labels))
+                            and all(label in ({'song', 'section', 'rest', 'repeat', 'bar', 'gesture'} if retained_boundary
+                                              else {'song', 'section', 'rest', 'repeat'}) for label in parent_labels))
             if not safe_variant:
                 check.fail('hybrid_subphrase', 'hybrid/passages/variant', 'Invalid source subphrase provenance.')
             if regional_policy:
                 members = {key: event_facts[tid][key] for key in refs if key in event_facts[tid]}
                 attacks = {round(row['onset'], 5) for row in members.values() if any(pitched(n) for n in row['notes'])}
-                if len(attacks) < 2 or active_quarters(members, parts[tid], lo, hi, quarter_at) < 4 - 1e-5:
+                if len(attacks) < 2 or (not retained_boundary and active_quarters(members, parts[tid], lo, hi, quarter_at) < 4 - 1e-5):
                     check.fail('hybrid_subphrase', 'hybrid/passages/variant', 'An optional subphrase needs four active beats and two pitched attacks.')
+            if retained_boundary:
+                from .verify_hybrid_optional import audit_retained_boundary, audit_retained_parent_source
+                audit_retained_boundary(passage, receipt, event_facts, at, check)
+                audit_retained_parent_source(passage, source, part, order, clock, event_facts.get(tid, {}), check)
         if len(bounds) == 2:
             boundary_left, boundary_right = bounds
             complete = [(start, end) for start, end in intervals if boundary_left - 1e-7 <= start < boundary_right - 1e-7]
@@ -357,6 +364,14 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
                 check.fail("hybrid_boundary", f"hybrid/passages/{tid}/{q}/{label}", "A claimed musical boundary is unsupported by the source.")
         if len(passage.get("boundaryQuarters", [])) != 2 or len(passage.get("boundaries", [])) != 2:
             check.fail("hybrid_boundary", "hybrid/passages", "Two source-supported boundaries are required.")
+        if (recipe.get('preservationContract', 0) >= 37 and isinstance(variant, dict)
+                and variant.get('kind') == 'gap_safe_subphrase'):
+            from .verify_hybrid_continuity import audit_section_join
+            audit_section_join(passage, source, part, order, clock, event_facts.get(tid, {}), check)
+    if regional_policy and recipe.get('preservationContract', 0) >= 37:
+        from .verify_hybrid_optional import audit_edge_omissions
+        audit_edge_omissions(receipt, event_facts, parts, source, order, clock, at, quarter_at,
+                            primary_protected, main_id, check)
     check.equal("hybrid_sources", "hybrid/sources", sorted(seen_sources), sorted(source_rows))
     for key in ("notes", "chords"):
         expected_chart[key].sort(key=lambda e: e["t"])
@@ -383,7 +398,7 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
         summary = recipe.get('hybridLeadResult', {})
         check.equal('hybrid_tab_activity', 'song_import/hybridLeadResult/tabActivity', activity, summary.get('tabActivity'))
         check.equal('hybrid_selection_revision', 'song_import/hybridLeadResult/selectionRevision',
-                    3 if recipe.get('preservationContract', 0) >= 36 else 2, summary.get('selectionRevision'))
+                    4 if recipe.get('preservationContract', 0) >= 37 else 3 if recipe.get('preservationContract', 0) >= 36 else 2, summary.get('selectionRevision'))
         check.equal('hybrid_coverage_scope', 'song_import/hybridLeadResult/coverageScope',
                     'identified_lead_requirements', summary.get('coverageScope'))
     check.equal("hybrid_status", "hybrid/status", "created" if receipt.get("passages") else "no_additions", receipt.get("status"))

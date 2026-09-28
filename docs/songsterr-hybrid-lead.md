@@ -39,7 +39,7 @@ priority over another guitarist's solo. Scoped labels such as Solo Chords,
 Pre-Solo and non-guitar solos do not automatically identify a primary guitarist.
 Clean and polyphonic parts can carry the lead.
 
-Selection revision **3** asks what the lead guitarist would play locally. Among
+Selection revision **4** asks what the lead guitarist would play locally. Among
 ordinary tracks, lead/rhythm/clean labels are weak clues. Local articulation,
 melodic texture, rhythmic variation and corroborated repeating accompaniment
 patterns carry more weight. Neither absolute register nor note density earns a
@@ -103,8 +103,13 @@ compared with leaving that gap empty. `hybrid_variants.py` also offers bounded
 prefix/suffix/interior alternatives when an enclosing phrase crosses primary
 material or a transition guard. Touching same-source repeat phrases can also
 form a bounded combined candidate within a gap, so separate phrase recognition
-does not prevent a meaningful complete fill. Section and omission boundaries
-remain barriers. It favors existing musical boundaries, then safe
+does not prevent a meaningful complete fill. Omission boundaries remain barriers.
+A section marker can be crossed by two touching same-source parents only when
+one, two or four complete bars repeat exactly across it, with matching authored
+notes/techniques and written rhythm, stable meter/tempo and consecutive score
+traversal. The original marker and bounded proof remain in `variant.sectionJoin`;
+another interior section, missing source material or a repeat jump blocks the
+join. Section names do not confer permission. It favors existing musical boundaries, then safe
 bar cuts or complete source-group boundaries for syncopated ties. No event,
 written occupied slot or connected technique is sliced. These fallback variants
 need at least four active quarter beats and two pitched attacks, and pay a
@@ -113,6 +118,36 @@ their prior eligibility. Short incomplete responses can remain unfilled.
 Mandatory short solos retain their primary path.
 Search limits retain a feasible result. Unsupported local
 gestures do not exclude every supported phrase in the same source.
+
+After preserving the complete baseline plan, `hybrid_optional.py` offers one
+bounded refinement around already selected optional neighbors. It uses original
+source parents, whole gestures and the same full-gap transition costs. Additive
+changes must retain every incumbent event and avoid reducing existing utility.
+Optional neighbors do not receive fixed-primary rest/movement cost relief.
+
+`hybrid_optional_foreground.py` recognizes conservative local melodic episodes
+among optional candidates, including gaps where the base lead is silent. It
+requires expressive variation in several complete gestures and corroborated
+accompanying texture in competing parts. Repetition, high register, labels or
+dense activity alone do not establish musical priority. Ambiguous competing
+melodies, expressive double-stop solos and repeated lead riffs retain the
+existing choice. Explicit preferred sources and manual foreground roles win.
+Proposals apply to exact candidate events, never a track-wide preference boost.
+
+A foreground replacement can intentionally remove accompaniment within its
+episode. Surrounding accompaniment is retained at complete source boundaries.
+The narrowly scoped `retained_optional_boundary` variant can preserve a short
+existing prefix/suffix with at least two pitched attacks, even below four active
+beats. It must reach its original outer edge, identify the complete old parent
+and actually selected foreground, obey the same source-change guard, and is
+limited to one prefix and one suffix per episode. This does not lower the
+minimum for newly introduced fills or allow deletion of primary quiet notes.
+An isolated outer accompaniment event that cannot form such a retained fragment
+may be omitted only within a disclosed local choice envelope: fewer than two
+pitched attacks per edge, no quiet/ghost notes, and at most one quarter beat or
+20% of the foreground span, whichever is smaller, across both edges together.
+The receipt records exact omitted references, prior parent and selected episode.
+Longer surrounding passages and explicit preferred-source activity must survive.
 
 These are deterministic heuristics, not calibrated probabilities or a guarantee
 that every ambiguous musical choice matches a player's preference. The local
@@ -141,7 +176,7 @@ incompatible tuning or an unsupported gesture. Accepted simultaneous voices are
 explained as alternatives. `addedSeconds` and `selectedSeconds` describe selected
 passage spans, not uninterrupted playing or note density.
 
-Preservation contract **36**, receipt version **3**, selection revision **3** and
+Preservation contract **37**, receipt version **3**, selection revision **4** and
 the explicit v3 policy
 prevent prior results from satisfying new requests. Historical policy audit
 paths remain; older evidence is not presented as current verification. Queue
@@ -172,6 +207,12 @@ Projected low-fret endpoints of an unsupported connected gesture cannot alone
 prove that either the incumbent or a replacement is playable.
 The verifier reconstructs complete boundaries and event membership independently;
 variant metadata or a handover label alone cannot authorize a cut or addition.
+`verify_hybrid_continuity.py` independently reads raw authored patterns, meter,
+tempo, traversal and source-parent geometry for section joins.
+`verify_hybrid_optional.py` checks the complete source parent, retained boundary,
+selected foreground membership and guards for short retained accompaniment.
+These physical checks do not certify subjective foreground ranking or replay
+the producer's previous optimization as an independent musical oracle.
 
 `complete` coverage means identified lead requirements are accounted for; it
 does not mean every moment of source guitar activity has been filled. The

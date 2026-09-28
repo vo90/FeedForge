@@ -5,6 +5,31 @@ performed occurrence. This context is private to the worker, never a chart.
 """
 from bisect import bisect_right
 from copy import deepcopy
+from dataclasses import asdict
+from hashlib import sha256
+import json
+
+
+def _authored_bar_signature(source, bar_index, selected):
+    """Retain raw musical distinctions which playable projection can erase."""
+    atoms = []
+    for note in source.bars[bar_index]:
+        if selected is not None and int(note.voice_id) not in selected:
+            continue
+        atom = asdict(note)
+        for key in ('source_id', 'beat_id', 'voice_id'):
+            atom.pop(key, None)
+        atoms.append(atom)
+    atoms.sort(key=lambda value: json.dumps(value, sort_keys=True, default=str))
+    beats = []
+    for vi, voice in enumerate(source.written_bars[bar_index]):
+        index = voice.source_index if voice.source_index is not None else vi
+        if selected is not None and index not in selected:
+            continue
+        beats.extend((index, b.position, b.duration, b.rest, b.denominator, b.dots,
+                      b.tuplet, b.grace, b.written_position, b.written_duration) for b in voice.beats)
+    body = json.dumps([atoms, beats], sort_keys=True, default=str, separators=(',', ':'))
+    return sha256(body.encode('utf-8')).hexdigest()
 
 
 class Clock:
@@ -45,5 +70,7 @@ def capture(score, performance):
                                   "rest": beat.rest, "grace": beat.grace,
                                   "noteIds": [n.source_id for n in beat.notes],
                                   "pitchOffsets": sorted({n.effects.get("__harmonic_pitch_offset", 0) for n in beat.notes})})
-        tracks[output["id"]] = {"sourceTrackId": original_id, "voices": selected, "beats": beats}
+        tracks[output["id"]] = {"sourceTrackId": original_id, "voices": selected, "beats": beats,
+                                 "authoredBarSignatures": [_authored_bar_signature(source, i, selected)
+                                                           for i in range(len(source.bars))]}
     return {"version": 1, "timeline": deepcopy(timeline), "tracks": tracks}

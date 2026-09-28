@@ -6,7 +6,7 @@ musical quality. Zero-duration attacks and ghosts do not imply sustained time.
 from collections import defaultdict
 from bisect import bisect_left, bisect_right
 
-SELECTION_REVISION = 3
+SELECTION_REVISION = 4
 EPS = 1.1e-6
 
 

@@ -268,7 +268,7 @@ def test_contract_36_checks_activity_against_actual_chart_and_limits_claims(tmp_
     with ZipFile(original) as old, ZipFile(target, 'w') as new:
         manifest = yaml.safe_load(old.read('manifest.yaml'))
         receipt = json.loads(old.read('import/hybrid-lead.json'))
-        manifest['song_import']['preservationContract'] = 36
+        manifest['song_import']['preservationContract'] = 37
         summary = manifest['song_import']['hybridLeadResult']
         if fault == 'revision':
             receipt['selectionRevision'] = 1
