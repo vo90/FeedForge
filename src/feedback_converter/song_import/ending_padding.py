@@ -91,13 +91,17 @@ def authorize(performance, audio, alignment):
         raise ImportFailure('source_sync_unavailable', 'The original recording length could not be verified.')
     frames = math.ceil((spec['lastNoteEnd'] - audio['duration']) * info.samplerate - 1e-8)
     report = assess(mapped_tracks(performance, alignment), audio['path'], audio['duration'], alignment['provenance']['mapHash'])
-    if report['status'] != 'supported':
+    from .ending_warning import acceptance
+    warning = acceptance(report, alignment, audio.get('source', {}))
+    if report['status'] != 'supported' and warning is None:
         raise ImportFailure('source_sync_unavailable', 'The recording timing, including its ending, did not support adding silence.',
                             {'sourceSyncReason': 'ending_padding_sync_inconclusive', 'endingPaddingSync': report})
     result = deepcopy(alignment)
     result['endingPadding'] = {'version': 1, 'policy': POLICY, **spec,
         'originalFrames': info.frames, 'sampleRate': info.samplerate, 'frames': frames,
         'seconds': frames / info.samplerate, 'sourceSamplesSha256': _hash(audio['path'])}
+    if warning:
+        result['endingPadding']['timingWarning'] = warning
     if spec.get('trimLongHeldTails'):
         from .terminal_sustains import mixed_policy_for
         result['endingPadding'].update(version=2, policy=MIXED_POLICY)
@@ -117,11 +121,16 @@ def confirm_encoded(performance, audio, alignment):
     recording = recording_view(audio['path'], alignment['preparation'])
     tracks = original_tracks(mapped_tracks(performance, alignment), alignment['preparation']['seconds'])
     report = assess(tracks, recording, receipt['originalDuration'], alignment['provenance']['mapHash'])
-    if report['status'] != 'supported':
+    from .ending_warning import acceptance
+    warning = acceptance(report, alignment, audio.get('source', {}))
+    if report['status'] != 'supported' and warning is None:
         raise ImportFailure('ending_padding_unconfirmed', 'The encoded recording did not confirm short ending padding.',
                             {'endingPaddingSync': report})
     receipt['recordingSamplesSha256'] = _hash(recording)
     receipt['syncEvidenceHash'] = rs.digest(report)
+    receipt.pop('timingWarning', None)
+    if warning:
+        receipt['timingWarning'] = warning
     alignment['endingPaddingSync'] = report
 
 
@@ -145,6 +154,9 @@ def verify(wanted, alignment, recipe, archive, manifest, check):
     if stored.get('version') not in allowed:
         raise ValueError('Recording-clock evidence is not supported by this preservation contract.')
     check.equal('ending_padding_sync_receipt', 'import/ending-padding-sync', alignment.get('endingPaddingSync'), stored)
+    warning = receipt.get('timingWarning')
+    if 'timingWarning' in receipt and (recipe.get('preservationContract', 0) < 39 or not isinstance(warning, dict)):
+        raise ValueError('Ending timing warnings require preservation contract 39.')
     mixed = receipt.get('version') == 2 and receipt.get('policy') == MIXED_POLICY and receipt.get('trimLongHeldTails') is True
     if (recipe.get('preservationContract', 0) < (37 if mixed else 36)
             or not (mixed or receipt.get('version') == 1 and receipt.get('policy') == POLICY)
@@ -195,10 +207,19 @@ def verify(wanted, alignment, recipe, archive, manifest, check):
     check.equal('ending_padding_recording', 'ending-padding/recordingSamplesSha256', _hash(recording), receipt.get('recordingSamplesSha256'))
     if not check.total_errors:
         fresh = assess(tracks, recording, duration, alignment['provenance']['mapHash'], clock_version=stored['version'])
-        check.equal('ending_padding_sync', 'import/ending-padding-sync', 'supported', fresh['status'])
-        for key in ('audioSha256', 'audioDuration', 'mapHash', 'version', 'outroSupported'):
+        if warning is not None:
+            from .ending_warning import acceptance
+            expected = acceptance(fresh, alignment, recipe.get('audioSource', {}))
+            if expected is None:
+                check.fail('ending_padding_warning', 'import/ending-padding', 'The recording does not qualify for an ending timing warning.')
+            check.equal('ending_padding_warning', 'import/ending-padding/timingWarning', expected, warning)
+        else:
+            check.equal('ending_padding_sync', 'import/ending-padding-sync', 'supported', fresh['status'])
+        for key in ('audioSha256', 'audioDuration', 'mapHash', 'version', 'outroSupported', 'status'):
             check.equal('ending_padding_sync_identity', 'import/ending-padding-sync/' + key, fresh[key], stored.get(key))
         if stored['version'] == rs.VERSION:
             from .local_sync import compare_assessment
+            if warning is not None:
+                compare_assessment(fresh, stored, check, 'import/ending-padding-sync')
             compare_assessment(fresh.get('phraseEvidence'), stored.get('phraseEvidence'), check,
                                'import/ending-padding-sync/phraseEvidence')

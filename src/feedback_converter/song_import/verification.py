@@ -19,7 +19,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 38
+VERSION = 39
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -282,7 +282,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Contracts 37 and 38 change ending authority, not the technique inventory.
     # Preserve independent checks for the preceding published inventory schema.
-    if type(report.get('version')) is not int or report['version'] not in (36, 37, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (36, 37, 38, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     check.equal("compatibility_status", "import/compatibility", "limitations" if rows else "compatible", report.get("status"))
     target = report.get("target", {})
@@ -906,6 +906,11 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             verify_ending_padding(wanted,alignment,recipe,z,manifest,check)
             if alignment.get('endingPadding'):
                 report['scope'].append('verified_short_ending_silence')
+                warning = alignment['endingPadding'].get('timingWarning')
+                if warning and not check.total_errors:
+                    report['warnings'].append({'code':'ending_sync_unconfirmed', 'location':'audio/ending',
+                                               'message':warning['message']})
+                    report['scope'].append('ending_timing_accepted_with_warning')
             adjustments = _terminal_adjustments(wanted, alignment, recipe, z, duration, source, check)
             if ending_adjustments:
                 adjustments = {**(adjustments or {}), **ending_adjustments}

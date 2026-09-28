@@ -211,6 +211,8 @@ def run_import(request: dict, progress=None) -> dict:
             report=alignment['endingPaddingSync']
             summary['endingTiming']={k:report[k] for k in ('version','status','everyNoteVerified')}
             summary['endingTiming']['individualNotesUnassessed']=bool(report.get('endingEvidence'))
+            if alignment['endingPadding'].get('timingWarning'):
+                summary['endingTiming']['warning'] = alignment['endingPadding']['timingWarning']
         if verification.get("adjustments"):
             summary["adjustments"] = verification["adjustments"]
         if verification.get("omissions"):
@@ -233,6 +235,8 @@ def run_import(request: dict, progress=None) -> dict:
                 "verification": summary, "evidence": evidence, "compatibility": compatibility_summary(compatibility),
                 "artwork": {key: artwork[key] for key in ("status", "album", "year", "message", "reason") if key in artwork},
                 "warnings": list(performance.get("warnings", [])) + result["warnings"] +
+                            ([alignment['endingPadding']['timingWarning']['message']]
+                             if alignment.get('endingPadding',{}).get('timingWarning') else []) +
                             ([f"Audio timing check: {alignment['timingAssessment']['supportedWindows']} of {alignment['timingAssessment']['windowCount']} passages supported. These checks do not establish every note's timing; the imported source timing is retained outside any recorded opening repair."]
                              if alignment.get('timingAssessment',{}).get('status')=='inconclusive' else []) +
                             (["Practice difficulty was requested. Verification covers the main chart and any declared omissions; generated levels are not source-authored."]
