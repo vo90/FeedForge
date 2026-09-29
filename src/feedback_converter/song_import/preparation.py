@@ -63,7 +63,11 @@ def finalize(performance,audio,alignment,directory):
             for i in range(0,ending_frames,32768):
                 writer.write(np.zeros((min(32768,ending_frames-i),reader.channels),dtype='float32'))
     prepared=deepcopy(audio)
-    prepared.update(path=str(target),encodedHash=sha256_file(target),duration=audio['duration']+offset+ending_frames/rate)
+    # Sum integer sample counts before converting to seconds. Adding three
+    # floating-point durations can put the manifest just before its last
+    # chord/handshape, despite the encoded audio containing all of its samples.
+    prepared.update(path=str(target),encodedHash=sha256_file(target),
+                    duration=(original_frames+frames+ending_frames)/rate)
     prepared.pop('encodingSourcePath',None)
     result=deepcopy(alignment)
     receipt={'version':1,'policy':POLICY,'frames':frames,'sampleRate':rate,'seconds':offset,

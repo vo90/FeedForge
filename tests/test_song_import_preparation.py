@@ -105,3 +105,38 @@ def test_minimum_across_arrangements_and_no_unneeded_padding(tmp_path,first):
     shift=alignment['preparation']['seconds']
     assert max(0,2-first)<=shift<max(0,2-first)+1/rate
     assert audio['duration']==pytest.approx(10+shift)
+
+
+@pytest.mark.parametrize('rate,original_frames,ending_frames', [
+    (44100, 10320897, 3795), (22050, 66151, 0), (48000, 144001, 29),
+])
+def test_prepared_duration_matches_exact_encoded_frame_count(tmp_path, monkeypatch, rate, original_frames, ending_frames):
+    from feedback_converter.song_import import ending_padding
+    from feedback_converter.song_import.local_sync import _hash
+    source=tmp_path/'source.wav'
+    sf.write(source,np.zeros(original_frames,dtype='float32'),rate,subtype='FLOAT')
+    audio={'path':str(source),'duration':original_frames/rate}
+    alignment={'offset':0,'scale':1,'status':'validated'}
+    if ending_frames:
+        alignment['endingPadding']={'frames':ending_frames,'sampleRate':rate,
+            'originalFrames':original_frames,'sourceSamplesSha256':_hash(source)}
+    # This unit exercises encoding/duration arithmetic; musical authorization
+    # of the supplied ending is covered by the ending-padding tests.
+    monkeypatch.setattr(ending_padding,'confirm_encoded',lambda *args:None)
+    performance={'tracks':[{'notes':[{'t':0,'sus':1}]}]}
+    prepared,shifted=finalize(performance,audio,alignment,tmp_path)
+    info=sf.info(prepared['path'])
+    assert info.frames==original_frames+2*rate+ending_frames
+    assert prepared['duration']==info.frames/info.samplerate
+    assert shifted['preparation']['seconds']==2
+    if rate==44100:
+        assert prepared['duration']==236.12
+        from feedback_converter.chart_guidance import finalize as guidance
+        from feedback_converter.verify_chart_guidance import validate
+        chart={'tuning':[0]*6,'capo':0,'notes':[],
+            'templates':[{'name':'','frets':[3,5,-1,-1,-1,-1]}],
+            'chords':[{'t':229.4475,'id':0,'notes':[
+                {'s':0,'f':3,'sus':6.6725},{'s':1,'f':5,'sus':6.6725}]}]}
+        guidance(chart)
+        assert validate(chart,duration=prepared['duration'])==[]
+        assert validate(chart,duration=prepared['duration']-.001)
