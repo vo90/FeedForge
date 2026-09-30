@@ -76,6 +76,47 @@ def _plain_dead(note):
     )) and not any(type(note.get(k)) in (int, float) and note[k] >= 0 for k in ("sl", "slu", "su"))
 
 
+def _connected_frets(rows):
+    """Reserve a compact, explicit HO/PO phrase at its initiating attack.
+
+    Ambiguous voices and rests cannot imply a connection. The bounded preview
+    is presentation only; it neither links attacks nor changes their timing.
+    """
+    by_string = defaultdict(lambda: defaultdict(list))
+    for row in rows:
+        by_string[row[2]["s"]][row[0]].append(row)
+    reservations = defaultdict(set)
+    def plain_pitch(note):
+        return (type(note.get("f")) is int and 0 <= note["f"] <= MAX_FRET
+                and not any(note.get(k) for k in ("mt", "bn", "bnv", "hm", "hp", "harmonic_target",
+                    "harmonic_changes", "whammy", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks"))
+                and not any(type(note.get(k)) in (int, float) and note[k] >= 0 for k in ("sl", "slu", "su")))
+    for groups in by_string.values():
+        sequence = [group[0] if len(group) == 1 else None for _, group in sorted(groups.items())]
+        for i, source in enumerate(sequence[:-1]):
+            if source is None or not plain_pitch(source[2]):
+                continue
+            start, _, note = source
+            frets = set(_frets(note))
+            prior = source
+            for target in sequence[i + 1:i + 17]:
+                if target is None or target[0] - start > .5 or not plain_pitch(target[2]):
+                    break
+                time, _, n = target
+                hammer, pull = n.get("ho") is True, n.get("po") is True
+                if (hammer == pull or (hammer and n["f"] <= prior[2]["f"])
+                        or (pull and n["f"] >= prior[2]["f"])
+                        or abs(prior[1] - time) > .001000001):
+                    break
+                extended = frets | set(_frets(n))
+                if extended and max(extended) - min(extended) >= 4:
+                    break
+                frets = extended
+                reservations[start].update(frets)
+                prior = target
+    return reservations
+
+
 def _positions(rows):
     # Build instant releases explicitly so zero-duration notes cannot linger.
     changes = defaultdict(lambda: {"add": [], "remove": [], "instant": [], "attack": False})
@@ -87,6 +128,7 @@ def _positions(rows):
             changes[end]["remove"].append(frets)
         else:
             changes[start]["instant"].append(frets)
+    connected = _connected_frets(rows)
     active, demands = Counter(), []
     for time, change in sorted(changes.items()):
         for frets in change["remove"]:
@@ -94,6 +136,10 @@ def _positions(rows):
         for frets in change["add"]:
             active.update(frets)
         occupied = [f for f, count in active.items() if count > 0]
+        prepared = occupied + list(connected.get(time, ()))
+        # Never widen the lane or exclude sounding material for anticipation.
+        if prepared and max(prepared) - min(prepared) < 4:
+            occupied = prepared
         demands.append((time, min(occupied, default=0), max(occupied, default=0), change["attack"]))
         for frets in change["instant"]:
             active.subtract(frets)
@@ -227,7 +273,7 @@ def finalize(chart, *, regenerate=False, window=None):
                                       for h in additions["handshapes"] if left <= h["start_time"] < right]
     receipt = {"policy": POLICY, "sourceAuthored": False, "fields": fields,
                "musicSha256": input_hash, "guidanceSha256": digest(additions),
-               "slidePolicy": "known-corridor", "fingeringAssessed": False}
+               "slidePolicy": "known-corridor", "legatoPolicy": "compact-explicit-hopo", "fingeringAssessed": False}
     if "anchors" in fields:
         receipt["wideAnchorCount"] = sum(a["width"] > 4 for a in additions["anchors"])
     if "handshapes" in fields:
