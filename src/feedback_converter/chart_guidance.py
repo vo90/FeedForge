@@ -10,7 +10,7 @@ import hashlib
 import json
 import math
 
-POLICY = "feedforge-chart-guidance-v1"
+POLICY = "feedforge-chart-guidance-v2"
 FIELDS = ("anchors", "handshapes")
 MUSIC = ("tuning", "capo", "centOffset", "notes", "chords", "templates")
 MAX_FRET = 24
@@ -48,7 +48,7 @@ def _members(chart):
 
 def _frets(note):
     fret = note["f"]
-    if fret < 0 or note.get("mt") and (fret == 127 or note.get("pick_scrape_marks")):
+    if fret < 0 or note.get("mt") and (fret == 127 or note.get("pick_scrape_marks") or _plain_dead(note)):
         return ()  # Unpitched strike; do not invent a location for it.
     values = [fret]
     if note.get("hm") and type(note.get("hn")) in (int, float):
@@ -66,6 +66,14 @@ def _frets(note):
         if value > 0:
             result.update((max(1, math.floor(value)), math.ceil(value)))
     return tuple(sorted(result))
+
+
+def _plain_dead(note):
+    """A dead strike's stored editor fret is not a hand-position target."""
+    return note.get("mt") is True and (type(note.get("f")) is int and (0 <= note["f"] <= MAX_FRET or note["f"] == 127)) and not any(note.get(k) for k in (
+        "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "bnv",
+        "vb", "tr", "whammy", "hm", "hp", "harmonic_target", "harmonic_changes", "ho", "po", "ln"
+    )) and not any(type(note.get(k)) in (int, float) and note[k] >= 0 for k in ("sl", "slu", "su"))
 
 
 def _positions(rows):

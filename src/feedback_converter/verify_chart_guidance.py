@@ -10,7 +10,7 @@ import heapq
 import json
 import math
 
-POLICY = "feedforge-chart-guidance-v1"
+POLICY = "feedforge-chart-guidance-v2"
 
 
 def _hash(value):
@@ -57,7 +57,10 @@ def validate(chart, *, window=None, duration=None):
         events = defaultdict(list)
         for index, (start, note) in enumerate(members):
             sustain = note.get("sus", 0)
-            unpitched = note.get("mt") is True and (note["f"] == 127 or bool(note.get("pick_scrape_marks")))
+            moving = any(note.get(k) for k in ("slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks",
+                "bn", "bnv", "vb", "tr", "whammy", "hm", "hp", "harmonic_target", "harmonic_changes", "ho", "po", "ln"))
+            moving |= any(number(note.get(k)) and note[k] >= 0 for k in ("sl", "slu", "su"))
+            unpitched = note.get("mt") is True and (note["f"] == 127 or bool(note.get("pick_scrape_marks")) or (not moving and type(note["f"]) is int and 0 <= note["f"] <= 24))
             if not number(sustain) or sustain < 0 or not number(note["f"]) or not (-1 <= note["f"] <= 24 or unpitched):
                 return errors + ["Unsupported musical fret/duration for guidance."]
             end = min(right, start + sustain)

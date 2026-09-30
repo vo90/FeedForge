@@ -224,3 +224,23 @@ def test_random_sounding_intervals_preserve_music_and_pass_independent_bounds():
         again = deepcopy(data)
         finalize(data)
         assert again == data
+
+
+@pytest.mark.parametrize("hidden_fret", [0,1,7,24,127])
+def test_plain_dead_editor_frets_do_not_widen_fresh_chord_guidance(hidden_fret):
+    frets=(3,hidden_fret,0,0,3,3)
+    ch=chord(64,frets,.46125)
+    ch["notes"][1].update(mt=True,sus=.3075)
+    data=chart(chords=[ch],templates=[template(frets)])
+    before=music_digest(data)
+    finalize(data)
+    assert at(data,64)=={"time":0.0,"fret":3,"width":4}
+    assert music_digest(data)==before
+    assert validate(data)==[]
+
+@pytest.mark.parametrize("cue", [{"pm":True},{"fhm":True},{"mt":True,"sl":9},{"mt":True,"po":True}])
+def test_positioned_techniques_keep_their_frets(cue):
+    data=chart([note(0,3,0,2),note(1,7,1,1,**cue)])
+    finalize(data)
+    assert covers(at(data,1),3,7)
+    assert validate(data)==[]

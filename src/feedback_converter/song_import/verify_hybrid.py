@@ -383,7 +383,7 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
         for chord in expected_chart['chords']:
             chord['id'] = ids[chord['id']]
     actual_chart = {k: v for k, v in chart.items() if k not in {"phrases", "ext"}}
-    if manifest.get("song_import", {}).get("chartGuidancePolicy") == "feedforge-chart-guidance-v1":
+    if manifest.get("song_import", {}).get("chartGuidancePolicy") == "feedforge-chart-guidance-v2":
         # These two generated fields are independently checked against the
         # final Hybrid events by verify_import. Keep exact musical comparison.
         for key in ("anchors", "handshapes"):
