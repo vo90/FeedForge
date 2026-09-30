@@ -126,6 +126,14 @@ test('app and converter require the same generated guidance policy', () => {
   assert.equal(CHART_GUIDANCE_POLICY, source.match(/^POLICY = "([^"]+)"$/m)[1]);
 });
 
+test('current publication accepts v2 guidance and rejects an older proof', () => {
+  const { verifiedChartGuidance } = require('../electron/song-browser/songsterr-evidence.cjs');
+  const proof = { policy: 'feedforge-chart-guidance-v2', status: 'passed', arrangements: 3, sourceAuthored: false };
+  assert.equal(verifiedChartGuidance(proof, 3), true);
+  assert.equal(verifiedChartGuidance({ ...proof, policy: 'feedforge-chart-guidance-v1' }, 3), false);
+  assert.equal(verifiedChartGuidance(proof, 4), false);
+});
+
 for (const fault of ['recipe', 'summary', 'summary-count', 'durable-proof']) {
   test(`publication requires current guidance evidence: ${fault}`, async t => {
     const f = await fixture(t, { runConverter: async (args, ctx, normal) => {
@@ -232,7 +240,7 @@ async function fixture(t, options = {}) {
     const contract = options.contract || CURRENT;
     const hybridOptions = request.hybridLead?.enabled ? { ...request.hybridLead, sourceSha256: sourceHash } : undefined;
     const hybridProof = hybridOptions ? { status: 'no_additions', mainTrackId: hybridOptions.mainTrackId, policy: 'hybrid-lead-v3', primaryCoverage: 'checked' } : undefined;
-    const chartGuidance = { policy: 'feedforge-chart-guidance-v1', status: 'passed', arrangements: 1, sourceAuthored: false };
+    const chartGuidance = { policy: 'feedforge-chart-guidance-v2', status: 'passed', arrangements: 1, sourceAuthored: false };
     const report = JSON.stringify({ version: contract, status: 'passed', sourceSha256: sourceHash, chartGuidance, ...(hybridProof ? { hybridLead: hybridProof } : {}) }), verificationHash = hash(report);
     const record = JSON.stringify({ version: contract, outputHash, objects: { verification: verificationHash, source: sourceHash } });
     const id = hash(record);
