@@ -244,7 +244,8 @@ def _render(score: Score) -> dict:
                             from .songsterr_timing import strum_offsets
                             _, direction = strum_offsets(raw)
                             if direction:
-                                strum_origins[(occurrence, note.beat_id)] = (at(position), direction)
+                                kind = 'arpeggio' if any(raw.get(k) is not None for k in ('arpeggio', 'upArpeggio', 'downArpeggio')) else 'brush'
+                                strum_origins[(occurrence, note.beat_id)] = (at(position), direction, kind)
                     performed_notes += 1
                     if performed_notes > 500_000:
                         raise ScoreImportError("Performed score exceeds the note import limit.")
@@ -364,11 +365,11 @@ def _render(score: Score) -> dict:
         chords, templates, grouped = [], [], set()
         template_ids = {}
         labels = {beat.source_id: beat.chord_label for voices in track.written_bars for voice in voices for beat in voice.beats}
-        for key, (time, direction) in strum_origins.items():
+        for key, (time, direction, kind) in strum_origins.items():
             group = authored_groups[key]
             if len(group) >= 2 and len({n['s'] for n in group}) == len(group):
                 strums.append({'trackId':track.id, 'sourceId':key[1], 'occurrence':key[0]+1,
-                               'time':time, 'direction':direction,
+                               'time':time, 'direction':direction, 'kind':kind,
                                'notes':[{'t':n['t'],'s':n['s'],'f':n['f']} for n in sorted(group,key=lambda n:n['s'])]})
         for (_, beat_id), group in authored_groups.items():
             if len(group) < 2 or len({note["t"] for note in group}) != 1:

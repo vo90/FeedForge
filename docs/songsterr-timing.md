@@ -95,3 +95,19 @@ review. The staccato annotation remains in the retained source and report.
 These are FeedForge conversion rules, not a claim about support in a particular
 installed game version. Original bytes and unsupported fields remain available
 in the FeedPak and durable import evidence.
+# Brush display grouping
+
+Fresh Songsterr imports retain the distinction between a brush and an arpeggio
+in `import/strums.json`. Complete, staggered brush groups also receive the
+existing display-only note field `ch`. The group ID is the index in the
+package-wide source evidence, so Hybrid Lead can copy multiple donors without
+colliding IDs. The manifest records `strumGroupingPolicy: authored-brush-groups-v1`.
+
+Each member stays in its original note array at its actual attack time, with
+its original duration and techniques. A group does not create a simultaneous
+attack or change scoring. The highway uses it for one enclosure at the first
+attack; following members retain their spacing and do not acquire separate
+stems. Arpeggios, unrelated nearby notes, incomplete groups and ambiguous
+members do not acquire this grouping. Simultaneous chords keep their existing
+chord representation. Independent archive verification checks the display IDs
+against the raw source as well as verifying the musical events.
