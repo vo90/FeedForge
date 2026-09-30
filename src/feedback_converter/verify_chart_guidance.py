@@ -80,7 +80,9 @@ def validate(chart, *, window=None, duration=None):
                         return errors + ["Slide or harmonic contact outside the supported neck."]
                     if value > 0:
                         needed += [max(1, math.floor(value)), math.ceil(value)]
-            events[start].append((end, index, needed))
+            # Compare occupancy on the archive's microsecond clock. Keep this
+            # independent of the generator and leave the musical data intact.
+            events[round(start, 6)].append((round(end, 6), index, needed))
         anchors = chart.get("anchors", [])
         if "anchors" in fields:
             if not anchors or anchors[0].get("time") != left:
@@ -97,7 +99,7 @@ def validate(chart, *, window=None, duration=None):
             anchor_times = [a["time"] for a in anchors]
             if type(proof.get("wideAnchorCount")) is not int or proof["wideAnchorCount"] != sum(a["width"] > 4 for a in anchors):
                 fail("Wide-position diagnostic differs from generated anchors.")
-            checkpoints = sorted(set(events) | set(anchor_times))
+            checkpoints = sorted(set(events) | {round(t, 6) for t in anchor_times})
             sounding, expiry = {}, []
             for t in checkpoints:
                 while expiry and expiry[0][0] <= t:

@@ -118,6 +118,10 @@ def _connected_frets(rows):
 
 
 def _positions(rows):
+    # Guidance compares serialized microsecond boundaries, not binary float
+    # addition artefacts (38.1525 + .1625 can exceed 38.315). This is a local
+    # occupancy clock only: source attacks, sustains and scoring stay intact.
+    rows = [(round(start, 6), round(end, 6), note) for start, end, note in rows]
     # Build instant releases explicitly so zero-duration notes cannot linger.
     changes = defaultdict(lambda: {"add": [], "remove": [], "instant": [], "attack": False})
     for start, end, note in rows:

@@ -40,6 +40,37 @@ def rehash(data):
     proof["guidanceSha256"] = digest({k: data[k] for k in proof["fields"]})
 
 
+def test_touching_cross_string_boundaries_do_not_create_wide_lane():
+    data = chart([note(38.1525, 2, 1, .1625), note(38.315, 7, 0, .325)],
+                 [chord(38.64, (0, 2, 2), .325)], [template((0, 2, 2))])
+    original = music_digest(data)
+    assert 38.1525 + .1625 > 38.315  # reproduce the binary arithmetic artefact
+    finalize(data)
+    assert all(a['width'] == 4 for a in data['anchors'])
+    assert at(data, 38.64) == {'time': 38.64, 'fret': 2, 'width': 4}
+    assert music_digest(data) == original
+    assert validate(data) == []
+
+
+@pytest.mark.parametrize('overlap', [.000001, .002, .2])
+def test_real_cross_string_overlaps_still_require_full_width(overlap):
+    data = chart([note(1, 2, 1, 1 + overlap), note(2, 7, 0, 1)])
+    finalize(data)
+    assert covers(at(data, 2), 2, 7)
+    assert at(data, 2)['width'] == 6
+    assert validate(data) == []
+
+
+def test_independent_checker_rejects_hiding_real_microsecond_overlap():
+    data = chart([note(1, 2, 1, 1.000001), note(2, 7, 0, 1)])
+    finalize(data)
+    data['anchors'] = [{'time': 0., 'fret': 2, 'width': 4},
+                       {'time': 2., 'fret': 4, 'width': 4}]
+    data['ext']['chartGuidance']['wideAnchorCount'] = 0
+    rehash(data)
+    assert any('excludes an active fret' in e for e in validate(data))
+
+
 @pytest.mark.parametrize("frets", [(1, 5), (1, 12), (20, 24), (1, 24)])
 def test_inclusive_bounds_cover_wide_chords_at_neck_edges(frets):
     data = chart(chords=[chord(1, frets)], templates=[template(frets)])
