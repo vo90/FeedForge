@@ -8,7 +8,7 @@ archive hashes. It changes no musical events, pitches, strings, durations,
 techniques, tuning, capo, chord names, finger assignments or source notation.
 
 This feature is independent of the source-preservation contract. The import
-recipe declares `chartGuidancePolicy: feedforge-chart-guidance-v1`. Each chart
+recipe declares `chartGuidancePolicy: feedforge-chart-guidance-v2`. Each chart
 has `ext.chartGuidance` with the policy, explicit field ownership, a digest of
 its musical inputs, a digest of its generated guidance, and diagnostics for
 wide positions and chords skipped by the handshape policy. `sourceAuthored`
@@ -26,6 +26,9 @@ identifier in producer, independent checker and desktop acceptance code.
 - Open strings, unpitched muted strikes and pick-scrape reference frets do not
   invent a hand position. Natural harmonic contacts use the contact location;
   harmonic pitch intervals are not interpreted as finger positions.
+- An ordinary dead strike's stored editor fret is unpitched, even when it is
+  numerically within the neck. Explicit slide, harmonic and other motion cues
+  retain their positional interpretation. Palm mute alone remains pitched.
 - A still-suitable window stays in place. Half a second of bounded lookahead
   breaks ties when selecting a new position. An unusually wide window returns
   to four frets only after three coherent local attacks span at least a second.
