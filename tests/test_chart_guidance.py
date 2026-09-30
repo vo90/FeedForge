@@ -244,3 +244,83 @@ def test_positioned_techniques_keep_their_frets(cue):
     finalize(data)
     assert covers(at(data,1),3,7)
     assert validate(data)==[]
+
+
+def test_back_in_black_pull_off_prepares_seven_to_ten_at_the_chord_attack():
+    ch = {"t": 214.76, "id": 0, "notes": [
+        {"s": 3, "f": 9, "sus": .150625, "ln": True},
+        {"s": 4, "f": 0, "sus": .150625, "mt": True},
+        {"s": 5, "f": 0, "sus": .150625}]}
+    data = chart([note(209, 9, sustain=1), note(212.19, 10, 4, 2.57),
+                  note(214.910625, 7, 3, .30125, po=True), note(215.211875, 9, 3, .753125, vb=True)],
+                 [ch], [{"frets": [-1,-1,-1,9,0,0]}])
+    original = music_digest(data)
+    finalize(data)
+    assert at(data, 214.76) == {"time": 214.76, "fret": 7, "width": 4}
+    assert at(data, 214.910625) == at(data, 214.76)
+    assert music_digest(data) == original
+    assert validate(data) == []
+
+
+@pytest.mark.parametrize("frets,flags", [((9,7), {"po":True}), ((6,8), {"ho":True}),
+                                       ((0,3), {"ho":True}), ((9,0), {"po":True})])
+def test_explicit_connected_techniques_fit_one_normal_lane_from_first_attack(frets, flags):
+    data = chart([note(0, frets[0], sustain=1), note(1, frets[0], sustain=.15),
+                  note(1.15, frets[1], sustain=.3, **flags)])
+    finalize(data)
+    assert covers(at(data, 1), *(f for f in frets if f))
+    assert at(data, 1)["width"] == 4
+    assert validate(data) == []
+
+
+@pytest.mark.parametrize("gap", [0, .001, .00101, .01, .2])
+def test_only_rounding_sized_gaps_can_connect_a_pull_off(gap):
+    data = chart([note(0,9,sustain=1), note(2,9,sustain=.15), note(2.15+gap,7,po=True)])
+    finalize(data)
+    assert covers(at(data,2),7) is (gap <= .001)
+    assert validate(data) == []
+
+
+@pytest.mark.parametrize("case", ["picked", "wrong-direction", "two-flags", "dead", "bend", "slide", "ambiguous", "long"])
+def test_no_speculative_connection_for_unrelated_or_ambiguous_notes(case):
+    a, b = note(2,9,sustain=.15), note(2.15,7,po=True)
+    notes = [note(0,9,sustain=1), a, b]
+    if case == "picked": b.pop("po")
+    if case == "wrong-direction": b.pop("po"); b["ho"] = True
+    if case == "two-flags": b["ho"] = True
+    if case == "dead": a["mt"] = True
+    if case == "bend": a["bn"] = 1
+    if case == "slide": a["sl"] = 10
+    if case == "ambiguous": notes.append(deepcopy(a))
+    if case == "long": a["sus"] = .6; b["t"] = 2.6
+    data=chart(notes)
+    finalize(data)
+    assert not covers(at(data,2),7)
+    assert validate(data)==[]
+
+
+def test_compact_chain_is_prepared_but_future_wide_jump_does_not_expand_it():
+    data = chart([note(0,9,sustain=1), note(2,9,sustain=.1), note(2.1,7,sustain=.1,po=True),
+                  note(2.2,6,sustain=.1,po=True), note(2.3,1,po=True)])
+    finalize(data)
+    assert covers(at(data,2),6,7,9)
+    assert at(data,2)["width"]==4
+    assert validate(data)==[]
+
+
+def test_hopo_anticipation_never_hides_another_sustained_string_or_widens_the_lane():
+    data=chart([note(0,9,sustain=1), note(1,12,1,3), note(2,9,sustain=.15), note(2.15,7,po=True)])
+    finalize(data)
+    assert covers(at(data,2),9,12)
+    assert at(data,2)["width"]==4
+    assert covers(at(data,2.15),7,12)
+    assert validate(data)==[]
+
+
+def test_source_authored_positions_remain_authored():
+    data=chart([note(0,9,sustain=.15),note(.15,7,po=True)])
+    authored=[{"time":0,"fret":9,"width":4},{"time":.15,"fret":7,"width":4}]
+    data["anchors"]=deepcopy(authored)
+    finalize(data)
+    assert data["anchors"]==authored
+    assert "anchors" not in data["ext"]["chartGuidance"]["fields"]

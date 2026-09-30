@@ -38,7 +38,8 @@ def validate(chart, *, window=None, duration=None):
             fail("Guidance describes different musical events.")
         if proof.get("guidanceSha256") != _hash({k: chart.get(k) for k in fields}):
             fail("Generated guidance content changed.")
-        if proof.get("slidePolicy") != "known-corridor" or proof.get("fingeringAssessed") is not False:
+        if (proof.get("slidePolicy") != "known-corridor" or proof.get("fingeringAssessed") is not False
+                or proof.get("legatoPolicy") != "compact-explicit-hopo"):
             fail("Unsupported guidance interpretation.")
         if proof.get("window") != (list(window) if window is not None else None):
             fail("Guidance phrase window changed.")

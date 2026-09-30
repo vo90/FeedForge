@@ -22,7 +22,7 @@ def known_answer():
     c = package["chart.json"]
     c.update(anchors=[{"time": 0, "fret": 3, "width": 5}, {"time": 2.5, "fret": 21, "width": 4}], handshapes=[])
     c["ext"] = {"chartGuidance": {"policy": POLICY, "sourceAuthored": False,
-        "fields": ["anchors", "handshapes"], "slidePolicy": "known-corridor", "fingeringAssessed": False,
+        "fields": ["anchors", "handshapes"], "slidePolicy": "known-corridor", "legatoPolicy": "compact-explicit-hopo", "fingeringAssessed": False,
         "wideAnchorCount": 1, "handshapeEligibleChords": 0, "handshapeSkippedChords": 0,
         "musicSha256": hash_json({k: c[k] for k in ("tuning", "capo", "notes", "chords", "templates")}),
         "guidanceSha256": hash_json({k: c[k] for k in ("anchors", "handshapes")})}}
