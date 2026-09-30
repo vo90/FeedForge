@@ -162,6 +162,13 @@ def test_borrowed_source_groups_keep_techniques_and_lineage(tmp_path, technique)
         receipt = json.loads(z.read("import/hybrid-lead.json"))
         assert receipt["passages"]
         assert any(s["sourceTrackId"] == "1" for s in receipt["sources"])
+        if technique == 'strum':
+            m=yaml.safe_load(z.read('manifest.yaml'))
+            original=json.loads(z.read(m['arrangements'][1]['file']))
+            hybrid=json.loads(z.read(m['arrangements'][-1]['file']))
+            grouped=[n for n in original['notes'] if 'ch' in n]
+            assert len(grouped)==3
+            assert all(n in hybrid['notes'] for n in grouped)
 
 
 def test_bass_only_is_not_applicable_and_retains_original(tmp_path):

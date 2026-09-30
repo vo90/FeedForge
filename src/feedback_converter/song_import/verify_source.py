@@ -67,6 +67,7 @@ class Atom:
     pitch_offset: int = 0
     attack_offset: F = F(0)
     strum_direction: str | None = None
+    strum_kind: str | None = None
     pick_scrape: str | None = None
     whammy: dict | None = None
     trill: dict | None = None
@@ -688,6 +689,7 @@ def songsterr(document, *, track_indices=None):
                                           bool(note.get("hp"))))
                         fact["notes"].append(atoms[-1])
                         atoms[-1].strum_direction = direction
+                        atoms[-1].strum_kind = ('arpeggio' if any(beat.get(k) is not None for k in ('arpeggio', 'upArpeggio', 'downArpeggio')) else 'brush') if direction else None
                         from .verify_trills import read as read_trill
                         atoms[-1].trill = read_trill(note, beat, raw["measures"], nloc)
                         atoms[-1].staccato = note.get("staccato") is True

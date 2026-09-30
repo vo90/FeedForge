@@ -103,6 +103,33 @@ def _timeline(wanted, actual, check, name):
                 check.equal("timeline_value", loc + "/" + key, a[key], b.get(key))
 
 
+def _strum_groups(wanted, chart, check, track_id, alignment, policy):
+    """Independently bind display IDs to complete, source-authored brushes."""
+    from .verify_timeline import RecordingMap
+    recording = RecordingMap(alignment)
+    expected = {}
+    members = {}
+    for n in chart.get('notes', []):
+        key = (round(n['t'], 6), n['s'], n['f'])
+        members.setdefault(key, []).append(n)
+    if policy is not None:
+        check.equal('strum_group_policy', 'manifest/song_import', 'authored-brush-groups-v1', policy)
+        for ident, group in enumerate(wanted):
+            if group['trackId'] != track_id or group.get('kind') != 'brush':
+                continue
+            keys = [(round(recording.at(n['t']), 6), n['s'], n['f']) for n in group['notes']]
+            if (len(keys) >= 2 and len({k[0] for k in keys}) > 1
+                    and len({k[1] for k in keys}) == len(keys)
+                    and all(len(members.get(k, [])) == 1 for k in keys)):
+                expected.update((key, ident) for key in keys)
+    for note, loc in _flatten(chart):
+        key = (round(note['t'], 6), note['s'], note['f'])
+        actual = note.get('ch')
+        if actual is not None and (type(actual) is not int or actual < 0):
+            check.fail('strum_group', loc, 'Invalid display group identity.')
+        check.equal('strum_group', 'tracks/' + track_id + '/' + loc, expected.get(key), actual)
+
+
 def _notes(wanted, actual, check, part, duration):
     check.equal("note_count", "tracks/" + part.id, len(wanted), len(actual))
     # Stable physical-string/time order is independent of exporter chord
@@ -112,7 +139,7 @@ def _notes(wanted, actual, check, part, duration):
     for item, (b, destination) in zip(expected_order, actual_order):
         a = item["note"]
         loc = item["locations"][0] + f"@visit{item['occurrence']} -> tracks/{part.id}/{destination}"
-        for key in set(b) - ({"t", "s", "f", "sus", "bnv", "source_id", "source_ids"} | TECHNIQUES):
+        for key in set(b) - ({"t", "s", "f", "sus", "bnv", "source_id", "source_ids", "ch"} | TECHNIQUES):
             if not inactive(b[key]):
                 check.fail("unexpected_note_field", loc + "/" + key, "An unaccounted playable-note field was introduced.")
         for key in ("s", "f"):
@@ -747,7 +774,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 for i,(a,b) in enumerate(zip(wanted['strums'],groups)):
                     where=f'import/strums/{i}'
                     check.equal('strum_evidence',where+'/keys',sorted(a),sorted(b))
-                    for key in ('trackId','sourceId','occurrence','direction'):
+                    for key in ('trackId','sourceId','occurrence','direction','kind'):
                         check.equal('strum_evidence',where+'/'+key,a[key],b.get(key))
                     check.near('strum_time',where,recording.at(a['time']),b.get('time'))
                     check.equal('strum_evidence',where+'/count',len(a['notes']),len(b['notes']))
@@ -995,6 +1022,8 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 actual_chord_count += len(chart.get("chords", []))
                 notation_beat_count += len(part["notation_beats"])
                 _notes(part["notes"], flattened, check, src, duration)
+                _strum_groups(wanted['strums'], chart, check, src.id, alignment,
+                              recipe.get('strumGroupingPolicy'))
                 _chords(part["notes"], chart, check, src)
                 for key in ("beats", "sections", "tempos"):
                     _timeline(wanted[key], chart.get(key), check, arr["file"] + "/" + key)

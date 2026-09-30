@@ -272,7 +272,7 @@ def _expected(source, alignment):
                     group = strum_groups.setdefault(group_key, {
                         'trackId':part.id, 'sourceId':'songsterr:' + ':'.join(path[i] for i in (1,3,5,7)),
                         'occurrence':occurrence+1, 'time':float(clock.at(start)),
-                        'direction':atom.strum_direction, 'notes':[]})
+                        'direction':atom.strum_direction, 'kind':atom.strum_kind, 'notes':[]})
                     group['notes'].append({'t':float(clock.at(start+atom.attack_offset)), 's':atom.string,'f':atom.fret})
                 if atom.tie:
                     gap_allowed = source.format == 'songsterr'

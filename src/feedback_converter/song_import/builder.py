@@ -327,6 +327,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
                     if marks:
                         detail["slideOuts"] = marks
                     sustain_adjustments.append(detail)
+        from .strum_groups import attach as attach_strum_groups
+        attach_strum_groups(chart, track['id'], performance.get('strumEvidence', []), alignment)
         finalize_guidance(chart)
         if settings.get("generateDifficulty") is True:
             ensure_difficulty(chart, duration=duration)
@@ -427,6 +429,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     if recipe:
         manifest["song_import"] = {**deepcopy(recipe), "coverage": coverage}
     manifest.setdefault("song_import", {})["chartGuidancePolicy"] = GUIDANCE_POLICY
+    from .strum_groups import POLICY as STRUM_GROUP_POLICY
+    manifest['song_import']['strumGroupingPolicy'] = STRUM_GROUP_POLICY
     if hybrid_summary:
         manifest.setdefault("song_import", {})["hybridLeadResult"] = hybrid_summary
         if hybrid_summary["status"] != "not_applicable":

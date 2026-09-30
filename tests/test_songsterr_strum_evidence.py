@@ -28,7 +28,7 @@ def test_repeated_shifted_strums_match_independent_source_clock(tmp_path,directi
     assert all(r['direction']==direction and len(r['notes'])==3 for r in v['strums'])
 
 
-@pytest.mark.parametrize('fault',[None,'time','direction','missing','member','count','source'])
+@pytest.mark.parametrize('fault',[None,'time','direction','missing','member','count','source','display_group','missing_group'])
 def test_piecewise_archive_requires_source_bound_exact_members(tmp_path,fault):
     from test_song_import_builder import inputs
     _,audio,_,job=inputs(tmp_path)
@@ -39,6 +39,14 @@ def test_piecewise_archive_requires_source_bound_exact_members(tmp_path,fault):
     built=build_feedpak(p,audio,alignment,job,output_dir=tmp_path/'out',source_path=path,compatibility=p['compatibilityReport'],recipe={'preservationContract':26})
     archive=Path(built['stagingPath']);assert verify_import(path,archive,alignment)['status']=='passed'
     with ZipFile(archive) as z:files={n:z.read(n) for n in z.namelist()}
+    m=yaml.safe_load(files['manifest.yaml']);chart_file=m['arrangements'][0]['file']
+    chart=json.loads(files[chart_file])
+    grouped=[n for n in chart['notes'] if 'ch' in n]
+    assert len(grouped)==6 and len({n['ch'] for n in grouped})==2
+    assert len({n['t'] for n in grouped})==6, 'Per-string attack times must stay staggered.'
+    if fault=='display_group':grouped[0]['ch']=999
+    if fault=='missing_group':grouped[0].pop('ch')
+    files[chart_file]=json.dumps(chart).encode()
     r=json.loads(files['import/strums.json'])
     if fault=='time':r['groups'][0]['notes'][1]['t']+=.01
     if fault=='direction':r['groups'][0]['direction']='up'
@@ -51,4 +59,22 @@ def test_piecewise_archive_requires_source_bound_exact_members(tmp_path,fault):
     changed=tmp_path/'changed.feedpak'
     with ZipFile(changed,'w') as z:
         for name,data in files.items():z.writestr(name,data)
-    assert verify_import(path,changed,alignment)['status']==('passed' if fault is None else 'failed')
+    report=verify_import(path,changed,alignment)
+    assert report['status']==('passed' if fault is None else 'failed')
+    if fault in {'display_group','missing_group'}:
+        assert any(e['code']=='strum_group' for e in report['errors'])
+
+
+def test_only_complete_authored_brushes_get_display_groups():
+    from feedback_converter.song_import.strum_groups import attach
+    notes=[{'t':1,'s':0,'f':0,'sus':.4},{'t':1.02,'s':1,'f':3,'sus':.38}]
+    group={'trackId':'a','kind':'brush','notes':deepcopy(notes)}
+    for kind in ['brush','arpeggio',None]:
+        chart={'notes':deepcopy(notes)}
+        attach(chart,'a',[dict(group,kind=kind)],{'offset':0,'scale':1})
+        assert all(('ch' in n)==(kind=='brush') for n in chart['notes'])
+        assert [{k:v for k,v in n.items() if k!='ch'} for n in chart['notes']]==notes
+    for selected in [notes[:1],notes+[deepcopy(notes[0])]]:
+        chart={'notes':deepcopy(selected)}
+        attach(chart,'a',[group],{'offset':0,'scale':1})
+        assert not any('ch' in n for n in chart['notes'])
