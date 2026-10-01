@@ -57,7 +57,7 @@ def test_precise_bend_wins_and_equal_coordinate_uses_last_value(tmp_path):
 
 
 @pytest.mark.parametrize("points", [
-    [{"position": 0, "precisePosition": 0, "tone": 0}, {"position": 60, "tone": 100}],
+    [{"position": 0, "precisePosition": None, "tone": 0}, {"position": 60, "tone": 100}],
     [{"position": 0, "precisePosition": 40, "tone": 0}, {"position": 60, "precisePosition": 30, "tone": 100}],
     [{"position": 0, "precisePosition": -1, "tone": 0}],
     [{"position": 61, "precisePosition": 100, "tone": 0}],

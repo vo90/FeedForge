@@ -27,10 +27,10 @@ def bend_points(points):
         raise ScoreImportError("Bend has no curve data.")
     if any(not isinstance(p, dict) for p in points):
         raise ScoreImportError("Invalid bend point.")
-    precise = ["precisePosition" in p for p in points]
-    if any(precise) and not all(precise):
-        raise ScoreImportError("Mixed precise and legacy bend coordinates.")
-    use_precise = all(precise)
+    # Songsterr selects percent mode for the whole curve when any point has
+    # precisePosition. Its Dn/En helpers round missing percent coordinates
+    # with Math.round(position * 100 / 60), not a per-point /60 fallback.
+    use_precise = any("precisePosition" in p for p in points)
     out = []
     previous_coarse = F(-1)
     for p in points:
@@ -38,8 +38,12 @@ def bend_points(points):
         if not previous_coarse <= coarse <= 60 or coarse < 0:
             raise ScoreImportError("Bend positions are outside the note or out of order.")
         previous_coarse = coarse
-        position = (rational(p["precisePosition"], "precise bend position") / 100
-                    if use_precise else coarse / 60)
+        if use_precise:
+            percent = (rational(p["precisePosition"], "precise bend position")
+                       if "precisePosition" in p else (coarse * 100 / 60 + F(1, 2)) // 1)
+            position = F(percent) / 100
+        else:
+            position = coarse / 60
         tone = rational(p.get("tone"), "bend value") / 50
         if not 0 <= position <= 1 or out and position < out[-1][0]:
             raise ScoreImportError("Precise bend positions are outside the note or out of order.")
