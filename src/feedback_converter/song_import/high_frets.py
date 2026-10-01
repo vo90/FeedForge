@@ -1,6 +1,7 @@
 """Approved partial-chart policy; never modify the source performance in place."""
 from copy import deepcopy
 import hashlib
+from .fingering import template_fingers
 
 POLICY = "omit-unsupported-frets-v1"
 
@@ -63,11 +64,11 @@ def project(performance):
             elif children:
                 template = deepcopy(track["templates"][chord["id"]])
                 template["frets"] = [-1] * len(track["tuning"])
-                template["fingers"] = [-1] * len(track["tuning"])
+                template["fingers"] = template_fingers(children, len(track["tuning"]))
                 for note in children:
                     template["frets"][note["s"]] = note["f"]
                     note.pop("t", None)
-                shape = (tuple(template["frets"]), template.get("name", ""))
+                shape = (tuple(template["frets"]), template.get("name", ""), tuple(template["fingers"]))
                 if shape not in shapes:
                     shapes[shape] = len(templates)
                     templates.append(template)

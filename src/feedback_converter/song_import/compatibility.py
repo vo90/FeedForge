@@ -7,8 +7,10 @@ from copy import deepcopy
 import json
 import math
 from .songsterr_harmonics import exact_natural, natural_alias, source_target
+from .fingering import left_finger
+from .model import ScoreImportError
 
-VERSION = 40
+VERSION = 41
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -29,6 +31,7 @@ KNOWN["tempo"].add("text")
 KNOWN["tempo"].add("visible")
 KNOWN["beat"].update({"chord", "upStroke", "downStroke", "pickStroke", "wahwah", "brushStroke", "arpeggio", "vibratoWithTremoloBar"})
 KNOWN["note"].update({"leftHandVibrato", "pickScrape", "vibratoWithTremoloBar"})
+KNOWN["note"].add("leftFingering")
 KNOWN["beat"].add("hasRasgueado")
 LIMITATIONS = {
     ("beat", "hasRasgueado"): "The rasgueado strumming instruction is retained in the original source. Written notes, ties, durations and explicit strums are preserved and scored normally; no rasgueado display, additional strokes or special scoring are added.",
@@ -104,6 +107,18 @@ def inspect_songsterr(document, *, track_indices=None):
                         message="Expected a source object.", location=path, value=obj, **coordinates)
             return
         for key, value in obj.items():
+            if scope == "note" and key == "leftFingering":
+                try:
+                    left_finger(value)
+                except ScoreImportError as exc:
+                    add_finding(report, feature="note.leftFingering", category="source_structure", impact="blocking",
+                                message=str(exc), location=path + "/" + key, value=value, **coordinates)
+                    continue
+                if value is not None and (obj.get("tie") or value == "0" and obj.get("fret") != 0):
+                    add_finding(report, feature="note.leftFingering", category="game_limitation", impact="display_or_expression",
+                                message="This continuation-only or open/no-finger instruction is retained in the source. The attack keeps its authored finger hint; no finger change or fret correction is invented.",
+                                location=path + "/" + key, value=value, **coordinates)
+                continue
             # Only the boolean expression flag is approved. Named patterns in
             # the separate rasgueado field still need rhythmic interpretation.
             if scope == "beat" and key == "hasRasgueado" and value is not None and not isinstance(value, bool):

@@ -359,7 +359,7 @@ def _expected(source, alignment):
                     if source.format != 'songsterr' and "harmonic_target" in atom.effects and event["effects"].get("harmonic_target") != atom.effects["harmonic_target"]:
                         unsupported(atom.location, "A changing fretted harmonic inside a tie is not independently representable.")
                     event["end"] = end
-                    event["effects"].update({k: v for k, v in atom.effects.items() if k != "pkd" and not (late_mute and k == 'mt') and (source.format != 'songsterr' or k not in harmonic_fields)})
+                    event["effects"].update({k: v for k, v in atom.effects.items() if k not in {"pkd", "fg"} and not (late_mute and k == 'mt') and (source.format != 'songsterr' or k not in harmonic_fields)})
                     event["locations"].append(atom.location)
                     result["tie_segments"] += 1
                 else:
@@ -468,6 +468,10 @@ def _expected(source, alignment):
                         written_note[out_key] = atom.effects[raw_key]
                 if atom.wide_vibrato:
                     written_note["vibw"] = True
+                # Existing notation vocabulary writes the numbered fingers.
+                # Thumb (fg=0) is retained in the playable chart and raw source.
+                if atom.effects.get("fg"):
+                    written_note["fng"] = atom.effects["fg"]
                 if not atom.tie:
                     for fx in ("ho", "po"):
                         if event["effects"].get(fx):

@@ -11,6 +11,7 @@ from .inventory import FeatureInventory
 from .model import Measure, Note, Score, ScoreImportError, Track, WrittenBeat, WrittenVoice, integer, rational
 from .songsterr_timing import part_timing, strum_offsets, FEELS
 from .songsterr_fields import bend_points
+from .fingering import left_finger
 from .songsterr_whammy import source_whammy
 from .songsterr_harmonics import exact_natural, natural_target, natural_alias, source_target
 from .songsterr_automation import performed_tempos
@@ -75,6 +76,9 @@ def _note(raw, beat, position, duration, strings, tpqn=16384):
         if value and raw.get("harmonic") is not None and not (exact_natural(raw) or source_target(raw)):
             raise ScoreImportError("Songsterr harmonicFret needs additional conversion support.")
     effects = {}
+    finger = left_finger(raw.get("leftFingering"))
+    if finger is not None:
+        effects["fg"] = finger
     vibrato = raw.get("leftHandVibrato")
     if vibrato not in (None, "slight", "wide"):
         raise ScoreImportError(f"Unsupported left-hand vibrato: {vibrato!r}.")
@@ -401,7 +405,7 @@ def parse(document: dict, *, track_indices=None) -> Score:
                     for note_index, note in enumerate(beat["notes"]):
                         source_id = f"{beat_id}:{note_index}"
                         inventory.inspect(note, "Songsterr note", source_id,
-                                          playable={"string", "fret", "rest", "tie", "dead", "vibrato", "wideVibrato", "ghost", "accentuated", "tap", "tapping", "hp", "harmonic", "slide", "bend", "trill", "grace", "graceNote", "tremoloBar", "whammy", "staccato", "leftHandVibrato", "pickScrape"},
+                                          playable={"string", "fret", "rest", "tie", "dead", "vibrato", "wideVibrato", "ghost", "accentuated", "tap", "tapping", "hp", "harmonic", "slide", "bend", "trill", "grace", "graceNote", "tremoloBar", "whammy", "staccato", "leftHandVibrato", "pickScrape", "leftFingering"},
                                           notation={"string", "fret", "rest", "tie", "dead", "vibrato", "wideVibrato", "ghost", "accentuated", "tap", "tapping", "hp", "leftHandVibrato"},
                                           retained={"harmonicFret"}, strict=True)
                         if isinstance(note.get("bend"), dict):

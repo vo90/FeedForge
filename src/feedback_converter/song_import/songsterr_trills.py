@@ -79,7 +79,7 @@ def check_segment(note, state):
         return
     if note.tie and note.trill:
         fail('a trill marking on a tied continuation needs separate interpretation.')
-    allowed = {'pm', 'ghost', 'ac', 'vb', 'pkd', '__hopo_origin', '__wide_vibrato'}
+    allowed = {'pm', 'ghost', 'ac', 'vb', 'pkd', 'fg', '__hopo_origin', '__wide_vibrato'}
     if (set(note.effects) - allowed or note.bends or note.slide or note.slide_in
             or note.whammy or note.pick_scrape or note.attack_offset):
         fail('this combination with another gesture needs additional verification.')

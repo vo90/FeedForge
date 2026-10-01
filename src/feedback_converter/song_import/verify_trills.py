@@ -55,7 +55,7 @@ def segment(atom, event):
     if atom.trill or event.get('trill'):
         if atom.tie and atom.trill:
             unsupported(atom.location + '/trill', 'A tied continuation carries another trill.')
-        if (set(atom.effects) - {'pm','ghost','ac','vb','pkd'} or atom.bends or atom.slide
+        if (set(atom.effects) - {'pm','ghost','ac','vb','pkd','fg'} or atom.bends or atom.slide
                 or atom.slide_in or atom.whammy or atom.pick_scrape or atom.attack_offset):
             unsupported(atom.location + '/trill', 'Combined trill gesture is not independently verified.')
 

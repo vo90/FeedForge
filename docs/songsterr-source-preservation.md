@@ -20,6 +20,8 @@ explicit explanation; identical notes are not silently deduplicated.
 
 Chord templates contain the source string/fret shape. Missing chord names and
 fingers stay unknown. The importer does not invent handshapes or fingerings.
+Authored Songsterr finger hints are carried into notes and chord templates;
+see [fingering preservation](songsterr-fingering.md).
 Ghost notes remain pitched ghost notes, distinct from dead/muted notes. A
 direction-only slide has authoritative `slide_out_marks` entries, each containing
 `direction: up|down` and `start`/`end` seconds relative to the merged note attack.
