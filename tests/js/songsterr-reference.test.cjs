@@ -13,3 +13,12 @@ test('accepted reference declares identity, profile and stage boundaries',()=>{
  assert.ok(manifest.traceStages.includes('Ts'));
  assert.equal(manifest.profiles.authored.humanize,false);
 });
+
+test('reference extraction tools are pinned separately from app dependency declarations',()=>{
+ const {verify}=require('../../tools/songsterr_compatibility/toolchain.cjs');
+ const lock=require('../../package-lock.json');
+ const actual=verify(name=>lock.packages['node_modules/'+name].version);
+ assert.equal(actual.babelParser,manifest.qualificationToolchain.babelParser);
+ assert.equal(actual.babelTraverse,manifest.qualificationToolchain.babelTraverse);
+ assert.throws(()=>verify(()=> '0.0.0'),/Unqualified reference extraction tool/);
+});
