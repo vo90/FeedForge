@@ -73,7 +73,7 @@ function main() {
   if (fs.existsSync(outputFile)) throw Error('Refusing to replace an existing reference output');
   if (fs.statSync(inputFile).size > 80*1024*1024) throw Error('Reference input limit');
   const input = JSON.parse(fs.readFileSync(inputFile, 'utf8').replace(/^\uFEFF/, ''));
-  const code = prepare(worker), output = {version: 1, referenceSha256: MANIFEST.sha256, cases: []};
+  const code = prepare(worker), output = {version: 1, referenceSha256: MANIFEST.sha256, node:process.version, cases: []};
   for (const row of input.cases) {
     const source = row.source, allMeasures = source.parts.flatMap(p => p.measures), parts=[];
     for (let i=0;i<source.parts.length;i++) {
