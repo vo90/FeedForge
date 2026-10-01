@@ -144,9 +144,15 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
     clock = Clock(source, order)
     recording = RecordingMap(alignment)
     at = lambda q: float(recording.at(clock.at(Fraction(str(q)))))
+    # Opening brushes can precede written beat zero. Derive the inverse-clock
+    # bound from independently parsed source atoms, including donor guitars.
+    # Clamping to zero falsely changes their coverage and recording positions.
+    first_quarter = min([0.0, *(float(atom.q + atom.attack_offset)
+                        for part in parts.values() for atom in part['source'].bars[order[0]]
+                        if atom.strum_direction and atom.q >= 0 and atom.attack_offset < 0)])
     @lru_cache(maxsize=100000)
     def quarter_at(seconds):
-        low, high = 0.0, float(clock.quarters)
+        low, high = first_quarter, float(clock.quarters)
         for _ in range(45):
             mid = (low + high) / 2
             if at(mid) < seconds:

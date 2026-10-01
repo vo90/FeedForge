@@ -166,6 +166,34 @@ def test_complete_archive_preserves_opening_and_two_second_preparation(package):
     assert a['preparation']['seconds'] == pytest.approx(1.8878, abs=1/22050)
 
 
+@pytest.mark.parametrize('opening_track', [0, 1])
+def test_hybrid_coverage_preserves_negative_source_positions(tmp_path, opening_track):
+    from test_songsterr_hybrid_lead import prepared
+    raw = document()
+    raw['tracks'].append({**deepcopy(raw['tracks'][0]), 'id': 1, 'name': 'Rhythm Guitar'})
+    raw['parts'].append(deepcopy(raw['parts'][0]))
+    raw['parts'][1-opening_track]['measures'][0]['voices'][0]['beats'][0].pop('arpeggio')
+    source, p, options = prepared(tmp_path, raw)
+    options['mainTrackId'] = '0'
+    _, audio, _, job = inputs(tmp_path)
+    audio['source'] = {'kind': 'youtube', 'videoId': VIDEO}
+    a = align(p)
+    audio, a = finalize(p, audio, a, job)
+    recipe = {'preservationContract': 41, 'source': 'songsterr', 'audioSource': audio['source'],
+              'scoreHash': options['sourceSha256'], 'audioHash': audio['hash'], 'hybridLead': options,
+              'alignment': {'provenance': deepcopy(a['provenance'])}, 'preparation': a['preparation']}
+    built = build_feedpak(p, audio, a, job, output_dir=tmp_path/'out', source_path=source,
+                         recipe=recipe, compatibility=p['compatibilityReport'],
+                         hybrid_lead={'enabled': True, 'mainTrackId': '0', 'options': options})
+    archive = Path(built['stagingPath'])
+    result = verify_import(source, archive, a, META, hybrid_options=options)
+    assert result['status'] == 'passed', result
+    with ZipFile(archive) as z:
+        receipt = json.loads(z.read('import/hybrid-lead.json'))
+        early = [e for e in receipt['coverage']['events'] if e['start'] < 0]
+        assert early and all(e['recordingStart'] >= 1.99999 for e in early)
+
+
 @pytest.mark.parametrize('fault', ['missing', 'boundary', 'member_count', 'source_id', 'invented', 'note_time', 'recording_start'])
 def test_forged_opening_evidence_or_note_timing_fails(package, tmp_path, fault):
     source, archive, original = package
