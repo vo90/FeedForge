@@ -18,6 +18,13 @@ $build = @{
 
 For a staged build, use `-Stage Converter`, followed later by `-Stage Package` with the same paths. The package stage checks that converter source has not changed since freezing. Failed or completed stage outputs are preserved; use a new build folder for a fresh attempt. No output cleanup/reset option is provided.
 
+Build preflight also requires the desktop publication gate and the converter's
+evidence, verification and compatibility reports to declare the same preservation
+contract. A missing or mismatched declaration stops the build before freezing or
+packaging, including in `-CheckOnly` mode. Publication still requires the current
+contract, a passing independent verification and the matching output hash;
+historical reports remain readable without being relabeled as current.
+
 `DependenciesRoot` is optional and defaults to the source checkout. An external dependency checkout must have the exact same `package-lock.json`; installed direct package versions and the selected Electron version are checked against that lock. No dependencies are installed or copied into the source checkout. A generated Vite configuration and its cache stay in the external build folder, with explicit paths to the selected React and UI dependencies. Vite loads that JavaScript configuration natively, avoiding its default temporary configuration output under a nearby `node_modules`. The dependency identity is recorded in the build receipt and must match between stages. Older receipts without this identity require a new build folder.
 
 The approved source branches include `integration/feedforge-all-features` and `feat/songsterr-slide-in`. The selected audio tools directory supplies both the decoder and all its DLLs; DLL names are no longer taken from another checkout's bundled decoder version.
