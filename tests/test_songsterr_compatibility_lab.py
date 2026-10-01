@@ -116,6 +116,16 @@ def test_guard_inventory_never_hides_unclassified_guards():
     assert report["guards"]
     assert report["unclassifiedGuards"] == sum(r["classification"]=="unclassified" for r in report["guards"])
     assert report["deferred"]["source_player_repairs"]
+    for rule in report['rules'].values():
+        assert rule['prerequisites'] and rule['reference']['status'] in {'qualified_examples','not_qualified'}
+        assert all((Path(__file__).resolve().parents[1] / 'src/feedback_converter/song_import' / f).is_file()
+                   for f in rule['files'])
+    fields = {f['field']:f for f in report['fields']}
+    assert fields['beat.graceNote']['rules'] == ['timing.grace']
+    assert fields['note.harmonicFret']['status'] == 'unimplemented'  # Ownership is not unconditional support.
+    assert report['rules']['technique.harmonics']['reference']['status'] == 'not_qualified'
+    assert 'timing.strum_grace' in report['rules']['timing.grace']['interactions']
+    assert any(f['ruleMapping'] == 'unmapped' for f in report['fields'])
 
 
 def test_source_track_id_is_not_assumed_to_be_its_array_position():

@@ -91,7 +91,12 @@ can be inspected separately; they are not the deterministic acceptance profile.
 The original-video cursor is a separate reference target.
 
 Explicit maintenance uses `extract-reference.cjs capture.js candidate.json`
-with the repository's Babel dependencies. It creates a new candidate, never
+with the Babel versions already present in the repository's locked development
+dependency graph. The tool checks their exact versions against the reviewed
+reference manifest and records them in each candidate. It does not change or
+install the app's dependencies. When reusing a validated external dependency
+checkout, set `NODE_PATH` to that checkout's `node_modules`.
+It creates a new candidate, never
 updates the accepted manifest. Review changed bindings/options in a branch, run
 `qualify-reference.cjs capture.js cases.json new-report.json`, then compare old
 and new outputs on identical synthetic and retained sources. Review semantic

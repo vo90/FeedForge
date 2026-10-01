@@ -1,6 +1,7 @@
 'use strict';
 // Explicit maintenance operation. Produces a candidate manifest for review, never updates the accepted one.
 const fs=require('node:fs'), crypto=require('node:crypto');
+const qualificationToolchain=require('./toolchain.cjs').verify();
 const parser=require('@babel/parser'), traverse=require('@babel/traverse').default;
 const [input,output]=process.argv.slice(2);
 if(!input||!output||fs.existsSync(output))throw Error('Supply a worker and a NEW candidate manifest path');
@@ -17,7 +18,7 @@ while(queue.length){const name=queue.pop();if(done.has(name))continue;done.add(n
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');
 const bindings=[...done].map(name=>{const n=scope.getBinding(name).path.node;
  return{name,type:n.type,start:n.start,end:n.end,sha256:hash(source.slice(n.start,n.end))};}).sort((a,b)=>a.start-b.start);
-fs.writeFileSync(output,JSON.stringify({version:1,sha256:hash(bytes),exposeOffset:scope.path.node.body.end-1,entries,bindings,freeGlobals:[...free].sort(),
+fs.writeFileSync(output,JSON.stringify({version:1,sha256:hash(bytes),exposeOffset:scope.path.node.body.end-1,entries,bindings,freeGlobals:[...free].sort(),qualificationToolchain,
  traceStages:['Ts','ts','ks','Cs','oo','Ss','Ha'],qualification:'candidate_requires_review',
  profiles:{authored:{synth:'fluidsynth',useRSE:false,autoFixJson:false,humanize:false},'player-defaults':'captured xc defaults'},
  scope:'Captured scheduling reference; original recording alignment is separate.'},null,2)+'\n');
