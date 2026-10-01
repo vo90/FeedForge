@@ -263,6 +263,10 @@ def run(rows, *, worker=None, node="node", trace=False):
         else:
             result["reference"] = {"status": "not_run"}
             result["preparationStatus"] = "not_tested"
+        if not trace:
+            # Full trace is reproducible from pinned source; ordinary corpus
+            # reports retain differences without duplicating every note/bar.
+            result.pop('sourceTrace', None)
         results.append(result)
     return {"version": 1, "scope": SCOPE, "cases": results,
             "counts": dict(Counter(r["converter"]["status"] for r in results)),
