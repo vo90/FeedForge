@@ -478,7 +478,7 @@ def songsterr(document, *, track_indices=None):
                 unsupported("automations", "Tracks have different performed tempo automation.")
     parts, excluded = [], []
     note_keys = {"string", "fret", "tie", "rest", "dead", "vibrato", "wideVibrato", "ghost", "accentuated",
-                 "trill", "tap", "tapping", "hp", "harmonic", "harmonicFret", "slide", "bend", "leftHandVibrato", "staccato", "pickScrape"}
+                 "trill", "tap", "tapping", "hp", "harmonic", "harmonicFret", "slide", "bend", "leftHandVibrato", "staccato", "pickScrape", "leftFingering"}
     beat_keys = {"tremoloBar", "vibratoWithTremoloBar", "duration", "notes", "rest", "type", "dots", "tuplet", "tupletStart", "tupletStop", "graceNote",
                  "palmMute", "letRing", "tremolo", "tap", "tapping", "slap", "pop", "slapping", "popping", "vibrato", "wideVibrato", "text", "velocity", "gradualVelocity", "chord", "pickStroke", "wahwah", "brushStroke", "arpeggio", "upStroke", "downStroke", "upArpeggio", "downArpeggio"}
     for pi, (meta, raw) in enumerate(zip(metadata, raw_parts)):
@@ -571,6 +571,13 @@ def songsterr(document, *, track_indices=None):
                             continue
                         _active_unknown(note, note_keys, {"id", "velocity", "finger", "leftFinger", "rightFinger"}, nloc, ignored)
                         fx = {}
+                        fingering = note.get("leftFingering")
+                        if fingering is not None:
+                            # Independent source mapping, not the producer's helper.
+                            if type(fingering) is not str or fingering not in {"0", "1", "2", "3", "4", "T"}:
+                                raise ValueError(nloc + ": invalid leftFingering")
+                            if fingering != "0":
+                                fx["fg"] = {"T": 0, "1": 1, "2": 2, "3": 3, "4": 4}[fingering]
                         scrape = note.get("pickScrape")
                         if scrape is not None and (type(scrape) is not str or scrape not in ("up", "down") or note.get("dead") is not True):
                             unsupported(nloc + "/pickScrape", "Invalid unpitched scrape instruction.")

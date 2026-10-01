@@ -20,10 +20,11 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 40
+VERSION = 41
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
+TECHNIQUES.add("fg")
 TUNINGS = {"guitar": {6: [40, 45, 50, 55, 59, 64], 7: [35, 40, 45, 50, 55, 59, 64], 8: [30, 35, 40, 45, 50, 55, 59, 64]},
            "bass": {4: [28, 33, 38, 43], 5: [23, 28, 33, 38, 43], 6: [23, 28, 33, 38, 43, 48]}}
 
@@ -170,6 +171,8 @@ def _notes(wanted, actual, check, part, duration):
             if key in {"slide_out_marks", "slide_in_marks", "pick_scrape_marks", "whammy", "harmonic_changes"}:
                 continue
             wanted_value, actual_value = a.get(key), b.get(key)
+            if key == "fg" and key in b and (type(actual_value) is not int or not 0 <= actual_value <= 4):
+                check.fail("note_fingering", loc + "/fg", "Finger hints must be integers from 0 (thumb) to 4.")
             if wanted_value is None and (actual_value is None or actual_value is False):
                 continue
             if key == "bn" and isinstance(wanted_value, (int, float)):
@@ -310,7 +313,13 @@ def _chords(wanted, chart, check, part):
                 continue
             frets[s] = f
         check.equal("chord_template", loc + "/frets", frets, templates[template_id].get("frets"))
-        check.equal("invented_chord_fingers", loc + "/fingers", [-1] * len(frets), templates[template_id].get("fingers", [-1] * len(frets)))
+        # Child hints are independently compared with raw source in _notes.
+        # The chord diagram must carry those same hints on the same strings.
+        fingers = [-1] * len(frets)
+        for note in children:
+            if type(note.get("s")) is int and 0 <= note["s"] < len(fingers):
+                fingers[note["s"]] = note.get("fg", -1)
+        check.equal("invented_chord_fingers", loc + "/fingers", fingers, templates[template_id].get("fingers", [-1] * len(frets)))
     if {k: len(v) for k, v in expected_shapes.items()} != {k: len(v) for k, v in actual_shapes.items()}:
         check.fail("authored_chord_groups", "tracks/" + part.id, "Archived chords differ from source-authored simultaneous-note groups.",
                    sum(map(len, expected_shapes.values())), sum(map(len, actual_shapes.values())))
@@ -328,8 +337,8 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
         return
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
-    # Preserve independent checks when combining both features in contract 40.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, VERSION):
+    # Preserve independent checks when extending the preservation contract.
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     check.equal("compatibility_status", "import/compatibility", "limitations" if rows else "compatible", report.get("status"))
     target = report.get("target", {})
@@ -371,6 +380,8 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
                                     and not (note.get("dead") is True and note.get("pickScrape") in ("up", "down"))):
                                 expected[("note.fret_range", where + f"/notes/{ni}/fret")] = note["fret"]
                             remember(note, ("staccato", "pickScrape"), "note", where + f"/notes/{ni}")
+                            if note.get("tie") or note.get("leftFingering") == "0" and note.get("fret") != 0:
+                                remember(note, ("leftFingering",), "note", where + f"/notes/{ni}")
                             if (note.get('harmonic') in ('semi', 'feedback') and note.get('harmonicFret') is not None
                                     or note.get('harmonic') == 'natural' and note.get('fret') == 15
                                     and note.get('harmonicFret') == 15 and note.get('harmonicData') is None):

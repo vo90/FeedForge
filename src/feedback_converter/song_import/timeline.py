@@ -7,6 +7,7 @@ from .model import Measure, Score, ScoreImportError, validate_score
 from .notation import render_notation
 from .songsterr_whammy import append_segment
 from .repeat_regions import repeat_regions
+from .fingering import template_fingers
 
 
 def playback_order(measures: list[Measure]) -> list[int]:
@@ -211,7 +212,9 @@ def _render(score: Score) -> dict:
                         raise ScoreImportError("A harmonic type or pitch change inside a tie needs a separate gesture representation.")
                     articulation = articulations[id(output)]
                     articulation["segments"] += 1
-                    output.update({k: v for k, v in effects.items() if k != "pkd" and not (late_mute and k == 'mt') and (not songsterr_tie or k not in FIELDS)})
+                    # A continuation is not an attack. Its finger instruction
+                    # must not overwrite the finger displayed at the onset.
+                    output.update({k: v for k, v in effects.items() if k not in {"pkd", "fg"} and not (late_mute and k == 'mt') and (not songsterr_tie or k not in FIELDS)})
                     if note.source_id:
                         output.setdefault("source_ids", []).append(note.source_id)
                 else:
@@ -379,10 +382,11 @@ def _render(score: Score) -> dict:
                 frets[note["s"]] = note["f"]
                 grouped.add(id(note))
             label = labels.get(beat_id, "")
-            shape = (tuple(frets), label)
+            fingers = template_fingers(group, len(frets))
+            shape = (tuple(frets), label, tuple(fingers))
             if shape not in template_ids:
                 template_ids[shape] = len(templates)
-                templates.append({"name": label, "fingers": [-1] * len(frets), "frets": frets})
+                templates.append({"name": label, "fingers": fingers, "frets": frets})
             chords.append({"t": group[0]["t"], "id": template_ids[shape], "source_ids": [beat_id],
                            "notes": [{key: value for key, value in note.items() if key != "t"} for note in group]})
         notation, notation_warnings = render_notation(score, track, visits, at, rendered)

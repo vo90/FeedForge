@@ -2,6 +2,7 @@
 from collections import defaultdict
 from copy import deepcopy
 import hashlib
+from .fingering import template_fingers
 
 POLICY = 'source-voices-v1'
 SIDECARS = ('harmonicTieEvidence', 'tiedMuteEvidence', 'mutedTieIdentityEvidence', 'staccatoBendEvidence', 'mutedSlideEvidence', 'trillEvidence', 'strumEvidence')
@@ -89,7 +90,7 @@ def combine(track, notes, merges):
         frets=[-1]*len(track['tuning'])
         for n in children:frets[n['s']]=n['f']
         ident=len(track['templates'])
-        track['templates'].append({'name':'','frets':frets,'fingers':[-1]*len(frets)})
+        track['templates'].append({'name':'','frets':frets,'fingers':template_fingers(children,len(frets))})
         track['chords'].append({'t':time,'id':ident,'notes':[{k:v for k,v in n.items() if k!='t'} for n in children]})
     track['notes'].sort(key=lambda n:(n['t'],n['s']))
     track['chords'].sort(key=lambda n:n['t'])
