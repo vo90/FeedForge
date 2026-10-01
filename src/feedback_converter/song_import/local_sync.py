@@ -166,6 +166,25 @@ def assess(tracks, path, duration, map_hash):
             'audioSha256': _hash(path), 'mapHash': map_hash, 'audioDuration':duration}
 
 
+_SOURCE_TIME_PATHS = (
+    ('endingEvidence', 'groups', '*', 'time'),
+    ('phraseEvidence', 'phrases', '*', 'start'),
+    ('phraseEvidence', 'phrases', '*', 'end'),
+    ('phraseEvidence', 'phrases', '*', 'times', '*'),
+    ('phraseEvidence', 'phrases', '*', 'halves', '*', 'start'),
+    ('phraseEvidence', 'phrases', '*', 'halves', '*', 'end'),
+    ('phraseEvidence', 'coverage', 'intervals', '*', '*'),
+    ('phraseEvidence', 'coverage', 'uncoveredAttackTimes', '*'),
+)
+
+
+def _source_time_field(path):
+    # Only tab-derived coordinates, not measured offsets, audio duration,
+    # window boundaries or arbitrary fields that happen to be named "time".
+    parts = tuple('*' if p.isdecimal() else p for p in path.split('/'))
+    return any(parts[-len(pattern):] == pattern for pattern in _SOURCE_TIME_PATHS)
+
+
 def compare_assessment(fresh, stored, check, path='import/timing-assessment'):
     """Allow diagnostic quantization noise, never changed decisions or identity.
 
@@ -190,6 +209,14 @@ def compare_assessment(fresh, stored, check, path='import/timing-assessment'):
     elif isinstance(fresh,list) and isinstance(stored,list):
         check.equal('timing_assessment_count',path,len(fresh),len(stored))
         for i,(a,b) in enumerate(zip(fresh,stored)):compare_assessment(a,b,check,path+'/'+str(i))
+    elif _source_time_field(path):
+        # Reuse Check.near's six-decimal chart-time tolerance. The independently
+        # mapped source can round one microsecond either side of the producer.
+        # Array length/order, decisions and receipt hashes remain exact checks.
+        if type(fresh) not in (int, float) or not math.isfinite(fresh):
+            check.fail('timing_assessment_time',path,'Invalid source-derived timestamp.')
+        else:
+            check.near('timing_assessment_time',path,fresh,stored)
     else:check.equal('timing_assessment_audio',path,fresh,stored)
 
 
