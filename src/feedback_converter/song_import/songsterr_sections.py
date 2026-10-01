@@ -1,5 +1,32 @@
 """Choose shared section annotations from the complete source envelope."""
+import re
+
 from .model import ScoreImportError
+
+
+_NUMBERED_SECTION = re.compile(
+    r'(intro|verse|pre-chorus|chorus|post-chorus|bridge|interlude|solo|outro|'
+    r'ending|break|breakdown|riff|hook)(?: ([1-9][0-9]*))?\Z')
+
+
+def _equivalent_label(candidates):
+    """Resolve only formatting or an unambiguous optional section number.
+
+    Arbitrary suffixes (especially player names) are not disposable metadata.
+    The chosen value is always an authored string, independent of track order.
+    """
+    normalized = {text: ' '.join(text.split()).casefold() for text in candidates}
+    choices = candidates
+    if len(set(normalized.values())) != 1:
+        parsed = {text: _NUMBERED_SECTION.fullmatch(value) for text, value in normalized.items()}
+        if not all(parsed.values()):
+            return None
+        bases = {match[1] for match in parsed.values()}
+        numbers = {match[2] for match in parsed.values() if match[2] is not None}
+        if len(bases) != 1 or len(numbers) > 1:
+            return None
+        choices = {text for text, match in parsed.items() if match[2] is not None} or candidates
+    return min(choices, key=lambda text: (len(text) - len(' '.join(text.split())), text.casefold(), text))
 
 
 def section_label(samples, metadata, eligible, measure):
@@ -20,14 +47,16 @@ def section_label(samples, metadata, eligible, measure):
                            'location': f'parts/{index}/measures/{measure}/marker'})
     preferred = {label['text'] for label in labels if label['eligible']}
     candidates = preferred or {label['text'] for label in labels}
-    if len(candidates) > 1:
+    text = _equivalent_label(candidates) if len(candidates) > 1 else next(iter(candidates), '')
+    if text is None:
         scope = 'Guitar/bass tracks' if preferred else 'Fallback tracks'
         error = ScoreImportError(f'{scope} have different section labels in measure {measure + 1}; review is required.')
         error.source_feature = 'arrangement.section_labels'
         error.source_location = {'measure': measure + 1, 'location': f'measures/{measure}/marker'}
         error.source_value = labels
         raise error
-    text = next(iter(candidates), '')
+    basis = 'guitar_bass' if preferred else 'other_tracks'
+    basis += '_equivalent_labels' if len(candidates) > 1 else '_consensus'
     detail = {'measure': measure + 1, 'label': text,
-              'basis': 'guitar_bass_consensus' if preferred else 'other_tracks_consensus', 'labels': labels}
+              'basis': basis, 'labels': labels}
     return text, detail if labels else None
