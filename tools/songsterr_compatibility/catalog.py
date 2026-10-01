@@ -1,7 +1,10 @@
 """Capability metadata and guard inventory, not shared musical calculations."""
 import ast
+from copy import deepcopy
+import json
 from pathlib import Path
 from feedback_converter.song_import.compatibility import KNOWN, UNIMPLEMENTED, LIMITATIONS, VERSION
+from .cases import cases
 
 ROOT = Path(__file__).resolve().parents[2]
 RULES = {
@@ -10,15 +13,50 @@ RULES = {
     "timing.grace": {"files": ["songsterr_timing.py"], "policy": "source_interpretation"},
     "timing.swing": {"files": ["songsterr_timing.py"], "policy": "source_interpretation"},
     "timing.repeats": {"files": ["repeat_regions.py", "timeline.py"], "policy": "source_interpretation"},
-    "timing.ties": {"files": ["timeline.py", "tie_continuity.py"], "policy": "source_interpretation"},
+    "timing.ties": {"files": ["timeline.py", "muted_ties.py", "tied_harmonics.py"], "policy": "source_interpretation"},
     "timing.tempo": {"files": ["songsterr_automation.py"], "policy": "source_interpretation"},
     "timing.pickup": {"files": ["songsterr_pickup.py"], "policy": "source_interpretation"},
+    "timing.whole_rest": {"files": ["songsterr_fields.py", "songsterr_timing.py"], "policy": "silent_measure_boundary"},
     "notation.voices": {"files": ["voices.py"], "policy": "approved_game_projection"},
     "technique.harmonics": {"files": ["songsterr_harmonics.py", "tied_harmonics.py"], "policy": "approved_game_projection"},
     "technique.trills": {"files": ["songsterr_trills.py"], "policy": "approved_game_projection"},
     "technique.whammy": {"files": ["songsterr_whammy.py"], "policy": "approved_game_projection"},
     "projection.high_frets": {"files": ["high_frets.py"], "policy": "approved_omission"},
-    "projection.hybrid": {"files": ["hybrid.py"], "policy": "derived_arrangement"},
+    "projection.hybrid": {"files": ["hybrid_lead.py", "hybrid_selection.py", "hybrid_materialize.py"], "policy": "derived_arrangement"},
+}
+# Explicit ownership of the first timing scope and established technique models.
+# This metadata does not share producer/verifier calculations or grant support.
+FIELDS = {
+    "timing.basic": "measure.signature beat.duration beat.type beat.dots beat.tuplet note.string note.fret",
+    "timing.strum_grace": "beat.arpeggio beat.brushStroke beat.upArpeggio beat.downArpeggio",
+    "timing.grace": "beat.graceNote",
+    "timing.swing": "measure.tripletFeel",
+    "timing.repeats": "measure.repeat measure.repeatStart measure.alternateEnding",
+    "timing.ties": "note.tie",
+    "timing.tempo": "automations.tempo automations.fermata automations.gradualTempo tempo.measure tempo.position tempo.bpm tempo.type tempo.dotted tempo.linear",
+    "timing.whole_rest": "beat.rest beat.type beat.dots beat.duration note.rest",
+    "notation.voices": "measure.voices voice.beats",
+    "technique.harmonics": "note.harmonic note.harmonicFret",
+    "technique.trills": "note.trill",
+    "technique.whammy": "beat.tremoloBar beat.vibratoWithTremoloBar",
+    "projection.high_frets": "note.fret",
+}
+FAMILIES = {
+    "timing.basic": {"timing.basic"},
+    "timing.strum_grace": {"timing.strum_grace", "timing.strum_tie_grace", "timing.strum_legacy"},
+    "timing.grace": {"timing.grace", "timing.strum_grace", "timing.strum_tie_grace"},
+    "timing.swing": {"timing.swing", "timing.swing_tuplet_repeat"},
+    "timing.repeats": {"timing.repeats", "timing.swing_tuplet_repeat"},
+    "timing.ties": {"timing.ties", "timing.strum_tie_grace"},
+}
+BEHAVIOR = {
+    "timing.basic": "Preserve exact authored fractions until mapping the performed clock.",
+    "timing.strum_grace": "Apply explicit stroke timing after grace allocation; a consumed attack remains a pending omission decision.",
+    "timing.grace": "Allocate source grace groups with bar and opening context; do not invent minimum note lengths.",
+    "timing.swing": "Apply the authored rhythmic feel to eligible groups while retaining written rhythm.",
+    "timing.repeats": "Expand authored traversal and preserve source identity plus occurrence.",
+    "timing.ties": "Join supported continuations without a new attack; pitch/relationship repairs are not inferred from synthesis.",
+    "timing.whole_rest": "Bound a qualifying silent whole-rest overrun to the meter; never truncate played notes by this rule.",
 }
 DEFERRED = {
     "strum_grace_consumed_attack": "Omitting an attack consumed by strum/grace timing requires a decision.",
@@ -37,11 +75,30 @@ def inventory():
                 rows.append({"file": path.name, "line": n.lineno,
                              "guard": ast.unparse(n.exc) if n.exc else "rethrow",
                              "candidateRules": owners, "classification": "file_family" if owners else "unclassified"})
+    rules = deepcopy(RULES)
+    generated = list(cases())
+    reference_hash = json.loads(Path(__file__).with_name('reference-manifest.json').read_text())["sha256"]
+    for key, value in rules.items():
+        value["sourceFields"] = FIELDS.get(key, "").split()
+        value["behavior"] = BEHAVIOR.get(key, "See the existing implementation and policy tests; external effect comparison is not qualified.")
+        value["testCases"] = [c['id'] for c in generated if c['family'] in FAMILIES.get(key, set())]
+        value["reference"] = {"assetSha256": reference_hash,
+                              "status": "qualified_examples" if value["testCases"] else "not_qualified",
+                              "scope": "Preparation and authored pre-tie events only; not complete effect or game equivalence."}
+        value["prerequisites"] = ["approved_revision", "valid_source_structure", "source_identity_preserved"]
+        value["interactions"] = [other for other in FAMILIES if other != key and
+                                  FAMILIES.get(key, set()) & FAMILIES[other]]
+        if key == 'timing.whole_rest':
+            value['reference']['status'] = 'qualified_examples'
+            value['testFixture'] = 'tests/fixtures/songsterr_rest_reference.json'
+            value['tests'] = 'tests/test_songsterr_dotted_whole_rest.py'
     fields = [{"field": f"{scope}.{key}", "declarationVersion": VERSION,
                "status": "unimplemented" if key in UNIMPLEMENTED.get(scope, ()) else "recognized_conditional",
                "limitation": LIMITATIONS.get((scope, key)),
-               "owner": "compatibility.py", "ruleMapping": "unmapped"}
+               "owner": "compatibility.py",
+               "rules": [r for r, v in rules.items() if f"{scope}.{key}" in v["sourceFields"]],
+               "ruleMapping": "mapped" if any(f"{scope}.{key}" in v["sourceFields"] for v in rules.values()) else "unmapped"}
               for scope, keys in sorted(KNOWN.items()) for key in sorted(keys)]
-    return {"version": 1, "rules": RULES, "deferred": DEFERRED, "guards": rows, "fields": fields,
+    return {"version": 2, "rules": rules, "deferred": DEFERRED, "guards": rows, "fields": fields,
             "unclassifiedGuards": sum(not r["candidateRules"] for r in rows),
             "scope": "File-family ownership is a review aid, not proof that a guard implements a rule."}
