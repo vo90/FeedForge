@@ -10,7 +10,7 @@ from .songsterr_harmonics import exact_natural, natural_alias, source_target
 from .fingering import left_finger
 from .model import ScoreImportError
 
-VERSION = 41
+VERSION = 42
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {

@@ -1,0 +1,1734 @@
+{
+  "version": 1,
+  "referenceSha256": "4219f9dbf0952af83be36c8b590f10fea7a0f36d72bd1f92297a3d768f93f5ab",
+  "cases": [
+    {
+      "id": "0/(2, 4)",
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Compatibility fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "strings": 6,
+            "frets": 24,
+            "measures": [
+              {
+                "signature": [
+                  2,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "rest": true,
+                        "type": 1,
+                        "dots": 0,
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "rest": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "fret": 5,
+                            "string": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "reference": {
+        "parts": [
+          {
+            "index": 0,
+            "status": "executed",
+            "beats": [
+              {
+                "id": "0:0:0",
+                "quarter": 0,
+                "duration": 2
+              },
+              {
+                "id": "1:0:0",
+                "quarter": 0,
+                "duration": 4
+              }
+            ],
+            "traversal": [
+              0,
+              1
+            ],
+            "tpqn": 16384,
+            "authoredEvents": [
+              {
+                "id": "1:0:0:0",
+                "occurrence": 1,
+                "bar": 1,
+                "string": 0,
+                "fret": 5,
+                "sourceFret": 5,
+                "attackTick": 32768,
+                "endTick": 98303,
+                "hidden": false,
+                "tie": false,
+                "customEvents": 0,
+                "preEvents": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "0/(4, 4)",
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Compatibility fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "strings": 6,
+            "frets": 24,
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "rest": true,
+                        "type": 1,
+                        "dots": 0,
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "rest": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "fret": 5,
+                            "string": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "reference": {
+        "parts": [
+          {
+            "index": 0,
+            "status": "executed",
+            "beats": [
+              {
+                "id": "0:0:0",
+                "quarter": 0,
+                "duration": 4
+              },
+              {
+                "id": "1:0:0",
+                "quarter": 0,
+                "duration": 4
+              }
+            ],
+            "traversal": [
+              0,
+              1
+            ],
+            "tpqn": 16384,
+            "authoredEvents": [
+              {
+                "id": "1:0:0:0",
+                "occurrence": 1,
+                "bar": 1,
+                "string": 0,
+                "fret": 5,
+                "sourceFret": 5,
+                "attackTick": 65536,
+                "endTick": 131071,
+                "hidden": false,
+                "tie": false,
+                "customEvents": 0,
+                "preEvents": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "0/(6, 4)",
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Compatibility fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "strings": 6,
+            "frets": 24,
+            "measures": [
+              {
+                "signature": [
+                  6,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "rest": true,
+                        "type": 1,
+                        "dots": 0,
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "rest": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "fret": 5,
+                            "string": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "reference": {
+        "parts": [
+          {
+            "index": 0,
+            "status": "executed",
+            "beats": [
+              {
+                "id": "0:0:0",
+                "quarter": 0,
+                "duration": 4
+              },
+              {
+                "id": "1:0:0",
+                "quarter": 0,
+                "duration": 4
+              }
+            ],
+            "traversal": [
+              0,
+              1
+            ],
+            "tpqn": 16384,
+            "authoredEvents": [
+              {
+                "id": "1:0:0:0",
+                "occurrence": 1,
+                "bar": 1,
+                "string": 0,
+                "fret": 5,
+                "sourceFret": 5,
+                "attackTick": 98304,
+                "endTick": 163839,
+                "hidden": false,
+                "tie": false,
+                "customEvents": 0,
+                "preEvents": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "0/(8, 4)",
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Compatibility fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "strings": 6,
+            "frets": 24,
+            "measures": [
+              {
+                "signature": [
+                  8,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "rest": true,
+                        "type": 1,
+                        "dots": 0,
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "rest": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "fret": 5,
+                            "string": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "reference": {
+        "parts": [
+          {
+            "index": 0,
+            "status": "executed",
+            "beats": [
+              {
+                "id": "0:0:0",
+                "quarter": 0,
+                "duration": 4
+              },
+              {
+                "id": "1:0:0",
+                "quarter": 0,
+                "duration": 4
+              }
+            ],
+            "traversal": [
+              0,
+              1
+            ],
+            "tpqn": 16384,
+            "authoredEvents": [
+              {
+                "id": "1:0:0:0",
+                "occurrence": 1,
+                "bar": 1,
+                "string": 0,
+                "fret": 5,
+                "sourceFret": 5,
+                "attackTick": 131072,
+                "endTick": 196607,
+                "hidden": false,
+                "tie": false,
+                "customEvents": 0,
+                "preEvents": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "1/(2, 4)",
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Compatibility fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "strings": 6,
+            "frets": 24,
+            "measures": [
+              {
+                "signature": [
+                  2,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "rest": true,
+                        "type": 1,
+                        "dots": 1,
+                        "duration": [
+                          3,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "rest": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "fret": 5,
+                            "string": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "reference": {
+        "parts": [
+          {
+            "index": 0,
+            "status": "executed",
+            "beats": [
+              {
+                "id": "0:0:0",
+                "quarter": 0,
+                "duration": 2
+              },
+              {
+                "id": "1:0:0",
+                "quarter": 0,
+                "duration": 4
+              }
+            ],
+            "traversal": [
+              0,
+              1
+            ],
+            "tpqn": 16384,
+            "authoredEvents": [
+              {
+                "id": "1:0:0:0",
+                "occurrence": 1,
+                "bar": 1,
+                "string": 0,
+                "fret": 5,
+                "sourceFret": 5,
+                "attackTick": 32768,
+                "endTick": 98303,
+                "hidden": false,
+                "tie": false,
+                "customEvents": 0,
+                "preEvents": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "1/(4, 4)",
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Compatibility fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "strings": 6,
+            "frets": 24,
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "rest": true,
+                        "type": 1,
+                        "dots": 1,
+                        "duration": [
+                          3,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "rest": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "fret": 5,
+                            "string": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "reference": {
+        "parts": [
+          {
+            "index": 0,
+            "status": "executed",
+            "beats": [
+              {
+                "id": "0:0:0",
+                "quarter": 0,
+                "duration": 4
+              },
+              {
+                "id": "1:0:0",
+                "quarter": 0,
+                "duration": 4
+              }
+            ],
+            "traversal": [
+              0,
+              1
+            ],
+            "tpqn": 16384,
+            "authoredEvents": [
+              {
+                "id": "1:0:0:0",
+                "occurrence": 1,
+                "bar": 1,
+                "string": 0,
+                "fret": 5,
+                "sourceFret": 5,
+                "attackTick": 65536,
+                "endTick": 131071,
+                "hidden": false,
+                "tie": false,
+                "customEvents": 0,
+                "preEvents": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "1/(6, 4)",
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Compatibility fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "strings": 6,
+            "frets": 24,
+            "measures": [
+              {
+                "signature": [
+                  6,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "rest": true,
+                        "type": 1,
+                        "dots": 1,
+                        "duration": [
+                          3,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "rest": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "fret": 5,
+                            "string": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "reference": {
+        "parts": [
+          {
+            "index": 0,
+            "status": "executed",
+            "beats": [
+              {
+                "id": "0:0:0",
+                "quarter": 0,
+                "duration": 6
+              },
+              {
+                "id": "1:0:0",
+                "quarter": 0,
+                "duration": 4
+              }
+            ],
+            "traversal": [
+              0,
+              1
+            ],
+            "tpqn": 16384,
+            "authoredEvents": [
+              {
+                "id": "1:0:0:0",
+                "occurrence": 1,
+                "bar": 1,
+                "string": 0,
+                "fret": 5,
+                "sourceFret": 5,
+                "attackTick": 98304,
+                "endTick": 163839,
+                "hidden": false,
+                "tie": false,
+                "customEvents": 0,
+                "preEvents": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "1/(8, 4)",
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Compatibility fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "strings": 6,
+            "frets": 24,
+            "measures": [
+              {
+                "signature": [
+                  8,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "rest": true,
+                        "type": 1,
+                        "dots": 1,
+                        "duration": [
+                          3,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "rest": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "fret": 5,
+                            "string": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "reference": {
+        "parts": [
+          {
+            "index": 0,
+            "status": "executed",
+            "beats": [
+              {
+                "id": "0:0:0",
+                "quarter": 0,
+                "duration": 6
+              },
+              {
+                "id": "1:0:0",
+                "quarter": 0,
+                "duration": 4
+              }
+            ],
+            "traversal": [
+              0,
+              1
+            ],
+            "tpqn": 16384,
+            "authoredEvents": [
+              {
+                "id": "1:0:0:0",
+                "occurrence": 1,
+                "bar": 1,
+                "string": 0,
+                "fret": 5,
+                "sourceFret": 5,
+                "attackTick": 131072,
+                "endTick": 196607,
+                "hidden": false,
+                "tie": false,
+                "customEvents": 0,
+                "preEvents": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "2/(2, 4)",
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Compatibility fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "strings": 6,
+            "frets": 24,
+            "measures": [
+              {
+                "signature": [
+                  2,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "rest": true,
+                        "type": 1,
+                        "dots": 2,
+                        "duration": [
+                          7,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "rest": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "fret": 5,
+                            "string": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "reference": {
+        "parts": [
+          {
+            "index": 0,
+            "status": "executed",
+            "beats": [
+              {
+                "id": "0:0:0",
+                "quarter": 0,
+                "duration": 2
+              },
+              {
+                "id": "1:0:0",
+                "quarter": 0,
+                "duration": 4
+              }
+            ],
+            "traversal": [
+              0,
+              1
+            ],
+            "tpqn": 16384,
+            "authoredEvents": [
+              {
+                "id": "1:0:0:0",
+                "occurrence": 1,
+                "bar": 1,
+                "string": 0,
+                "fret": 5,
+                "sourceFret": 5,
+                "attackTick": 32768,
+                "endTick": 98303,
+                "hidden": false,
+                "tie": false,
+                "customEvents": 0,
+                "preEvents": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "2/(4, 4)",
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Compatibility fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "strings": 6,
+            "frets": 24,
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "rest": true,
+                        "type": 1,
+                        "dots": 2,
+                        "duration": [
+                          7,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "rest": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "fret": 5,
+                            "string": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "reference": {
+        "parts": [
+          {
+            "index": 0,
+            "status": "executed",
+            "beats": [
+              {
+                "id": "0:0:0",
+                "quarter": 0,
+                "duration": 4
+              },
+              {
+                "id": "1:0:0",
+                "quarter": 0,
+                "duration": 4
+              }
+            ],
+            "traversal": [
+              0,
+              1
+            ],
+            "tpqn": 16384,
+            "authoredEvents": [
+              {
+                "id": "1:0:0:0",
+                "occurrence": 1,
+                "bar": 1,
+                "string": 0,
+                "fret": 5,
+                "sourceFret": 5,
+                "attackTick": 65536,
+                "endTick": 131071,
+                "hidden": false,
+                "tie": false,
+                "customEvents": 0,
+                "preEvents": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "2/(6, 4)",
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Compatibility fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "strings": 6,
+            "frets": 24,
+            "measures": [
+              {
+                "signature": [
+                  6,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "rest": true,
+                        "type": 1,
+                        "dots": 2,
+                        "duration": [
+                          7,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "rest": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "fret": 5,
+                            "string": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "reference": {
+        "parts": [
+          {
+            "index": 0,
+            "status": "executed",
+            "beats": [
+              {
+                "id": "0:0:0",
+                "quarter": 0,
+                "duration": 6
+              },
+              {
+                "id": "1:0:0",
+                "quarter": 0,
+                "duration": 4
+              }
+            ],
+            "traversal": [
+              0,
+              1
+            ],
+            "tpqn": 16384,
+            "authoredEvents": [
+              {
+                "id": "1:0:0:0",
+                "occurrence": 1,
+                "bar": 1,
+                "string": 0,
+                "fret": 5,
+                "sourceFret": 5,
+                "attackTick": 98304,
+                "endTick": 163839,
+                "hidden": false,
+                "tie": false,
+                "customEvents": 0,
+                "preEvents": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "2/(8, 4)",
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Compatibility fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "name": "Lead",
+            "instrumentId": 30,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "strings": 6,
+            "frets": 24,
+            "measures": [
+              {
+                "signature": [
+                  8,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "rest": true,
+                        "type": 1,
+                        "dots": 2,
+                        "duration": [
+                          7,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "rest": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "fret": 5,
+                            "string": 0
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "reference": {
+        "parts": [
+          {
+            "index": 0,
+            "status": "executed",
+            "beats": [
+              {
+                "id": "0:0:0",
+                "quarter": 0,
+                "duration": 7
+              },
+              {
+                "id": "1:0:0",
+                "quarter": 0,
+                "duration": 4
+              }
+            ],
+            "traversal": [
+              0,
+              1
+            ],
+            "tpqn": 16384,
+            "authoredEvents": [
+              {
+                "id": "1:0:0:0",
+                "occurrence": 1,
+                "bar": 1,
+                "string": 0,
+                "fret": 5,
+                "sourceFret": 5,
+                "attackTick": 131072,
+                "endTick": 196607,
+                "hidden": false,
+                "tie": false,
+                "customEvents": 0,
+                "preEvents": 0
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
