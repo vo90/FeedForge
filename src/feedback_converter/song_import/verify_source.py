@@ -338,6 +338,36 @@ def _songsterr_strum(beat, location):
     return {index: first + rank * interval for rank, (index, _) in enumerate(ordered)}, direction
 
 
+def _section_annotation(names, location):
+    """Derive the selected authored label without trusting producer decisions."""
+    if len(names) < 2:
+        return next(iter(names), '')
+    spellings = {}
+    for name in names:
+        spelling = ' '.join(name.split()).casefold()
+        spellings.setdefault(spelling, []).append(name)
+    allowed = {'intro', 'verse', 'pre-chorus', 'chorus', 'post-chorus', 'bridge',
+               'interlude', 'solo', 'outro', 'ending', 'break', 'breakdown', 'riff', 'hook'}
+    selected = list(names)
+    if len(spellings) > 1:
+        bases, numbered = set(), {}
+        for spelling, originals in spellings.items():
+            base, separator, number = spelling.rpartition(' ')
+            if separator and re.fullmatch(r'[1-9][0-9]*', number) and base in allowed:
+                bases.add(base)
+                numbered.setdefault(number, []).extend(originals)
+            elif spelling in allowed:
+                bases.add(spelling)
+            else:
+                unsupported(location, 'Guitar/bass section labels or their fallback are ambiguous.')
+        if len(bases) != 1 or len(numbered) > 1:
+            unsupported(location, 'Guitar/bass section labels or their fallback are ambiguous.')
+        if numbered:
+            selected = next(iter(numbered.values()))
+    ranked = sorted((len(name) - len(' '.join(name.split())), name.casefold(), name) for name in selected)
+    return ranked[0][2]
+
+
 def songsterr(document, *, track_indices=None):
     # Diagnostic selection never changes shared labels, meter, tempo or repeats.
     # Published archives use the default, which checks every eligible track.
@@ -384,14 +414,15 @@ def songsterr(document, *, track_indices=None):
                                     'eligible': pi in eligible, 'text': marker, 'location': marker_loc})
         playable_names = {a['text'] for a in annotations if a['eligible']}
         names = playable_names or {a['text'] for a in annotations}
-        if len(names) > 1:
-            unsupported(loc + '/marker', 'Guitar/bass section labels or their fallback are ambiguous.')
+        section = _section_annotation(names, loc + '/marker')
         if annotations:
-            section_labels.append({'measure': bi + 1, 'label': next(iter(names)),
-                                   'basis': 'guitar_bass_consensus' if playable_names else 'other_tracks_consensus',
+            basis = 'guitar_bass' if playable_names else 'other_tracks'
+            basis += '_equivalent_labels' if len(names) > 1 else '_consensus'
+            section_labels.append({'measure': bi + 1, 'label': section,
+                                   'basis': basis,
                                    'labels': annotations})
         bars.append(Bar(signature, any(b.get("repeatStart") for b in samples), next(iter(repeats), 0),
-                        next(iter(endings), frozenset()), next(iter(names), "")))
+                        next(iter(endings), frozenset()), section))
     # Independently derive the explicit opening extent from source voices.
     # Never import the producer's pickup helper or trust its serialized clock.
     flags = {p.get('anacrusis', False) for p in raw_parts if type(p.get('anacrusis', False)) is bool}

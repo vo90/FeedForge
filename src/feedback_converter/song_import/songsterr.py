@@ -449,7 +449,11 @@ def parse(document: dict, *, track_indices=None) -> Score:
     source.update(trackCount=len(metadata), excludedTracks=excluded, sectionLabels=section_labels)
     for decision in section_labels:
         if len({label['text'] for label in decision['labels']}) > 1:
-            warnings.append(f"Section label in measure {decision['measure']} uses guitar/bass consensus; all track labels are retained.")
+            if decision['basis'].endswith('_equivalent_labels'):
+                warnings.append(f"Equivalent section labels in measure {decision['measure']} use the authored label "
+                                f"{decision['label']!r}; all track labels are retained.")
+            else:
+                warnings.append(f"Section label in measure {decision['measure']} uses guitar/bass consensus; all track labels are retained.")
     warnings.extend(inventory.warnings())
     return Score(str(document.get("title", "")), str(document.get("artist", "")), measures, tracks,
                  str(document.get("album", "")), document.get("year", ""), source, warnings,
