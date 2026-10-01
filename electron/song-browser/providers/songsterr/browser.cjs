@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const { readSongsterrPage, actOnSongsterrPage } = require('./dom.cjs');
 const { ORIGIN, MAX_TOTAL_BYTES, failure, check, clean, numeric, sourceFilename, songUrl, safeResult, allowedNavigation, allowedDownload, publicAudio, delay, bounded } = require('./policy.cjs');
 const { acquireAnonymous } = require('./acquire.cjs');
+const { resolveRevision } = require('./revisions.cjs');
 const { retrieveSynchronization, unavailableSynchronization, audioVideo } = require('./synchronization.cjs');
 const { networkTransport } = require('../../songsterr-retry.cjs');
 
@@ -307,18 +308,15 @@ class SongsterrProvider {
           { transport: networkTransport(error, 'score', 'revision_history') });
         throw error;
       }
-      const revisions = (page.approvedRevisions || []).filter((revision) => numeric(revision.revisionId) && revision.approval === 'approved');
-      // History is displayed newest first. Use dates when every row supplies a
-      // valid date; otherwise retain the observed order, not numeric ID guesses.
-      if (revisions.every((revision) => revision.date && Number.isFinite(Date.parse(revision.date)))) revisions.sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
-      if (!revisions.length) throw failure('unapproved_revision', 'Songsterr’s revision history loaded, but no approved revision with a matching tab link could be verified.');
-      const revisionId = String(revisions[0].revisionId), url = `${registered.url}/r${revisionId}`;
+      const selected = await resolveRevision(registered, page,
+        { fetch: this.anonymousSession.fetch.bind(this.anonymousSession), signal: operation.signal });
+      const { revisionId, revisionEvidence } = selected, url = `${registered.url}/r${revisionId}`;
       await this._navigate(win, url, operation.signal);
       page = await this._readyPinnedPage(win, id, revisionId, operation.signal);
-      const pinned = { ...registered, revisionId, approval: 'approved', approvedUrl: url, audioProbePending: true };
+      const pinned = { ...registered, revisionId, approval: 'approved', revisionEvidence, approvedUrl: url, audioProbePending: true };
       await onPinned(pinned);
       const audio = await this._discoverAudio(win, { songId: id, revisionId }, page, operation.signal);
-      const descriptor = { ...registered, revisionId, approval: 'approved', approvedUrl: url, ...(audio ? { audio } : {}) };
+      const descriptor = { ...registered, revisionId, approval: 'approved', revisionEvidence, approvedUrl: url, ...(audio ? { audio } : {}) };
       await onPinned(descriptor);
       this.resolved.set(`${id}:${revisionId}`, descriptor);
       return descriptor;

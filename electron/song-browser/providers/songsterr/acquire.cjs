@@ -15,7 +15,7 @@ function partUrl(songId, revisionId, image, index) {
   const host = image.endsWith('-stage') ? 'd3d3l6a6rcgkaf' : 'dqsljvtekg760';
   return `https://${host}.cloudfront.net/${songId}/${revisionId}/${image}/${index}.json`;
 }
-async function readJson(fetch, url, signal, budget) {
+async function readJson(fetch, url, signal, budget, { array = false } = {}) {
   const operation = new URL(url).pathname.startsWith('/api/meta/') ? 'score_metadata' : 'score_part';
   check(signal);
   const controller = new AbortController();
@@ -47,7 +47,7 @@ async function readJson(fetch, url, signal, budget) {
       budget.remaining -= bytes.length;
       let value;
       try { value = JSON.parse(bytes.toString('utf8')); } catch { throw failure('invalid_score', 'Songsterr returned something other than a complete score.'); }
-      if (!value || typeof value !== 'object' || Array.isArray(value)) throw failure('invalid_score', 'The score response has an unsupported format.');
+      if (!value || typeof value !== 'object' || Array.isArray(value) !== array) throw failure('invalid_score', 'The score response has an unsupported format.');
       return value;
     };
     return await bounded(request(), signal, 30000, abort);
@@ -94,7 +94,8 @@ async function acquireAnonymous(descriptor, { fetch, directory, signal, onProgre
   await fs.writeFile(destination, JSON.stringify(payload), { flag: 'wx', mode: 0o600 });
   const audio = descriptor.audio || publicAudio(meta.youtubeUrl) || publicAudio(meta.videoUrl);
   return { path: destination, format: 'songsterr', metadata: { songId: descriptor.id, revisionId: descriptor.revisionId,
-    title: descriptor.title, artist: descriptor.artist, approval: 'approved', tracks: meta.tracks.length, measures },
+    title: descriptor.title, artist: descriptor.artist, approval: 'approved', tracks: meta.tracks.length, measures,
+    ...(descriptor.revisionEvidence ? { revisionEvidence: descriptor.revisionEvidence } : {}) },
     ...(audio ? { audio } : {}), sourceFilename: sourceFilename(descriptor.artist, descriptor.title) };
 }
 

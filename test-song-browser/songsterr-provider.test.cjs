@@ -80,13 +80,14 @@ test('mismatched revision never downloads parts or offers account copying', asyn
   const root = await temporary(t), state = runtime(root);
   const directory = path.join(root, 'score'); await fs.mkdir(directory);
   await state.provider.search({ query: 'Green Lung' });
+  const pinned = await state.provider.resolve(result);
   let calls = 0;
   state.provider.anonymousSession.fetch = async (url) => {
     calls++;
     assert.equal(url, `https://www.songsterr.com/api/meta/${descriptor.id}/${descriptor.revisionId}`);
     return response({ ...meta, revisionId: '999' });
   };
-  await assert.rejects(state.provider.acquire(result, { directory }), (error) => {
+  await assert.rejects(state.provider.acquire(pinned, { directory }), (error) => {
     assert.equal(error.code, 'revision_unavailable');
     assert.equal(error.canUseAccount, false);
     assert.match(error.message, /999.*2585330/);
@@ -107,12 +108,24 @@ test('anonymous adapter rejects large/HTML responses and honors cancellation', a
 });
 
 function runtime(root, options = {}) {
-  const sessions = [], windows = [], actions = [], requests = [], partitions = [], diagnostics = [];
+  const sessions = [], windows = [], actions = [], requests = [], resolutionRequests = [], partitions = [], diagnostics = [];
+  const history = ['626617', '2585330'].map((revisionId, index) => ({ songId: result.id, revisionId,
+    title: result.title, artist: result.artist, createdAt: index ? '2025-07-31T10:00:00Z' : '2023-10-08T10:00:00Z',
+    author: { personId: 123 }, isDeleted: false, isBlocked: false, isOnModeration: false,
+    moderationType: 'pre', reviewed: { conclusion: 'approved' } }));
+  if (options.moderatorDefault) Object.assign(history[1], { author: { personId: 123, isModerator: true }, moderationType: 'no', reviewed: null });
   function makeSession() {
     const value = new EventEmitter();
     value.setPermissionRequestHandler = (handler) => { value.permission = handler; };
     value.setPermissionCheckHandler = (handler) => { value.checkPermission = handler; };
-    value.fetch = async (url, settings) => { requests.push({ url, settings }); return response(requests.length % 3 === 1 ? meta : part); };
+    value.fetch = async (url, settings) => {
+      if (url === `https://www.songsterr.com/api/meta/${result.id}` || url.endsWith('/revisions')) {
+        resolutionRequests.push({ url, settings });
+        return response(url.endsWith('/revisions') ? history : { ...meta, isPublished: true,
+          latestRevisionId: meta.revisionId, author: history[1].author });
+      }
+      requests.push({ url, settings }); return response(url.includes('/api/meta/') ? meta : part);
+    };
     sessions.push(value); return value;
   }
   const session = { fromPartition: (name, config) => { partitions.push({ name, config }); return makeSession(); }, fromPath: (profile) => { assert.equal(profile, path.join(root, 'profile')); return makeSession(); } };
@@ -162,6 +175,8 @@ function runtime(root, options = {}) {
         if (request.action === 'history') {
           if (options.delayedHistory) { assert.ok(wc.controlReads >= 2, 'wait for rendered history controls'); wc.historyPending = true; }
           wc.page = { ...wc.page, historyVisible: true, historyReady: true, approvedRevisions: options.noApproved ? [] : [{ revisionId: '626617', approval: 'approved', date: '10/8/2023' }, { revisionId: '2585330', approval: 'approved', date: '7/31/2025' }] };
+          wc.page.revisionRows = options.noApproved ? [] : history.map(row => ({ revisionId: row.revisionId,
+            approved: Boolean(row.reviewed), excluded: false, moderator: row.author.isModerator === true }));
         }
         if (request.action === 'copy') wc.page = { ...wc.page, copyForm: true };
         if (request.action === 'create') {
@@ -185,7 +200,7 @@ function runtime(root, options = {}) {
     }
     isDestroyed() { return this.destroyed; } destroy() { this.destroyed = true; this.emit('closed'); } show() { this.shown = true; } hide() { this.shown = false; } focus() {}
   }
-  return { provider: new SongsterrProvider({ BrowserWindow: Window, session, profilePath: path.join(root, 'profile'), onDiagnostic: (event) => diagnostics.push(event) }), sessions, windows, actions, requests, partitions, diagnostics };
+  return { provider: new SongsterrProvider({ BrowserWindow: Window, session, profilePath: path.join(root, 'profile'), onDiagnostic: (event) => diagnostics.push(event) }), sessions, windows, actions, requests, resolutionRequests, partitions, diagnostics };
 }
 
 test('provider search, approved resolution and anonymous acquisition use an isolated hidden browser', async (t) => {
@@ -194,6 +209,9 @@ test('provider search, approved resolution and anonymous acquisition use an isol
   assert.equal(state.sessions[0].checkPermission(), false);
   const search = await state.provider.search({ query: 'green lung' }); assert.equal(search.results[0].id, result.id);
   const pinned = await state.provider.resolve(search.results[0]); assert.equal(pinned.revisionId, descriptor.revisionId);
+  assert.equal(pinned.revisionEvidence.basis, 'reviewed');
+  assert.equal(state.resolutionRequests.length, 2);
+  for (const request of state.resolutionRequests) assert.equal(request.settings.credentials, 'omit');
   assert.equal(pinned.audio.videoId, 'abcdefghijk');
   const directory = path.join(root, 'job'); await fs.mkdir(directory);
   const out = await state.provider.acquire(pinned, { directory }); assert.equal(out.format, 'songsterr');
@@ -224,6 +242,23 @@ test('provider retrieves timing anonymously for a trusted cached revision withou
   assert.equal(requests.length, 1, 'unbound recordings and songs do not trigger timing requests');
 });
 
+test('moderator-default resolution pins the revision and audit evidence through acquisition', async t => {
+  const root = await temporary(t), state = runtime(root, { moderatorDefault: true });
+  t.after(() => state.provider.dispose());
+  await state.provider.search({ query: 'Green Lung' });
+  const directory = path.join(root, 'moderator'); await fs.mkdir(directory);
+  const pins = [];
+  const acquired = await state.provider.acquire(result, { directory, onPinned: pin => pins.push(pin) });
+  assert.equal(pins.length, 2);
+  for (const pin of pins) {
+    assert.equal(pin.revisionId, descriptor.revisionId);
+    assert.equal(pin.revisionEvidence.basis, 'moderator_default');
+  }
+  assert.deepEqual(acquired.metadata.revisionEvidence, pins[0].revisionEvidence);
+  assert.ok(state.requests.every(r => r.url.includes('/2585330/fixture-image/') || r.url.endsWith('/2585330')));
+  assert.equal(state.actions.includes('create'), false);
+});
+
 test('provider will not resolve a renderer-supplied song that was not searched', async (t) => {
   const root = await temporary(t), state = runtime(root); t.after(() => state.provider.dispose());
   await assert.rejects(state.provider.resolve(result), { code: 'invalid_result' }); assert.equal(state.windows.length, 0);
@@ -241,7 +276,7 @@ test('revision resolution waits for rendered controls and populated history rath
 test('loaded history without an approved matching revision reports a distinct approval failure', async (t) => {
   const root = await temporary(t), state = runtime(root, { noApproved: true }); t.after(() => state.provider.dispose());
   await state.provider.search({ query: 'green lung' });
-  await assert.rejects(state.provider.resolve(result), { code: 'unapproved_revision', message: 'Songsterr’s revision history loaded, but no approved revision with a matching tab link could be verified.' });
+  await assert.rejects(state.provider.resolve(result), { code: 'unapproved_revision', message: 'Songsterr’s revision approval could not be verified. No unreviewed revision was selected.' });
   assert.equal(state.requests.length, 0);
 });
 

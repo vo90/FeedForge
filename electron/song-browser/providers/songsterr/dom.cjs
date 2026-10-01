@@ -62,7 +62,7 @@ function readSongsterrPage() {
     results.push({ id: match[1], source: 'songsterr', title, artist, url: url.href });
   }
   const historyRoot = visibleNode('#revisions-list, [data-testid="revisions-list"], [class*="revisions-list"]');
-  const approved = [], revisionSeen = new Set();
+  const approved = [], revisionRows = [], revisionSeen = new Set();
   const historyVisible = visible(historyRoot);
   // Observed history: ul#revisions-list > li#r7788783. The active row
   // contains a full-tab link; older rows wrap their contents in a comparison
@@ -92,6 +92,10 @@ function readSongsterrPage() {
     if (foreignRevisionLink || ids.size !== 1 || !ids.has(rowId)) continue;
     const badges = all(row, '*').filter((node) => visible(node) && /^approved$/i.test(text(node))
       && !Array.from(node.children || []).some((child) => visible(child) && /^approved$/i.test(text(child))));
+    const excluded = all(row, '*').some((node) => visible(node)
+      && /^(?:alternative|deleted|on moderation|on review|pending|rejected)$/i.test(text(node)));
+    const moderator = all(row, '[alt="Moderator"], [aria-label="Moderator"], [title="Moderator"]').some(visible);
+    revisionRows.push({ revisionId: rowId, approved: badges.length === 1, excluded, moderator });
     if (badges.length !== 1 || revisionSeen.has(rowId)) continue;
     revisionSeen.add(rowId); approved.push({ revisionId: rowId, approval: 'approved', date });
   }
@@ -130,7 +134,7 @@ function readSongsterrPage() {
   return { status: loginRequired ? 'needs_login' : 'ready', url: current.href, songId: songMatch?.[1] || null,
     revisionId: currentRevision, signedOut, searchReady, searchQuery, searchInput,
     canSearch: searchPage && searchInputs.length === 1, searchHome, results, noResults, canOpenHistory, tabReady,
-    historyVisible, historyReady: historyVisible && readableHistoryRows > 0, approvedRevisions: approved,
+    historyVisible, historyReady: historyVisible && readableHistoryRows > 0, approvedRevisions: approved, revisionRows,
     copyForm, unpublished: /\bnot published\b/i.test(body), editor: Boolean(enabledControl('#control-export-gp')),
     canExport: Boolean(enabledControl('#control-export-gp')),
     audio, originalAvailable: Boolean(originalInput), originalSelected: originalInput?.checked === true,

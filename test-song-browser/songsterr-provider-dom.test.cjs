@@ -142,6 +142,26 @@ test('observed Ghost Rats revision toggle is ready and clickable despite its too
   assert.equal(toggle.clicked, 1);
 });
 
+test('history reader distinguishes a moderator icon from a badge, pending label or author text', () => {
+  const song = '/a/wsa/iron-maiden-fear-of-the-dark-tab-s492398';
+  const row = (id, children) => el('li', { id: 'r' + id }, [span('6/22/2026'), ...children,
+    el('a', { href: song + '/r' + id }, [], 'Show full tab')]);
+  const doc = page([el('ul', { id: 'revisions-list' }, [
+    row('7509113', [el('img', { alt: 'Moderator' })]),
+    row('7509114', [span('Moderator')]),
+    row('7509115', [span('On review'), el('img', { alt: 'Moderator' })]),
+    row('7509116', [el('img', { alt: 'Moderator', hidden: true })]),
+    row('7509117', [span('Alternative'), span('Approved')]),
+  ])], 'https://www.songsterr.com' + song);
+  assert.deepEqual(run(readSongsterrPage, doc).revisionRows, [
+    { revisionId: '7509113', approved: false, excluded: false, moderator: true },
+    { revisionId: '7509114', approved: false, excluded: false, moderator: false },
+    { revisionId: '7509115', approved: false, excluded: true, moderator: true },
+    { revisionId: '7509116', approved: false, excluded: false, moderator: false },
+    { revisionId: '7509117', approved: true, excluded: true, moderator: false },
+  ]);
+});
+
 test('observed Ghost Rats history keeps current and older approved rows separate from alternative and unapproved rows', () => {
   const song = '/a/wsa/ghost-rats-tab-s441770';
   const doc = page([el('ul', { id: 'revisions-list' }, [
