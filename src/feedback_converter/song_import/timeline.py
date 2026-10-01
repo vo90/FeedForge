@@ -108,7 +108,9 @@ def _render(score: Score) -> dict:
         seconds.append(seconds[-1] + float(points[i] - points[i - 1]) * 60 / bpms[i - 1])
 
     def at(position: Fraction) -> float:
-        k = bisect_right(points, position) - 1
+        # An authored opening strum can begin before the first written beat.
+        # Its clock continues the initial tempo, never the final tempo event.
+        k = max(0, bisect_right(points, position) - 1)
         return seconds[k] + float(position - points[k]) * 60 / bpms[k]
 
     outputs = []
@@ -219,8 +221,10 @@ def _render(score: Score) -> dict:
                         output.setdefault("source_ids", []).append(note.source_id)
                 else:
                     attack = position + note.attack_offset
-                    if attack < 0:
-                        raise ScoreImportError("An authored strum begins before the score; no attack was clipped.")
+                    if attack < 0 and not (score.source.get('format') == 'songsterr'
+                                          and occurrence == 0 and position >= 0
+                                          and note.attack_offset < 0 and note.beat_id):
+                        raise ScoreImportError("An opening attack has no authored strum provenance.")
                     output = {"t": at(attack), "s": note.string, "f": note.fret,
                               "sus": at(end) - at(attack), **effects}
                     if note.source_id:

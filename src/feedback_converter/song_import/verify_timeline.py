@@ -134,6 +134,15 @@ class RecordingMap:
             if len(self.anchors) < 2 or any(s1 <= s0 or a1 <= a0 for (s0, a0), (s1, a1) in zip(self.anchors, self.anchors[1:])):
                 raise ValueError("alignment: anchors must be strictly increasing")
             self.scores = [a[0] for a in self.anchors]
+            self.lower = self.scores[0]
+            opening = alignment.get('provenance', {}).get('openingStrum')
+            if opening is not None:
+                if (alignment.get('method') != 'songsterr-video-points-v1' or self.lower != 0
+                        or opening.get('version') != 1 or opening.get('rule') != 'authored-opening-strum-first-interval'):
+                    raise ValueError('alignment: invalid opening strum boundary')
+                self.lower = fraction(opening['scoreStart'])
+                if self.lower >= 0:
+                    raise ValueError('alignment: opening strum boundary must precede zero')
         else:
             self.offset = fraction(alignment["offset"])
             self.scale = fraction(alignment["scale"])
@@ -141,7 +150,7 @@ class RecordingMap:
                 raise ValueError("alignment: nonpositive clock scale")
 
     def segment(self, seconds):
-        if seconds < self.scores[0] - F(1, 10_000_000) or seconds > self.scores[-1] + F(1, 10_000_000):
+        if seconds < self.lower - F(1, 10_000_000) or seconds > self.scores[-1] + F(1, 10_000_000):
             raise ValueError("alignment: source event is outside the supplied timing map")
         # Exact rational bar positions and their captured floating-point
         # spelling denote the same boundary; select the outgoing segment.
@@ -367,6 +376,9 @@ def _expected(source, alignment):
                              "curve": [], "slide_marks": [], "incoming_marks": [], "scrapes": [], "scrape_direction": None, "locations": [atom.location], "occurrence": occurrence + 1, "beat": atom.beat,
                              "staccato": atom.staccato, "any_staccato": False, "pitch_gesture": False, "trill": atom.trill,
                              "other_pitch_gesture": False, "bend_atoms": []}
+                    event['opening_strum'] = (source.format == 'songsterr' and occurrence == 0
+                                              and start >= 0 and atom.attack_offset < 0
+                                              and atom.strum_direction is not None)
                     if atom.hopo_destination or key in pending_hopos:
                         if previous is None:
                             unsupported(atom.location, "Source hammer-on/pull-off has no prior note.")
@@ -498,7 +510,7 @@ def _expected(source, alignment):
                 evidence = reconstruct(n, part, clock, sound_end)
                 if evidence:
                     result['staccato_bends'].append(evidence)
-            if n["start"] < 0 or sound_end <= n["start"]:
+            if (n["start"] < 0 and not n.get('opening_strum')) or sound_end <= n["start"]:
                 unsupported(n["locations"][0], "Strum exceeds its sounding interval; no attack or endpoint was repaired.")
             mapped_start, mapped_end = recording.at(start), recording.at(end)
             row = {"t": mapped_start, "sus": round(mapped_end - mapped_start, 6), "s": n["s"], "f": n["f"], **n["effects"]}

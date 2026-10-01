@@ -415,8 +415,9 @@ def parse(document: dict, *, track_indices=None) -> Score:
                         if not note.get("rest"):
                             offset = offsets.get(note_index, Fraction(0))
                             boundary_grace = position < 0 and grace == "beforeBeat" and bi > 0
-                            if bi == 0 and position + offset < 0:
-                                raise ScoreImportError("The authored strum begins before the score; its recording-start placement needs review.")
+                            if bi == 0 and position + offset < 0 and not (
+                                    position >= 0 and offset < 0 and strum_direction and not grace):
+                                raise ScoreImportError("The opening note has no verified authored strum timing.")
                             try:
                                 parsed = _note(note, beat, position, duration, len(tuning), trill_clock)
                             except ScoreImportError as exc:

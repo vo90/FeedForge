@@ -6,6 +6,7 @@ timing is separate from the independent audio matcher and its confidence gates.
 from __future__ import annotations
 
 from bisect import bisect_right
+from collections import Counter
 import hashlib
 import json
 import math
@@ -33,15 +34,59 @@ def _identifier(value):
     return text if re.fullmatch(r"[1-9]\d{0,11}", text) else None
 
 
+def _opening_strum_policy(performance):
+    """Bound the public first-interval extension by actual authored members.
+
+    The archive verifier independently derives these members from raw source.
+    A general negative-time allowance would also accept unsupported pickups.
+    """
+    actual = Counter()
+    for track in performance.get('tracks', []):
+        notes = [(n, n.get('t')) for n in track.get('notes', [])]
+        notes += [(n, n.get('t', c.get('t'))) for c in track.get('chords', []) for n in c.get('notes', [])]
+        for note, time in notes:
+            if _number(time) and time < 0:
+                actual[(track['id'], time, note['s'], note['f'])] += 1
+    if not actual:
+        return None
+    if performance.get('source', {}).get('format') != 'songsterr':
+        _unavailable('unverified_opening_strum')
+    members, groups = Counter(), []
+    for group in performance.get('strumEvidence', []):
+        early = [n for n in group.get('notes', []) if _number(n.get('t')) and n['t'] < 0]
+        if not early:
+            continue
+        if (group.get('occurrence') != 1 or not _number(group.get('time')) or group['time'] < 0
+                or group.get('direction') not in ('up', 'down') or group.get('kind') not in ('brush', 'arpeggio')
+                or not re.fullmatch(r'songsterr:\d+:0:\d+:\d+', group.get('sourceId', ''))):
+            _unavailable('unverified_opening_strum')
+        groups.append({'trackId': group['trackId'], 'sourceId': group['sourceId']})
+        for note in early:
+            members[(group['trackId'], note['t'], note['s'], note['f'])] += 1
+    if set(actual) != set(members):
+        _unavailable('unverified_opening_strum')
+    return {'version': 1, 'rule': 'authored-opening-strum-first-interval',
+            'scoreStart': min(key[1] for key in actual), 'noteCount': len(actual),
+            'groups': sorted(groups, key=lambda g: (g['trackId'], g['sourceId']))}
+
+
 def _segment(alignment: dict, time: float):
     anchors = alignment.get("anchors")
     if not isinstance(anchors, list) or len(anchors) < 2 or not _number(time):
         raise ImportFailure("alignment_failed", "The recording timing map is invalid.")
     try:
         first, last = float(anchors[0]["score"]), float(anchors[-1]["score"])
-        if time < first - _EPSILON or time > last + _EPSILON:
+        opening = alignment.get('provenance', {}).get('openingStrum')
+        lower = first
+        if opening is not None:
+            if (not isinstance(opening, dict) or alignment.get('method') != VERSION or first != 0 or opening.get('version') != 1
+                    or opening.get('rule') != 'authored-opening-strum-first-interval'
+                    or not _number(opening.get('scoreStart')) or opening['scoreStart'] >= 0):
+                raise ValueError()
+            lower = opening['scoreStart']
+        if time < lower - _EPSILON or time > last + _EPSILON:
             raise ImportFailure("alignment_failed", "The recording timing map does not cover this score position.")
-        position = min(last, max(first, time))
+        position = min(last, max(lower, time))
         index = min(len(anchors) - 2, max(0, bisect_right(anchors, position, key=lambda point: point["score"]) - 1))
         left, right = anchors[index], anchors[index + 1]
         s0, s1, a0, a1 = (float(left["score"]), float(right["score"]), float(left["audio"]), float(right["audio"]))
@@ -198,6 +243,7 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
     if not _number(performance.get("duration")) or abs(performance["duration"] - previous_end) > _EPSILON:
         _unavailable("incomplete_score_coordinates")
     anchors.append({"score": previous_end, "audio": float(points[-1]), "quarter": previous_quarter})
+    opening_strum = _opening_strum_policy(performance)
     result = {"status": "validated", "method": VERSION, "mapping": "piecewise-linear", "experimental": True,
               "anchors": anchors}
     # The official player interpolates in tempo-integrated score seconds.
@@ -231,6 +277,7 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
                                                 "supplied": len(supplied_points), "used": len(points),
                                                 "unusedTrailing": unused_count, "inferredTrailing": inferred_count},
                              "terminalBoundary": "songsterr-last-interval" if inferred_terminal else "explicit",
+                             **({"openingStrum": opening_strum} if opening_strum else {}),
                              **({"terminalBeyondAudio": "silent_notation_only"} if silent_terminal else {})},
               "diagnostics": {"sourceSyncPointCount": len(supplied_points), "sourceSyncMeasureCount": len(measures),
                               "sourceSyncNegativePreroll": points[0] < 0,

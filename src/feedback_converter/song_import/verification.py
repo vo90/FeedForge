@@ -818,7 +818,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                     and alignment.get('method') == 'songsterr-video-points-v1'):
                 from .verify_synchronization import verify_source_timing
                 timing = _json(z, recipe.get('sourceTimingFile', ''), check)
-                verify_source_timing(source, alignment, recipe, timing, check)
+                verify_source_timing(source, alignment, recipe, timing, check, strums=wanted['strums'])
                 report['scope'].append('retained_source_timing_boundaries')
             if recipe.get('preservationContract', 0) >= 18 and source.format == 'songsterr':
                 check.equal('section_provenance', 'manifest/song_import/sourceMetadata/sectionLabels',

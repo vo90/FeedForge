@@ -726,8 +726,9 @@ def songsterr(document, *, track_indices=None):
                                 raise ValueError(f"{nloc}: missing bend points")
                         offset = offsets.get(ni, F(0))
                         cross_bar = q < 0 and beat.get('graceNote') == 'beforeBeat' and bi > 0
-                        if bi == 0 and q + offset < 0:
-                            unsupported(nloc, "Strum crosses an unresolved timing boundary.")
+                        if bi == 0 and q + offset < 0 and not (
+                                q >= 0 and offset < 0 and direction and not beat.get('graceNote')):
+                            unsupported(nloc, "Opening attack has no authored strum timing.")
                         if note.get("staccato"):
                             if note["staccato"] is not True:
                                 raise ValueError(nloc + ': malformed staccato')

@@ -9,7 +9,7 @@ import math
 from .verify_timeline import Clock, visits
 
 
-def verify_source_timing(source, alignment, recipe, timing, check):
+def verify_source_timing(source, alignment, recipe, timing, check, *, strums=None):
     def fail(message):
         check.fail('source_timing', 'import/source-timing', message)
 
@@ -71,3 +71,33 @@ def verify_source_timing(source, alignment, recipe, timing, check):
         check.near('source_timing_score', where, float(clock.at(quarter)), anchor.get('score'), 1e-8)
         check.near('source_timing_quarter', where, float(quarter), anchor.get('quarter'), 1e-8)
         check.near('source_timing_audio', where, audio, anchor.get('audio'), 1e-8)
+    # Derive the opening boundary from independently parsed source atoms.
+    # Never accept the producer's negative timestamps or receipt as evidence.
+    if strums is None:
+        from .verify_timeline import expected as evaluate
+        strums = evaluate(source, {'offset': 0, 'scale': 1})['strums']
+    early, groups = set(), set()
+    for group in strums:
+        for note in group['notes']:
+            if note['t'] >= 0:
+                continue
+            if group['occurrence'] != 1 or group['time'] < 0:
+                fail('Opening event is not an authored strum attack.'); return
+            early.add((group['trackId'], note['t'], note['s'], note['f']))
+            groups.add((group['trackId'], group['sourceId']))
+    expected = None
+    if early:
+        expected = {'version': 1, 'rule': 'authored-opening-strum-first-interval',
+                    'scoreStart': min(n[1] for n in early), 'noteCount': len(early),
+                    'groups': [{'trackId': t, 'sourceId': s} for t, s in sorted(groups)]}
+        first = retained[0] - offset
+        ratio = (retained[1] - retained[0]) / float(clock.at(boundaries[1]))
+        if first + expected['scoreStart'] * ratio < 0:
+            fail('Opening strum begins before the original recording; padding cannot supply missing audio.')
+    actual = provenance.get('openingStrum')
+    if expected is not None and isinstance(actual, dict):
+        # Initial tempo division differs by harmless floating-point roundoff.
+        check.near('opening_strum_boundary', 'alignment/provenance/openingStrum/scoreStart',
+                   expected['scoreStart'], actual.get('scoreStart'), 1e-8)
+        actual = {**actual, 'scoreStart': expected['scoreStart']}
+    check.equal('opening_strum_evidence', 'alignment/provenance/openingStrum', expected, actual)
