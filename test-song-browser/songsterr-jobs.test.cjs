@@ -93,8 +93,10 @@ test('Hybrid publication rejects a successful originals-only response to an enab
 
 test('packaged app and converter use the same preservation contract', () => {
   const { CURRENT_PRESERVATION_CONTRACT } = require('../electron/song-browser/songsterr-evidence.cjs');
-  const source = fs.readFileSync(path.join(__dirname, '../src/feedback_converter/song_import/evidence.py'), 'utf8');
-  assert.equal(CURRENT_PRESERVATION_CONTRACT, Number(source.match(/^CONTRACT_VERSION = (\d+)$/m)[1]));
+  for (const [filename, declaration] of [['evidence.py', 'CONTRACT_VERSION'], ['verification.py', 'VERSION'], ['compatibility.py', 'VERSION']]) {
+    const source = fs.readFileSync(path.join(__dirname, '../src/feedback_converter/song_import', filename), 'utf8');
+    assert.equal(CURRENT_PRESERVATION_CONTRACT, Number(source.match(new RegExp(`^${declaration} = (\\d+)\\r?$`, 'm'))[1]), filename);
+  }
 });
 
 test('Hybrid v1 output cannot satisfy the current request and role choices affect reuse', () => {

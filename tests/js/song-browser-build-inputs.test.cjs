@@ -18,6 +18,10 @@ function fixture() {
   const versions = { react: '19.0.0', 'react-dom': '19.0.0', vite: '6.4.3', '@vitejs/plugin-react': '4.7.0', electron: '43.0.0', 'electron-builder': '26.15.3' };
   const lock = { packages: { '': manifest, ...Object.fromEntries(Object.entries(versions).map(([name, version]) => [`node_modules/${name}`, { version }])) } };
   write(path.join(source, 'package.json'), manifest);
+  write(path.join(source, 'electron/song-browser/songsterr-evidence.cjs'), 'const CURRENT_PRESERVATION_CONTRACT = 41;\n');
+  for (const [filename, declaration] of [['evidence.py', 'CONTRACT_VERSION'], ['verification.py', 'VERSION'], ['compatibility.py', 'VERSION']]) {
+    write(path.join(source, 'src/feedback_converter/song_import', filename), `${declaration} = 41\n`);
+  }
   for (const folder of [source, dependencies]) write(path.join(folder, 'package-lock.json'), lock);
   for (const [name, version] of Object.entries(versions)) write(path.join(dependencies, 'node_modules', name, 'package.json'), { name, version });
   for (const filename of ['vite/bin/vite.js', 'electron-builder/out/cli/cli.js', '@vitejs/plugin-react/dist/index.js', 'electron/dist/electron.exe']) write(path.join(dependencies, 'node_modules', filename), 'fixture; never executed');
@@ -29,6 +33,7 @@ test('external installed dependencies are validated without creating source node
   const f = fixture();
   const inputs = inspectDependencies(f.source, f.dependencies, f.electron);
   assert.equal(inputs.packages.vite, '6.4.3');
+  assert.equal(inputs.preservationContract, 41);
   assert.equal(inputs.dependenciesRoot, fs.realpathSync(f.dependencies));
   const config = viteConfigText(inputs, path.join(f.root, 'build'));
   assert.match(config, /file:\/\//);
@@ -36,6 +41,20 @@ test('external installed dependencies are validated without creating source node
   assert.ok(config.includes(JSON.stringify(path.join(f.root, 'build', 'vite-cache'))));
   assert.equal(fs.existsSync(path.join(f.source, 'node_modules')), false);
   assert.equal(fs.existsSync(path.join(f.source, 'desktop-dist')), false);
+});
+
+for (const filename of ['evidence.py', 'verification.py', 'compatibility.py']) {
+  test(`a mismatched ${filename} contract is rejected before packaging`, () => {
+    const f = fixture();
+    const target = path.join(f.source, 'src/feedback_converter/song_import', filename);
+    f.write(target, fs.readFileSync(target, 'utf8').replace('41', '42'));
+    assert.throws(() => inspectDependencies(f.source, f.dependencies, f.electron), /preservation contracts differ/);
+  });
+}
+test('a missing contract declaration fails build preflight', () => {
+  const f = fixture();
+  f.write(path.join(f.source, 'electron/song-browser/songsterr-evidence.cjs'), '// no declared version');
+  assert.throws(() => inspectDependencies(f.source, f.dependencies, f.electron), /Missing preservation contract/);
 });
 
 test('a different dependency checkout lock is rejected', () => {

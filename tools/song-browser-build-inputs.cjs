@@ -10,8 +10,26 @@ const json = (filename) => JSON.parse(fs.readFileSync(filename, 'utf8').replace(
 const hash = (filename) => crypto.createHash('sha256').update(fs.readFileSync(filename)).digest('hex');
 const file = (filename) => { assert.ok(fs.statSync(filename).isFile(), `Required build input is not a file: ${filename}`); return fs.realpathSync(filename); };
 
+function inspectPreservationContract(sourceRoot) {
+  const declarations = [
+    ['electron/song-browser/songsterr-evidence.cjs', /^const CURRENT_PRESERVATION_CONTRACT = (\d+);\r?$/m],
+    ['src/feedback_converter/song_import/evidence.py', /^CONTRACT_VERSION = (\d+)\r?$/m],
+    ['src/feedback_converter/song_import/verification.py', /^VERSION = (\d+)\r?$/m],
+    ['src/feedback_converter/song_import/compatibility.py', /^VERSION = (\d+)\r?$/m],
+  ];
+  const versions = declarations.map(([relative, pattern]) => {
+    const match = fs.readFileSync(path.join(sourceRoot, relative), 'utf8').match(pattern);
+    assert.ok(match, `Missing preservation contract declaration: ${relative}`);
+    return Number(match[1]);
+  });
+  assert.ok(versions[0] > 0 && versions.every(version => version === versions[0]),
+    'App, converter evidence, verification and compatibility preservation contracts differ.');
+  return versions[0];
+}
+
 function inspectDependencies(source, dependencies, electron) {
   const sourceRoot = fs.realpathSync(source);
+  const preservationContract = inspectPreservationContract(sourceRoot);
   const dependenciesRoot = fs.realpathSync(dependencies);
   const manifest = json(path.join(sourceRoot, 'package.json'));
   const lockPath = path.join(sourceRoot, 'package-lock.json');
@@ -47,7 +65,7 @@ function inspectDependencies(source, dependencies, electron) {
   const electronVersion = fs.readFileSync(path.join(path.dirname(electronExe), 'version'), 'utf8').trim();
   assert.equal(electronVersion, packages.electron, 'Selected Electron runtime differs from the locked package.');
   const inputs = {
-    sourceRoot, dependenciesRoot, nodeModules, lockHash, dependencyLockHash, packages, electronVersion,
+    sourceRoot, dependenciesRoot, nodeModules, lockHash, dependencyLockHash, packages, electronVersion, preservationContract,
     viteCli: file(path.join(nodeModules, 'vite', 'bin', 'vite.js')),
     builderCli: file(path.join(nodeModules, 'electron-builder', 'out', 'cli', 'cli.js')),
     reactPlugin: file(path.join(nodeModules, '@vitejs', 'plugin-react', 'dist', 'index.js')),
