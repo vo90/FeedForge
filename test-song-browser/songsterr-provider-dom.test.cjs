@@ -134,6 +134,50 @@ test('approval reader associates each explicit badge with its own revision and e
   ]);
 });
 
+test('initial-revision history retains the song and approved full-tab identity', () => {
+  const song = '/a/wsa/green-lung-evil-in-this-house-tab-s5197918';
+  const row = el('li', { id: 'r6797098' }, [span('5/13/2026'), span('Approved'), span('Initial revision'),
+    el('a', { href: '/a/wsa/green-lung-evil-in-this-house-solo-tab-s5197918t0/r6797098' }, [], 'Show full tab')]);
+  const state = run(readSongsterrPage, page([el('ul', { id: 'revisions-list' }, [row])],
+    'https://www.songsterr.com' + song + '/r...r6797098'));
+  assert.equal(state.songId, '5197918');
+  assert.equal(state.revisionId, '6797098');
+  assert.equal(state.historyReady, true);
+  assert.deepEqual(state.revisionRows, [{ revisionId: '6797098', approved: true, excluded: false, moderator: false }]);
+});
+
+test('initial comparison links identify older rows without supplying approval by themselves', () => {
+  const song = '/a/wsa/example-tab-s42t2';
+  const row = (id, badge, href) => el('li', { id: 'r' + id }, [span('1/1/2026'), span(badge), el('a', { href }, [], 'View')]);
+  const state = run(readSongsterrPage, page([el('ul', { id: 'revisions-list' }, [
+    row('101', 'Approved', song + '/r...r101'),
+    row('102', 'Pending', song + '/r...r102'),
+    row('103', 'Alternative', song + '/r...r103'),
+    row('104', '', song + '/r...r104'),
+    row('105', 'Approved', '/a/wsa/other-tab-s99/r...r105'),
+    row('106', 'Approved', 'https://other.test' + song + '/r...r106'),
+    row('107', 'Approved', song + '/r...r999'),
+  ])], 'https://www.songsterr.com' + song + '/r101...r104'));
+  assert.deepEqual(state.approvedRevisions, [{ revisionId: '101', approval: 'approved', date: '1/1/2026' }]);
+  assert.deepEqual(state.revisionRows, [
+    { revisionId: '101', approved: true, excluded: false, moderator: false },
+    { revisionId: '102', approved: false, excluded: true, moderator: false },
+    { revisionId: '103', approved: false, excluded: true, moderator: false },
+    { revisionId: '104', approved: false, excluded: false, moderator: false },
+  ]);
+});
+
+test('malformed revision paths cannot establish song or approval identity', () => {
+  const song = '/a/wsa/example-tab-s42';
+  for (const suffix of ['/r', '/r...r', '/r0', '/r...r0', '/r0...r101', '/r..r101', '/r...r101/extra']) {
+    const row = el('li', { id: 'r101' }, [span('1/1/2026'), span('Approved'), el('a', { href: song + suffix }, [], 'View')]);
+    const state = run(readSongsterrPage, page([el('ul', { id: 'revisions-list' }, [row])], 'https://www.songsterr.com' + song + suffix));
+    assert.equal(state.songId, null, suffix);
+    assert.equal(state.revisionId, null, suffix);
+    assert.deepEqual(state.approvedRevisions, [], suffix);
+  }
+});
+
 test('observed Ghost Rats revision toggle is ready and clickable despite its tooltip overriding the displayed date', () => {
   const toggle = el('button', { id: 'revisions-toggle-tab', title: 'Show revisions' }, [span('7/8/2026'), el('span', { 'data-visible': 'false', 'aria-hidden': 'true' }, [], 'new')]);
   const doc = page([toggle], 'https://www.songsterr.com/a/wsa/ghost-rats-tab-s441770');
