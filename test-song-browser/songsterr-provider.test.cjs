@@ -123,7 +123,9 @@ function runtime(root, options = {}) {
       wc.setWindowOpenHandler = (fn) => { wc.popup = fn; }; wc.getURL = () => wc.url;
       wc.loadURL = async (url) => {
         wc.url = url; wc.controlReads = 0; wc.historyReads = 0; wc.mixerReads = 0; wc.audioControlReads = 0; wc.playerReads = 0; wc.playerPending = false; wc.historyPending = false; const parsed = songUrl(url);
-        if (url.includes('pattern=')) wc.page = options.challengeOnSearch ? { status: 'needs_attention' } : { status: 'ready', searchReady: true, results: [result], hasMore: false };
+        if (url.includes('pattern=')) wc.page = options.challengeOnSearch ? { status: 'needs_attention' } : {
+          status: 'ready', url, canSearch: true, searchQuery: new URL(url).searchParams.get('pattern'),
+          searchInput: new URL(url).searchParams.get('pattern'), searchReady: true, results: [result], hasMore: false };
         else if (parsed?.id === '99999') wc.page = { status: 'ready', url, songId: '99999', unpublished: true, editor: true };
         else wc.page = { status: 'ready', url, songId: parsed?.id, revisionId: parsed?.revisionId, canOpenHistory: Boolean(parsed), tabReady: Boolean(parsed),
           signedOut: config.webPreferences.session === sessions[1] && options.signedOut === true,
