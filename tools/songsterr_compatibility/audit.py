@@ -11,10 +11,11 @@ import tempfile
 from feedback_converter.song_import.compatibility import inspect_songsterr
 from feedback_converter.song_import.diagnostics import diagnose_arrangements
 from feedback_converter.song_import.model import ScoreImportError
-from feedback_converter.song_import.songsterr import parse
+from feedback_converter.song_import.songsterr import parse, _instrument
 from feedback_converter.song_import.timeline import render, playback_order
 from feedback_converter.song_import.verify_source import songsterr as independent_source, UnverifiedFeature
 from feedback_converter.song_import.verify_timeline import expected
+from .reports import fingerprint, implementation_identity, reference_identity, compact_reference
 
 SCOPE = "Source timing only. Not an acquisition, audio alignment, Hybrid Lead or FeedPak acceptance result."
 REFERENCE = Path(__file__).with_name("reference-manifest.json")
@@ -25,12 +26,17 @@ def canonical_hash(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()).hexdigest()
 
 
-def source_trace(score):
+def source_trace(score, source):
+    # Track IDs may be arbitrary strings. Reference coordinates use the source
+    # array index; never assume the user-visible/source ID is that index.
+    indexes = {str(meta.get("id", i)): i for i, meta in enumerate(source["tracks"])}
+    if len(indexes) != len(source["tracks"]):
+        raise ValueError("Duplicate source track identity in reference comparison")
     order = playback_order(score.measures)
     visits, start = [], Fraction(0)
     for index in order:
         visits.append((index, start)); start += score.measures[index].length
-    return [{"index": int(t.id), "beats": [
+    return [{"index": indexes[t.id], "beats": [
         {"id": f"{mi}:{v.source_index if v.source_index is not None else vi}:{bi}",
          "quarter": str(b.position), "duration": str(b.duration)}
         for mi, voices in enumerate(t.written_bars) for vi, v in enumerate(voices) for bi, b in enumerate(v.beats)],
@@ -51,20 +57,35 @@ def evaluate(source):
         try:
             if stage == "converter":
                 score = parse(source)
-                result["sourceTrace"] = source_trace(score)
+                result["sourceTrace"] = source_trace(score, source)
                 performance = render(score)
                 count = sum(len(t["notes"]) + sum(len(c["notes"]) for c in t["chords"]) for t in performance["tracks"])
             else:
                 performance = expected(independent_source(source), {"offset": 0, "scale": 1})
                 count = sum(len(p["notes"]) for p in performance["parts"])
-            result[stage] = {"status": "rendered", "events": count}
+                performance = {**performance, "parts": [
+                    {"id": p["source"].id, **{k: v for k, v in p.items() if k != "source"}}
+                    for p in performance["parts"]]}
+            result[stage] = {"status": "rendered", "events": count,
+                             "performanceSha256": fingerprint(performance)}
         except (ScoreImportError, UnverifiedFeature, ValueError) as exc:
             result[stage] = {"status": "blocked", "error": str(exc)}
-    if canonical_hash(source) != original:
-        raise AssertionError("Source mutated during assessment")
     if result["converter"]["status"] == "blocked":
         diagnose_arrangements(source, report)
         result["arrangements"] = report.get("arrangements", [])
+        if "sourceTrace" not in result:
+            # Keep independent arrangements visible after one unsupported part.
+            # This never substitutes a subset into the all-arrangements import.
+            result["sourceTrace"], result["preparationErrors"] = [], []
+            for index, meta in enumerate(source.get("tracks", [])):
+                if not _instrument(meta):
+                    continue
+                try:
+                    result["sourceTrace"].extend(source_trace(parse(source, track_indices={index}), source))
+                except (ScoreImportError, ValueError) as exc:
+                    result["preparationErrors"].append({"part": index, "error": str(exc)})
+    if canonical_hash(source) != original:
+        raise AssertionError("Source mutated during assessment")
     return result
 
 
@@ -240,11 +261,13 @@ def reference_rows(rows, worker, node, trace=False):
 
 
 def run(rows, *, worker=None, node="node", trace=False):
-    results = []
+    results, node_versions = [], set()
     for row in rows:
         result = {"id": row["id"], "family": row.get("family", "corpus"), **evaluate(row["source"])}
         if worker:
-            reference = reference_rows([{**row, "sourceSha256": result["sourceSha256"]}], worker, node, trace)["cases"][0]
+            captured = reference_rows([{**row, "sourceSha256": result["sourceSha256"]}], worker, node, trace)
+            node_versions.add(captured.get("node", "unreported"))
+            reference = captured["cases"][0]
             result["reference"] = reference
             result["preparationDifferences"] = compare_preparation(result, reference)
             result['approvedPreparationDifferences'], result['preparationDifferences'] = classify_preparation_differences(row['source'], result['preparationDifferences'])
@@ -255,11 +278,7 @@ def run(rows, *, worker=None, node="node", trace=False):
             else:
                 result["authoredEventStatus"] = "not_tested_effect_policies_not_qualified"
             if not trace:
-                result["reference"] = {"id": reference["id"], "parts": [
-                    {"index": p["index"], "status": p["status"], "error": p.get("error"),
-                     "events": len(p.get("events", [])),
-                     "hiddenEvents": sum(n["hidden"] for n in p.get("events", []))}
-                    for p in reference["parts"]]}
+                result["reference"] = compact_reference(reference)
         else:
             result["reference"] = {"status": "not_run"}
             result["preparationStatus"] = "not_tested"
@@ -268,7 +287,9 @@ def run(rows, *, worker=None, node="node", trace=False):
             # reports retain differences without duplicating every note/bar.
             result.pop('sourceTrace', None)
         results.append(result)
-    return {"version": 1, "scope": SCOPE, "cases": results,
+    return {"version": 2, "scope": SCOPE, "cases": results,
+            "implementation": implementation_identity(),
+            "referenceIdentity": {**reference_identity(REFERENCE), "nodeVersions": sorted(node_versions)} if worker else None,
             "counts": dict(Counter(r["converter"]["status"] for r in results)),
             "referenceCompared": sum("preparationDifferences" in r for r in results),
             "preparationCounts": dict(Counter(r["preparationStatus"] for r in results)),

@@ -116,3 +116,115 @@ def test_guard_inventory_never_hides_unclassified_guards():
     assert report["guards"]
     assert report["unclassifiedGuards"] == sum(r["classification"]=="unclassified" for r in report["guards"])
     assert report["deferred"]["source_player_repairs"]
+
+
+def test_source_track_id_is_not_assumed_to_be_its_array_position():
+    case = next(c for c in CASES if c['id'] == 'basic/attack')
+    source = deepcopy(case['source']); source['tracks'][0]['id'] = 'lead-guitar'
+    actual = evaluate(source)
+    assert actual['converter']['status'] == 'rendered'
+    assert actual['sourceTrace'][0]['index'] == 0
+    assert compare_preparation(actual, EXPECTED['cases'][case['id']]['reference']) == []
+
+
+def test_one_unsupported_arrangement_does_not_hide_other_preparation():
+    case = next(c for c in CASES if c['id'] == 'basic/attack')
+    source = deepcopy(case['source'])
+    source['tracks'].append({**source['tracks'][0], 'id': 1})
+    source['parts'].append(deepcopy(source['parts'][0]))
+    source['parts'][1]['measures'][0]['voices'][0]['beats'][0]['sustainPedal'] = True
+    actual = evaluate(source)
+    assert actual['converter']['status'] == 'blocked'
+    assert [p['index'] for p in actual['sourceTrace']] == [0]
+    assert actual['preparationErrors'][0]['part'] == 1
+    assert compare_preparation(actual, EXPECTED['cases'][case['id']]['reference']) == []
+
+
+def _comparison_report():
+    from tools.songsterr_compatibility.reports import compact_reference
+    case = next(c for c in CASES if c['id'] == 'basic/attack')
+    reference = {'id': case['id'], **deepcopy(EXPECTED['cases'][case['id']]['reference'])}
+    # The offline timing fixture intentionally omits synthesis. Supply an empty
+    # stage here solely to exercise the report comparator's schema.
+    for part in reference['parts']: part['events'] = []
+    result = {'id': case['id'], **evaluate(case['source']), 'preparationStatus': 'matched',
+              'reference': compact_reference(reference)}
+    return {'scope': 'source stages', 'implementation': {'filesSha256': 'a'},
+            'referenceIdentity': {'assetSha256': EXPECTED['referenceSha256']}, 'cases': [result]}
+
+
+def test_identical_reports_match_and_reference_identity_change_is_visible():
+    from tools.songsterr_compatibility.reports import compare_reports
+    before = _comparison_report(); after = deepcopy(before)
+    assert compare_reports(before, after)['status'] == 'unchanged'
+    after['referenceIdentity']['assetSha256'] = 'changed'
+    result = compare_reports(before, after)
+    assert result['status'] == 'unchanged'  # Same measured behavior, not approval of a new reference.
+    assert result['before']['referenceIdentity'] != result['after']['referenceIdentity']
+
+
+@pytest.mark.parametrize('mutation', ['source', 'membership', 'duplicate', 'identity', 'unavailable', 'performance'])
+def test_report_comparison_rejects_incomparable_or_missing_evidence(mutation):
+    from tools.songsterr_compatibility.reports import compare_reports
+    before = _comparison_report(); after = deepcopy(before)
+    if mutation == 'source': after['cases'][0]['sourceSha256'] = 'changed'
+    elif mutation == 'membership': after['cases'] = []
+    elif mutation == 'duplicate': after['cases'].append(deepcopy(after['cases'][0]))
+    elif mutation == 'identity': after.pop('referenceIdentity')
+    elif mutation == 'unavailable': after['cases'][0]['reference']['parts'][0]['status'] = 'reference_error'
+    else: after['cases'][0]['independent'].pop('performanceSha256')
+    assert compare_reports(before, after)['status'] == 'incomplete'
+
+
+@pytest.mark.parametrize('stage', ['beats', 'traversal', 'authoredEvents', 'events'])
+def test_report_comparison_detects_change_with_unchanged_event_count(stage):
+    from tools.songsterr_compatibility.reports import compare_reports
+    before = _comparison_report(); after = deepcopy(before)
+    after['cases'][0]['reference']['parts'][0]['stageSha256'][stage] = 'changed'
+    result = compare_reports(before, after)
+    assert result['status'] == 'changed'
+    assert result['changes'][0]['stage'] == 'reference'
+
+
+def test_reducer_automatically_rechecks_both_sides_and_preserves_original():
+    from tools.songsterr_compatibility.reduce import reduce_case
+    from tools.songsterr_compatibility.cases import envelope, bar, note
+    source = envelope([bar(note()), bar(note(fret=11)), bar(note())])
+    original = deepcopy(source); inspected = []
+
+    def check(candidate):
+        inspected.append(deepcopy(candidate))
+        has_target = any(n.get('fret') == 11 for m in candidate['parts'][0]['measures']
+                         for v in m['voices'] for b in v['beats'] for n in b['notes'])
+        return {'preparationStatus': 'different' if has_target else 'matched',
+                'preparationDifferences': [{'part': 0, 'code': 'duration'}] if has_target else []}
+
+    report = reduce_case({'source': source}, runner=check)
+    assert report['status'] == 'reduced'
+    assert len(report['source']['parts'][0]['measures']) == 1
+    assert inspected[-1] == report['source']
+    assert source == original
+
+
+def test_reducer_does_not_treat_reference_failure_as_a_smaller_mismatch():
+    from tools.songsterr_compatibility.reduce import reduce_case
+    source = deepcopy(CASES[0]['source'])
+    report = reduce_case({'source': source}, runner=lambda _: {'preparationStatus': 'not_tested'})
+    assert report['status'] == 'not_reduced'
+    with pytest.raises(ValueError, match='reviewed reference'):
+        reduce_case({'source': source})
+
+
+def test_reducer_rejects_a_candidate_that_breaks_reference_execution():
+    from tools.songsterr_compatibility.reduce import reduce_case
+    from tools.songsterr_compatibility.cases import envelope, bar, note
+    source = envelope([bar(note()), bar(note())])
+    def check(candidate):
+        if len(candidate['parts'][0]['measures']) < 2:
+            return {'preparationStatus': 'not_tested',
+                    'preparationDifferences': [{'code': 'reference_error'}]}
+        return {'preparationStatus': 'different',
+                'preparationDifferences': [{'part': 0, 'code': 'duration'}]}
+    report = reduce_case({'source': source}, runner=check)
+    assert report['status'] == 'context_retained'
+    assert report['source'] == source

@@ -44,6 +44,8 @@ python -m tools.songsterr_compatibility catalog --output /new/path/catalog.json
 python -m tools.songsterr_compatibility manifest --imports /original/imports --evidence /durable/evidence --output /new/path/corpus.json
 python -m tools.songsterr_compatibility corpus --manifest /new/path/corpus.json --worker /reviewed/capture.js --node node --output /new/path/replay.json
 python -m tools.songsterr_compatibility matrix --worker /reviewed/capture.js --output /new/path/matrix.json
+python -m tools.songsterr_compatibility matrix --worker /reviewed/capture.js --reduce-failures --output /new/path/reduced-matrix.json
+python -m tools.songsterr_compatibility compare --before /earlier/report.json --after /new/report.json --output /new/path/drift.json
 ```
 
 Offline expected traces come from the pinned reference, not converter snapshots.
@@ -62,6 +64,22 @@ successfully acquired, aligned, packaged or playable song.
 local verification evidence, not Git. The bounded reducer only deletes measures
 when a supplied predicate still reproduces the failure. It refuses navigation
 and automation contexts it cannot safely reduce; it does not repair fragments.
+With `--reduce-failures`, unexpected synthetic stage differences automatically
+receive bounded reduction and a final check against both implementations.
+Expected blocked policy cases are not treated as new musical mismatches.
+
+Reports record the asset/manifest digest, profile, Python/Node versions and
+implementation digest. Compact reports retain signatures of prepared beats,
+traversal, authored events, final reference events and each evaluator's output.
+`compare` detects changes even when note counts stay identical. It requires
+the same source identities and case set. Missing stages and older reports
+without signatures are incomplete evidence, never an unchanged pass.
+An unchanged comparison describes the recorded scope only; it does not qualify
+new techniques or approve a new reference version.
+
+When one arrangement is unsupported, the development audit also evaluates the
+preparation of independently readable arrangements. The complete import stays
+blocked under the existing all-requested-arrangements publication policy.
 
 ## Updating the reference
 
@@ -88,7 +106,7 @@ network/audio-engine requests. Unknown hashes and adapter errors cannot pass.
 ## Remaining coverage
 
 Complete pitch-effect correspondence, generated-event accounting, all historical
-field forms, context-dependent automatic reduction, and browser cursor
+field forms, reduction across navigation/automation contexts, and browser cursor
 qualification remain separate work. This matrix does not prove every possible
 combination. Existing durable source evidence and per-arrangement diagnostics
 continue to preserve and report unknown active music.
