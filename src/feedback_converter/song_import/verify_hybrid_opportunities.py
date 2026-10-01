@@ -72,6 +72,26 @@ def _meaningful(members):
     return len(attacks) >= 2 or expressive
 
 
+def _plain_palm_muted_repetition(members):
+    """A shared solo label alone cannot make repeated backing compulsory.
+
+    This narrow exception uses independently checked source events, never the
+    planner's role or omission claims. Changing notes, connected gestures and
+    additional/unknown techniques retain the normal coverage requirement.
+    """
+    basic = {'t', 's', 'f', 'sus', 'pm', 'fg', 'source_ids'}
+    positions, attacks = set(), set()
+    for row in members.values():
+        if len(row['notes']) != 1 or abs(row['start'] - row['onset']) > EPS:
+            return False
+        note = row['notes'][0]
+        if not pitched(note) or note.get('pm') is not True or set(note) - basic:
+            return False
+        positions.add((note['s'], note['f']))
+        attacks.add(round(row['onset'], 5))
+    return len(positions) == 1 and len(attacks) == len(members) and len(attacks) >= 2
+
+
 def _expressive_response(members, *, local, tuning=(), require_expression=True):
     """Categorical corroboration for an otherwise unlabelled foreground line.
 
@@ -249,7 +269,7 @@ def local_lead_audit(rows, requirements, selected, available, recording_at, *, p
                 else:
                     members = {key: row for _, _, component in contained(indices[tid], start, end, budget)
                                for key, row in component.items()}
-                    if _meaningful(members):
+                    if _meaningful(members) and not _plain_palm_muted_repetition(members):
                         candidates[tid] = members
                 if budget['limited']:
                     break
