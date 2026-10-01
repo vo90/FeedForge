@@ -22,8 +22,15 @@ function readSongsterrPage() {
   const loginRequired = all(document, 'input[type="password"]').some(visible) || /please sign (?:up|in).*create and edit a copy/i.test(body);
   const controls = all(document, 'a, button').filter(visible);
   const signedOut = controls.some((node) => /^sign in$/i.test(label(node)));
-  const songMatch = /^\/a\/wsa\/[^/]+-s([1-9]\d{0,11})(?:t\d+)?(?:\/r([1-9]\d{0,11})(?:\.\.\.r([1-9]\d{0,11}))?)?$/.exec(current.pathname);
-  const currentRevision = songMatch?.[3] || songMatch?.[2] || null;
+  // Initial revisions compare against an empty predecessor (/r...r123).
+  // Accept that explicit form as well as pinned and two-revision paths;
+  // a bare /r or missing/invalid comparison target is never an identity.
+  const songIdentity = (pathname) => {
+    const match = /^\/a\/wsa\/[^/]+-s([1-9]\d{0,11})(?:t\d+)?(?:\/r(?:([1-9]\d{0,11})(?:\.\.\.r([1-9]\d{0,11}))?|\.\.\.r([1-9]\d{0,11})))?$/.exec(pathname);
+    return match ? { songId: match[1], revisionId: match[4] || match[3] || match[2] || null } : null;
+  };
+  const currentIdentity = songIdentity(current.pathname);
+  const currentRevision = currentIdentity?.revisionId || null;
   const enabled = (node) => visible(node) && !node.disabled && node.getAttribute?.('aria-disabled') !== 'true';
   // Songsterr renders duplicate IDs in sticky and regular toolbars. The
   // first matching element can be a CSS-hidden copy of a ready control.
@@ -36,7 +43,7 @@ function readSongsterrPage() {
   // The pinned URL and header appear before track loading has finished. The
   // observed mixer changes from disabled Loading to an enabled track control.
   // Audio presence is optional and must not be a readiness requirement.
-  const tabReady = Boolean(songMatch && canOpenHistory && visible(titleElement) && text(titleElement)
+  const tabReady = Boolean(currentIdentity && canOpenHistory && visible(titleElement) && text(titleElement)
     && visible(artistElement) && text(artistElement) && enabledControl('#control-mixer'));
   const searchPage = current.pathname === '/';
   const searchPanel = visibleNode('#panel-search');
@@ -79,10 +86,10 @@ function readSongsterrPage() {
     const ids = new Set(); let foreignRevisionLink = false;
     for (const anchor of all(row, 'a[href]').filter(visible)) {
       let url; try { url = new URL(anchor.getAttribute('href'), current); } catch { continue; }
-      const revision = /^\/a\/wsa\/[^/]+-s([1-9]\d{0,11})(?:t\d+)?\/r([1-9]\d{0,11})(?:\.\.\.r([1-9]\d{0,11}))?$/.exec(url.pathname);
-      if (!revision) continue;
-      if (url.origin !== current.origin || revision[1] !== songMatch?.[1]) { foreignRevisionLink = true; continue; }
-      ids.add(revision[3] || revision[2]);
+      const revision = songIdentity(url.pathname);
+      if (!revision?.revisionId) continue;
+      if (url.origin !== current.origin || revision.songId !== currentIdentity?.songId) { foreignRevisionLink = true; continue; }
+      ids.add(revision.revisionId);
     }
     // Empty/skeleton lists are not yet usable. A row's explicit identity must
     // agree with its tab/comparison link. Older dateless rows can still use
@@ -117,7 +124,7 @@ function readSongsterrPage() {
       const player = /^youtube-player-([a-zA-Z0-9_-]{11})-([1-9]\d{0,11})$/.exec(node.getAttribute('id') || '');
       if (url.protocol === 'https:' && !url.username && !url.password
         && ['www.youtube.com', 'youtube.com', 'www.youtube-nocookie.com'].includes(url.hostname)
-        && video && player?.[1] === video && player[2] === songMatch?.[1]) audio.push(url.href);
+        && video && player?.[1] === video && player[2] === currentIdentity?.songId) audio.push(url.href);
     }
   }
   const copyForm = controls.some((node) => /^create$/i.test(label(node))) && all(document, 'input').filter(visible).some((node) => !['password', 'hidden', 'checkbox'].includes(node.getAttribute('type')));
@@ -131,7 +138,7 @@ function readSongsterrPage() {
   const searchHome = Boolean(searchPage && !searchQuery && searchInput === '' && searchList && !completedList);
   const searchReady = Boolean(searchPage && searchQuery && searchInput === searchQuery
     && ((results.length > 0 && completedList) || noResults));
-  return { status: loginRequired ? 'needs_login' : 'ready', url: current.href, songId: songMatch?.[1] || null,
+  return { status: loginRequired ? 'needs_login' : 'ready', url: current.href, songId: currentIdentity?.songId || null,
     revisionId: currentRevision, signedOut, searchReady, searchQuery, searchInput,
     canSearch: searchPage && searchInputs.length === 1, searchHome, results, noResults, canOpenHistory, tabReady,
     historyVisible, historyReady: historyVisible && readableHistoryRows > 0, approvedRevisions: approved, revisionRows,
