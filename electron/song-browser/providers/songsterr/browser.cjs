@@ -237,8 +237,35 @@ class SongsterrProvider {
     try {
       const win = this._window(false), url = new URL(ORIGIN); url.searchParams.set('pattern', query);
       await this._navigate(win, url.href, operation.signal);
-      const page = await this._wait(win, (value) => value.searchReady || value.status === 'needs_login', operation.signal);
+      const matches = (value) => {
+        try {
+          const current = new URL(win.webContents.getURL()), read = new URL(value.url);
+          return current.origin === ORIGIN && read.origin === ORIGIN && current.pathname === '/' && read.pathname === '/'
+            && current.searchParams.get('pattern') === query && read.searchParams.get('pattern') === query
+            && value.searchQuery === query && value.searchInput === query;
+        } catch { return false; }
+      };
+      let page = await this._wait(win, (value) => value.status === 'needs_login'
+        || (value.canSearch && (matches(value) || value.searchHome)), operation.signal);
       if (page.status === 'needs_login') return { status: 'needs_login', results: [], error: 'Songsterr is requesting sign-in.' };
+      // Some valid punctuation searches redirect to the bare homepage. Use
+      // its ordinary search control once, preserving the complete query.
+      // Each search starts with a fresh navigation, so a previous request's
+      // completed list cannot satisfy this recovery's readiness check.
+      if (!matches(page)) {
+        if (!page.searchHome) throw failure('search_unavailable', 'Songsterr could not apply this search. Please retry.');
+        const outcome = await this._act(win, 'search', operation.signal, { query });
+        if (!outcome.ok) throw failure('search_unavailable', 'Songsterr could not apply this search. Please retry.');
+      }
+      try {
+        page = await this._wait(win, (value) => value.status === 'needs_login'
+          || (value.status === 'ready' && matches(value) && value.searchReady === true), operation.signal);
+      } catch (error) {
+        if (error.code === 'timeout') throw failure('search_unavailable', 'Songsterr did not finish this search. Please retry.');
+        throw error;
+      }
+      if (page.status === 'needs_login') return { status: 'needs_login', results: [], error: 'Songsterr is requesting sign-in.' };
+      check(operation.signal);
       const results = [];
       for (const value of (page.results || []).slice(0, 1000)) {
         try { const result = safeResult(value); this.results.set(result.id, result); results.push(result); } catch {}

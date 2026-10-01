@@ -44,15 +44,80 @@ function run(fn, document, request) { return JSON.parse(JSON.stringify(vm.runInN
 
 test('rendered public search extracts separate titles/artists, deduplicates IDs and ignores unrelated links', () => {
   const href = '/a/wsa/green-lung-woodland-rites-tab-s564073';
-  const doc = page([
+  const doc = page([el('main', { id: 'panel-search' }, [
+    el('input', { placeholder: 'Search over a million tabs', value: 'green lung' }),
+    el('div', { 'data-list': 'songs' }, [
     el('a', { href: '/signin' }, [], 'SIGN IN'),
     el('a', { href }, [el('span', { 'data-testid': 'song-title' }, [], 'Woodland Rites'), el('span', { 'data-testid': 'artist' }, [], 'Green Lung')]),
     el('a', { href }, [span('Woodland Rites'), span('Green Lung')]),
     el('a', { href: 'https://evil.test/a/wsa/copy-tab-s564073' }, [span('Wrong'), span('Wrong')]),
-  ]);
+    el('a', { id: 'new-tab-search' }, [], 'Create tab'),
+  ])])]);
   const state = run(readSongsterrPage, doc);
   assert.equal(state.status, 'ready'); assert.equal(state.signedOut, true); assert.equal(state.searchReady, true);
   assert.deepEqual(state.results, [{ id: '564073', source: 'songsterr', title: 'Woodland Rites', artist: 'Green Lung', url: 'https://www.songsterr.com' + href }]);
+});
+
+function searchFixture(query = 'R U Mine?', { homepage = false, pending = false, input = query, empty = false, emptyQuery = query } = {}) {
+  const field = el('input', { type: 'text', placeholder: 'Search over a million tabs', value: homepage ? '' : input });
+  const list = el('div', { 'data-list': 'songs' }, [
+    el('a', { href: '/a/wsa/arctic-monkeys-r-u-mine-tab-s90203' }, [span('R U Mine?'), span('Arctic Monkeys')]),
+    ...(!homepage && !pending ? [el('a', { id: 'new-tab-search' }, [], 'Create tab')] : []),
+  ]);
+  const panel = el('main', { id: 'panel-search' }, [field, empty ? span(`No tabs found for “${emptyQuery}”`) : list]);
+  const doc = page([panel, el('a', { href: '/a/wsa/metallica-master-of-puppets-tab-s455118' }, [span('Master of Puppets'), span('Metallica')])],
+    'https://www.songsterr.com/' + (homepage ? '' : '?' + new URLSearchParams({ pattern: query })));
+  return { doc, field, panel };
+}
+
+test('homepage and in-flight popular list are not completed searches', () => {
+  for (const options of [{ homepage: true }, { pending: true }, { input: 'another query' }]) {
+    const state = run(readSongsterrPage, searchFixture('R U Mine?', options).doc);
+    assert.equal(state.searchReady, false);
+    assert.equal(state.searchHome, Boolean(options.homepage));
+  }
+});
+
+test('completed results belong to the rendered search list and keep punctuation', () => {
+  const state = run(readSongsterrPage, searchFixture().doc);
+  assert.equal(state.searchReady, true);
+  assert.equal(state.searchInput, 'R U Mine?'); assert.equal(state.searchQuery, 'R U Mine?');
+  assert.deepEqual(state.results.map(r => r.id), ['90203'], 'Ignore unrelated song links outside the results list.');
+});
+
+test('only an empty response explicitly naming this query is ready', () => {
+  const correct = run(readSongsterrPage, searchFixture('No such tab?', { empty: true }).doc);
+  assert.equal(correct.searchReady, true); assert.equal(correct.noResults, true); assert.deepEqual(correct.results, []);
+  const stale = run(readSongsterrPage, searchFixture('No such tab?', { empty: true, emptyQuery: 'old query' }).doc);
+  assert.equal(stale.searchReady, false); assert.equal(stale.noResults, false);
+});
+
+test('recovery uses the ordinary input with the complete query', () => {
+  const { doc, field } = searchFixture('', { homepage: true });
+  assert.deepEqual(run(actOnSongsterrPage, doc, { action: 'search', query: 'Metallica Am I Evil?' }), { ok: true });
+  assert.equal(field.value, 'Metallica Am I Evil?');
+  assert.deepEqual(field.events, ['input', 'change']);
+});
+
+test('search control must be unique and enabled; hidden duplicate is harmless', () => {
+  const { doc, panel, field } = searchFixture('', { homepage: true });
+  const duplicate = el('input', { placeholder: 'Search over a million tabs', value: '', hidden: true });
+  duplicate.parentElement = panel; panel.children.push(duplicate);
+  assert.equal(run(readSongsterrPage, doc).canSearch, true);
+  duplicate.hidden = false;
+  assert.equal(run(readSongsterrPage, doc).canSearch, false);
+  assert.equal(run(actOnSongsterrPage, doc, { action: 'search', query: 'R U Mine?' }).ok, false);
+  duplicate.hidden = true; field.disabled = true;
+  assert.equal(run(readSongsterrPage, doc).canSearch, false);
+  assert.equal(run(actOnSongsterrPage, doc, { action: 'search', query: 'R U Mine?' }).ok, false);
+});
+
+test('search action rejects invalid input and non-search pages', () => {
+  for (const query of [null, '', 'x', 'x'.repeat(161)]) {
+    assert.equal(run(actOnSongsterrPage, searchFixture().doc, { action: 'search', query }).ok, false);
+  }
+  const { doc } = searchFixture(); doc.URL = 'https://www.songsterr.com/a/wsa/arctic-monkeys-r-u-mine-tab-s90203';
+  assert.equal(run(actOnSongsterrPage, doc, { action: 'search', query: 'R U Mine?' }).ok, false);
 });
 
 test('approval reader associates each explicit badge with its own revision and excludes newer unapproved rows', () => {

@@ -38,8 +38,15 @@ function readSongsterrPage() {
   // Audio presence is optional and must not be a readiness requirement.
   const tabReady = Boolean(songMatch && canOpenHistory && visible(titleElement) && text(titleElement)
     && visible(artistElement) && text(artistElement) && enabledControl('#control-mixer'));
+  const searchPage = current.pathname === '/';
+  const searchPanel = visibleNode('#panel-search');
+  const searchList = searchPanel && all(searchPanel, '[data-list="songs"]').find(visible);
+  const searchInputs = searchPanel ? all(searchPanel, 'input[placeholder="Search over a million tabs"]').filter(enabled) : [];
+  const searchInput = searchInputs.length === 1 ? String(searchInputs[0].value || '') : null;
+  const searchQuery = current.searchParams.get('pattern');
+  const resultRoot = searchPage ? searchList : document;
   const results = [], seen = new Set();
-  for (const anchor of all(document, 'a[href]').filter(visible)) {
+  for (const anchor of (resultRoot ? all(resultRoot, 'a[href]') : []).filter(visible)) {
     let url;
     try { url = new URL(anchor.getAttribute('href'), current); } catch { continue; }
     const match = /^\/a\/wsa\/[^/]+-s([1-9]\d{0,11})(?:t\d+)?$/.exec(url.pathname);
@@ -110,10 +117,19 @@ function readSongsterrPage() {
     }
   }
   const copyForm = controls.some((node) => /^create$/i.test(label(node))) && all(document, 'input').filter(visible).some((node) => !['password', 'hidden', 'checkbox'].includes(node.getAttribute('type')));
-  const noResults = /no (?:songs|tabs|results)(?: found| match|$)/i.test(body);
-  const searchReady = results.length > 0 || noResults;
+  // The homepage is not a search result. During an in-page search Songsterr
+  // updates the URL/input before replacing its popular list. The completed
+  // search list has an in-list suggestion; a genuine empty response names
+  // the query explicitly. Both are observed rendered states, not timers.
+  const noResults = Boolean(searchQuery && !searchList && searchPanel
+    && text(searchPanel).includes(`No tabs found for “${searchQuery}”`));
+  const completedList = searchList && all(searchList, '#new-tab-search').some(visible);
+  const searchHome = Boolean(searchPage && !searchQuery && searchInput === '' && searchList && !completedList);
+  const searchReady = Boolean(searchPage && searchQuery && searchInput === searchQuery
+    && ((results.length > 0 && completedList) || noResults));
   return { status: loginRequired ? 'needs_login' : 'ready', url: current.href, songId: songMatch?.[1] || null,
-    revisionId: currentRevision, signedOut, searchReady, results, noResults, canOpenHistory, tabReady,
+    revisionId: currentRevision, signedOut, searchReady, searchQuery, searchInput,
+    canSearch: searchPage && searchInputs.length === 1, searchHome, results, noResults, canOpenHistory, tabReady,
     historyVisible, historyReady: historyVisible && readableHistoryRows > 0, approvedRevisions: approved,
     copyForm, unpublished: /\bnot published\b/i.test(body), editor: Boolean(enabledControl('#control-export-gp')),
     canExport: Boolean(enabledControl('#control-export-gp')),
@@ -147,6 +163,19 @@ function actOnSongsterrPage(request = {}) {
   let current;
   try { current = new URL(String(globalThis.location?.href || document.URL)); } catch { return { ok: false, reason: 'invalid_page' }; }
   if (current.origin !== 'https://www.songsterr.com') return { ok: false, reason: 'wrong_origin' };
+  if (request.action === 'search') {
+    if (current.pathname !== '/' || typeof request.query !== 'string'
+      || request.query.length < 2 || request.query.length > 160) return { ok: false, reason: 'invalid_search' };
+    const panel = document.querySelector('#panel-search');
+    const inputs = panel ? Array.from(panel.querySelectorAll('input[placeholder="Search over a million tabs"]')).filter(enabled) : [];
+    if (inputs.length !== 1) return { ok: false, reason: 'control_unavailable' };
+    const input = inputs[0];
+    const setter = Object.getOwnPropertyDescriptor(globalThis.HTMLInputElement?.prototype || {}, 'value')?.set;
+    if (setter) setter.call(input, request.query); else input.value = request.query;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return { ok: true };
+  }
   if (['selectOriginal', 'selectFullMix', 'play', 'pause'].includes(request.action)) {
     const pinned = /^\/a\/wsa\/[^/]+-s([1-9]\d{0,11})(?:t\d+)?\/r([1-9]\d{0,11})$/.exec(current.pathname);
     if (!pinned || pinned[1] !== request.songId || pinned[2] !== request.revisionId) return { ok: false, reason: 'revision_changed' };
