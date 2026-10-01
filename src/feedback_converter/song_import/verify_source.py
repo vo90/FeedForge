@@ -232,6 +232,18 @@ def _songsterr_beat_clock(beats, measure_length, location, performed_lengths=Non
             old_times[-1][1] = min(old_times[-1][1], remaining - sum(allocated, F(0)))
             tail = _songsterr_beat_clock(beats[leading:], measure_length, location, lengths[leading:])
             return head + tail
+    # Independent recognition of a silent whole-rest overrun. Do not reuse the
+    # producer's helper or accept ordinary overflowing rhythm.
+    if len(beats) == 1:
+        rest = beats[0]
+        dots = rest.get('dots')
+        if (rest.get('rest') is True and rest.get('type') == 1
+                and type(dots) is int and 1 <= dots <= 4
+                and not any(rest.get(k) for k in ('tuplet', 'graceNote'))
+                and isinstance(rest.get('notes'), list) and rest['notes']
+                and all(n.get('rest') is True for n in rest['notes'])
+                and written[0] == 8 - F(4, 2**dots) and written[0] > measure_length):
+            return [[F(0), measure_length, F(0)]]
     if (len(beats) == 1 and beats[0].get("rest") is True and beats[0].get("type") == 1
             and lengths == [F(4)] and not any(beats[0].get(k) for k in ("dots", "tuplet", "graceNote"))
             and isinstance(beats[0].get("notes"), list)

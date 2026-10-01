@@ -6,7 +6,7 @@ All offsets remain rational until the audio clock is applied.
 from fractions import Fraction as F
 
 from .model import ScoreImportError, integer, rational
-from .songsterr_fields import whole_measure_rest
+from .songsterr_fields import whole_measure_rest, bounded_dotted_whole_rest
 
 
 FEELS = {f"{prefix}{unit}": (F(4, unit), first, second)
@@ -76,7 +76,7 @@ def voice_timing(beats, bar_length, performed_lengths=None, *, previous=None, in
     lengths = performed_lengths if performed_lengths is not None else written_lengths
     if any(d <= 0 for d in lengths):
         raise ScoreImportError("Invalid beat duration.")
-    if whole_measure_rest(beats):
+    if whole_measure_rest(beats) or bounded_dotted_whole_rest(beats, bar_length):
         return [(F(0), bar_length, F(0))]
     if beats and beats[0].get("graceNote") == "beforeBeat":
         if initial:

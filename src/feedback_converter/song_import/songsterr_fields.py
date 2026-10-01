@@ -16,6 +16,27 @@ def whole_measure_rest(beats):
             and all(n.get("rest") is True for n in b["notes"]))
 
 
+def bounded_dotted_whole_rest(beats, bar_length):
+    """A lone dotted whole-rest may end at the bar boundary, never a note.
+
+    Keep the source glyph/dots/duration intact. Only its silent performed span
+    is bounded, matching the source scheduler. Ordinary rests, tuplets, grace
+    and malformed dot/duration pairs do not qualify.
+    """
+    if len(beats) != 1:
+        return False
+    b = beats[0]
+    dots = b.get("dots")
+    if (b.get("rest") is not True or b.get("type") != 1
+            or type(dots) is not int or not 1 <= dots <= 4
+            or b.get("graceNote") or b.get("tuplet")
+            or not isinstance(b.get("notes"), list) or not b["notes"]
+            or any(n.get("rest") is not True for n in b["notes"])):
+        return False
+    length = rational(b.get("duration"), "dotted whole rest")
+    return length == F(2) - F(1, 2**dots) and length * 4 > bar_length
+
+
 def bend_points(points):
     """Precise coordinates use percent; old coordinates use sixtieths.
 
