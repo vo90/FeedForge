@@ -7,6 +7,7 @@ the complete applied alignment alongside this bounded, JSON-serializable report.
 """
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
 import hashlib
 import io
 import json
@@ -109,25 +110,44 @@ def _strum_groups(wanted, chart, check, track_id, alignment, policy):
     recording = RecordingMap(alignment)
     expected = {}
     members = {}
-    for n in chart.get('notes', []):
-        key = (round(n['t'], 6), n['s'], n['f'])
-        members.setdefault(key, []).append(n)
+    for index, n in enumerate(chart.get('notes', [])):
+        members.setdefault((n['s'], n['f']), []).append((n['t'], index))
+    members = {key: sorted(values) for key, values in members.items()}
+    times = {key: [t for t, _ in values] for key, values in members.items()}
+
+    def match(t, string, fret):
+        # Independent rational and producer floating-point clocks can round to
+        # opposite sides of a half-microsecond boundary. Use the same precision
+        # as the note-time check, never nearest-note or exact-match preference.
+        # Multiple candidates (including an exact match) remain ambiguous.
+        key = (string, fret)
+        values = times.get(key, [])
+        left = bisect_left(values, t - TIME_TOLERANCE)
+        right = bisect_right(values, t + TIME_TOLERANCE)
+        return members[key][left][1] if right - left == 1 else None
+
     if policy is not None:
         check.equal('strum_group_policy', 'manifest/song_import', 'authored-brush-groups-v1', policy)
         for ident, group in enumerate(wanted):
             if group['trackId'] != track_id or group.get('kind') != 'brush':
                 continue
             keys = [(round(recording.at(n['t']), 6), n['s'], n['f']) for n in group['notes']]
-            if (len(keys) >= 2 and len({k[0] for k in keys}) > 1
-                    and len({k[1] for k in keys}) == len(keys)
-                    and all(len(members.get(k, [])) == 1 for k in keys)):
-                expected.update((key, ident) for key in keys)
+            if (len(keys) < 2 or len({k[0] for k in keys}) < 2
+                    or len({k[1] for k in keys}) != len(keys)):
+                continue
+            indices = [match(*key) for key in keys]
+            if any(index is None for index in indices):
+                continue
+            locations = [f'notes/{index}' for index in indices]
+            if len(set(indices)) != len(indices) or any(loc in expected for loc in locations):
+                check.fail('strum_group', 'tracks/' + track_id, 'Source brushes reuse an archived note.')
+                continue
+            expected.update((loc, ident) for loc in locations)
     for note, loc in _flatten(chart):
-        key = (round(note['t'], 6), note['s'], note['f'])
         actual = note.get('ch')
         if actual is not None and (type(actual) is not int or actual < 0):
             check.fail('strum_group', loc, 'Invalid display group identity.')
-        check.equal('strum_group', 'tracks/' + track_id + '/' + loc, expected.get(key), actual)
+        check.equal('strum_group', 'tracks/' + track_id + '/' + loc, expected.get(loc), actual)
 
 
 def _notes(wanted, actual, check, part, duration):
