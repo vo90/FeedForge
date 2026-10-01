@@ -30,17 +30,18 @@ change; written durations and beat positions do not.
 
 Enabled gradual tempo follows `Ur`: a destination's linear flag interpolates
 from its previous event, with at most 64 steps and rounded intermediate BPM.
-Disabled gradual tempo leaves ordinary tempo steps. This release supports
-events at measure starts; mixed nonzero legacy positions and combined
-ramp/fermata automation need further interpretation.
+Disabled gradual tempo leaves ordinary tempo steps. Positions use static
+960-tick quarter coordinates (see `songsterr-tempo-coordinates.md`). Combined
+ramps and explicit holds use the order in `songsterr-combined-tempo.md`.
 
 Explicit fermata automation follows `Qr` / `$r` / `ei`: positions are
 960 ticks per quarter, the held span is the measure's denominator beat or its
 encoded binary subdivision, and the temporary tempo is
 round(BPM × (4/5 − 7×length/15)). The previous rate resumes afterward unless
 an explicit event already occupies that boundary. Only encoded lengths 0–1,
-quarter tempo units, nonoverlapping holds and measures without midbar tempo
-changes are accepted. Free-time or unspecified holds are not guessed.
+supported tempo units (see `songsterr-fermata-units.md`), nonoverlapping holds
+and measures without midbar tempo changes are accepted. Free-time or
+unspecified holds are not guessed.
 
 Brush strokes and arpeggios supply direction, duration (0–960) and shift
 (0–100). Duration is capped at half the written beat and at 960 units. The

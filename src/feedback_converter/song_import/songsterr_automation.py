@@ -21,19 +21,7 @@ def performed_tempos(automations, measures, events):
         starts.append(starts[-1] + m.length)
     by_time = {starts[bar] + position: bpm for (bar, position), bpm in events.items()}
     ramps = [t for t in automations.get("tempo", []) if t.get("linear")]
-    if gradual and ramps:
-        if fermatas:
-            raise ScoreImportError("Combined fermata/ramp automation needs additional interpretation.")
-        linear = {starts[integer(t["measure"], "ramp measure")] + rational(t.get('position', 0)) / 960 for t in ramps}
-        times = sorted(by_time)
-        for left, right in zip(times, times[1:]):
-            if right not in linear:
-                continue
-            steps = min(64, max(1, floor(right - left + F(1, 2))))
-            first, last = floor(by_time[left]), floor(by_time[right])
-            for i in range(1, steps):
-                at = left + (right - left) * F(i, steps)
-                by_time.setdefault(at, floor(first + (last - first) * F(i, steps) + F(1, 2)))
+    linear = {starts[integer(t["measure"], "ramp measure")] + rational(t.get('position', 0)) / 960 for t in ramps}
     occupied = []
     for f in fermatas:
         if not isinstance(f, dict) or set(f) - {"measure", "position", "type", "length"}:
@@ -73,8 +61,24 @@ def performed_tempos(automations, measures, events):
         if slowed <= 0:
             raise ScoreImportError("Fermata produces a nonpositive tempo.")
         by_time[at] = slowed
+        # Songsterr replaces this event, including its linear flag. A hold at
+        # a ramp destination therefore removes that ramp, not just its BPM.
+        linear.discard(at)
         if end < starts[-1]:
             by_time.setdefault(end, bpm)
+    # Qr/Zr expands holds before Kr/Vr chooses adjacent ramp endpoints. Using
+    # the authored tempo list here would ramp through a hold or start the
+    # following ramp too early. Snapshot before adding interpolation points.
+    if gradual and linear:
+        times = sorted(by_time)
+        for left, right in zip(times, times[1:]):
+            if right not in linear:
+                continue
+            steps = min(64, max(1, floor(right - left + F(1, 2))))
+            first, last = floor(by_time[left]), floor(by_time[right])
+            for i in range(1, steps):
+                at = left + (right - left) * F(i, steps)
+                by_time.setdefault(at, floor(first + (last - first) * F(i, steps) + F(1, 2)))
     result = {}
     for at, bpm in by_time.items():
         bar = bisect_right(starts, at) - 1

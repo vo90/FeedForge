@@ -18,19 +18,8 @@ def expand(auto, bars, events, loc):
         position += bar.length
     original = {boundaries[b] + q: bpm for (b, q), bpm in events.items()}
     result = dict(original)
-    if enabled and any(t.get("linear") for t in auto.get("tempo", [])):
-        if holds:
-            unsupported(loc, "Combined tempo automation is not independently verified.")
-        destinations = {boundaries[integer(t["measure"], loc)] + fraction(t.get('position', 0), loc) / 960
-                        for t in auto["tempo"] if t.get("linear")}
-        points = sorted(original.items())
-        for (start, a), (end, b) in zip(points, points[1:]):
-            if end in destinations:
-                n = max(1, min(64, int(end - start + F(1, 2))))
-                for j in range(1, n):
-                    result.setdefault(start + F(j, n) * (end - start),
-                                      F(int(F(n - j, n) * floor(a) + F(j, n) * floor(b) + F(1, 2))))
     ranges = []
+    replaced = set()
     for hold in holds:
         if not isinstance(hold, dict) or set(hold) - {"measure", "position", "length", "type"}:
             unsupported(loc, "Unknown fermata fields.")
@@ -64,8 +53,22 @@ def expand(auto, bars, events, loc):
         if slow <= 0:
             raise ValueError(loc + ": nonpositive fermata tempo")
         result[start] = slow
+        replaced.add(start)
         if end < position:
             result.setdefault(end, rate)
+    if enabled:
+        # A generated hold replaces the original event and its linear flag.
+        # Interpolation uses the completed hold/restoration timeline, never
+        # the original list or interpolation points from an earlier ramp.
+        destinations = {boundaries[integer(t["measure"], loc)] + fraction(t.get('position', 0), loc) / 960
+                        for t in auto.get("tempo", []) if t.get("linear")} - replaced
+        points = sorted(result.items())
+        for (start, a), (end, b) in zip(points, points[1:]):
+            if end in destinations:
+                n = max(1, min(64, int(end - start + F(1, 2))))
+                for j in range(1, n):
+                    result.setdefault(start + F(j, n) * (end - start),
+                                      F(int(F(n - j, n) * floor(a) + F(j, n) * floor(b) + F(1, 2))))
     mapped = {}
     for q, rate in result.items():
         index = max(i for i, start in enumerate(boundaries) if start <= q)

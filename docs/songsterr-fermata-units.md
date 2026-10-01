@@ -11,6 +11,7 @@ Evidence: `Qr`, `$r`, `ei` in public
 `FluidsynthAudioPlayerWorkerEntry-Do-Dwi4LNDxTupzE.js`, captured 2026-09-23,
 SHA-256 `9bc2e262f42077e5f6d13d7c67269d8e92c2e24f8d6ff47ca9601b235251c33f`.
 
-Overlapping holds, mid-measure tempo/fermata combinations and combined enabled
-ramps remain explicit interpretation guards. The supported non-quarter case
+Overlapping holds and mid-measure tempo/fermata combinations remain explicit
+interpretation guards. Combined enabled ramps follow the hold-first order
+documented in `songsterr-combined-tempo.md`. The supported non-quarter case
 does not introduce a new playing technique or scoring policy.

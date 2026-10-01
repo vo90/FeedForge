@@ -1,0 +1,470 @@
+{
+  "provenance": {
+    "url": "https://static3.songsterr.com/production-main/static3/latest/FluidsynthAudioPlayerWorkerEntry-C-9Kd3shWgzk98Al.js",
+    "sha256": "4219f9dbf0952af83be36c8b590f10fea7a0f36d72bd1f92297a3d768f93f5ab",
+    "sameTimingFunctionsAsPrevious": true
+  },
+  "cases": [
+    {
+      "input": {
+        "name": "hold inside an otherwise continuous ramp",
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ]
+          },
+          {},
+          {},
+          {}
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 60,
+              "type": 4
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 120,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": [
+            {
+              "measure": 0,
+              "position": 1920,
+              "type": "medium",
+              "length": 0.6
+            }
+          ],
+          "gradualTempo": true
+        }
+      },
+      "result": [
+        {
+          "measure": 0,
+          "position": 0,
+          "bpm": 60,
+          "type": 4
+        },
+        {
+          "bpm": 31,
+          "measure": 0,
+          "position": 1920,
+          "duration": 960,
+          "type": 4
+        },
+        {
+          "bpm": 60,
+          "measure": 0,
+          "position": 2880,
+          "type": 4
+        },
+        {
+          "measure": 1,
+          "position": 0,
+          "bpm": 72,
+          "type": 4,
+          "visible": false
+        },
+        {
+          "measure": 1,
+          "position": 960,
+          "bpm": 84,
+          "type": 4,
+          "visible": false
+        },
+        {
+          "measure": 1,
+          "position": 1920,
+          "bpm": 96,
+          "type": 4,
+          "visible": false
+        },
+        {
+          "measure": 1,
+          "position": 2880,
+          "bpm": 108,
+          "type": 4,
+          "visible": false
+        },
+        {
+          "measure": 2,
+          "position": 0,
+          "bpm": 120,
+          "type": 4,
+          "linear": true
+        }
+      ]
+    },
+    {
+      "input": {
+        "name": "hold before a separate ramp",
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ]
+          },
+          {},
+          {},
+          {}
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 60,
+              "type": 4
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 60,
+              "type": 4
+            },
+            {
+              "measure": 3,
+              "position": 0,
+              "bpm": 120,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": [
+            {
+              "measure": 0,
+              "position": 1920,
+              "type": "medium",
+              "length": 0.6
+            }
+          ],
+          "gradualTempo": true
+        }
+      },
+      "result": [
+        {
+          "measure": 0,
+          "position": 0,
+          "bpm": 60,
+          "type": 4
+        },
+        {
+          "bpm": 31,
+          "measure": 0,
+          "position": 1920,
+          "duration": 960,
+          "type": 4
+        },
+        {
+          "bpm": 60,
+          "measure": 0,
+          "position": 2880,
+          "type": 4
+        },
+        {
+          "measure": 2,
+          "position": 0,
+          "bpm": 60,
+          "type": 4
+        },
+        {
+          "measure": 2,
+          "position": 960,
+          "bpm": 75,
+          "type": 4,
+          "visible": false
+        },
+        {
+          "measure": 2,
+          "position": 1920,
+          "bpm": 90,
+          "type": 4,
+          "visible": false
+        },
+        {
+          "measure": 2,
+          "position": 2880,
+          "bpm": 105,
+          "type": 4,
+          "visible": false
+        },
+        {
+          "measure": 3,
+          "position": 0,
+          "bpm": 120,
+          "type": 4,
+          "linear": true
+        }
+      ]
+    },
+    {
+      "input": {
+        "name": "hold meets a linear destination",
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ]
+          },
+          {},
+          {},
+          {}
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 60,
+              "type": 4
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 120,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": [
+            {
+              "measure": 2,
+              "position": 0,
+              "type": "medium",
+              "length": 0.6
+            }
+          ],
+          "gradualTempo": true
+        }
+      },
+      "result": [
+        {
+          "measure": 0,
+          "position": 0,
+          "bpm": 60,
+          "type": 4
+        },
+        {
+          "bpm": 62,
+          "measure": 2,
+          "position": 0,
+          "duration": 960,
+          "type": 4
+        },
+        {
+          "bpm": 120,
+          "measure": 2,
+          "position": 960,
+          "type": 4
+        }
+      ]
+    },
+    {
+      "input": {
+        "name": "hold ends at explicit next-bar tempo",
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ]
+          },
+          {},
+          {},
+          {}
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 60,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 120,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": [
+            {
+              "measure": 0,
+              "position": 2880,
+              "type": "medium",
+              "length": 0.6
+            }
+          ],
+          "gradualTempo": true
+        }
+      },
+      "result": [
+        {
+          "measure": 0,
+          "position": 0,
+          "bpm": 60,
+          "type": 4
+        },
+        {
+          "bpm": 31,
+          "measure": 0,
+          "position": 2880,
+          "duration": 960,
+          "type": 4
+        },
+        {
+          "measure": 1,
+          "position": 0,
+          "bpm": 100,
+          "type": 4
+        },
+        {
+          "measure": 1,
+          "position": 960,
+          "bpm": 105,
+          "type": 4,
+          "visible": false
+        },
+        {
+          "measure": 1,
+          "position": 1920,
+          "bpm": 110,
+          "type": 4,
+          "visible": false
+        },
+        {
+          "measure": 1,
+          "position": 2880,
+          "bpm": 115,
+          "type": 4,
+          "visible": false
+        },
+        {
+          "measure": 2,
+          "position": 0,
+          "bpm": 120,
+          "type": 4,
+          "linear": true
+        }
+      ]
+    },
+    {
+      "input": {
+        "name": "dotted tempo followed by hold and ramp",
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ]
+          },
+          {},
+          {},
+          {}
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 60,
+              "type": 4,
+              "dotted": true
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 120,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": [
+            {
+              "measure": 0,
+              "position": 1920,
+              "type": "medium",
+              "length": 0.6
+            }
+          ],
+          "gradualTempo": true
+        }
+      },
+      "result": [
+        {
+          "measure": 0,
+          "position": 0,
+          "bpm": 60,
+          "type": 4,
+          "dotted": true
+        },
+        {
+          "bpm": 31,
+          "measure": 0,
+          "position": 1920,
+          "duration": 960,
+          "type": 4
+        },
+        {
+          "bpm": 60,
+          "measure": 0,
+          "position": 2880,
+          "type": 4
+        },
+        {
+          "measure": 1,
+          "position": 0,
+          "bpm": 72,
+          "type": 4,
+          "visible": false
+        },
+        {
+          "measure": 1,
+          "position": 960,
+          "bpm": 84,
+          "type": 4,
+          "visible": false
+        },
+        {
+          "measure": 1,
+          "position": 1920,
+          "bpm": 96,
+          "type": 4,
+          "visible": false
+        },
+        {
+          "measure": 1,
+          "position": 2880,
+          "bpm": 108,
+          "type": 4,
+          "visible": false
+        },
+        {
+          "measure": 2,
+          "position": 0,
+          "bpm": 120,
+          "type": 4,
+          "linear": true
+        }
+      ]
+    }
+  ]
+}
