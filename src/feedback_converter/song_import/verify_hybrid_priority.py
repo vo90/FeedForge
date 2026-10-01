@@ -10,6 +10,7 @@ from collections import Counter, defaultdict
 from copy import deepcopy
 import math
 import re
+import unicodedata
 
 TOL = 0.0000011
 # Source chart timestamps are rounded to microseconds. Inverting a fast tempo
@@ -307,6 +308,37 @@ def _words(value):
     return set(re.findall(r'[a-z]+|\d+', str(value).casefold()))
 
 
+def _identity_words(value):
+    return set(re.findall(r'[^\W\d_]+', unicodedata.normalize('NFKC', str(value)).casefold()))
+
+
+def _section_performers(label):
+    """Read source identities, not section/voice numbering or sound labels.
+
+    Do not use the producer's parser or proposed owners: a false named-owner
+    claim there must not become its own proof here. Numeric and Roman section
+    identifiers alone carry no performer evidence. Keep names next to them.
+    """
+    descriptions = {
+        'guitar', 'lead', 'rhythm', 'solo', 'main', 'clean', 'acoustic', 'electric', 'bass',
+        'voice', 'track', 'unknown', 'part', 'pt', 'section', 'verse', 'chorus', 'intro',
+        'outro', 'bridge', 'no', 'number', 'of', 'with', 'distortion', 'distorted', 'wah', 'talkbox', 'tremolo', 'harmonics',
+        'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth',
+        'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+    }
+    result = []
+    for annotation in re.findall(r'\(([^()]*)\)', label):
+        for person in re.split(r'\s*(?:&|/|,|\band\b)\s*', annotation, flags=re.I):
+            text = unicodedata.normalize('NFKC', person).casefold()
+            text = re.sub(r'\b(part|pt\.?|section|voice|track)\s+(?:(no\.?|number)\s*)?'
+                          r'(\d+(st|nd|rd|th)?|[ivxlcdm]+|[a-z])\b', '', text)
+            text = re.sub(r'\b\d+(st|nd|rd|th)?\b', '', text)
+            words = _identity_words(text) - descriptions
+            if words and any(not re.fullmatch('[ivxlcdm]+', word) for word in words):
+                result.append(words)
+    return result
+
+
 def _role_words(name):
     labels = {'guitar', 'lead', 'solo', 'rhythm', 'chord', 'chords', 'harmony', 'harmonies', 'double',
               'extra', 'extras', 'overdub', 'overdubs', 'background', 'delay', 'echo', 'effect', 'fx',
@@ -440,15 +472,8 @@ def regional_requirements(parts, rows, source, order, duration_quarters, *, avai
             continue
         if re.search(r'\b(?:sax(?:ophone)?|tenor|bass|drum|keyboard|piano|organ|violin|vocal)\b', text):
             continue
-        names = re.findall(r'\(([^()]*)\)', label)
-        if not names:
-            continue
-        performers = [n.strip() for fragment in names for n in re.split(r'\s*(?:&|/|\band\b)\s*', fragment, flags=re.I) if n.strip()]
         credible = []
-        for person in performers:
-            wanted = _words(person) - {'guitar', 'solo', 'lead', 'part'}
-            if not wanted:
-                continue
+        for wanted in _section_performers(label):
             candidates = []
             for tid, part in parts.items():
                 if tid not in rows or not rows[tid]:
@@ -456,7 +481,7 @@ def regional_requirements(parts, rows, source, order, duration_quarters, *, avai
                 name = part['source'].name
                 # Names in the source are not assumed to have a fixed field
                 # order. Instrument model words alone cannot establish a role.
-                if not any(wanted <= _words(field) for field in name.split('|')):
+                if not any(wanted <= _identity_words(field) for field in name.split('|')):
                     continue
                 local = {k: r for k, r in rows[tid].items() if _touch((r['start'], r['end']), (start, end))
                          and any(not n.get('ghost') and not n.get('mt') for n in r['notes'])}

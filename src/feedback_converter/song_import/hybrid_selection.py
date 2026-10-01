@@ -16,6 +16,12 @@ from .hybrid_context import Clock
 EPS = 1e-7
 _ROLE_WORDS = re.compile(r'\b(guitar|bass|lead|rhythm|solo|main|clean|acoustic|classical|backing|background|overdubs?|extras?|slide|chords?|harmonics?|tremolo|feedback|delay|echo|effects?|fx)\b', re.I)
 _PERSON_STOP = {'guitar', 'lead', 'rhythm', 'solo', 'main', 'clean', 'acoustic', 'electric', 'bass', 'voice', 'track', 'unknown'}
+_SECTION_QUALIFIERS = {
+    'part', 'pt', 'section', 'verse', 'chorus', 'intro', 'outro', 'bridge', 'no', 'number', 'of',
+    'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth',
+    'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+    'with', 'distortion', 'distorted', 'wah', 'talkbox', 'tremolo', 'harmonics',
+}
 
 
 def _text(value):
@@ -244,11 +250,23 @@ def _solo_section(name):
 
 
 def _named_people(name):
+    """Only identity words may establish a named solo; annotations may not.
+
+    A section's Part 2 must never claim the generated Voice 2. Keep an actual
+    name beside such an annotation, e.g. Adrian Smith - Part II. This lexical
+    parsing is independent of the verifier's source-label interpretation.
+    """
     result = []
     for group in re.findall(r'\(([^)]+)\)', name):
         for part in re.split(r'\s*(?:&|/|,|\band\b)\s*', group, flags=re.I):
-            words = _tokens(part) - _PERSON_STOP
-            if words and not words.intersection({'part', 'verse', 'chorus', 'intro', 'outro'}):
+            part = _text(part)
+            # Consume a section suffix only after its label;
+            # an initial in a real name (A. Smith) must remain an identity.
+            part = re.sub(r'\b(?:part|pt\.?|section|voice|track)\s+(?:(?:no\.?|number)\s*)?'
+                          r'(?:\d+(?:st|nd|rd|th)?|[ivxlcdm]+|[a-z])\b', '', part)
+            part = re.sub(r'\b\d+(?:st|nd|rd|th)?\b', '', part)
+            words = _tokens(part) - _PERSON_STOP - _SECTION_QUALIFIERS
+            if words and not all(re.fullmatch(r'[ivxlcdm]+', w) for w in words):
                 result.append(words)
     return result
 
