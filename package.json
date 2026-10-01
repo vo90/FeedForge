@@ -26,7 +26,8 @@
     "release:mac": "npm run converter:pack && npm run electron:pack:mac",
     "release:linux": "npm run converter:pack && npm run electron:pack:linux",
     "lint:ui": "vite build",
-    "clean": "node tools/clean-build.cjs"
+    "clean": "node tools/clean-build.cjs",
+    "test:songsterr-compatibility": "python -m pytest -q tests/test_songsterr_compatibility_lab.py && node --test tests/js/songsterr-reference.test.cjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -40,7 +41,9 @@
     "electron-builder": "^26.15.3",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
-    "wait-on": "^8.0.1"
+    "wait-on": "^8.0.1",
+    "@babel/parser": "7.29.7",
+    "@babel/traverse": "7.29.7"
   },
   "build": {
     "appId": "com.feedforge.app",

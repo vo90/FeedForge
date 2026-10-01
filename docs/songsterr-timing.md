@@ -3,7 +3,11 @@
 The importer preserves written rhythm separately from performed attacks. It
 does not repair notation or reproduce synthesizer humanization.
 
-Semantics checked against Songsterr's public assets on 2026-09-23:
+The historical audit below is supplemented by the current
+[compatibility lab](songsterr-compatibility-lab.md). Feature-specific documents
+describe later additions and current behavior.
+
+Semantics originally checked against Songsterr's public assets on 2026-09-23:
 
 - https://www.songsterr.com/howtoreadtab
 - https://static3.songsterr.com/production-main/static3/latest/common-DWZ1FVtGLtYGNv20.js
@@ -18,9 +22,9 @@ available time is the remaining measure. Before-beat grace groups within a
 measure borrow from the preceding principal and end at the following attack,
 or at that preceding principal's endpoint for a trailing group. Written grace
 uses the existing acciaccatura value `a`; on-beat uses `p`. Boundary-crossing,
-recording-start and shared-principal combinations stay unsupported rather
-than invoking the public player's fallback that changes grace type or clips
-notes. No measure length is added.
+recording-start and shared-principal handling is documented in
+`songsterr-grace-boundaries.md` and `songsterr-grace-traversal.md`.
+No measure length is added.
 
 Swing follows the public `Mi` / `ji` / `Ai` transformation: carried eighth
 or sixteenth feel, 2:1 default, 3:1 dotted and 1:3 Scottish. Tuplets with
@@ -51,8 +55,10 @@ high to low for up strokes and low to high for down strokes. Offsets remain
 exact fractions: MIDI tick flooring, synthetic note-off shortening by one
 tick, automatic strumming and humanization are not authored tab information.
 Linked bends/slides/hammer-ons disable strum spreading in the published player.
-Conflicting directions, tied strums and grace/strum combinations remain explicit
-unsupported cases. Authored simultaneous chords stay chords; staggered attacks
+Conflicting directions and nonpositive sounding outcomes remain explicit
+failures. Supported tied strums and grace interactions are covered by
+`songsterr-strum-interactions.md` and the compatibility matrix.
+Authored simultaneous chords stay chords; staggered attacks
 are separate playable notes with their original chord notation preserved.
 
 Legacy `upStroke: 1` means a downward brush, and `downStroke: 1` an upward
@@ -77,16 +83,19 @@ notation and the original source remain unchanged.
 Bends with `precisePosition` on every point use those percent coordinates
 instead of the old 0–60 coordinates. Source ordering is validated; equal
 positions take the last authored value, and the last point is held through
-the remaining sustain. Mixed precision, out-of-range or reversed coordinates
-are rejected. These remain finger bends, separate from tremolo-bar gestures.
+the remaining sustain. Mixed precision follows `songsterr-mixed-bends.md`;
+out-of-range or reversed coordinates are rejected. These remain finger bends,
+separate from tremolo-bar gestures.
 
 Beat-level `slapping` and `popping` map to the existing slap/pop chart flags
 and notation annotations. Explicit supported clefs are carried into measure
 staff overrides without transposing physical notes. Dotted tempo units multiply
 their ordinary quarter-note rate by 3/2.
 
-These mappings use preservation/verifier contract 6 and compatibility inventory
-5. Older evidence remains readable but cannot satisfy a current verified import.
+Current contract and capability versions are declared by the implementation;
+the original contract-6 audit is historical evidence. Older evidence remains
+readable but cannot satisfy a current verified import merely because it passed
+an older contract.
 
 Staccato shortens the performed duration to half, with Songsterr's 1/128 whole
 note minimum. Written duration is unchanged. Cases where that floor would
