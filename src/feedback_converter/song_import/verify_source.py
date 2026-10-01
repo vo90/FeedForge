@@ -668,12 +668,21 @@ def songsterr(document, *, track_indices=None):
                             for point in note["bend"]["points"]:
                                 _active_unknown(point, {"position", "precisePosition", "tone"}, set(), nloc + "/bend/points", ignored)
                             points = note["bend"]["points"]
-                            precision_count = sum("precisePosition" in p for p in points)
-                            if precision_count not in (0, len(points)):
-                                raise ValueError(nloc + ": incomplete precise bend coordinates")
-                            coords = [fraction(p["precisePosition"], nloc) / 100 if precision_count
-                                      else fraction(p["position"], nloc) / 60 for p in points]
                             coarse = [fraction(p["position"], nloc) for p in points]
+                            if any("precisePosition" in p for p in points):
+                                # Independently reconstruct the source player's
+                                # whole-curve percent mode and half-up rounding.
+                                coords = []
+                                for point, old in zip(points, coarse):
+                                    if "precisePosition" in point:
+                                        percent = fraction(point["precisePosition"], nloc)
+                                    else:
+                                        scaled = old * F(5, 3)
+                                        percent = F((2 * scaled.numerator + scaled.denominator)
+                                                    // (2 * scaled.denominator))
+                                    coords.append(percent / 100)
+                            else:
+                                coords = [old / 60 for old in coarse]
                             values = [fraction(p["tone"], nloc) / 50 for p in points]
                             if (coords != sorted(coords) or coarse != sorted(coarse)
                                     or any(not 0 <= p <= 1 for p in coords)
