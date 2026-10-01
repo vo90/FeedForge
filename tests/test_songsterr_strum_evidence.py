@@ -28,7 +28,7 @@ def test_repeated_shifted_strums_match_independent_source_clock(tmp_path,directi
     assert all(r['direction']==direction and len(r['notes'])==3 for r in v['strums'])
 
 
-@pytest.mark.parametrize('fault',[None,'time','direction','missing','member','count','source','display_group','missing_group'])
+@pytest.mark.parametrize('fault',[None,'rounding_early','rounding_late','note_time','time','direction','missing','member','count','source','display_group','missing_group'])
 def test_piecewise_archive_requires_source_bound_exact_members(tmp_path,fault):
     from test_song_import_builder import inputs
     _,audio,_,job=inputs(tmp_path)
@@ -46,6 +46,13 @@ def test_piecewise_archive_requires_source_bound_exact_members(tmp_path,fault):
     assert len({n['t'] for n in grouped})==6, 'Per-string attack times must stay staggered.'
     if fault=='display_group':grouped[0]['ch']=999
     if fault=='missing_group':grouped[0].pop('ch')
+    if fault in {'rounding_early','rounding_late','note_time'}:
+        delta={'rounding_early':-.000001,'rounding_late':.000001,'note_time':.000002}[fault]
+        grouped[0]['t']=round(grouped[0]['t']+delta,6)
+        # Keep the integrity receipt consistent with the serialized chart.
+        # Independent raw-source comparisons must still reject a real change.
+        from feedback_converter.chart_guidance import finalize
+        finalize(chart,regenerate=True)
     files[chart_file]=json.dumps(chart).encode()
     r=json.loads(files['import/strums.json'])
     if fault=='time':r['groups'][0]['notes'][1]['t']+=.01
@@ -60,7 +67,7 @@ def test_piecewise_archive_requires_source_bound_exact_members(tmp_path,fault):
     with ZipFile(changed,'w') as z:
         for name,data in files.items():z.writestr(name,data)
     report=verify_import(path,changed,alignment)
-    assert report['status']==('passed' if fault is None else 'failed')
+    assert report['status']==('passed' if fault in {None,'rounding_early','rounding_late'} else 'failed'), report['errors']
     if fault in {'display_group','missing_group'}:
         assert any(e['code']=='strum_group' for e in report['errors'])
 
@@ -78,3 +85,26 @@ def test_only_complete_authored_brushes_get_display_groups():
         chart={'notes':deepcopy(selected)}
         attach(chart,'a',[group],{'offset':0,'scale':1})
         assert not any('ch' in n for n in chart['notes'])
+
+
+@pytest.mark.parametrize('fault',[None,'ambiguous','wrong_string','wrong_fret','missing','reused','chord_child'])
+def test_strum_rounding_matching_is_unique_and_source_bound(fault):
+    from feedback_converter.song_import.verification import Check, _strum_groups
+    from feedback_converter.song_import.strum_groups import POLICY
+    # Two genuinely different brushes can have the same shape. Their members
+    # must remain distinct even when each timestamp differs by one microsecond.
+    groups=[{'trackId':'a','kind':'brush','notes':[
+        {'t':start,'s':0,'f':3},{'t':start+.02,'s':1,'f':5}]} for start in (1.,1.04)]
+    chart={'notes':[dict(n,t=round(n['t']+.000001,6),ch=i)
+                    for i,g in enumerate(groups) for n in g['notes']], 'chords':[]}
+    if fault=='ambiguous':chart['notes'].append(dict(chart['notes'][0],t=1.))
+    if fault=='wrong_string':chart['notes'][0]['s']=2
+    if fault=='wrong_fret':chart['notes'][0]['f']=4
+    if fault=='missing':chart['notes'].pop(0)
+    if fault=='reused':groups.append(deepcopy(groups[0]))
+    if fault=='chord_child':
+        # A chord member cannot borrow the identity of an unrelated loose note.
+        chart['chords']=[{'t':chart['notes'][0]['t'],'notes':[deepcopy(chart['notes'][0])]}]
+    check=Check()
+    _strum_groups(groups,chart,check,'a',{'offset':0,'scale':1},POLICY)
+    assert bool(check.errors)==(fault is not None)
