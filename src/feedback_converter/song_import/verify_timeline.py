@@ -267,7 +267,15 @@ def _expected(source, alignment):
             if index <= last_bar:
                 if pending_slides or pending_hopos or muted_pending:
                     unsupported(f"tracks/{part.id}/measures/{index}", "A linked technique crosses a repeat jump.")
-                state.clear()
+                continued = {}
+                if source.format == 'songsterr':
+                    for entrance in part.bars[index]:
+                        identity = (entrance.voice, entrance.string)
+                        sounding = state.get(identity)
+                        if (entrance.tie and entrance.q == 0 and sounding is not None
+                                and sounding['end'] == origin and sounding['f'] == entrance.fret):
+                            continued[identity] = sounding
+                state = continued
             last_bar = index
             for atom in sorted(part.bars[index], key=lambda n: (n.q, n.voice, n.string)):
                 key = (atom.voice, atom.string)
