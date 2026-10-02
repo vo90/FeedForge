@@ -482,28 +482,42 @@ def songsterr(document, *, track_indices=None):
     for pi, raw in enumerate(raw_parts):
         automations = raw.get("automations", {})
         _active_unknown(automations, {"tempo", "gradualTempo", "fermata"}, {"volume", "balance"}, f"parts/{pi}/automations", ignored)
-        part_events = {}
-        for tempo in automations.get("tempo", []):
-            loc = f"parts/{pi}/automations/tempo"
+        part_events, selected = {}, []
+        raw_tempos = automations.get("tempo", [])
+        if not isinstance(raw_tempos, list):
+            raise ValueError(f"parts/{pi}/automations: invalid tempo list")
+        for ti, tempo in enumerate(raw_tempos):
+            loc = f"parts/{pi}/automations/tempo/{ti}"
             _active_unknown(tempo, {"measure", "position", "bpm", "type", "linear", "dotted"}, {"text", "visible"}, loc, ignored)
             if "visible" in tempo and type(tempo["visible"]) is not bool:
                 raise ValueError(loc + ": invalid tempo visibility")
+            if "text" in tempo and not isinstance(tempo["text"], str):
+                raise ValueError(loc + ": invalid tempo text")
             if tempo.get("linear") is not None and type(tempo["linear"]) is not bool:
                 raise ValueError(loc + ": invalid linear flag")
             bi = integer(tempo["measure"], loc)
             q = fraction(tempo.get("position", 0), loc) / 960
-            bpm = fraction(tempo["bpm"], loc) * F(4, integer(tempo.get("type", 4), loc))
+            unit = integer(tempo.get("type", 4), loc)
+            if unit <= 0:
+                raise ValueError(loc + ": invalid tempo note value")
+            bpm = fraction(tempo["bpm"], loc) * F(4, unit)
             if tempo.get("dotted") is not None and type(tempo["dotted"]) is not bool:
                 raise ValueError(loc + ": invalid dotted tempo")
             if tempo.get("dotted"):
                 bpm *= F(3, 2)
             if not 0 <= bi < count or not 0 <= q < bars[bi].length or bpm <= 0:
                 raise ValueError(f"{loc}: invalid tempo coordinate")
-            if (bi, q) in part_events and part_events[bi, q] != bpm:
-                raise ValueError(loc + ": conflicting source tempo events")
             part_events[bi, q] = bpm
+            selected.append(((bi, q), tempo))
+        # Independent reverse scan: retain only each coordinate's final entry,
+        # including its flags. The original source stays untouched.
+        seen, effective = set(), []
+        for key, tempo in reversed(selected):
+            if key not in seen:
+                seen.add(key)
+                effective.append(tempo)
         from .verify_automation import expand
-        expanded = expand(automations, bars, part_events, f"parts/{pi}/automations")
+        expanded = expand({**automations, "tempo": list(reversed(effective))}, bars, part_events, f"parts/{pi}/automations")
         all_clocks.append(expanded)
         for (bi, q), bpm in expanded.items():
             if q in bars[bi].tempos and bars[bi].tempos[q] != bpm:

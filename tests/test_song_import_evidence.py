@@ -27,7 +27,7 @@ def test_evidence_is_durable_content_addressed_and_exportable(tmp_path):
     record_file = root / "records" / (first["id"] + ".json")
     assert hashlib.sha256(record_file.read_bytes()).hexdigest() == first["id"]
     record = json.loads(record_file.read_text())
-    assert record["version"] == first["version"] == 45
+    assert record["version"] == first["version"] == 46
     assert record["sourceMetadata"] == {"title": "Original", "songId": 12}
     assert record["members"]["manifest.yaml"] == hashlib.sha256(b"title: Original").hexdigest()
     shutil.rmtree(cache)

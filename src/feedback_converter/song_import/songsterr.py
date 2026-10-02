@@ -268,8 +268,11 @@ def parse(document: dict, *, track_indices=None) -> Score:
             raise ScoreImportError("Invalid Songsterr automation data.")
         inventory.inspect(automations, "Songsterr automations", f"$.parts[{part_index}].automations",
                           playable={"tempo", "fermata", "gradualTempo"}, retained={"volume", "balance"}, strict=True)
-        part_events = {}
-        for tempo_index, tempo in enumerate(automations.get("tempo", [])):
+        part_events, effective = {}, {}
+        raw_tempos = automations.get("tempo", [])
+        if not isinstance(raw_tempos, list):
+            raise ScoreImportError("Invalid Songsterr tempo list.")
+        for tempo_index, tempo in enumerate(raw_tempos):
             inventory.inspect(tempo, "Songsterr tempo", f"$.parts[{part_index}].automations.tempo[{tempo_index}]",
                               playable={"measure", "position", "bpm", "type", "linear", "dotted"}, retained={"text", "visible"}, strict=True)
             if "visible" in tempo and not isinstance(tempo["visible"], bool):
@@ -285,6 +288,8 @@ def parse(document: dict, *, track_indices=None) -> Score:
             # beat.duration's whole-note fractions. Fractional ticks are valid.
             position = rational(tempo.get("position", 0), "tempo position") / 960
             bpm = float(rational(tempo.get("bpm"), "tempo"))
+            if not 0 <= position < measures[bar].length or bpm <= 0:
+                raise ScoreImportError("Invalid source tempo position or rate.")
             unit = integer(tempo.get("type", 4), "tempo note value")
             if unit <= 0:
                 raise ScoreImportError("Invalid tempo note value.")
@@ -294,10 +299,12 @@ def parse(document: dict, *, track_indices=None) -> Score:
             if tempo.get("dotted") is True:
                 bpm *= 1.5
             key = (bar, position)
-            if key in part_events and part_events[key] != bpm:
-                raise ScoreImportError("Conflicting tempo events at the same position.")
+            # Songsterr oi/si replaces the complete earlier entry at this exact
+            # coordinate, before holds and ramps. Validate every raw entry;
+            # replacement must not conceal malformed source data.
             part_events[key] = bpm
-        part_events = performed_tempos(automations, measures, part_events)
+            effective[key] = tempo
+        part_events = performed_tempos({**automations, "tempo": list(effective.values())}, measures, part_events)
         part_clocks.append(part_events)
         for key, bpm in part_events.items():
             if key in tempo_events and tempo_events[key] != bpm:

@@ -10,9 +10,9 @@ from .songsterr_harmonics import exact_natural, natural_alias, source_target
 from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
 from .songsterr_fields import validate_sustain_pedal
-from .model import ScoreImportError
+from .model import ScoreImportError, integer, rational
 
-VERSION = 45
+VERSION = 46
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -218,8 +218,23 @@ def inspect_songsterr(document, *, track_indices=None):
         auto = part.get("automations", {})
         inspect(auto, "automations", f"parts/{pi}/automations", coordinates)
         if isinstance(auto, dict):
-            for ti, tempo in enumerate(auto.get("tempo", []) if isinstance(auto.get("tempo", []), list) else []):
+            tempos = auto.get("tempo", []) if isinstance(auto.get("tempo", []), list) else []
+            positions = {}
+            for ti, tempo in enumerate(tempos):
                 inspect(tempo, "tempo", f"parts/{pi}/automations/tempo/{ti}", coordinates)
+                if isinstance(tempo, dict):
+                    try:
+                        key = integer(tempo.get('measure'), 'tempo measure'), rational(tempo.get('position', 0), 'tempo position')
+                    except ScoreImportError:
+                        continue  # The parser reports malformed coordinates.
+                    positions.setdefault(key, []).append(ti)
+            for indices in positions.values():
+                winner = indices[-1]
+                for ti in indices[:-1]:
+                    add_finding(report, feature='tempo.superseded', category='source_interpretation', impact='display_or_expression',
+                                message='Songsterr uses the last tempo instruction at this exact position. The earlier entry is retained in the original source; its rate and ramp flags do not control playback.',
+                                location=f'parts/{pi}/automations/tempo/{ti}',
+                                value={'authored': tempos[ti], 'used': tempos[winner], 'selectedIndex': winner}, **coordinates)
         for bi, bar in enumerate(part.get("measures", []) if isinstance(part.get("measures"), list) else []):
             path = f"parts/{pi}/measures/{bi}"
             coord = {**coordinates, "measure": bi + 1}

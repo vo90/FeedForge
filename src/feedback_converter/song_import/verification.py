@@ -20,7 +20,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 45
+VERSION = 46
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -328,9 +328,9 @@ def _chords(wanted, chart, check, part):
             check.near("chord_time", "tracks/" + part.id + "/chords", wanted_time, actual_time)
 
 
-def _compatibility_report(report, score_path, source, check, harmonic_ties=(), tied_mutes=(), projected_parts=None, muted_slides=()):
+def _compatibility_report(report, score_path, source, check, harmonic_ties=(), tied_mutes=(), projected_parts=None, muted_slides=(), preservation_contract=0):
     """Verify retained limitations from source facts, not the producer's inventory."""
-    from .verify_source import _program_instrument, inactive
+    from .verify_source import _program_instrument, fraction, inactive, integer
     rows = report.get("findings")
     if not isinstance(rows, list) or report.get("truncated") is not False:
         check.fail("compatibility", "import/compatibility", "The compatibility report is incomplete.")
@@ -338,8 +338,11 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
+    reports_precedence = type(report.get('version')) is int and report['version'] >= 46
+    if preservation_contract >= 46 and not reports_precedence:
+        check.fail('compatibility_version', 'import/compatibility', 'This preservation contract requires tempo precedence accounting.')
     check.equal("compatibility_status", "import/compatibility", "limitations" if rows else "compatible", report.get("status"))
     target = report.get("target", {})
     check.equal("compatibility_target", "import/compatibility", "1.16.0", target.get("feedpak"))
@@ -360,6 +363,19 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
                     expected[(scope + "." + key, path + "/" + key)] = obj[key]
 
         for pi, (meta, part) in enumerate(zip(document["tracks"], document["parts"])):
+            raw_tempos = part.get('automations', {}).get('tempo', [])
+            final_positions = {}
+            # Older packages allowed identical duplicate entries without this
+            # diagnostic. Their musical clock is still independently checked.
+            for ti in (range(len(raw_tempos) - 1, -1, -1) if reports_precedence else ()):
+                tempo = raw_tempos[ti]
+                key = integer(tempo['measure']), fraction(tempo.get('position', 0))
+                if key in final_positions:
+                    winner = final_positions[key]
+                    expected[('tempo.superseded', f'parts/{pi}/automations/tempo/{ti}')] = {
+                        'authored': tempo, 'used': raw_tempos[winner], 'selectedIndex': winner}
+                else:
+                    final_positions[key] = ti
             for ti, tempo in enumerate(part.get("automations", {}).get("tempo", [])):
                 remember(tempo, ("text",), "tempo", f"parts/{pi}/automations/tempo/{ti}")
                 # Both true and false are authored display preferences. Unlike
@@ -407,7 +423,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
         check.equal("compatibility_value", key[1] + "/truncated", len(encoded) > 2048, row.get("valueTruncated"))
         check.equal("compatibility_retention", key[1], "original_source", row.get("retained"))
         check.equal("compatibility_impact", key[1], "gameplay_omission" if key[0] == "note.fret_range" else "display_or_expression", row.get("impact"))
-        check.equal("compatibility_category", key[1], "game_limitation", row.get("category"))
+        check.equal("compatibility_category", key[1], "source_interpretation" if key[0] == "tempo.superseded" else "game_limitation", row.get("category"))
 
 
 def _notation(archive, arrangement, wanted, check):
@@ -834,7 +850,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                     check.fail("compatibility", "import/compatibility", "A blocked or invalid compatibility report cannot be published.")
                 if recipe.get("preservationContract", 0) >= 5:
                     _compatibility_report(compatibility, score_path, source, check, wanted['harmonic_ties'], wanted['tied_mutes'],
-                                          [p['source'] for p in wanted['parts']], wanted['muted_slides'])
+                                          [p['source'] for p in wanted['parts']], wanted['muted_slides'], recipe.get('preservationContract', 0))
             elif any(p.notation_unavailable or p.unpitched_mutes for p in source.parts):
                 check.fail("retained_notation", "import", "A notation limitation requires embedded original source and a compatibility report.")
             if wanted['trills'] or recipe.get('trillsFile'):
