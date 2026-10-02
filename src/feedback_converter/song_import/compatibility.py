@@ -12,7 +12,7 @@ from .songsterr_tremolo import tremolo_mark
 from .songsterr_fields import validate_sustain_pedal
 from .model import ScoreImportError, integer, rational
 
-VERSION = 50
+VERSION = 51
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {

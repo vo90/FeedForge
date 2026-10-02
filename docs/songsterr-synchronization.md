@@ -46,17 +46,35 @@ zero. They are retained during validation. Negative nonplayable timeline markers
 may be omitted and a tempo retained at zero; a playable note starting before the
 recording is rejected, never silently clipped or shifted.
 
-Nonnested repeats and verified single-measure alternate endings use the performed
-visit order. Multi-measure ending regions are excluded from source-map alignment:
-Songsterr can skip the entire region from an ending marker, whereas the current
-score walker only filters measures carrying that marker explicitly.
+Nonnested repeats and verified alternate-ending regions use the performed visit
+order. Multi-measure ending regions require the retained source to independently
+establish the complete region order and score coordinates.
 Nested repeats are excluded from source-map alignment: the inspected player uses
 one active repeat object, whereas FeedForge's score walker supports a stack.
-Repeated passages with tempo changes within a measure are also excluded because
+Repeated passages with tempo changes within a measure remain excluded because
 the two implementations have not established identical inherited-tempo behavior
-at repeat jumps. Alternate endings without a repeat structure are not assumed
+at repeat jumps. Contract 51 permits a narrower combination: within-bar tempo
+events outside disjoint constant-tempo repeat regions. The retained source must
+establish that no tempo event occurs in any repeated region, no alternate ending
+is present, and independent bar order, boundary times and every tempo point match.
+The `constant-repeat-with-external-tempos-v1` receipt is independently checked in
+the archive. Missing evidence falls back to the existing matcher.
+Alternate endings without a repeat structure are not assumed
 equivalent. These restrictions concern source-map alignment; they do not broaden
 or weaken the independent matcher's acceptance rules.
+
+The development-only `tools/songsterr_compatibility/video-clock-reference.cjs`
+qualifies this combination against captured native score preparation, tempo
+layout, video boundaries and forward/inverse interpolation. It structurally
+extracts reviewed bindings from two hash-pinned public bundles into a bounded VM;
+it does not execute the UI, network, or audio engine. The manifest records all
+bindings and imported helpers. No third-party implementation ships in the app.
+The 72 synthetic examples vary meter, tempo position before/after repeats,
+repeat count and guitar/bass. Ordinary tests use the reviewed fixture, not the
+network. Regeneration requires captured common/vendor files and a new output
+path; drift requires review rather than replacing expected results automatically.
+This qualifies this clock family, not every browser playback mode or acoustic
+alignment of arbitrary recordings.
 
 ## Validation and fallback
 

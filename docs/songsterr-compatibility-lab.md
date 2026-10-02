@@ -36,6 +36,17 @@ ordinary rests, and note timing differences are never covered by this exception.
 
 ## Commands
 
+Original-video clock qualification is separate from the synth reference. The
+hash-pinned `video-clock-reference.cjs` reads captured common/vendor bundles and
+compares native preparation, tempo layouts, expanded boundaries and interpolation.
+The reviewed 72-case fixture supports only constant-tempo repeats with external
+within-bar tempo events; see `songsterr-synchronization.md` for the scope and
+independent acceptance guards. It does not qualify tempo changes inside repeats.
+
+```sh
+node tools/songsterr_compatibility/video-clock-fixtures.cjs /capture/common.js /capture/vendor.js /new/fixture.json
+```
+
 With the normal repository Python development dependencies installed:
 
 ```sh

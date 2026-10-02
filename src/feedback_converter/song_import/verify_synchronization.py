@@ -36,6 +36,31 @@ def verify_source_timing(source, alignment, recipe, timing, check, *, strums=Non
     check.equal('source_timing_recipe', 'manifest/song_import/alignment/provenance',
                 provenance, recipe.get('alignment', {}).get('provenance'))
     order = visits(source)
+    # Independently qualify the newly admitted repeat/tempo combination from
+    # raw bars, never from the producer's timeline capability flags.
+    repeat_tempos = any(b.repeat_count for b in source.bars) and any(q > 0 for b in source.bars for q in b.tempos)
+    expected_repeat_policy = None
+    if repeat_tempos:
+        starts, spans = [], []
+        for i, bar in enumerate(source.bars):
+            if bar.endings:
+                fail('Repeat/tempo ending inheritance is not qualified.'); return
+            if bar.repeat_start:
+                starts.append(i)
+            if bar.repeat_count:
+                first = starts.pop() if starts else 0
+                spans.append((first, i))
+        covered = set()
+        for first, last in spans:
+            region = set(range(first, last + 1))
+            if covered & region or any(source.bars[i].tempos for i in region):
+                fail('Tempo changes inside repeats or nested repeat clocks are not qualified.'); return
+            covered.update(region)
+        if starts or not spans:
+            fail('Unverified repeat structure.'); return
+        expected_repeat_policy = 'constant-repeat-with-external-tempos-v1'
+    check.equal('source_timing_repeat_tempos', 'alignment/provenance/repeatTempoPolicy',
+                expected_repeat_policy, provenance.get('repeatTempoPolicy'))
     clock = Clock(source, order)
     boundaries = [*clock.measure_starts, clock.quarters]
     required = len(boundaries)

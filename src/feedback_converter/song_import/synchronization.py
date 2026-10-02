@@ -116,7 +116,7 @@ def source_time_scale(alignment: dict, time: float) -> float:
     return (a1 - a0) / (s1 - s0)
 
 
-def _verify_ending_order(performance, measures):
+def _verify_source_clock(performance, measures, *, external_tempos=False):
     """Re-read retained source; counts or a producer capability flag are insufficient."""
     from .verify_source import songsterr
     from .verify_timeline import visits, Clock
@@ -129,6 +129,24 @@ def _verify_ending_order(performance, measures):
             if source.identity.get(key) != str(performance['source'].get(key)):
                 raise ValueError('source identity mismatch')
         order = visits(source)
+        if external_tempos:
+            # Qualification is deliberately narrower than all repeat/tempo
+            # combinations: disjoint constant-tempo repeat regions only.
+            stack, intervals = [], []
+            for index, bar in enumerate(source.bars):
+                if bar.endings:
+                    raise ValueError('alternate ending tempo inheritance')
+                if bar.repeat_start:
+                    stack.append(index)
+                if bar.repeat_count:
+                    start = stack.pop() if stack else 0
+                    if any(source.bars[i].tempos for i in range(start, index + 1)):
+                        raise ValueError('tempo event inside repeat')
+                    if any(start <= hi and lo <= index for lo, hi in intervals):
+                        raise ValueError('nested repeat tempo inheritance')
+                    intervals.append((start, index))
+            if stack or not intervals:
+                raise ValueError('missing repeat structure')
         if len(order) != len(measures):
             raise ValueError('order length mismatch')
         clock, counts = Clock(source, order), {}
@@ -142,8 +160,16 @@ def _verify_ending_order(performance, measures):
                         'start': float(clock.at(quarter)), 'end': float(clock.at(quarter + length))}
             if any(not _number(actual.get(k)) or abs(actual[k] - v) > _EPSILON for k, v in expected.items()):
                 raise ValueError('source coordinates mismatch')
+        if external_tempos:
+            points = performance['scoreTimeline']['tempoPoints']
+            if len(points) != len(clock.positions):
+                raise ValueError('source tempo count mismatch')
+            for point, quarter, bpm in zip(points, clock.positions, clock.bpms):
+                expected = {'quarter': float(quarter), 'time': float(clock.at(quarter)), 'bpm': float(bpm)}
+                if any(not _number(point.get(k)) or abs(point[k] - v) > _EPSILON for k, v in expected.items()):
+                    raise ValueError('source tempo mismatch')
     except (ValueError, KeyError, TypeError, AttributeError, IndexError):
-        _unavailable('unverified_multibar_endings')
+        _unavailable('unverified_repeat_tempo_inheritance' if external_tempos else 'unverified_multibar_endings')
 
 
 def align_from_songsterr(performance: dict, audio: dict, synchronization: dict | None,
@@ -184,12 +210,14 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
         _unavailable("missing_score_coordinates")
     if timeline.get("maxRepeatDepth", 0) > 1:
         _unavailable("unverified_nested_repeats")
+    repeat_tempo_policy = None
     if timeline.get("hasRepeats") and timeline.get("hasWithinBarTempoChanges"):
-        _unavailable("unverified_repeat_tempo_inheritance")
+        _verify_source_clock(performance, measures, external_tempos=True)
+        repeat_tempo_policy = 'constant-repeat-with-external-tempos-v1'
     if timeline.get("hasAlternateEndings") and not timeline.get("hasRepeats"):
         _unavailable("unverified_alternate_endings")
     if timeline.get("hasMultiBarAlternateEndings"):
-        _verify_ending_order(performance, measures)
+        _verify_source_clock(performance, measures)
     points = synchronization.get("points")
     if not isinstance(points, list) or not all(_number(value) for value in points):
         _unavailable("invalid_points")
@@ -277,6 +305,7 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
                                                 "supplied": len(supplied_points), "used": len(points),
                                                 "unusedTrailing": unused_count, "inferredTrailing": inferred_count},
                              "terminalBoundary": "songsterr-last-interval" if inferred_terminal else "explicit",
+                             **({'repeatTempoPolicy': repeat_tempo_policy} if repeat_tempo_policy else {}),
                              **({"openingStrum": opening_strum} if opening_strum else {}),
                              **({"terminalBeyondAudio": "silent_notation_only"} if silent_terminal else {})},
               "diagnostics": {"sourceSyncPointCount": len(supplied_points), "sourceSyncMeasureCount": len(measures),
