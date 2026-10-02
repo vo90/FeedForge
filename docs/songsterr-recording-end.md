@@ -1,5 +1,9 @@
 # Recording-end cutoff (preservation contract 11)
 
+Contract 56 extends the boundary eligibility below to multi-bar endings; see
+[Verified recording-end cutoff](songsterr-ending-suffix.md). Acoustic checks and
+source preservation remain required. The final-bar limits below describe v1.
+
 When new tab attacks fall past the selected recording, the importer may omit
 them only after checking earlier recording timing. This extends the contract 10
 held-tail policy in `songsterr-terminal-sustains.md`; it never substitutes audio,

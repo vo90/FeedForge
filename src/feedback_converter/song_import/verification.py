@@ -20,7 +20,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 55
+VERSION = 56
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -338,7 +338,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     reports_precedence = type(report.get('version')) is int and report['version'] >= 46
     if preservation_contract >= 46 and not reports_precedence:
@@ -652,16 +652,28 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
     if (source.format != "songsterr" or recipe.get("preservationContract", 0) < 11
             or alignment.get("method") != "songsterr-video-points-v1" or alignment.get("mapping") != "piecewise-linear"
             or len(anchors) != len(wanted["order"]) + 1 or len(anchors) < 2
-            or not anchors[-2]["audio"] < duration < anchors[-1]["audio"]
-            or anchors[-1]["audio"] - duration > 3.0 or anchors[-1]["audio"] - anchors[-2]["audio"] > 8.0):
-        check.fail("ending_boundary", "alignment", "Omissions must be confined to a short final-bar overrun.")
+            or any(not isinstance(a, dict) or any(type(a.get(k)) not in (int, float)
+                or not math.isfinite(a[k]) for k in ('score', 'audio')) for a in anchors)
+            or any(b['audio'] <= a['audio'] or b['score'] <= a['score'] for a,b in zip(anchors, anchors[1:]))
+            or not anchors[0]['audio'] < duration < anchors[-1]['audio']):
+        check.fail("ending_boundary", "alignment", "Omissions require a valid source map crossing the recording end.")
         return None
     # The acoustic check is recomputed from independently reconstructed notes
     # and the actual packaged recording. A forged saved status cannot authorize it.
     from .recording_sync import assess, digest, PREVIOUS_VERSION as SYNC_VERSION, LEGACY_VERSION
     stored = _json(archive, recipe.get("recordingSyncFile", ""), check)
-    required = {"version": 1, "policy": "cut-at-recording-end-v1", "audioDuration": duration,
-                "finalMeasureStart": anchors[-2]["audio"], "syncEvidenceHash": digest(stored)}
+    # Derive the policy independently; never trust the producer's cutoff index.
+    if (anchors[-2]['audio'] < duration and anchors[-1]['audio']-duration <= 3.0
+            and anchors[-1]['audio']-anchors[-2]['audio'] <= 8.0):
+        required = {"version": 1, "policy": "cut-at-recording-end-v1", "audioDuration": duration,
+                    "finalMeasureStart": anchors[-2]["audio"], "syncEvidenceHash": digest(stored)}
+    else:
+        if recipe.get('preservationContract', 0) < 56:
+            check.fail('ending_boundary', 'alignment', 'A multi-bar cutoff requires contract 56.'); return None
+        index = max(i for i,a in enumerate(anchors) if a['audio'] <= duration)
+        required = {'version': 2, 'policy': 'cut-at-recording-end-v2', 'audioDuration': duration,
+                    'cutoffMeasureIndex': index, 'cutoffMeasureStart': anchors[index]['audio'],
+                    'mappedScoreEnd': anchors[-1]['audio'], 'syncEvidenceHash': digest(stored)}
     if (policy != required or recipe.get("recordingEnd") != required
             or alignment.get("recordingSync") != stored or stored.get("version") not in (SYNC_VERSION, LEGACY_VERSION)
             or stored.get("status") != "supported" or stored.get("mapHash") != alignment.get("provenance", {}).get("mapHash")):

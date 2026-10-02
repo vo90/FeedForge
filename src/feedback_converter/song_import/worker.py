@@ -27,7 +27,7 @@ def _choose_alignment(performance: dict, audio: dict, request: dict, progress=No
             return _choose_padding(performance, audio, alignment, request, progress)
         if alignment.get("endingCandidate"):
             if progress:
-                progress({"stage": "aligning", "message": "Checking the earlier song before cutting the tab at the audio ending."})
+                progress({"stage": "aligning", "message": "Verifying the song timing before omitting notes beyond the audio ending."})
             from .ending_cutoff import authorize
             alignment = authorize(performance, audio, alignment)
         return alignment

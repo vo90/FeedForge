@@ -1,4 +1,4 @@
-"""Conservative recording-map evidence for an explicit final-bar cutoff.
+"""Conservative recording-map evidence for an explicit recording-end cutoff.
 
 Pitch ranks and onset ratios are engineering gates, not probabilities. This
 module never changes timing or selects audio. Inconclusive evidence cannot

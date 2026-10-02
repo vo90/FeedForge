@@ -219,7 +219,7 @@ def test_old_contract_cannot_build_directional_cutoff(completed_slide, tmp_path)
 
 
 @pytest.mark.parametrize('change', ['early_end', 'wrong_video', 'wrong_revision', 'long_final_bar', 'large_overrun'])
-def test_candidate_must_stay_inside_existing_identity_and_final_bar_guards(recording, tmp_path, change):
+def test_candidate_preserves_identity_and_requires_acoustic_authority(recording, tmp_path, change):
     _, performance, original_audio, original_timing, _ = source_case(recording, tmp_path)
     audio, timing = deepcopy(original_audio), deepcopy(original_timing)
     if change == 'early_end': audio['duration'] = 49.9
@@ -227,5 +227,10 @@ def test_candidate_must_stay_inside_existing_identity_and_final_bar_guards(recor
     elif change == 'wrong_revision': timing['revisionId'] = '35'
     elif change == 'long_final_bar': timing['points'][-1] = 60
     elif change == 'large_overrun': timing['points'][-1] = 56
-    with pytest.raises(ImportFailure):
-        align_from_songsterr(performance, audio, timing, META, allow_ending_candidate=True)
+    if change in {'wrong_video', 'wrong_revision'}:
+        with pytest.raises(ImportFailure):
+            align_from_songsterr(performance, audio, timing, META, allow_ending_candidate=True)
+    else:
+        candidate = align_from_songsterr(performance, audio, timing, META, allow_ending_candidate=True)
+        assert candidate['status'] == 'needs_ending_check'
+        assert not slides_allowed(candidate, audio['duration'])

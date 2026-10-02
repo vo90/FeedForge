@@ -1,5 +1,8 @@
 # Sparse synchronization evidence (preservation contract 32)
 
+The final-bar eligibility limit was later extended by
+[contract 56](songsterr-ending-suffix.md); the evidence rules below are unchanged.
+
 ## Implementation and acceptance plan
 
 1. Preserve the normal recording-sync metrics and thresholds. Add a deterministic,
