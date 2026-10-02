@@ -463,6 +463,12 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         if pickups:
             _write_json(package / 'import/pickup-timeline.json', pickups)
             manifest.setdefault('song_import', {})['pickupTimelineFile'] = 'import/pickup-timeline.json'
+    if performance.get('undefinedSlideEvidence'):
+        if source_path is None or (recipe or {}).get('preservationContract', 0) < 54:
+            raise ImportFailure('unsupported_score', 'Undefined slide omissions require original source and preservation contract 54.')
+        from .slide_omissions import archive_evidence as slide_omission_archive
+        _write_json(package / 'import/undefined-slides.json', slide_omission_archive(performance, source_path))
+        manifest.setdefault('song_import', {})['undefinedSlidesFile'] = 'import/undefined-slides.json'
     if performance.get('scrapeEntryEvidence'):
         if source_path is None or (recipe or {}).get('preservationContract', 0) < 53:
             raise ImportFailure('unsupported_score', 'Scrape entry markings require original source and preservation contract 53.')

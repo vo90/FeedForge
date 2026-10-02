@@ -20,6 +20,8 @@ def report_findings(performance, report):
         message = ('The muted shift and its destination are retained. The X and tie are preserved; no fret path is drawn because its starting fret is unspecified. The following pitched note remains playable.'
                    if row['authored']['slide'] == 'shift' else
                    'Muted slide-outs are visual only, not scored. Direction, strings and timing are preserved; an updated game is required to display them.')
+        if row['used']['rule'] == 'omitted-shift-to-unpitched-mute':
+            message = 'Both written X events and their timing are retained. The undefined slide between them is omitted and saved in the source and slide-omission report.'
         add_finding(report, feature='note.muted_slide', category='game_limitation',
                     impact='display_or_expression', message=message,
                     location=row['location'] + f"@visit{row['occurrence']}",

@@ -120,6 +120,7 @@ def _render(score: Score) -> dict:
     muted_tie_identities = []
     staccato_bends = []
     muted_slides = []
+    undefined_slides = []
     consumed_strums = []
     scrape_entries = []
     strums = []
@@ -324,36 +325,49 @@ def _render(score: Score) -> dict:
                     output["bn"] = max((p["v"] for p in output["bnv"]), key=abs)
                 if link_key in pending_muted_shifts and not note.tie:
                     articulation['linked'] = True
-                    if note.fret == 127 or effects.get('mt'):
+                    omit = score.source.get('format') == 'songsterr' and note.fret == 127 and effects.get('mt') is True
+                    if (note.fret == 127 or effects.get('mt')) and not omit:
                         raise link_diagnostics.error(
                             'A muted shift needs an explicit pitched destination; no fret was invented.',
                             'muted_destination', family='muted_shift', key=link_key,
                             destination=(note, occurrence, output['t']))
-                    for row in pending_muted_shifts.pop(link_key):
-                        row['target'] = {'sourceId': note.source_id, 'time': output['t'], 'fret': note.fret}
+                    for row, source_origin in pending_muted_shifts.pop(link_key):
+                        row['target'] = {'sourceId': note.source_id, 'time': output['t'], 'fret': None if omit else note.fret}
+                        if omit:
+                            from .slide_omissions import retain
+                            undefined_slides.append(retain(source_origin, note, occurrence, output['t']))
+                            row['used']['rule'] = 'omitted-shift-to-unpitched-mute'
                     link_diagnostics.resolve('muted_shift', link_key)
                 if note.fret == 127 and note.slide:
                     from .muted_slides import record
                     row = record(note, track, occurrence, output['t'], at(position), at(position + gesture_duration))
                     muted_slides.append(row)
                     if note.slide == 'shift':
-                        pending_muted_shifts.setdefault(link_key, []).append(row)
+                        from .slide_omissions import origin
+                        pending_muted_shifts.setdefault(link_key, []).append((row, origin(note, track, occurrence, output['t'], at(position))))
                         link_diagnostics.remember('muted_shift', link_key, note, occurrence, at(position))
                 if link_key in pending_slide and not note.tie:
-                    if note.fret == 127:
+                    omit = score.source.get('format') == 'songsterr' and note.fret == 127 and effects.get('mt') is True
+                    if note.fret == 127 and not omit:
                         raise link_diagnostics.error(
                             "A slide reaches an unpitched mute; no destination fret was invented.",
                             'unpitched_destination', family='slide', key=link_key,
                             destination=(note, occurrence, output['t']))
-                    sliding, kind = pending_slide.pop(link_key)
+                    sliding, kind, source_origin = pending_slide.pop(link_key)
                     link_diagnostics.resolve('slide', link_key)
                     articulation['linked'] = True
                     articulations[id(sliding)]['linked'] = True
-                    sliding["sl"] = note.fret
-                    if kind == "legato":
-                        sliding["ln"] = True
+                    if omit:
+                        from .slide_omissions import retain
+                        undefined_slides.append(retain(source_origin, note, occurrence, output['t']))
+                    else:
+                        sliding['sl'] = note.fret
+                        if kind == 'legato':
+                            sliding['ln'] = True
                 if note.slide in {"shift", "legato"} and note.fret != 127:
-                    pending_slide[link_key] = (output, note.slide)
+                    from .slide_omissions import origin
+                    source_origin = origin(note, track, occurrence, output['t'], at(position)) if score.source.get('format') == 'songsterr' else None
+                    pending_slide[link_key] = (output, note.slide, source_origin)
                     link_diagnostics.remember('slide', link_key, note, occurrence, at(position + note.attack_offset))
                 elif note.slide in {"out_down", "out_up"}:
                     # A tied continuation may carry the marking only on its
@@ -518,6 +532,7 @@ def _render(score: Score) -> dict:
             **({'staccatoBendEvidence': sorted(staccato_bends, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if staccato_bends else {}),
             'strumEvidence': sorted(strums,key=lambda r:(r['trackId'],r['occurrence'],r['time'],r['sourceId'])),
             **({"trillEvidence": trill_evidence} if trill_evidence else {}),
+            **({'undefinedSlideEvidence': sorted(undefined_slides, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if undefined_slides else {}),
             **({'mutedSlideEvidence': sorted(muted_slides, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if muted_slides else {}),
             **({'consumedStrumEvidence': sorted(consumed_strums, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if consumed_strums else {}),
             **({'scrapeEntryEvidence': sorted(scrape_entries, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if scrape_entries else {}),

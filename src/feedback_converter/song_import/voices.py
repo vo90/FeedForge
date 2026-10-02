@@ -5,7 +5,7 @@ import hashlib
 from .fingering import template_fingers
 
 POLICY = 'source-voices-v1'
-SIDECARS = ('harmonicTieEvidence', 'tiedMuteEvidence', 'mutedTieIdentityEvidence', 'staccatoBendEvidence', 'mutedSlideEvidence', 'consumedStrumEvidence', 'scrapeEntryEvidence', 'trillEvidence', 'strumEvidence')
+SIDECARS = ('undefinedSlideEvidence', 'harmonicTieEvidence', 'tiedMuteEvidence', 'mutedTieIdentityEvidence', 'staccatoBendEvidence', 'mutedSlideEvidence', 'consumedStrumEvidence', 'scrapeEntryEvidence', 'trillEvidence', 'strumEvidence')
 
 
 def derived_id(track_id, voice):

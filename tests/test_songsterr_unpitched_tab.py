@@ -77,6 +77,13 @@ def test_pitch_gestures_on_unpitched_strikes_remain_explicitly_unsupported(tmp_p
 @pytest.mark.parametrize('gesture', ['hp', 'slide'])
 def test_pitched_link_cannot_invent_a_fret_for_its_unpitched_destination(tmp_path, gesture):
     doc = source(); doc['parts'][0]['measures'][0]['voices'][0]['beats'][0]['notes'][0][gesture] = True if gesture == 'hp' else 'shift'
+    if gesture == 'slide':
+        performance = import_json(tmp_path, doc)
+        ref = expected(songsterr(doc), {'offset': 0, 'scale': 1})
+        assert performance['undefinedSlideEvidence'] == ref['undefined_slides']
+        assert not any('sl' in n for t in performance['tracks'] for n in t['notes'])
+        assert any(n['f'] == 127 and n.get('mt') for t in performance['tracks'] for n in t['notes'])
+        return
     with pytest.raises(ScoreImportError, match='unpitched'):
         import_json(tmp_path, doc)
     with pytest.raises(ValueError, match='unpitched'):

@@ -61,6 +61,8 @@ def load_performance(path: Path | str, metadata: dict | None = None, *, composit
         report_findings(performance, report)
         from .tied_mutes import report_findings as report_tied_mutes
         report_tied_mutes(performance, report)
+        from .slide_omissions import report_findings as report_slide_omissions
+        report_slide_omissions(performance, report)
         from .muted_slides import report_findings as report_muted_slides
         report_muted_slides(performance, report)
         from .consumed_strums import report_findings as report_consumed_strums

@@ -102,7 +102,7 @@ def inventory():
                                   FAMILIES.get(key, set()) & FAMILIES[other]]
         if key == 'technique.linked_targets':
             value['reference']['status'] = 'qualified_examples'
-            value['reference']['scope'] = '24 synthetic explicit/fretless slide targets under two profiles, compared with the complete captured worker. Synthesis fallback frets are observed, not authorized as gameplay; existing unresolved-link guards are unchanged.'
+            value['reference']['scope'] = '24 synthetic explicit/fretless slide targets under two profiles, compared with the complete captured worker. Synthesis fallback frets are observed, not authorized as gameplay; An approved display limitation omits an undefined slide ending on an explicit fretless X; notes and timing are retained. Missing targets and repeat boundaries remain guarded.'
             value['testFixture'] = 'tests/fixtures/songsterr_linked_target_reference.json'
             value['tests'] = 'tests/test_songsterr_link_diagnostics.py'
         if key == 'timing.strum_grace':
