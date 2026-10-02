@@ -56,7 +56,7 @@ FAMILIES = {
     "timing.ties": {"timing.ties", "timing.strum_tie_grace"},
 }
 BEHAVIOR = {
-    "timing.tempo": "Validate every entry; the last complete instruction at an exact coordinate supersedes earlier entries before hold/ramp expansion. Retain and report earlier entries. Cross-track clock conflicts and missing measures remain blocking.",
+    "timing.tempo": "Validate every entry; use the last complete instruction at an exact coordinate before hold/ramp expansion. Retain and report earlier entries and qualified inactive marks beyond the score. Missing initial clocks, outside marks with active ramps, and cross-track clock conflicts remain blocking.",
     "expression.sustain_pedal": "Retain validated pedal flags and disclose absent synthesis/engraving/scoring support. Preserve written/tied note timing; do not turn MIDI pedal control into longer game trails.",
     "notation.picking_hand": "Validate P/I/M/A/C; retain the picking-hand annotation and disclose absent engraving without changing fret-hand hints, pitches, attacks or scoring.",
     "timing.basic": "Preserve exact authored fractions until mapping the performed clock.",
@@ -104,8 +104,11 @@ def inventory():
             value['tests'] = 'tests/test_songsterr_repeat_ties.py'
         if key == 'timing.tempo':
             value['reference']['scope'] += ' Exact-coordinate instruction precedence additionally checked before holds/ramps and against emitted tempo events.'
+            value['reference']['scope'] += ' Outside-score steps qualified with an explicit initial clock and no active ramps; native preparation, emitted tempo and note scheduling match without them.'
             value['testFixture'] = 'tests/fixtures/songsterr_tempo_precedence_reference.json'
             value['tests'] = 'tests/test_songsterr_tempo_precedence.py'
+            value['additionalFixtures'] = ['tests/fixtures/songsterr_inactive_tempo_reference.json']
+            value['additionalTests'] = ['tests/test_songsterr_inactive_tempos.py']
         if key == 'timing.whole_rest':
             value['reference']['status'] = 'qualified_examples'
             value['testFixture'] = 'tests/fixtures/songsterr_rest_reference.json'

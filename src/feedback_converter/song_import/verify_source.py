@@ -484,8 +484,9 @@ def songsterr(document, *, track_indices=None):
         _active_unknown(automations, {"tempo", "gradualTempo", "fermata"}, {"volume", "balance"}, f"parts/{pi}/automations", ignored)
         part_events, selected = {}, []
         raw_tempos = automations.get("tempo", [])
-        if not isinstance(raw_tempos, list):
+        if not isinstance(raw_tempos, list) or not all(isinstance(t, dict) for t in raw_tempos):
             raise ValueError(f"parts/{pi}/automations: invalid tempo list")
+        outside_qualified = False
         for ti, tempo in enumerate(raw_tempos):
             loc = f"parts/{pi}/automations/tempo/{ti}"
             _active_unknown(tempo, {"measure", "position", "bpm", "type", "linear", "dotted"}, {"text", "visible"}, loc, ignored)
@@ -505,8 +506,18 @@ def songsterr(document, *, track_indices=None):
                 raise ValueError(loc + ": invalid dotted tempo")
             if tempo.get("dotted"):
                 bpm *= F(3, 2)
-            if not 0 <= bi < count or not 0 <= q < bars[bi].length or bpm <= 0:
+            if bi < 0 or q < 0 or (bi < count and q >= bars[bi].length) or bpm <= 0:
                 raise ValueError(f"{loc}: invalid tempo coordinate")
+            if bi >= count and not outside_qualified:
+                # Derive independently: no initial-measure normalization and
+                # no enabled ramp may turn this unattached event into a clock.
+                initial = raw_tempos[0]
+                if (integer(initial['measure'], loc) != 0 or fraction(initial.get('position', 0), loc) != 0
+                        or automations.get('gradualTempo') is True and any(t.get('linear') for t in raw_tempos)):
+                    unsupported(loc, 'Outside-score tempo in an initial/ramp clock is not independently verified.')
+                outside_qualified = True
+            if bi >= count:
+                continue
             part_events[bi, q] = bpm
             selected.append(((bi, q), tempo))
         # Independent reverse scan: retain only each coordinate's final entry,
