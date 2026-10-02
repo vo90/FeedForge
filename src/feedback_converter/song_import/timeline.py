@@ -119,6 +119,7 @@ def _render(score: Score) -> dict:
     muted_tie_identities = []
     staccato_bends = []
     muted_slides = []
+    consumed_strums = []
     strums = []
     trill_evidence = []
     warnings = list(score.warnings)
@@ -307,6 +308,7 @@ def _render(score: Score) -> dict:
                     output.setdefault("bnv", []).extend(curve)
                     output["bn"] = max((p["v"] for p in output["bnv"]), key=abs)
                 if link_key in pending_muted_shifts and not note.tie:
+                    articulation['linked'] = True
                     if note.fret == 127 or effects.get('mt'):
                         raise ScoreImportError('A muted shift needs an explicit pitched destination; no fret was invented.')
                     for row in pending_muted_shifts.pop(link_key):
@@ -321,6 +323,8 @@ def _render(score: Score) -> dict:
                     if note.fret == 127:
                         raise ScoreImportError("A pitched slide reaches an unpitched mute; no destination fret was invented.")
                     sliding, kind = pending_slide.pop(link_key)
+                    articulation['linked'] = True
+                    articulations[id(sliding)]['linked'] = True
                     sliding["sl"] = note.fret
                     if kind == "legato":
                         sliding["ln"] = True
@@ -349,6 +353,10 @@ def _render(score: Score) -> dict:
                 previous_note[link_key] = (output, end)
         if pending_slide or pending_hopo or pending_muted_shifts:
             raise ScoreImportError(f"A linked technique has no destination in {track.name}.")
+        from .consumed_strums import omit_consumed
+        omissions = omit_consumed(score, track, rendered, articulations, authored_groups,
+                                  strum_origins, hopo_links, at)
+        consumed_strums.extend(omissions)
         if score.source.get('format') == 'songsterr':
             from .staccato_bends import finish as finish_bend
             for output in rendered:
@@ -403,7 +411,7 @@ def _render(score: Score) -> dict:
                 templates.append({"name": label, "fingers": fingers, "frets": frets})
             chords.append({"t": group[0]["t"], "id": template_ids[shape], "source_ids": [beat_id],
                            "notes": [{key: value for key, value in note.items() if key != "t"} for note in group]})
-        notation, notation_warnings = render_notation(score, track, visits, at, rendered)
+        notation, notation_warnings = (None, []) if omissions else render_notation(score, track, visits, at, rendered)
         warnings.extend(notation_warnings)
         outputs.append({"id": track.id, "name": track.name, "instrument": track.instrument,
                         "role": track.role or track.instrument, "tuning": track.tuning,
@@ -480,4 +488,5 @@ def _render(score: Score) -> dict:
             'strumEvidence': sorted(strums,key=lambda r:(r['trackId'],r['occurrence'],r['time'],r['sourceId'])),
             **({"trillEvidence": trill_evidence} if trill_evidence else {}),
             **({'mutedSlideEvidence': sorted(muted_slides, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if muted_slides else {}),
+            **({'consumedStrumEvidence': sorted(consumed_strums, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if consumed_strums else {}),
             "featureInventory": score.feature_inventory}

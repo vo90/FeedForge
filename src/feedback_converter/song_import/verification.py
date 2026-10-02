@@ -20,7 +20,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 51
+VERSION = 52
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -328,7 +328,7 @@ def _chords(wanted, chart, check, part):
             check.near("chord_time", "tracks/" + part.id + "/chords", wanted_time, actual_time)
 
 
-def _compatibility_report(report, score_path, source, check, harmonic_ties=(), tied_mutes=(), projected_parts=None, muted_slides=(), preservation_contract=0):
+def _compatibility_report(report, score_path, source, check, harmonic_ties=(), tied_mutes=(), projected_parts=None, muted_slides=(), preservation_contract=0, consumed_strums=()):
     """Verify retained limitations from source facts, not the producer's inventory."""
     from .verify_source import _program_instrument, fraction, inactive, integer
     rows = report.get("findings")
@@ -338,7 +338,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     reports_precedence = type(report.get('version')) is int and report['version'] >= 46
     if preservation_contract >= 46 and not reports_precedence:
@@ -351,6 +351,8 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_target", "import/compatibility", "1.16.0", target.get("feedpak"))
     check.equal("compatibility_target", "import/compatibility/notation", 1, target.get("notation"))
     expected = {}
+    for row in consumed_strums:
+        expected[('note.consumed_strum_grace', row['location'] + f"@visit{row['occurrence']}")] = {k:row[k] for k in ('authored','used')}
     for row in muted_slides:
         expected[('note.muted_slide', row['location'] + f"@visit{row['occurrence']}")] = {k:row[k] for k in ('authored','used')}
     for row in tied_mutes:
@@ -429,14 +431,14 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
             check.equal("compatibility_value", key[1] + "/boolean", True, row.get("value") is True)
         check.equal("compatibility_value", key[1] + "/truncated", len(encoded) > 2048, row.get("valueTruncated"))
         check.equal("compatibility_retention", key[1], "original_source", row.get("retained"))
-        check.equal("compatibility_impact", key[1], "gameplay_omission" if key[0] == "note.fret_range" else "display_or_expression", row.get("impact"))
-        check.equal("compatibility_category", key[1], "source_interpretation" if key[0] in ("tempo.superseded", "tempo.outside_score") else "game_limitation", row.get("category"))
+        check.equal("compatibility_impact", key[1], "gameplay_omission" if key[0] in ("note.fret_range", "note.consumed_strum_grace") else "display_or_expression", row.get("impact"))
+        check.equal("compatibility_category", key[1], "source_interpretation" if key[0] in ("tempo.superseded", "tempo.outside_score", "note.consumed_strum_grace") else "game_limitation", row.get("category"))
 
 
 def _notation(archive, arrangement, wanted, check):
     """Verify available beat time/rest facts without inferring engraving style."""
     name = arrangement.get("notation")
-    if wanted.get("high_fret_omissions") or wanted["source"].notation_unavailable or wanted["source"].unpitched_mutes:
+    if wanted.get("consumed_strum_omissions") or wanted.get("high_fret_omissions") or wanted["source"].notation_unavailable or wanted["source"].unpitched_mutes:
         if name:
             check.fail("unsupported_notation", name, "Unsupported source notation must not be replaced with invented pitches or rhythm.")
         return
@@ -857,9 +859,18 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                     check.fail("compatibility", "import/compatibility", "A blocked or invalid compatibility report cannot be published.")
                 if recipe.get("preservationContract", 0) >= 5:
                     _compatibility_report(compatibility, score_path, source, check, wanted['harmonic_ties'], wanted['tied_mutes'],
-                                          [p['source'] for p in wanted['parts']], wanted['muted_slides'], recipe.get('preservationContract', 0))
+                                          [p['source'] for p in wanted['parts']], wanted['muted_slides'], recipe.get('preservationContract', 0), wanted['consumed_strums'])
             elif any(p.notation_unavailable or p.unpitched_mutes for p in source.parts):
                 check.fail("retained_notation", "import", "A notation limitation requires embedded original source and a compatibility report.")
+            if wanted['consumed_strums'] or recipe.get('consumedStrumsFile'):
+                if recipe.get('preservationContract', 0) < 52:
+                    check.fail('consumed_strums', 'manifest/song_import', 'Consumed notes require preservation contract 52.')
+                retained = _json(z, recipe.get('consumedStrumsFile', ''), check)
+                evidence = {'version': 1, 'policy': 'consumed-strum-grace-v1', 'timeDomain': 'score_seconds',
+                            'sourceSha256': report['sourceSha256'], 'omissions': wanted['consumed_strums']}
+                from .verify_policy_receipt import compare
+                compare(evidence, retained, check, 'consumed_strums')
+                report['scope'].append('consumed_strum_grace_accounting')
             if wanted['trills'] or recipe.get('trillsFile'):
                 retained = _json(z, recipe.get('trillsFile', ''), check)
                 tied_trills = any(t.get('mode') == 'native-tied-segments-v1' for t in wanted['trills'])

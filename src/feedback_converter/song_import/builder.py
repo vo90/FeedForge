@@ -463,6 +463,12 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         if pickups:
             _write_json(package / 'import/pickup-timeline.json', pickups)
             manifest.setdefault('song_import', {})['pickupTimelineFile'] = 'import/pickup-timeline.json'
+    if performance.get('consumedStrumEvidence'):
+        if source_path is None or (recipe or {}).get('preservationContract', 0) < 52:
+            raise ImportFailure('unsupported_score', 'Consumed strum/grace notes require original source and preservation contract 52.')
+        from .consumed_strums import archive_evidence as consumed_archive
+        _write_json(package / 'import/consumed-strums.json', consumed_archive(performance, source_path))
+        manifest.setdefault('song_import', {})['consumedStrumsFile'] = 'import/consumed-strums.json'
     if performance.get('mutedSlideEvidence'):
         if source_path is None or (recipe or {}).get('preservationContract', 0) < 28:
             raise ImportFailure('unsupported_score', 'Muted slides require the retained original tab and preservation contract 28.')

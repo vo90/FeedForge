@@ -632,7 +632,7 @@ def songsterr(document, *, track_indices=None):
                         unsupported(loc, "This grace-note timing is not independently verified.")
                     if duration <= 0:
                         raise ValueError(f"{loc}: nonpositive performed beat duration")
-                    fact = {"q": q, "length": duration, "voice": str(vi), "location": loc, "written_q": written_q,
+                    fact = {"q": q, "length": duration, "written_length": written_duration, "voice": str(vi), "location": loc, "written_q": written_q,
                             "rest": not any(not n.get("rest") for n in beat["notes"]), "notation": written, "notes": [], "chord_label": label.get("text", "")}
                     if grace:
                         fact["notation"]["grace"] = "a" if grace == "beforeBeat" else "p"
