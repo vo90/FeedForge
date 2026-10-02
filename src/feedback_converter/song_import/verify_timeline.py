@@ -184,7 +184,7 @@ def _expected(source, alignment):
     order = visits(source)
     clock, recording = Clock(source, order), RecordingMap(alignment)
     result = {"parts": [], "beats": [], "sections": [], "time_signatures": [], "tempos": [], "order": order,
-              'harmonic_ties': [], 'tied_mutes': [], 'muted_tie_identities': [], 'staccato_bends': [], 'muted_slides': [], 'trills': [], 'strums': [], 'consumed_strums': [],
+              'harmonic_ties': [], 'tied_mutes': [], 'muted_tie_identities': [], 'staccato_bends': [], 'muted_slides': [], 'trills': [], 'strums': [], 'consumed_strums': [], 'scrape_entries': [],
               "raw_notes": sum(len(bar) for p in source.parts for bar in p.bars), "tie_segments": 0}
     measure_facts = []
     inherited_tempos, inherited = [], F(120)
@@ -427,8 +427,10 @@ def _expected(source, alignment):
                         intervals[-1] = (direction, intervals[-1][1], end)
                     else:
                         intervals.append((direction, max(start, event["start"]), end))
-                event["pitch_gesture"] |= bool(atom.bends or atom.slide or atom.slide_in or atom.whammy)
-                event['other_pitch_gesture'] |= bool(atom.slide or atom.slide_in or atom.whammy)
+                source_only_entry = source.format == 'songsterr' and event['effects'].get('mt') is True and direction and atom.slide_in
+                pitched_entry = atom.slide_in and not source_only_entry
+                event["pitch_gesture"] |= bool(atom.bends or atom.slide or pitched_entry or atom.whammy)
+                event['other_pitch_gesture'] |= bool(atom.slide or pitched_entry or atom.whammy)
                 event['bend_atoms'].append((atom, start, end, occurrence))
                 if (len(event["locations"]) > 1 and event["any_staccato"] and event["pitch_gesture"]
                         and (source.format != 'songsterr' or event['other_pitch_gesture'])):
@@ -478,7 +480,16 @@ def _expected(source, alignment):
                     pending_slides[key] = (event, atom.slide)
                 elif atom.slide in {'up','down'}:
                     event["slide_marks"].append((atom.slide, start, start + gesture_length))
-                if atom.slide_in:
+                if source_only_entry:
+                    path = atom.location.split('/')
+                    result['scrape_entries'].append({
+                        'trackId': part.id, 'sourceId': 'songsterr:' + ':'.join(path[i] for i in (1,3,5,7,9)),
+                        'location': atom.location, 'occurrence': occurrence + 1,
+                        'attack': float(clock.at(event['start'])), 'start': float(clock.at(start)),
+                        'end': float(clock.at(start + gesture_length)), 'string': atom.string,
+                        'authored': {'slide': 'below' if atom.slide_in == 'up' else 'above'},
+                        'used': {'rule': 'unpitched-scrape-no-pitched-entry', 'scrapeDirection': direction}})
+                elif atom.slide_in:
                     event["incoming_marks"].append((atom.slide_in, start))
                 if atom.hopo_origin:
                     pending_hopos[key] = event
@@ -618,6 +629,7 @@ def _expected(source, alignment):
     result['staccato_bends'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['muted_slides'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['consumed_strums'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
+    result['scrape_entries'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['strums'].sort(key=lambda r:(r['trackId'],r['occurrence'],r['time'],r['sourceId']))
     result["mapped_end"] = recording.at(clock.at(clock.quarters))
     return result
