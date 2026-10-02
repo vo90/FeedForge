@@ -61,7 +61,7 @@ BEHAVIOR = {
     "notation.picking_hand": "Validate P/I/M/A/C; retain the picking-hand annotation and disclose absent engraving without changing fret-hand hints, pitches, attacks or scoring.",
     "timing.basic": "Preserve exact authored fractions until mapping the performed clock.",
     "technique.tremolo_picking": "Map active beat/per-string tremolo to tr; retain exact subdivision and within-tie timing in source and disclose the whole-sustain display/rate limitation. No expanded scored attacks.",
-    "timing.strum_grace": "Apply explicit stroke timing after grace allocation; a consumed attack remains a pending omission decision.",
+    "timing.strum_grace": "Apply explicit stroke timing after grace allocation. Omit only non-sounding attacks on grace-shortened beats under the approved consumed-strum policy, preserving the source and independently verified per-occurrence receipts. Tied or linked gestures remain protected.",
     "timing.grace": "Allocate source grace groups with bar and opening context; do not invent minimum note lengths.",
     "timing.swing": "Apply the authored rhythmic feel to eligible groups while retaining written rhythm.",
     "timing.repeats": "Expand authored traversal and preserve source identity plus occurrence.",
@@ -69,7 +69,6 @@ BEHAVIOR = {
     "timing.whole_rest": "Bound a qualifying silent whole-rest overrun to the meter; never truncate played notes by this rule.",
 }
 DEFERRED = {
-    "strum_grace_consumed_attack": "Omitting an attack consumed by strum/grace timing requires a decision.",
     "source_player_repairs": "Source-player fret repairs and source-relationship repairs are not automatically authorized.",
     "source_player_synthesis": "Humanization, sample envelopes and automatic strumming are not authored gameplay.",
 }
@@ -98,6 +97,10 @@ def inventory():
         value["prerequisites"] = ["approved_revision", "valid_source_structure", "source_identity_preserved"]
         value["interactions"] = [other for other in FAMILIES if other != key and
                                   FAMILIES.get(key, set()) & FAMILIES[other]]
+        if key == 'timing.strum_grace':
+            value['reference']['scope'] += ' Consumed attacks additionally checked against captured explicit-source and default-player playback suppression.'
+            value['testFixture'] = 'tests/fixtures/songsterr_consumed_strum_playback.json'
+            value['tests'] = 'tests/test_songsterr_consumed_strums.py'
         if key == 'timing.ties':
             value['reference']['scope'] += ' Exact-boundary repeat entrance ties additionally checked against native ks merging; no pitch/gap repair qualification.'
             value['testFixture'] = 'tests/fixtures/songsterr_repeat_tie_reference.json'
