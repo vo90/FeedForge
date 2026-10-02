@@ -8,6 +8,7 @@ from .notation import render_notation
 from .songsterr_whammy import append_segment
 from .repeat_regions import repeat_regions
 from .fingering import template_fingers
+from .link_diagnostics import LinkDiagnostics
 
 
 def playback_order(measures: list[Measure]) -> list[int]:
@@ -150,6 +151,7 @@ def _render(score: Score) -> dict:
         pending_slide = {}
         pending_muted_shifts = {}
         pending_hopo = {}
+        link_diagnostics = LinkDiagnostics()
         authored_groups = {}
         strum_origins = {}
         articulations = {}
@@ -158,7 +160,10 @@ def _render(score: Score) -> dict:
         for occurrence, (index, start) in enumerate(visits):
             if index <= last_written:
                 if pending_slide or pending_hopo or pending_muted_shifts:
-                    raise ScoreImportError(f"An unresolved linked technique crosses a repeat jump in {track.name}.")
+                    raise link_diagnostics.error(
+                        f"An unresolved linked technique crosses a repeat jump in {track.name}.", 'repeat_jump',
+                        boundary={'fromMeasure': last_written + 1, 'toMeasure': index + 1,
+                                  'occurrence': occurrence + 1, 'time': at(start)})
                 # A written tie at the repeat entrance may continue the note
                 # identified by this performed boundary. Unfilled bar space
                 # follows the ordinary tie rule below, including its rest
@@ -243,11 +248,17 @@ def _render(score: Score) -> dict:
                         output["source_ids"] = [note.source_id]
                     if note.hopo or link_key in pending_hopo:
                         if prior is None:
-                            raise ScoreImportError(f"Unresolved hammer-on/pull-off in {track.name}.")
+                            raise link_diagnostics.error(f"Unresolved hammer-on/pull-off in {track.name}.",
+                                'missing_hopo_origin', family='hopo', key=link_key,
+                                destination=(note, occurrence, output['t']))
                         if note.fret == 127 or prior[0]["f"] == 127:
-                            raise ScoreImportError("A linked pitch technique reaches an unpitched mute; no fret was invented.")
+                            raise link_diagnostics.error(
+                                "A linked pitch technique reaches an unpitched mute; no fret was invented.",
+                                'unpitched_hopo', family='hopo', key=link_key,
+                                destination=(note, occurrence, output['t']))
                         output["ho" if note.fret > prior[0]["f"] else "po"] = True
                         pending_hopo.pop(link_key, None)
+                        link_diagnostics.resolve('hopo', link_key)
                         hopo_links.append((prior[0], output))
                     rendered.append(output)
                     articulation = {"start": attack, "origin_staccato": note.staccato,
@@ -314,19 +325,28 @@ def _render(score: Score) -> dict:
                 if link_key in pending_muted_shifts and not note.tie:
                     articulation['linked'] = True
                     if note.fret == 127 or effects.get('mt'):
-                        raise ScoreImportError('A muted shift needs an explicit pitched destination; no fret was invented.')
+                        raise link_diagnostics.error(
+                            'A muted shift needs an explicit pitched destination; no fret was invented.',
+                            'muted_destination', family='muted_shift', key=link_key,
+                            destination=(note, occurrence, output['t']))
                     for row in pending_muted_shifts.pop(link_key):
                         row['target'] = {'sourceId': note.source_id, 'time': output['t'], 'fret': note.fret}
+                    link_diagnostics.resolve('muted_shift', link_key)
                 if note.fret == 127 and note.slide:
                     from .muted_slides import record
                     row = record(note, track, occurrence, output['t'], at(position), at(position + gesture_duration))
                     muted_slides.append(row)
                     if note.slide == 'shift':
                         pending_muted_shifts.setdefault(link_key, []).append(row)
+                        link_diagnostics.remember('muted_shift', link_key, note, occurrence, at(position))
                 if link_key in pending_slide and not note.tie:
                     if note.fret == 127:
-                        raise ScoreImportError("A pitched slide reaches an unpitched mute; no destination fret was invented.")
+                        raise link_diagnostics.error(
+                            "A slide reaches an unpitched mute; no destination fret was invented.",
+                            'unpitched_destination', family='slide', key=link_key,
+                            destination=(note, occurrence, output['t']))
                     sliding, kind = pending_slide.pop(link_key)
+                    link_diagnostics.resolve('slide', link_key)
                     articulation['linked'] = True
                     articulations[id(sliding)]['linked'] = True
                     sliding["sl"] = note.fret
@@ -334,6 +354,7 @@ def _render(score: Score) -> dict:
                         sliding["ln"] = True
                 if note.slide in {"shift", "legato"} and note.fret != 127:
                     pending_slide[link_key] = (output, note.slide)
+                    link_diagnostics.remember('slide', link_key, note, occurrence, at(position + note.attack_offset))
                 elif note.slide in {"out_down", "out_up"}:
                     # A tied continuation may carry the marking only on its
                     # final written segment. Keep each interval before merging
@@ -357,10 +378,12 @@ def _render(score: Score) -> dict:
                         "direction": note.slide_in, "time": at(position) - output["t"]})
                 if note.effects.get("__hopo_origin"):
                     pending_hopo[link_key] = output
+                    link_diagnostics.remember('hopo', link_key, note, occurrence, at(position + note.attack_offset))
                     output["ln"] = True
                 previous_note[link_key] = (output, end)
         if pending_slide or pending_hopo or pending_muted_shifts:
-            raise ScoreImportError(f"A linked technique has no destination in {track.name}.")
+            raise link_diagnostics.error(f"A linked technique has no destination in {track.name}.", 'end_of_score',
+                                         boundary={'time': at(cursor)})
         from .consumed_strums import omit_consumed
         omissions = omit_consumed(score, track, rendered, articulations, authored_groups,
                                   strum_origins, hopo_links, at)

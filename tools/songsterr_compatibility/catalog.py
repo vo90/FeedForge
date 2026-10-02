@@ -24,6 +24,7 @@ RULES = {
     "technique.trills": {"files": ["songsterr_trills.py", "tied_trills.py"], "policy": "approved_game_projection"},
     "technique.tremolo_picking": {"files": ["songsterr_tremolo.py"], "policy": "existing_game_instruction"},
     "technique.whammy": {"files": ["songsterr_whammy.py"], "policy": "approved_game_projection"},
+    "technique.linked_targets": {"files": ["link_diagnostics.py"], "policy": "located_existing_guard"},
     "projection.high_frets": {"files": ["high_frets.py"], "policy": "approved_omission"},
     "projection.hybrid": {"files": ["hybrid_lead.py", "hybrid_selection.py", "hybrid_materialize.py"], "policy": "derived_arrangement"},
 }
@@ -45,6 +46,7 @@ FIELDS = {
     "technique.trills": "note.trill",
     "technique.tremolo_picking": "beat.tremolo note.tremolo",
     "technique.whammy": "beat.tremoloBar beat.vibratoWithTremoloBar",
+    "technique.linked_targets": "note.slide note.hp",
     "projection.high_frets": "note.fret",
 }
 FAMILIES = {
@@ -56,6 +58,7 @@ FAMILIES = {
     "timing.ties": {"timing.ties", "timing.strum_tie_grace"},
 }
 BEHAVIOR = {
+    "technique.linked_targets": "Keep the existing unresolved-link guards. Report origin, destination or boundary, and traversal occurrence; do not fabricate a fret, discard an attack or infer a relationship from synthesis.",
     "timing.tempo": "Validate every entry; use the last complete instruction at an exact coordinate before hold/ramp expansion. Retain and report earlier entries and qualified inactive marks beyond the score. Missing initial clocks, outside marks with active ramps, and cross-track clock conflicts remain blocking.",
     "expression.sustain_pedal": "Retain validated pedal flags and disclose absent synthesis/engraving/scoring support. Preserve written/tied note timing; do not turn MIDI pedal control into longer game trails.",
     "notation.picking_hand": "Validate P/I/M/A/C; retain the picking-hand annotation and disclose absent engraving without changing fret-hand hints, pitches, attacks or scoring.",
@@ -97,6 +100,11 @@ def inventory():
         value["prerequisites"] = ["approved_revision", "valid_source_structure", "source_identity_preserved"]
         value["interactions"] = [other for other in FAMILIES if other != key and
                                   FAMILIES.get(key, set()) & FAMILIES[other]]
+        if key == 'technique.linked_targets':
+            value['reference']['status'] = 'qualified_examples'
+            value['reference']['scope'] = '24 synthetic explicit/fretless slide targets under two profiles, compared with the complete captured worker. Synthesis fallback frets are observed, not authorized as gameplay; existing unresolved-link guards are unchanged.'
+            value['testFixture'] = 'tests/fixtures/songsterr_linked_target_reference.json'
+            value['tests'] = 'tests/test_songsterr_link_diagnostics.py'
         if key == 'timing.strum_grace':
             value['reference']['scope'] += ' Consumed attacks additionally checked against captured explicit-source and default-player playback suppression.'
             value['testFixture'] = 'tests/fixtures/songsterr_consumed_strum_playback.json'
