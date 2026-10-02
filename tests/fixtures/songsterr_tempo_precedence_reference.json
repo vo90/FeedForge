@@ -1,0 +1,6672 @@
+{
+  "referenceSha256": "4219f9dbf0952af83be36c8b590f10fea7a0f36d72bd1f92297a3d768f93f5ab",
+  "scope": "Native complete scheduling plus tempo emission. Duplicate instructions resolved before hold/ramp expansion. No audio-alignment claim.",
+  "cases": [
+    {
+      "profile": "authored",
+      "repeat": false,
+      "hold": false,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 57,
+              "type": 2,
+              "dotted": true,
+              "linear": false
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": []
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 57,
+            "type": 2,
+            "dotted": true,
+            "linear": false
+          },
+          {
+            "measure": 1,
+            "position": 960,
+            "bpm": 163,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 1920,
+            "bpm": 156,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 2880,
+            "bpm": 148,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 171
+          },
+          {
+            "time": 81920,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 163
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 156
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 148
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "e243b925efd55b499a788e6cf58199e4ef534998e0a63b9430a4bdc3a9428cfc"
+      }
+    },
+    {
+      "profile": "authored",
+      "repeat": false,
+      "hold": false,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 84,
+              "type": 8,
+              "linear": true
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": []
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 0,
+            "position": 960,
+            "bpm": 86,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 0,
+            "position": 1920,
+            "bpm": 71,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 0,
+            "position": 2880,
+            "bpm": 57,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 84,
+            "type": 8,
+            "linear": true
+          },
+          {
+            "measure": 1,
+            "position": 960,
+            "bpm": 67,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 1920,
+            "bpm": 91,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 2880,
+            "bpm": 116,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 16384,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 86
+          },
+          {
+            "time": 32768,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 71
+          },
+          {
+            "time": 49152,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 57
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 42
+          },
+          {
+            "time": 81920,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 67
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 91
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 116
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "e243b925efd55b499a788e6cf58199e4ef534998e0a63b9430a4bdc3a9428cfc"
+      }
+    },
+    {
+      "profile": "authored",
+      "repeat": false,
+      "hold": false,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 60,
+              "type": 4
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": []
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 60,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 960,
+            "bpm": 80,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 1920,
+            "bpm": 100,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 2880,
+            "bpm": 120,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 81920,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 80
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 120
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "e243b925efd55b499a788e6cf58199e4ef534998e0a63b9430a4bdc3a9428cfc"
+      }
+    },
+    {
+      "profile": "authored",
+      "repeat": false,
+      "hold": true,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 57,
+              "type": 2,
+              "dotted": true,
+              "linear": false
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": [
+            {
+              "measure": 1,
+              "position": 1920,
+              "type": "medium",
+              "length": 0.6
+            }
+          ]
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 57,
+            "type": 2,
+            "dotted": true,
+            "linear": false
+          },
+          {
+            "bpm": 30,
+            "measure": 1,
+            "position": 1920,
+            "duration": 960,
+            "type": 2
+          },
+          {
+            "bpm": 57,
+            "measure": 1,
+            "position": 2880,
+            "type": 2
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 171
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 114
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "e243b925efd55b499a788e6cf58199e4ef534998e0a63b9430a4bdc3a9428cfc"
+      }
+    },
+    {
+      "profile": "authored",
+      "repeat": false,
+      "hold": true,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 84,
+              "type": 8,
+              "linear": true
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": [
+            {
+              "measure": 1,
+              "position": 1920,
+              "type": "medium",
+              "length": 0.6
+            }
+          ]
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 0,
+            "position": 960,
+            "bpm": 86,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 0,
+            "position": 1920,
+            "bpm": 71,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 0,
+            "position": 2880,
+            "bpm": 57,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 84,
+            "type": 8,
+            "linear": true
+          },
+          {
+            "bpm": 44,
+            "measure": 1,
+            "position": 1920,
+            "duration": 960,
+            "type": 8
+          },
+          {
+            "bpm": 84,
+            "measure": 1,
+            "position": 2880,
+            "type": 8
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 16384,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 86
+          },
+          {
+            "time": 32768,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 71
+          },
+          {
+            "time": 49152,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 57
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 42
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 22
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 42
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "e243b925efd55b499a788e6cf58199e4ef534998e0a63b9430a4bdc3a9428cfc"
+      }
+    },
+    {
+      "profile": "authored",
+      "repeat": false,
+      "hold": true,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 60,
+              "type": 4
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": [
+            {
+              "measure": 1,
+              "position": 1920,
+              "type": "medium",
+              "length": 0.6
+            }
+          ]
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 60,
+            "type": 4
+          },
+          {
+            "bpm": 31,
+            "measure": 1,
+            "position": 1920,
+            "duration": 960,
+            "type": 4
+          },
+          {
+            "bpm": 60,
+            "measure": 1,
+            "position": 2880,
+            "type": 4
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 31
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "e243b925efd55b499a788e6cf58199e4ef534998e0a63b9430a4bdc3a9428cfc"
+      }
+    },
+    {
+      "profile": "authored",
+      "repeat": true,
+      "hold": false,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 57,
+              "type": 2,
+              "dotted": true,
+              "linear": false
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": []
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeatStart": true,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeat": 2,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 57,
+            "type": 2,
+            "dotted": true,
+            "linear": false
+          },
+          {
+            "measure": 1,
+            "position": 960,
+            "bpm": 163,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 1920,
+            "bpm": 156,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 2880,
+            "bpm": 148,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 171
+          },
+          {
+            "time": 81920,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 163
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 156
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 148
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          },
+          {
+            "time": 196608,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 262144,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 171
+          },
+          {
+            "time": 278528,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 163
+          },
+          {
+            "time": 294912,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 156
+          },
+          {
+            "time": 311296,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 148
+          },
+          {
+            "time": 327680,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "041733f880d7ce570a591e16f86b63a76c3866fde5cde2d7fe4334110901c3f3"
+      }
+    },
+    {
+      "profile": "authored",
+      "repeat": true,
+      "hold": false,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 84,
+              "type": 8,
+              "linear": true
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": []
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeatStart": true,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeat": 2,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 0,
+            "position": 960,
+            "bpm": 86,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 0,
+            "position": 1920,
+            "bpm": 71,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 0,
+            "position": 2880,
+            "bpm": 57,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 84,
+            "type": 8,
+            "linear": true
+          },
+          {
+            "measure": 1,
+            "position": 960,
+            "bpm": 67,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 1920,
+            "bpm": 91,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 2880,
+            "bpm": 116,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 16384,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 86
+          },
+          {
+            "time": 32768,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 71
+          },
+          {
+            "time": 49152,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 57
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 42
+          },
+          {
+            "time": 81920,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 67
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 91
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 116
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          },
+          {
+            "time": 196608,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 212992,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 86
+          },
+          {
+            "time": 229376,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 71
+          },
+          {
+            "time": 245760,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 57
+          },
+          {
+            "time": 262144,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 42
+          },
+          {
+            "time": 278528,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 67
+          },
+          {
+            "time": 294912,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 91
+          },
+          {
+            "time": 311296,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 116
+          },
+          {
+            "time": 327680,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "041733f880d7ce570a591e16f86b63a76c3866fde5cde2d7fe4334110901c3f3"
+      }
+    },
+    {
+      "profile": "authored",
+      "repeat": true,
+      "hold": false,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 60,
+              "type": 4
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": []
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeatStart": true,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeat": 2,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 60,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 960,
+            "bpm": 80,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 1920,
+            "bpm": 100,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 2880,
+            "bpm": 120,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 81920,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 80
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 120
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          },
+          {
+            "time": 196608,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 262144,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 278528,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 80
+          },
+          {
+            "time": 294912,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 311296,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 120
+          },
+          {
+            "time": 327680,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "041733f880d7ce570a591e16f86b63a76c3866fde5cde2d7fe4334110901c3f3"
+      }
+    },
+    {
+      "profile": "authored",
+      "repeat": true,
+      "hold": true,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 57,
+              "type": 2,
+              "dotted": true,
+              "linear": false
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": [
+            {
+              "measure": 1,
+              "position": 1920,
+              "type": "medium",
+              "length": 0.6
+            }
+          ]
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeatStart": true,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeat": 2,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 57,
+            "type": 2,
+            "dotted": true,
+            "linear": false
+          },
+          {
+            "bpm": 30,
+            "measure": 1,
+            "position": 1920,
+            "duration": 960,
+            "type": 2
+          },
+          {
+            "bpm": 57,
+            "measure": 1,
+            "position": 2880,
+            "type": 2
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 171
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 114
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          },
+          {
+            "time": 196608,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 262144,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 171
+          },
+          {
+            "time": 294912,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 311296,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 114
+          },
+          {
+            "time": 327680,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "041733f880d7ce570a591e16f86b63a76c3866fde5cde2d7fe4334110901c3f3"
+      }
+    },
+    {
+      "profile": "authored",
+      "repeat": true,
+      "hold": true,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 84,
+              "type": 8,
+              "linear": true
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": [
+            {
+              "measure": 1,
+              "position": 1920,
+              "type": "medium",
+              "length": 0.6
+            }
+          ]
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeatStart": true,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeat": 2,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 0,
+            "position": 960,
+            "bpm": 86,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 0,
+            "position": 1920,
+            "bpm": 71,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 0,
+            "position": 2880,
+            "bpm": 57,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 84,
+            "type": 8,
+            "linear": true
+          },
+          {
+            "bpm": 44,
+            "measure": 1,
+            "position": 1920,
+            "duration": 960,
+            "type": 8
+          },
+          {
+            "bpm": 84,
+            "measure": 1,
+            "position": 2880,
+            "type": 8
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 16384,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 86
+          },
+          {
+            "time": 32768,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 71
+          },
+          {
+            "time": 49152,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 57
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 42
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 22
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 42
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          },
+          {
+            "time": 196608,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 212992,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 86
+          },
+          {
+            "time": 229376,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 71
+          },
+          {
+            "time": 245760,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 57
+          },
+          {
+            "time": 262144,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 42
+          },
+          {
+            "time": 294912,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 22
+          },
+          {
+            "time": 311296,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 42
+          },
+          {
+            "time": 327680,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "041733f880d7ce570a591e16f86b63a76c3866fde5cde2d7fe4334110901c3f3"
+      }
+    },
+    {
+      "profile": "authored",
+      "repeat": true,
+      "hold": true,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 60,
+              "type": 4
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": [
+            {
+              "measure": 1,
+              "position": 1920,
+              "type": "medium",
+              "length": 0.6
+            }
+          ]
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeatStart": true,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeat": 2,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 60,
+            "type": 4
+          },
+          {
+            "bpm": 31,
+            "measure": 1,
+            "position": 1920,
+            "duration": 960,
+            "type": 4
+          },
+          {
+            "bpm": 60,
+            "measure": 1,
+            "position": 2880,
+            "type": 4
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 31
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          },
+          {
+            "time": 196608,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 262144,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 294912,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 31
+          },
+          {
+            "time": 311296,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 327680,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "041733f880d7ce570a591e16f86b63a76c3866fde5cde2d7fe4334110901c3f3"
+      }
+    },
+    {
+      "profile": "player-defaults",
+      "repeat": false,
+      "hold": false,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 57,
+              "type": 2,
+              "dotted": true,
+              "linear": false
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": []
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 57,
+            "type": 2,
+            "dotted": true,
+            "linear": false
+          },
+          {
+            "measure": 1,
+            "position": 960,
+            "bpm": 163,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 1920,
+            "bpm": 156,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 2880,
+            "bpm": 148,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 171
+          },
+          {
+            "time": 81920,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 163
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 156
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 148
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "e243b925efd55b499a788e6cf58199e4ef534998e0a63b9430a4bdc3a9428cfc"
+      }
+    },
+    {
+      "profile": "player-defaults",
+      "repeat": false,
+      "hold": false,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 84,
+              "type": 8,
+              "linear": true
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": []
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 0,
+            "position": 960,
+            "bpm": 86,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 0,
+            "position": 1920,
+            "bpm": 71,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 0,
+            "position": 2880,
+            "bpm": 57,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 84,
+            "type": 8,
+            "linear": true
+          },
+          {
+            "measure": 1,
+            "position": 960,
+            "bpm": 67,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 1920,
+            "bpm": 91,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 2880,
+            "bpm": 116,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 16384,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 86
+          },
+          {
+            "time": 32768,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 71
+          },
+          {
+            "time": 49152,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 57
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 42
+          },
+          {
+            "time": 81920,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 67
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 91
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 116
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "e243b925efd55b499a788e6cf58199e4ef534998e0a63b9430a4bdc3a9428cfc"
+      }
+    },
+    {
+      "profile": "player-defaults",
+      "repeat": false,
+      "hold": false,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 60,
+              "type": 4
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": []
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 60,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 960,
+            "bpm": 80,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 1920,
+            "bpm": 100,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 2880,
+            "bpm": 120,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 81920,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 80
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 120
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "e243b925efd55b499a788e6cf58199e4ef534998e0a63b9430a4bdc3a9428cfc"
+      }
+    },
+    {
+      "profile": "player-defaults",
+      "repeat": false,
+      "hold": true,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 57,
+              "type": 2,
+              "dotted": true,
+              "linear": false
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": [
+            {
+              "measure": 1,
+              "position": 1920,
+              "type": "medium",
+              "length": 0.6
+            }
+          ]
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 57,
+            "type": 2,
+            "dotted": true,
+            "linear": false
+          },
+          {
+            "bpm": 30,
+            "measure": 1,
+            "position": 1920,
+            "duration": 960,
+            "type": 2
+          },
+          {
+            "bpm": 57,
+            "measure": 1,
+            "position": 2880,
+            "type": 2
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 171
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 114
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "e243b925efd55b499a788e6cf58199e4ef534998e0a63b9430a4bdc3a9428cfc"
+      }
+    },
+    {
+      "profile": "player-defaults",
+      "repeat": false,
+      "hold": true,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 84,
+              "type": 8,
+              "linear": true
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": [
+            {
+              "measure": 1,
+              "position": 1920,
+              "type": "medium",
+              "length": 0.6
+            }
+          ]
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 0,
+            "position": 960,
+            "bpm": 86,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 0,
+            "position": 1920,
+            "bpm": 71,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 0,
+            "position": 2880,
+            "bpm": 57,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 84,
+            "type": 8,
+            "linear": true
+          },
+          {
+            "bpm": 44,
+            "measure": 1,
+            "position": 1920,
+            "duration": 960,
+            "type": 8
+          },
+          {
+            "bpm": 84,
+            "measure": 1,
+            "position": 2880,
+            "type": 8
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 16384,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 86
+          },
+          {
+            "time": 32768,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 71
+          },
+          {
+            "time": 49152,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 57
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 42
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 22
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 42
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "e243b925efd55b499a788e6cf58199e4ef534998e0a63b9430a4bdc3a9428cfc"
+      }
+    },
+    {
+      "profile": "player-defaults",
+      "repeat": false,
+      "hold": true,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 60,
+              "type": 4
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": [
+            {
+              "measure": 1,
+              "position": 1920,
+              "type": "medium",
+              "length": 0.6
+            }
+          ]
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 60,
+            "type": 4
+          },
+          {
+            "bpm": 31,
+            "measure": 1,
+            "position": 1920,
+            "duration": 960,
+            "type": 4
+          },
+          {
+            "bpm": 60,
+            "measure": 1,
+            "position": 2880,
+            "type": 4
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 31
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "e243b925efd55b499a788e6cf58199e4ef534998e0a63b9430a4bdc3a9428cfc"
+      }
+    },
+    {
+      "profile": "player-defaults",
+      "repeat": true,
+      "hold": false,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 57,
+              "type": 2,
+              "dotted": true,
+              "linear": false
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": []
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeatStart": true,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeat": 2,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 57,
+            "type": 2,
+            "dotted": true,
+            "linear": false
+          },
+          {
+            "measure": 1,
+            "position": 960,
+            "bpm": 163,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 1920,
+            "bpm": 156,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 2880,
+            "bpm": 148,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 171
+          },
+          {
+            "time": 81920,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 163
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 156
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 148
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          },
+          {
+            "time": 196608,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 262144,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 171
+          },
+          {
+            "time": 278528,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 163
+          },
+          {
+            "time": 294912,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 156
+          },
+          {
+            "time": 311296,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 148
+          },
+          {
+            "time": 327680,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "041733f880d7ce570a591e16f86b63a76c3866fde5cde2d7fe4334110901c3f3"
+      }
+    },
+    {
+      "profile": "player-defaults",
+      "repeat": true,
+      "hold": false,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 84,
+              "type": 8,
+              "linear": true
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": []
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeatStart": true,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeat": 2,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 0,
+            "position": 960,
+            "bpm": 86,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 0,
+            "position": 1920,
+            "bpm": 71,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 0,
+            "position": 2880,
+            "bpm": 57,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 84,
+            "type": 8,
+            "linear": true
+          },
+          {
+            "measure": 1,
+            "position": 960,
+            "bpm": 67,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 1920,
+            "bpm": 91,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 2880,
+            "bpm": 116,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 16384,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 86
+          },
+          {
+            "time": 32768,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 71
+          },
+          {
+            "time": 49152,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 57
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 42
+          },
+          {
+            "time": 81920,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 67
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 91
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 116
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          },
+          {
+            "time": 196608,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 212992,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 86
+          },
+          {
+            "time": 229376,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 71
+          },
+          {
+            "time": 245760,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 57
+          },
+          {
+            "time": 262144,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 42
+          },
+          {
+            "time": 278528,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 67
+          },
+          {
+            "time": 294912,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 91
+          },
+          {
+            "time": 311296,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 116
+          },
+          {
+            "time": 327680,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "041733f880d7ce570a591e16f86b63a76c3866fde5cde2d7fe4334110901c3f3"
+      }
+    },
+    {
+      "profile": "player-defaults",
+      "repeat": true,
+      "hold": false,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 60,
+              "type": 4
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": []
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeatStart": true,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeat": 2,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 60,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 960,
+            "bpm": 80,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 1920,
+            "bpm": 100,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 2880,
+            "bpm": 120,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 81920,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 80
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 120
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          },
+          {
+            "time": 196608,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 262144,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 278528,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 80
+          },
+          {
+            "time": 294912,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 311296,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 120
+          },
+          {
+            "time": 327680,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "041733f880d7ce570a591e16f86b63a76c3866fde5cde2d7fe4334110901c3f3"
+      }
+    },
+    {
+      "profile": "player-defaults",
+      "repeat": true,
+      "hold": true,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 57,
+              "type": 2,
+              "dotted": true,
+              "linear": false
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": [
+            {
+              "measure": 1,
+              "position": 1920,
+              "type": "medium",
+              "length": 0.6
+            }
+          ]
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeatStart": true,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeat": 2,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 57,
+            "type": 2,
+            "dotted": true,
+            "linear": false
+          },
+          {
+            "bpm": 30,
+            "measure": 1,
+            "position": 1920,
+            "duration": 960,
+            "type": 2
+          },
+          {
+            "bpm": 57,
+            "measure": 1,
+            "position": 2880,
+            "type": 2
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 171
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 114
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          },
+          {
+            "time": 196608,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 262144,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 171
+          },
+          {
+            "time": 294912,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 311296,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 114
+          },
+          {
+            "time": 327680,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "041733f880d7ce570a591e16f86b63a76c3866fde5cde2d7fe4334110901c3f3"
+      }
+    },
+    {
+      "profile": "player-defaults",
+      "repeat": true,
+      "hold": true,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 84,
+              "type": 8,
+              "linear": true
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": [
+            {
+              "measure": 1,
+              "position": 1920,
+              "type": "medium",
+              "length": 0.6
+            }
+          ]
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeatStart": true,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeat": 2,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 0,
+            "position": 960,
+            "bpm": 86,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 0,
+            "position": 1920,
+            "bpm": 71,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 0,
+            "position": 2880,
+            "bpm": 57,
+            "type": 4,
+            "visible": false
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 84,
+            "type": 8,
+            "linear": true
+          },
+          {
+            "bpm": 44,
+            "measure": 1,
+            "position": 1920,
+            "duration": 960,
+            "type": 8
+          },
+          {
+            "bpm": 84,
+            "measure": 1,
+            "position": 2880,
+            "type": 8
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 16384,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 86
+          },
+          {
+            "time": 32768,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 71
+          },
+          {
+            "time": 49152,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 57
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 42
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 22
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 42
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          },
+          {
+            "time": 196608,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 212992,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 86
+          },
+          {
+            "time": 229376,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 71
+          },
+          {
+            "time": 245760,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 57
+          },
+          {
+            "time": 262144,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 42
+          },
+          {
+            "time": 294912,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 22
+          },
+          {
+            "time": 311296,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 42
+          },
+          {
+            "time": 327680,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "041733f880d7ce570a591e16f86b63a76c3866fde5cde2d7fe4334110901c3f3"
+      }
+    },
+    {
+      "profile": "player-defaults",
+      "repeat": true,
+      "hold": true,
+      "input": {
+        "instrumentId": 25,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "strings": 6,
+        "frets": 24,
+        "automations": {
+          "gradualTempo": true,
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 100,
+              "type": 4
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 83,
+              "type": 4,
+              "linear": true
+            },
+            {
+              "measure": 1,
+              "position": 0,
+              "bpm": 60,
+              "type": 4
+            },
+            {
+              "measure": 2,
+              "position": 0,
+              "bpm": 140,
+              "type": 4,
+              "linear": true
+            }
+          ],
+          "fermata": [
+            {
+              "measure": 1,
+              "position": 1920,
+              "type": "medium",
+              "length": 0.6
+            }
+          ]
+        },
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeatStart": true,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 3,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 4,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "repeat": 2,
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 5,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "fret": 6,
+                        "string": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expected": {
+        "tempos": [
+          {
+            "measure": 0,
+            "position": 0,
+            "bpm": 100,
+            "type": 4
+          },
+          {
+            "measure": 1,
+            "position": 0,
+            "bpm": 60,
+            "type": 4
+          },
+          {
+            "bpm": 31,
+            "measure": 1,
+            "position": 1920,
+            "duration": 960,
+            "type": 4
+          },
+          {
+            "bpm": 60,
+            "measure": 1,
+            "position": 2880,
+            "type": 4
+          },
+          {
+            "measure": 2,
+            "position": 0,
+            "bpm": 140,
+            "type": 4,
+            "linear": true
+          }
+        ],
+        "emitted": [
+          {
+            "time": 0,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 65536,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 98304,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 31
+          },
+          {
+            "time": 114688,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 131072,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          },
+          {
+            "time": 196608,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 100
+          },
+          {
+            "time": 262144,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 294912,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 31
+          },
+          {
+            "time": 311296,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 60
+          },
+          {
+            "time": 327680,
+            "shift": 0,
+            "name": "TEMPO",
+            "type": 81,
+            "bpm": 140
+          }
+        ],
+        "tpqn": 16384,
+        "notes": "041733f880d7ce570a591e16f86b63a76c3866fde5cde2d7fe4334110901c3f3"
+      }
+    }
+  ]
+}

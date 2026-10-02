@@ -56,6 +56,7 @@ FAMILIES = {
     "timing.ties": {"timing.ties", "timing.strum_tie_grace"},
 }
 BEHAVIOR = {
+    "timing.tempo": "Validate every entry; the last complete instruction at an exact coordinate supersedes earlier entries before hold/ramp expansion. Retain and report earlier entries. Cross-track clock conflicts and missing measures remain blocking.",
     "expression.sustain_pedal": "Retain validated pedal flags and disclose absent synthesis/engraving/scoring support. Preserve written/tied note timing; do not turn MIDI pedal control into longer game trails.",
     "notation.picking_hand": "Validate P/I/M/A/C; retain the picking-hand annotation and disclose absent engraving without changing fret-hand hints, pitches, attacks or scoring.",
     "timing.basic": "Preserve exact authored fractions until mapping the performed clock.",
