@@ -24,7 +24,7 @@ RULES = {
     "technique.trills": {"files": ["songsterr_trills.py", "tied_trills.py"], "policy": "approved_game_projection"},
     "technique.tremolo_picking": {"files": ["songsterr_tremolo.py"], "policy": "existing_game_instruction"},
     "technique.whammy": {"files": ["songsterr_whammy.py"], "policy": "approved_game_projection"},
-    "technique.linked_targets": {"files": ["link_diagnostics.py"], "policy": "located_existing_guard"},
+    "technique.linked_targets": {"files": ["link_diagnostics.py", "slide_omissions.py", "skipped_slides.py"], "policy": "located_guards_and_approved_omissions"},
     "projection.high_frets": {"files": ["high_frets.py"], "policy": "approved_omission"},
     "projection.hybrid": {"files": ["hybrid_lead.py", "hybrid_selection.py", "hybrid_materialize.py"], "policy": "derived_arrangement"},
 }
@@ -58,7 +58,7 @@ FAMILIES = {
     "timing.ties": {"timing.ties", "timing.strum_tie_grace"},
 }
 BEHAVIOR = {
-    "technique.linked_targets": "Keep the existing unresolved-link guards. Report origin, destination or boundary, and traversal occurrence; do not fabricate a fret, discard an attack or infer a relationship from synthesis.",
+    "technique.linked_targets": "Retain guards and located evidence. Approved omissions cover fretless X targets, and a skipped alternate-ending destination followed by an explicit same-voice rest before another same-string event. Preserve notes, timing and valid passes; never borrow a distant synthesis target or invent a direction.",
     "timing.tempo": "Validate every entry; use the last complete instruction at an exact coordinate before hold/ramp expansion. Retain and report earlier entries and qualified inactive marks beyond the score. Missing initial clocks, outside marks with active ramps, and cross-track clock conflicts remain blocking.",
     "expression.sustain_pedal": "Retain validated pedal flags and disclose absent synthesis/engraving/scoring support. Preserve written/tied note timing; do not turn MIDI pedal control into longer game trails.",
     "notation.picking_hand": "Validate P/I/M/A/C; retain the picking-hand annotation and disclose absent engraving without changing fret-hand hints, pitches, attacks or scoring.",

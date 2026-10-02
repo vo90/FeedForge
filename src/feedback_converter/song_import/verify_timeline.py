@@ -269,6 +269,8 @@ def _expected(source, alignment):
                                'occurrence': visit + 1, 'time': float(clock.at(target_time)), 'fret': None, 'muted': True},
                     'used': {'rule': 'omit-undefined-slide-keep-authored-mute'}}
 
+        from .verify_skipped_slides import omissions as skipped_omissions, receipt as skipped_receipt
+        skipped_slides = skipped_omissions(source, part, order, clock)
         notes, state, pending_slides, pending_hopos = [], {}, {}, {}
         muted_pending = {}
         notation_notes = {}
@@ -498,7 +500,11 @@ def _expected(source, alignment):
                     result['muted_slides'].append(record)
                     if atom.slide == 'shift':muted_pending.setdefault(key,[]).append((record, (atom, occurrence, event['start'], start)))
                 if atom.slide in {"shift", "legato"} and atom.fret != 127:
-                    pending_slides[key] = (event, atom.slide, (atom, occurrence, event['start'], start))
+                    skipped = skipped_slides.get((occurrence, atom.location))
+                    if skipped:
+                        result['undefined_slides'].append(skipped_receipt(part, atom, occurrence, event, start, clock, skipped))
+                    else:
+                        pending_slides[key] = (event, atom.slide, (atom, occurrence, event['start'], start))
                 elif atom.slide in {'up','down'}:
                     event["slide_marks"].append((atom.slide, start, start + gesture_length))
                 if source_only_entry:

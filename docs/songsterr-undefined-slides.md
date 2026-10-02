@@ -17,6 +17,10 @@ Missing targets, repeat-boundary links, unpitched HO/PO and invalid source
 fields remain guarded. The change does not reinterpret other formats or
 modify old FeedPaks. Fresh imports use the new policy.
 
+Contract 55 separately qualifies an orphaned slide whose alternate-ending
+destination is skipped before an explicit rest. See
+`songsterr-skipped-ending-slides.md`; it does not remove the general link guards.
+
 Each omission appears as `note.undefined_slide_to_mute` in the compatibility
 report and in `import/undefined-slides.json`. The receipt contains source
 identities, written locations, traversal occurrences and score times, the
