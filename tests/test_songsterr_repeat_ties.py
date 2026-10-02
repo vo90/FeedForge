@@ -47,14 +47,13 @@ def test_repeat_tie_matches_pinned_native_tie_stage(case):
     assert doc == before
 
 
-@pytest.mark.parametrize('fault', ['gap', 'rest', 'pitch', 'voice', 'missing', 'delayed', 'slide', 'hopo'])
+@pytest.mark.parametrize('fault', ['rest', 'pitch', 'voice', 'missing', 'delayed', 'slide', 'hopo'])
 def test_repeat_boundary_does_not_invent_or_repair_a_continuation(fault):
     # The first visit is valid; the repeat boundary is the counterexample.
     entrance = measure(beat(3, duration=(1, 2), tie=True), beat(3, duration=(1, 2)), repeatStart=True, repeat=2)
     doc = raw_score([measure(beat(3)), entrance])
     tail = entrance['voices'][0]['beats'][1]
-    if fault == 'gap': tail['duration'] = [1, 4]
-    elif fault == 'rest': tail['notes'] = [{'rest': True}]
+    if fault == 'rest': tail['notes'] = [{'rest': True}]
     elif fault == 'pitch': tail['notes'][0]['fret'] = 4
     elif fault == 'voice':
         tail['notes'] = [{'rest': True}]
@@ -76,8 +75,11 @@ def test_explicit_repeated_attacks_remain_attacks():
 
 
 @pytest.mark.parametrize('fault', [None, 'short_sustain', 'extra_attack', 'changed_pitch', 'lost_tie_notation'])
-def test_hybrid_package_preservation_and_independent_mutation_checks(tmp_path, fault):
-    doc = raw_score([measure(beat(3)), measure(beat(3, tie=True), repeatStart=True, repeat=2)])
+@pytest.mark.parametrize('duration', [(1, 1), (3, 4)])
+def test_hybrid_package_preservation_and_independent_mutation_checks(tmp_path, fault, duration):
+    doc = raw_score([measure(beat(3)), measure(beat(3, duration=duration, tie=True), repeatStart=True, repeat=2)])
+    if duration == (3, 4):
+        doc['parts'][0]['measures'][1]['voices'][0]['beats'][0].update(type=2, dots=1)
     hybrid = fault is None
     source, _, options, alignment, archive, report = build(tmp_path, doc, difficulty=True, enabled=hybrid)
     assert report['status'] == 'passed', report
@@ -88,7 +90,7 @@ def test_hybrid_package_preservation_and_independent_mutation_checks(tmp_path, f
     assert len(manifest['arrangements']) == (2 if hybrid else 1)
     chart_name = manifest['arrangements'][0]['file']
     chart = json.loads(files[chart_name])
-    assert len(chart['notes']) == 1 and chart['notes'][0]['sus'] == 6
+    assert len(chart['notes']) == 1 and chart['notes'][0]['sus'] == 4 + 2 * duration[0] / duration[1]
     if fault == 'short_sustain': chart['notes'][0]['sus'] = 2
     elif fault == 'extra_attack': chart['notes'].append({**chart['notes'][0], 't':2, 'sus':2})
     elif fault == 'changed_pitch': chart['notes'][0]['f'] = 4

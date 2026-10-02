@@ -81,8 +81,9 @@ Eight synthetic tied-trill cases, under both authored and player-defaults
 profiles, qualify this observer against the complete captured script. These are
 development observations, not permission to copy synthesizer repairs or extra
 attacks into gameplay. Hidden notes can still emit sound: visible-note counts
-alone are not a complete playback comparison. Tied-trill gameplay interpretation
-remains unapproved. Generate the synthetic input with
+alone are not a complete playback comparison. Contract 49 implements the
+unambiguous tied-trill sequences documented in `songsterr-trills.md`; consumed
+attacks and ambiguous sequences still require a policy decision. Generate the synthetic input with
 `tools/songsterr_compatibility/generated-event-cases.cjs`, and use
 `qualify-reference.cjs` with `eventDetails: true` in its input before accepting
 reference changes. Regenerate the reviewed synthetic fixture explicitly with
