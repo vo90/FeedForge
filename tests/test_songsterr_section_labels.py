@@ -10,7 +10,6 @@ from test_song_import_score import raw_score, measure, beat
 from feedback_converter.song_import.songsterr import parse
 from feedback_converter.song_import.timeline import render
 from feedback_converter.song_import.verify_source import songsterr
-from feedback_converter.song_import.model import ScoreImportError
 
 
 def source(labels, programs=(68, 30, 34)):
@@ -95,14 +94,15 @@ def test_unambiguous_number_must_be_shared_by_every_numbered_label():
     ['Solo (Kurt)', 'Solo (Krist)'], ['Solo (Part 1)', 'Solo (Part 2)'],
     ['Bass Solo', 'Guitar Solo'], ['Chorus', 'Post-Chorus'],
 ])
-def test_meaningful_or_unrecognized_differences_remain_located(labels):
+def test_meaningful_differences_choose_first_tied_label_and_preserve_every_name(labels):
     doc = source(labels, (30,) * len(labels))
-    with pytest.raises(ScoreImportError, match='measure 1') as error:
-        parse(doc)
-    assert error.value.source_feature == 'arrangement.section_labels'
-    assert [x['text'] for x in error.value.source_value] == labels
-    with pytest.raises(ValueError, match='ambiguous'):
-        songsterr(doc)
+    original = deepcopy(doc)
+    score, reference = parse(doc), songsterr(doc)
+    assert score.measures[0].section == reference.bars[0].section == labels[0]
+    assert score.source['sectionLabels'] == reference.section_labels
+    assert reference.section_labels[0]['basis'] == 'guitar_bass_track_order_tiebreak'
+    assert [x['text'] for x in reference.section_labels[0]['labels']] == labels
+    assert doc == original == score.source_document['document']
 
 
 def test_equivalent_fallback_only_when_playable_tracks_have_no_label():
@@ -135,11 +135,12 @@ def test_absent_duplicate_and_fallback_labels(labels,expected,basis):
 
 @pytest.mark.parametrize('labels,programs', [(['Vocal','Verse','Chorus'],(68,30,34)),
     (['Verse','Chorus',''],(68,70,30))])
-def test_real_playable_or_fallback_ambiguity_stays_located(labels,programs):
+def test_playable_or_fallback_tie_uses_complete_source_even_with_diagnostic_selection(labels,programs):
     doc=source(labels,programs)
-    with pytest.raises(ScoreImportError,match='measure 1') as error: parse(doc,track_indices={2})
-    assert error.value.source_feature == 'arrangement.section_labels'
-    with pytest.raises(ValueError,match='ambiguous'): songsterr(doc)
+    score, reference = parse(doc,track_indices={2}), songsterr(doc)
+    assert score.measures[0].section == reference.bars[0].section == 'Verse'
+    assert score.source['sectionLabels'] == reference.section_labels
+    assert reference.section_labels[0]['basis'].endswith('_track_order_tiebreak')
 
 
 @pytest.mark.parametrize('invalid', [12, True, [], {'text':5}, {'text':'Intro','navigation':'jump'}])
@@ -170,7 +171,8 @@ def test_archive_checks_selected_section_and_provenance_not_just_note_counts(tmp
     assert any(e['location'].startswith('song_timeline/sections') for e in result['errors'])
 
 
-@pytest.mark.parametrize('labels', [['Voice', 'Intro', 'Intro'], ['Voice', 'Verse 1', 'Verse']])
+@pytest.mark.parametrize('labels', [['Voice', 'Intro', 'Intro'], ['Voice', 'Verse 1', 'Verse'],
+    ['Voice', 'Interlude', 'Evil hillbilly lick'], ['Interlude', 'Evil hillbilly lick', 'Evil hillbilly lick']])
 @pytest.mark.parametrize('tamper', ['provenance', 'chosen_label', 'basis', 'timeline'])
 def test_builder_embeds_and_verifier_checks_label_decisions(tmp_path, labels, tamper):
     from test_song_import_builder import inputs

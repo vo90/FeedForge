@@ -476,6 +476,11 @@ def parse(document: dict, *, track_indices=None) -> Score:
             if decision['basis'].endswith('_equivalent_labels'):
                 warnings.append(f"Equivalent section labels in measure {decision['measure']} use the authored label "
                                 f"{decision['label']!r}; all track labels are retained.")
+            elif decision['basis'].endswith(('_majority_label', '_track_order_tiebreak')):
+                reason = ('the most common source-track label' if decision['basis'].endswith('_majority_label')
+                          else 'source track order to break a tie between the most common labels')
+                warnings.append(f"Section names differ in measure {decision['measure']}; using {decision['label']!r} "
+                                f"based on {reason}. All original track labels are retained.")
             else:
                 warnings.append(f"Section label in measure {decision['measure']} uses guitar/bass consensus; all track labels are retained.")
     warnings.extend(inventory.warnings())
