@@ -20,7 +20,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 44
+VERSION = 45
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -338,7 +338,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     check.equal("compatibility_status", "import/compatibility", "limitations" if rows else "compatible", report.get("status"))
     target = report.get("target", {})
@@ -374,7 +374,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
                 for vi, voice in enumerate(bar["voices"]):
                     for bti, beat in enumerate(voice["beats"]):
                         where = path + f"/voices/{vi}/beats/{bti}"
-                        remember(beat, ("chord", "wahwah", "letRing", "tremolo", "tremoloBar", "vibratoWithTremoloBar", "hasRasgueado"), "beat", where)
+                        remember(beat, ("chord", "wahwah", "letRing", "tremolo", "tremoloBar", "vibratoWithTremoloBar", "hasRasgueado", "sustainPedal"), "beat", where)
                         for ni, note in enumerate(beat["notes"]):
                             if (not note.get("rest") and type(note.get("fret")) is int and 24 < note["fret"] <= 48
                                     and not (note.get("dead") is True and note.get("pickScrape") in ("up", "down"))):

@@ -19,6 +19,7 @@ RULES = {
     "timing.whole_rest": {"files": ["songsterr_fields.py", "songsterr_timing.py"], "policy": "silent_measure_boundary"},
     "notation.voices": {"files": ["voices.py"], "policy": "approved_game_projection"},
     "notation.picking_hand": {"files": ["fingering.py"], "policy": "retained_annotation"},
+    "expression.sustain_pedal": {"files": ["songsterr_fields.py"], "policy": "retained_synth_expression"},
     "technique.harmonics": {"files": ["songsterr_harmonics.py", "tied_harmonics.py"], "policy": "approved_game_projection"},
     "technique.trills": {"files": ["songsterr_trills.py"], "policy": "approved_game_projection"},
     "technique.tremolo_picking": {"files": ["songsterr_tremolo.py"], "policy": "existing_game_instruction"},
@@ -39,6 +40,7 @@ FIELDS = {
     "timing.whole_rest": "beat.rest beat.type beat.dots beat.duration note.rest",
     "notation.voices": "measure.voices voice.beats",
     "notation.picking_hand": "note.rightFingering",
+    "expression.sustain_pedal": "beat.sustainPedal",
     "technique.harmonics": "note.harmonic note.harmonicFret",
     "technique.trills": "note.trill",
     "technique.tremolo_picking": "beat.tremolo note.tremolo",
@@ -54,6 +56,7 @@ FAMILIES = {
     "timing.ties": {"timing.ties", "timing.strum_tie_grace"},
 }
 BEHAVIOR = {
+    "expression.sustain_pedal": "Retain validated pedal flags and disclose absent synthesis/engraving/scoring support. Preserve written/tied note timing; do not turn MIDI pedal control into longer game trails.",
     "notation.picking_hand": "Validate P/I/M/A/C; retain the picking-hand annotation and disclose absent engraving without changing fret-hand hints, pitches, attacks or scoring.",
     "timing.basic": "Preserve exact authored fractions until mapping the performed clock.",
     "technique.tremolo_picking": "Map active beat/per-string tremolo to tr; retain exact subdivision and within-tie timing in source and disclose the whole-sustain display/rate limitation. No expanded scored attacks.",
@@ -108,6 +111,11 @@ def inventory():
             value['reference']['scope'] = 'Pinned source enum and unchanged sampled chord/tie/repeat scheduling; picking-hand engraving is not represented.'
             value['testFixture'] = 'tests/fixtures/songsterr_right_fingering_reference.json'
             value['tests'] = 'tests/test_songsterr_right_fingering.py'
+        if key == 'expression.sustain_pedal':
+            value['reference']['status'] = 'qualified_examples'
+            value['reference']['scope'] = 'Pinned scheduler emits MIDI CC64 on/off across merged pedal spans; sampled note attacks/releases unchanged. Synthesized sounding duration is not claimed equivalent.'
+            value['testFixture'] = 'tests/fixtures/songsterr_sustain_pedal_reference.json'
+            value['tests'] = 'tests/test_songsterr_sustain_pedal.py'
     fields = [{"field": f"{scope}.{key}", "declarationVersion": VERSION,
                "status": "unimplemented" if key in UNIMPLEMENTED.get(scope, ()) else "recognized_conditional",
                "limitation": LIMITATIONS.get((scope, key)),

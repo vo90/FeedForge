@@ -9,9 +9,10 @@ import math
 from .songsterr_harmonics import exact_natural, natural_alias, source_target
 from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
+from .songsterr_fields import validate_sustain_pedal
 from .model import ScoreImportError
 
-VERSION = 44
+VERSION = 45
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -36,7 +37,9 @@ KNOWN["note"].add("leftFingering")
 KNOWN["note"].add("rightFingering")
 KNOWN["note"].add("tremolo")
 KNOWN["beat"].add("hasRasgueado")
+KNOWN["beat"].add("sustainPedal")
 LIMITATIONS = {
+    ("beat", "sustainPedal"): "The sustain-pedal marking is retained in the original source. Songsterr uses it for synthesizer pedal control. Written notes, ties and durations are preserved; the game does not display or score the pedal effect, or extend note trails for it.",
     ("note", "rightFingering"): "The authored picking-hand finger is retained in the original source. The game does not display picking-hand fingering; fretting-hand hints, notes, timing and scoring are unchanged.",
     ("note", "tremolo"): "Tremolo picking uses the game's existing tremolo instruction. Exact subdivision and within-tie timing remain in the source. A tied sustain has one marker for the whole sustain; individual repeated picks are not expanded or scored separately, and the written subdivision is not engraved.",
     ("beat", "tremolo"): "Tremolo picking uses the game's existing tremolo instruction. Exact subdivision and within-tie timing remain in the source. A tied sustain has one marker for the whole sustain; individual repeated picks are not expanded or scored separately, and the written subdivision is not engraved.",
@@ -113,6 +116,13 @@ def inspect_songsterr(document, *, track_indices=None):
                         message="Expected a source object.", location=path, value=obj, **coordinates)
             return
         for key, value in obj.items():
+            if scope == "beat" and key == "sustainPedal":
+                try:
+                    validate_sustain_pedal(value)
+                except ScoreImportError as exc:
+                    add_finding(report, feature="beat.sustainPedal", category="source_structure", impact="blocking",
+                                message=str(exc), location=path + "/" + key, value=value, **coordinates)
+                    continue
             if scope == "note" and key == "rightFingering":
                 try:
                     validate_right_finger(value)
