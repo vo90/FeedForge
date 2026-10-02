@@ -157,7 +157,16 @@ def _render(score: Score) -> dict:
             if index <= last_written:
                 if pending_slide or pending_hopo or pending_muted_shifts:
                     raise ScoreImportError(f"An unresolved linked technique crosses a repeat jump in {track.name}.")
-                previous_note.clear()
+                # A written tie at the repeat entrance may continue the note
+                # still sounding at this performed boundary. Carry no other
+                # state across the jump: no gap, pitch repair or new attack.
+                entrances = {(n.voice_id, n.string): n.fret for n in track.bars[index]
+                             if n.tie and n.position == 0}
+                previous_note = {
+                    key: prior for key, prior in previous_note.items()
+                    if score.source.get('format') == 'songsterr' and prior[1] == start
+                    and entrances.get(key) == prior[0]['f']
+                }
             last_written = index
             seen = {}
             for note in sorted(track.bars[index], key=lambda n: (n.position, n.string)):

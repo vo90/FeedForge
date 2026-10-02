@@ -65,7 +65,7 @@ BEHAVIOR = {
     "timing.grace": "Allocate source grace groups with bar and opening context; do not invent minimum note lengths.",
     "timing.swing": "Apply the authored rhythmic feel to eligible groups while retaining written rhythm.",
     "timing.repeats": "Expand authored traversal and preserve source identity plus occurrence.",
-    "timing.ties": "Join supported continuations without a new attack; pitch/relationship repairs are not inferred from synthesis.",
+    "timing.ties": "Join supported continuations without a new attack. At a repeat jump, retain only an exact-boundary continuation into an explicit same-voice/string/fret entrance tie. Pitch/relationship repairs are not inferred from synthesis.",
     "timing.whole_rest": "Bound a qualifying silent whole-rest overrun to the meter; never truncate played notes by this rule.",
 }
 DEFERRED = {
@@ -98,6 +98,14 @@ def inventory():
         value["prerequisites"] = ["approved_revision", "valid_source_structure", "source_identity_preserved"]
         value["interactions"] = [other for other in FAMILIES if other != key and
                                   FAMILIES.get(key, set()) & FAMILIES[other]]
+        if key == 'timing.ties':
+            value['reference']['scope'] += ' Exact-boundary repeat entrance ties additionally checked against native ks merging; no pitch/gap repair qualification.'
+            value['testFixture'] = 'tests/fixtures/songsterr_repeat_tie_reference.json'
+            value['tests'] = 'tests/test_songsterr_repeat_ties.py'
+        if key == 'timing.tempo':
+            value['reference']['scope'] += ' Exact-coordinate instruction precedence additionally checked before holds/ramps and against emitted tempo events.'
+            value['testFixture'] = 'tests/fixtures/songsterr_tempo_precedence_reference.json'
+            value['tests'] = 'tests/test_songsterr_tempo_precedence.py'
         if key == 'timing.whole_rest':
             value['reference']['status'] = 'qualified_examples'
             value['testFixture'] = 'tests/fixtures/songsterr_rest_reference.json'

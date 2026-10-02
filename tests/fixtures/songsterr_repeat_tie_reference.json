@@ -1,0 +1,5222 @@
+{
+  "referenceSha256": "4219f9dbf0952af83be36c8b590f10fea7a0f36d72bd1f92297a3d768f93f5ab",
+  "scope": "Native ks tied-note stage before synthesis strum/envelope adjustments; final visible attack count also checked.",
+  "cases": [
+    {
+      "profile": "authored",
+      "bass": false,
+      "loopLength": 1,
+      "repeats": 2,
+      "chord": false,
+      "input": {
+        "instrumentId": 25,
+        "strings": 6,
+        "frets": 24,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true,
+            "repeat": 2
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 0,
+          "sourceFret": 0,
+          "attackTick": 0,
+          "endTick": 262143,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        1,
+        2
+      ]
+    },
+    {
+      "profile": "authored",
+      "bass": false,
+      "loopLength": 1,
+      "repeats": 2,
+      "chord": true,
+      "input": {
+        "instrumentId": 25,
+        "strings": 6,
+        "frets": 24,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true,
+            "repeat": 2
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 0,
+          "sourceFret": 0,
+          "attackTick": 0,
+          "endTick": 262143,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        },
+        {
+          "id": "0:0:0:1",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 1,
+          "fret": 1,
+          "sourceFret": 1,
+          "attackTick": 0,
+          "endTick": 262143,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        1,
+        2
+      ]
+    },
+    {
+      "profile": "authored",
+      "bass": false,
+      "loopLength": 1,
+      "repeats": 3,
+      "chord": false,
+      "input": {
+        "instrumentId": 25,
+        "strings": 6,
+        "frets": 24,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true,
+            "repeat": 3
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 7,
+          "sourceFret": 7,
+          "attackTick": 0,
+          "endTick": 327679,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        1,
+        1,
+        2
+      ]
+    },
+    {
+      "profile": "authored",
+      "bass": false,
+      "loopLength": 1,
+      "repeats": 3,
+      "chord": true,
+      "input": {
+        "instrumentId": 25,
+        "strings": 6,
+        "frets": 24,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true,
+            "repeat": 3
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 7,
+          "sourceFret": 7,
+          "attackTick": 0,
+          "endTick": 327679,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        },
+        {
+          "id": "0:0:0:1",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 1,
+          "fret": 8,
+          "sourceFret": 8,
+          "attackTick": 0,
+          "endTick": 327679,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        1,
+        1,
+        2
+      ]
+    },
+    {
+      "profile": "authored",
+      "bass": false,
+      "loopLength": 2,
+      "repeats": 2,
+      "chord": false,
+      "input": {
+        "instrumentId": 25,
+        "strings": 6,
+        "frets": 24,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeat": 2
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 0,
+          "sourceFret": 0,
+          "attackTick": 0,
+          "endTick": 393215,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        2,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "profile": "authored",
+      "bass": false,
+      "loopLength": 2,
+      "repeats": 2,
+      "chord": true,
+      "input": {
+        "instrumentId": 25,
+        "strings": 6,
+        "frets": 24,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeat": 2
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 0,
+          "sourceFret": 0,
+          "attackTick": 0,
+          "endTick": 393215,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        },
+        {
+          "id": "0:0:0:1",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 1,
+          "fret": 1,
+          "sourceFret": 1,
+          "attackTick": 0,
+          "endTick": 393215,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        2,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "profile": "authored",
+      "bass": false,
+      "loopLength": 2,
+      "repeats": 3,
+      "chord": false,
+      "input": {
+        "instrumentId": 25,
+        "strings": 6,
+        "frets": 24,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeat": 3
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 7,
+          "sourceFret": 7,
+          "attackTick": 0,
+          "endTick": 524287,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        2,
+        1,
+        2,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "profile": "authored",
+      "bass": false,
+      "loopLength": 2,
+      "repeats": 3,
+      "chord": true,
+      "input": {
+        "instrumentId": 25,
+        "strings": 6,
+        "frets": 24,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeat": 3
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 7,
+          "sourceFret": 7,
+          "attackTick": 0,
+          "endTick": 524287,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        },
+        {
+          "id": "0:0:0:1",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 1,
+          "fret": 8,
+          "sourceFret": 8,
+          "attackTick": 0,
+          "endTick": 524287,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        2,
+        1,
+        2,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "profile": "authored",
+      "bass": true,
+      "loopLength": 1,
+      "repeats": 2,
+      "chord": false,
+      "input": {
+        "instrumentId": 33,
+        "strings": 4,
+        "frets": 24,
+        "tuning": [
+          43,
+          38,
+          33,
+          28
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true,
+            "repeat": 2
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 0,
+          "sourceFret": 0,
+          "attackTick": 0,
+          "endTick": 262143,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        1,
+        2
+      ]
+    },
+    {
+      "profile": "authored",
+      "bass": true,
+      "loopLength": 1,
+      "repeats": 2,
+      "chord": true,
+      "input": {
+        "instrumentId": 33,
+        "strings": 4,
+        "frets": 24,
+        "tuning": [
+          43,
+          38,
+          33,
+          28
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true,
+            "repeat": 2
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 0,
+          "sourceFret": 0,
+          "attackTick": 0,
+          "endTick": 262143,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        },
+        {
+          "id": "0:0:0:1",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 1,
+          "fret": 1,
+          "sourceFret": 1,
+          "attackTick": 0,
+          "endTick": 262143,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        1,
+        2
+      ]
+    },
+    {
+      "profile": "authored",
+      "bass": true,
+      "loopLength": 1,
+      "repeats": 3,
+      "chord": false,
+      "input": {
+        "instrumentId": 33,
+        "strings": 4,
+        "frets": 24,
+        "tuning": [
+          43,
+          38,
+          33,
+          28
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true,
+            "repeat": 3
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 7,
+          "sourceFret": 7,
+          "attackTick": 0,
+          "endTick": 327679,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        1,
+        1,
+        2
+      ]
+    },
+    {
+      "profile": "authored",
+      "bass": true,
+      "loopLength": 1,
+      "repeats": 3,
+      "chord": true,
+      "input": {
+        "instrumentId": 33,
+        "strings": 4,
+        "frets": 24,
+        "tuning": [
+          43,
+          38,
+          33,
+          28
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true,
+            "repeat": 3
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 7,
+          "sourceFret": 7,
+          "attackTick": 0,
+          "endTick": 327679,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        },
+        {
+          "id": "0:0:0:1",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 1,
+          "fret": 8,
+          "sourceFret": 8,
+          "attackTick": 0,
+          "endTick": 327679,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        1,
+        1,
+        2
+      ]
+    },
+    {
+      "profile": "authored",
+      "bass": true,
+      "loopLength": 2,
+      "repeats": 2,
+      "chord": false,
+      "input": {
+        "instrumentId": 33,
+        "strings": 4,
+        "frets": 24,
+        "tuning": [
+          43,
+          38,
+          33,
+          28
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeat": 2
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 0,
+          "sourceFret": 0,
+          "attackTick": 0,
+          "endTick": 393215,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        2,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "profile": "authored",
+      "bass": true,
+      "loopLength": 2,
+      "repeats": 2,
+      "chord": true,
+      "input": {
+        "instrumentId": 33,
+        "strings": 4,
+        "frets": 24,
+        "tuning": [
+          43,
+          38,
+          33,
+          28
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeat": 2
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 0,
+          "sourceFret": 0,
+          "attackTick": 0,
+          "endTick": 393215,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        },
+        {
+          "id": "0:0:0:1",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 1,
+          "fret": 1,
+          "sourceFret": 1,
+          "attackTick": 0,
+          "endTick": 393215,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        2,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "profile": "authored",
+      "bass": true,
+      "loopLength": 2,
+      "repeats": 3,
+      "chord": false,
+      "input": {
+        "instrumentId": 33,
+        "strings": 4,
+        "frets": 24,
+        "tuning": [
+          43,
+          38,
+          33,
+          28
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeat": 3
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 7,
+          "sourceFret": 7,
+          "attackTick": 0,
+          "endTick": 524287,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        2,
+        1,
+        2,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "profile": "authored",
+      "bass": true,
+      "loopLength": 2,
+      "repeats": 3,
+      "chord": true,
+      "input": {
+        "instrumentId": 33,
+        "strings": 4,
+        "frets": 24,
+        "tuning": [
+          43,
+          38,
+          33,
+          28
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeat": 3
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 7,
+          "sourceFret": 7,
+          "attackTick": 0,
+          "endTick": 524287,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        },
+        {
+          "id": "0:0:0:1",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 1,
+          "fret": 8,
+          "sourceFret": 8,
+          "attackTick": 0,
+          "endTick": 524287,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        2,
+        1,
+        2,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "profile": "player-defaults",
+      "bass": false,
+      "loopLength": 1,
+      "repeats": 2,
+      "chord": false,
+      "input": {
+        "instrumentId": 25,
+        "strings": 6,
+        "frets": 24,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true,
+            "repeat": 2
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 0,
+          "sourceFret": 0,
+          "attackTick": 0,
+          "endTick": 262143,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        1,
+        2
+      ]
+    },
+    {
+      "profile": "player-defaults",
+      "bass": false,
+      "loopLength": 1,
+      "repeats": 2,
+      "chord": true,
+      "input": {
+        "instrumentId": 25,
+        "strings": 6,
+        "frets": 24,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true,
+            "repeat": 2
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 0,
+          "sourceFret": 0,
+          "attackTick": 0,
+          "endTick": 262143,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        },
+        {
+          "id": "0:0:0:1",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 1,
+          "fret": 1,
+          "sourceFret": 1,
+          "attackTick": 0,
+          "endTick": 262143,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        1,
+        2
+      ]
+    },
+    {
+      "profile": "player-defaults",
+      "bass": false,
+      "loopLength": 1,
+      "repeats": 3,
+      "chord": false,
+      "input": {
+        "instrumentId": 25,
+        "strings": 6,
+        "frets": 24,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true,
+            "repeat": 3
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 7,
+          "sourceFret": 7,
+          "attackTick": 0,
+          "endTick": 327679,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        1,
+        1,
+        2
+      ]
+    },
+    {
+      "profile": "player-defaults",
+      "bass": false,
+      "loopLength": 1,
+      "repeats": 3,
+      "chord": true,
+      "input": {
+        "instrumentId": 25,
+        "strings": 6,
+        "frets": 24,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true,
+            "repeat": 3
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 7,
+          "sourceFret": 7,
+          "attackTick": 0,
+          "endTick": 327679,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        },
+        {
+          "id": "0:0:0:1",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 1,
+          "fret": 8,
+          "sourceFret": 8,
+          "attackTick": 0,
+          "endTick": 327679,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        1,
+        1,
+        2
+      ]
+    },
+    {
+      "profile": "player-defaults",
+      "bass": false,
+      "loopLength": 2,
+      "repeats": 2,
+      "chord": false,
+      "input": {
+        "instrumentId": 25,
+        "strings": 6,
+        "frets": 24,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeat": 2
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 0,
+          "sourceFret": 0,
+          "attackTick": 0,
+          "endTick": 393215,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        2,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "profile": "player-defaults",
+      "bass": false,
+      "loopLength": 2,
+      "repeats": 2,
+      "chord": true,
+      "input": {
+        "instrumentId": 25,
+        "strings": 6,
+        "frets": 24,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeat": 2
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 0,
+          "sourceFret": 0,
+          "attackTick": 0,
+          "endTick": 393215,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        },
+        {
+          "id": "0:0:0:1",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 1,
+          "fret": 1,
+          "sourceFret": 1,
+          "attackTick": 0,
+          "endTick": 393215,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        2,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "profile": "player-defaults",
+      "bass": false,
+      "loopLength": 2,
+      "repeats": 3,
+      "chord": false,
+      "input": {
+        "instrumentId": 25,
+        "strings": 6,
+        "frets": 24,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeat": 3
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 7,
+          "sourceFret": 7,
+          "attackTick": 0,
+          "endTick": 524287,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        2,
+        1,
+        2,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "profile": "player-defaults",
+      "bass": false,
+      "loopLength": 2,
+      "repeats": 3,
+      "chord": true,
+      "input": {
+        "instrumentId": 25,
+        "strings": 6,
+        "frets": 24,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeat": 3
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 7,
+          "sourceFret": 7,
+          "attackTick": 0,
+          "endTick": 524287,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        },
+        {
+          "id": "0:0:0:1",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 1,
+          "fret": 8,
+          "sourceFret": 8,
+          "attackTick": 0,
+          "endTick": 524287,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        2,
+        1,
+        2,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "profile": "player-defaults",
+      "bass": true,
+      "loopLength": 1,
+      "repeats": 2,
+      "chord": false,
+      "input": {
+        "instrumentId": 33,
+        "strings": 4,
+        "frets": 24,
+        "tuning": [
+          43,
+          38,
+          33,
+          28
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true,
+            "repeat": 2
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 0,
+          "sourceFret": 0,
+          "attackTick": 0,
+          "endTick": 262143,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        1,
+        2
+      ]
+    },
+    {
+      "profile": "player-defaults",
+      "bass": true,
+      "loopLength": 1,
+      "repeats": 2,
+      "chord": true,
+      "input": {
+        "instrumentId": 33,
+        "strings": 4,
+        "frets": 24,
+        "tuning": [
+          43,
+          38,
+          33,
+          28
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true,
+            "repeat": 2
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 0,
+          "sourceFret": 0,
+          "attackTick": 0,
+          "endTick": 262143,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        },
+        {
+          "id": "0:0:0:1",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 1,
+          "fret": 1,
+          "sourceFret": 1,
+          "attackTick": 0,
+          "endTick": 262143,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        1,
+        2
+      ]
+    },
+    {
+      "profile": "player-defaults",
+      "bass": true,
+      "loopLength": 1,
+      "repeats": 3,
+      "chord": false,
+      "input": {
+        "instrumentId": 33,
+        "strings": 4,
+        "frets": 24,
+        "tuning": [
+          43,
+          38,
+          33,
+          28
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true,
+            "repeat": 3
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 7,
+          "sourceFret": 7,
+          "attackTick": 0,
+          "endTick": 327679,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        1,
+        1,
+        2
+      ]
+    },
+    {
+      "profile": "player-defaults",
+      "bass": true,
+      "loopLength": 1,
+      "repeats": 3,
+      "chord": true,
+      "input": {
+        "instrumentId": 33,
+        "strings": 4,
+        "frets": 24,
+        "tuning": [
+          43,
+          38,
+          33,
+          28
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true,
+            "repeat": 3
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 7,
+          "sourceFret": 7,
+          "attackTick": 0,
+          "endTick": 327679,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        },
+        {
+          "id": "0:0:0:1",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 1,
+          "fret": 8,
+          "sourceFret": 8,
+          "attackTick": 0,
+          "endTick": 327679,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        1,
+        1,
+        2
+      ]
+    },
+    {
+      "profile": "player-defaults",
+      "bass": true,
+      "loopLength": 2,
+      "repeats": 2,
+      "chord": false,
+      "input": {
+        "instrumentId": 33,
+        "strings": 4,
+        "frets": 24,
+        "tuning": [
+          43,
+          38,
+          33,
+          28
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeat": 2
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 0,
+          "sourceFret": 0,
+          "attackTick": 0,
+          "endTick": 393215,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        2,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "profile": "player-defaults",
+      "bass": true,
+      "loopLength": 2,
+      "repeats": 2,
+      "chord": true,
+      "input": {
+        "instrumentId": 33,
+        "strings": 4,
+        "frets": 24,
+        "tuning": [
+          43,
+          38,
+          33,
+          28
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeat": 2
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 0,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 1,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 0,
+          "sourceFret": 0,
+          "attackTick": 0,
+          "endTick": 393215,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        },
+        {
+          "id": "0:0:0:1",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 1,
+          "fret": 1,
+          "sourceFret": 1,
+          "attackTick": 0,
+          "endTick": 393215,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        2,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "profile": "player-defaults",
+      "bass": true,
+      "loopLength": 2,
+      "repeats": 3,
+      "chord": false,
+      "input": {
+        "instrumentId": 33,
+        "strings": 4,
+        "frets": 24,
+        "tuning": [
+          43,
+          38,
+          33,
+          28
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeat": 3
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 7,
+          "sourceFret": 7,
+          "attackTick": 0,
+          "endTick": 524287,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        2,
+        1,
+        2,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "profile": "player-defaults",
+      "bass": true,
+      "loopLength": 2,
+      "repeats": 3,
+      "chord": true,
+      "input": {
+        "instrumentId": 33,
+        "strings": 4,
+        "frets": 24,
+        "tuning": [
+          43,
+          38,
+          33,
+          28
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeatStart": true
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "repeat": 3
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "type": 1,
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 7,
+                        "tie": true
+                      },
+                      {
+                        "string": 1,
+                        "fret": 8,
+                        "tie": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "tpqn": 16384,
+      "expected": [
+        {
+          "id": "0:0:0:0",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 0,
+          "fret": 7,
+          "sourceFret": 7,
+          "attackTick": 0,
+          "endTick": 524287,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        },
+        {
+          "id": "0:0:0:1",
+          "occurrence": 0,
+          "bar": 0,
+          "string": 1,
+          "fret": 8,
+          "sourceFret": 8,
+          "attackTick": 0,
+          "endTick": 524287,
+          "hidden": false,
+          "tie": false,
+          "customEvents": 0,
+          "preEvents": 0
+        }
+      ],
+      "traversal": [
+        0,
+        1,
+        2,
+        1,
+        2,
+        1,
+        2,
+        3
+      ]
+    }
+  ]
+}
