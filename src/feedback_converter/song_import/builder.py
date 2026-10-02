@@ -512,6 +512,9 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     if performance.get('trillEvidence'):
         if source_path is None:
             raise ImportFailure('unsupported_score', 'Trill expansion requires the retained original tab.')
+        if (any(t.get('mode') == 'native-tied-segments-v1' for t in performance['trillEvidence'])
+                and (recipe or {}).get('preservationContract', 0) < 49):
+            raise ImportFailure('unsupported_score', 'Tied trill expansion requires preservation contract 49.')
         from .songsterr_trills import archive_evidence as trill_archive
         _write_json(package / 'import/trills.json', trill_archive(performance, source_path))
         manifest.setdefault('song_import', {})['trillsFile'] = 'import/trills.json'

@@ -21,7 +21,7 @@ RULES = {
     "notation.picking_hand": {"files": ["fingering.py"], "policy": "retained_annotation"},
     "expression.sustain_pedal": {"files": ["songsterr_fields.py"], "policy": "retained_synth_expression"},
     "technique.harmonics": {"files": ["songsterr_harmonics.py", "tied_harmonics.py"], "policy": "approved_game_projection"},
-    "technique.trills": {"files": ["songsterr_trills.py"], "policy": "approved_game_projection"},
+    "technique.trills": {"files": ["songsterr_trills.py", "tied_trills.py"], "policy": "approved_game_projection"},
     "technique.tremolo_picking": {"files": ["songsterr_tremolo.py"], "policy": "existing_game_instruction"},
     "technique.whammy": {"files": ["songsterr_whammy.py"], "policy": "approved_game_projection"},
     "projection.high_frets": {"files": ["high_frets.py"], "policy": "approved_omission"},

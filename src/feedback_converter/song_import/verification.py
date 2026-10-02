@@ -20,7 +20,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 48
+VERSION = 49
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -862,8 +862,12 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 check.fail("retained_notation", "import", "A notation limitation requires embedded original source and a compatibility report.")
             if wanted['trills'] or recipe.get('trillsFile'):
                 retained = _json(z, recipe.get('trillsFile', ''), check)
+                tied_trills = any(t.get('mode') == 'native-tied-segments-v1' for t in wanted['trills'])
+                if tied_trills and recipe.get('preservationContract', 0) < 49:
+                    check.fail('trill_evidence', 'import/trills', 'Tied trill expansion requires preservation contract 49.')
                 evidence = {
-                    'version': 1, 'policy': 'songsterr-trill-hopo-v1', 'timeDomain': 'quarter_notes',
+                    'version': 2 if tied_trills else 1,
+                    'policy': 'songsterr-trill-hopo-v2' if tied_trills else 'songsterr-trill-hopo-v1', 'timeDomain': 'quarter_notes',
                     'sourceSha256': report['sourceSha256'], 'trills': wanted['trills']}
                 # JSON identity distinguishes nested true/1 and 1/1.0. A plain
                 # Python dict comparison does not. Keep a corrupt large receipt
