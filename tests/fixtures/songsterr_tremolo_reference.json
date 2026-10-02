@@ -1,0 +1,96 @@
+{
+  "referenceSha256": "4219f9dbf0952af83be36c8b590f10fea7a0f36d72bd1f92297a3d768f93f5ab",
+  "scope": "Complete scheduler observation at the tremolo stage, not game/synthesis equivalence",
+  "cases": [
+    {
+      "id": "none",
+      "beat": null,
+      "note": null,
+      "extraNoteOns": [
+        0,
+        0
+      ]
+    },
+    {
+      "id": "note16",
+      "beat": null,
+      "note": [
+        1,
+        16
+      ],
+      "extraNoteOns": [
+        3,
+        0
+      ]
+    },
+    {
+      "id": "note32",
+      "beat": null,
+      "note": [
+        1,
+        32
+      ],
+      "extraNoteOns": [
+        7,
+        0
+      ]
+    },
+    {
+      "id": "noteTrue",
+      "beat": null,
+      "note": true,
+      "extraNoteOns": [
+        7,
+        0
+      ]
+    },
+    {
+      "id": "noteFalse",
+      "beat": null,
+      "note": false,
+      "extraNoteOns": [
+        7,
+        0
+      ]
+    },
+    {
+      "id": "beat8",
+      "beat": [
+        1,
+        8
+      ],
+      "note": null,
+      "extraNoteOns": [
+        1,
+        1
+      ]
+    },
+    {
+      "id": "both",
+      "beat": [
+        1,
+        8
+      ],
+      "note": [
+        1,
+        16
+      ],
+      "extraNoteOns": [
+        1,
+        1
+      ]
+    },
+    {
+      "id": "beatFalse",
+      "beat": false,
+      "note": [
+        1,
+        16
+      ],
+      "extraNoteOns": [
+        3,
+        0
+      ]
+    }
+  ]
+}
