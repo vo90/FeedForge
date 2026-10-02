@@ -9,7 +9,9 @@ The authored tie provides a definite endpoint; no extra attack is inferred.
 
 Songsterr imports now preserve this sustain while retaining both original
 written durations. They still reject missing origins, changed frets, overlapping
-logical endpoints, explicit rests inside the gap, and unresolved repeat jumps. The source performer's separate
+logical endpoints, explicit rests inside the gap, and unresolved linked techniques
+at repeat jumps. A same-pitch tie at the repeat entrance uses the same continuity
+rule as a written-out repetition (see `songsterr-repeat-ties.md`). The source performer's separate
 fret-repair routine is deliberately not applied.
 
 Simultaneous hidden continuations across voices are not duplicate attacks.

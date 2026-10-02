@@ -273,7 +273,9 @@ def _expected(source, alignment):
                         identity = (entrance.voice, entrance.string)
                         sounding = state.get(identity)
                         if (entrance.tie and entrance.q == 0 and sounding is not None
-                                and sounding['end'] == origin and sounding['f'] == entrance.fret):
+                                and sounding['end'] <= origin and sounding['f'] == entrance.fret):
+                            # The ordinary tie check below independently rejects
+                            # any explicit rest in the unfilled interval.
                             continued[identity] = sounding
                 state = continued
             last_bar = index
