@@ -371,9 +371,9 @@ def _section_annotation(names, location):
             elif spelling in allowed:
                 bases.add(spelling)
             else:
-                unsupported(location, 'Guitar/bass section labels or their fallback are ambiguous.')
+                return None
         if len(bases) != 1 or len(numbered) > 1:
-            unsupported(location, 'Guitar/bass section labels or their fallback are ambiguous.')
+            return None
         if numbered:
             selected = next(iter(numbered.values()))
     ranked = sorted((len(name) - len(' '.join(name.split())), name.casefold(), name) for name in selected)
@@ -424,12 +424,27 @@ def songsterr(document, *, track_indices=None):
             if marker:
                 annotations.append({'trackIndex': pi, 'trackId': str(meta.get('id', pi)),
                                     'eligible': pi in eligible, 'text': marker, 'location': marker_loc})
-        playable_names = {a['text'] for a in annotations if a['eligible']}
-        names = playable_names or {a['text'] for a in annotations}
+        playable_annotations = [a for a in annotations if a['eligible']]
+        ballots = playable_annotations or annotations
+        names = {a['text'] for a in ballots}
         section = _section_annotation(names, loc + '/marker')
+        policy = '_equivalent_labels' if len(names) > 1 else '_consensus'
+        if section is None:
+            # Independently derive counts from the complete raw envelope,
+            # never from selected/projected parts or the producer's decision.
+            keys = [' '.join(a['text'].split()).casefold() for a in ballots]
+            counts = {}
+            for key in keys:
+                counts[key] = counts.get(key, 0) + 1
+            highest = max(counts.values())
+            tied = {key for key, count in counts.items() if count == highest}
+            winner = next(key for key in keys if key in tied)
+            variants = {a['text'] for a, key in zip(ballots, keys) if key == winner}
+            section = _section_annotation(variants, loc + '/marker')
+            policy = '_track_order_tiebreak' if len(tied) > 1 else '_majority_label'
         if annotations:
-            basis = 'guitar_bass' if playable_names else 'other_tracks'
-            basis += '_equivalent_labels' if len(names) > 1 else '_consensus'
+            basis = 'guitar_bass' if playable_annotations else 'other_tracks'
+            basis += policy
             section_labels.append({'measure': bi + 1, 'label': section,
                                    'basis': basis,
                                    'labels': annotations})

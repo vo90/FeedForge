@@ -45,18 +45,26 @@ def section_label(samples, metadata, eligible, measure):
             labels.append({'trackIndex': index, 'trackId': str(meta.get('id', index)),
                            'eligible': index in eligible, 'text': value,
                            'location': f'parts/{index}/measures/{measure}/marker'})
-    preferred = {label['text'] for label in labels if label['eligible']}
-    candidates = preferred or {label['text'] for label in labels}
+    preferred = [label for label in labels if label['eligible']]
+    voters = preferred or labels
+    candidates = {label['text'] for label in voters}
     text = _equivalent_label(candidates) if len(candidates) > 1 else next(iter(candidates), '')
+    selection = '_equivalent_labels' if len(candidates) > 1 else '_consensus'
     if text is None:
-        scope = 'Guitar/bass tracks' if preferred else 'Fallback tracks'
-        error = ScoreImportError(f'{scope} have different section labels in measure {measure + 1}; review is required.')
-        error.source_feature = 'arrangement.section_labels'
-        error.source_location = {'measure': measure + 1, 'location': f'measures/{measure}/marker'}
-        error.source_value = labels
-        raise error
+        # One annotation per original source track, before voice projection or
+        # Hybrid creation. Formatting variants must not split the same vote.
+        groups = {}
+        for label in voters:
+            key = ' '.join(label['text'].split()).casefold()
+            groups.setdefault(key, []).append(label['text'])
+        most = max(map(len, groups.values()))
+        winners = [values for values in groups.values() if len(values) == most]
+        # Dict insertion order is source track order, including only labels
+        # tied for the highest count. Always choose an actual authored string.
+        text = _equivalent_label(set(winners[0]))
+        selection = '_track_order_tiebreak' if len(winners) > 1 else '_majority_label'
     basis = 'guitar_bass' if preferred else 'other_tracks'
-    basis += '_equivalent_labels' if len(candidates) > 1 else '_consensus'
+    basis += selection
     detail = {'measure': measure + 1, 'label': text,
               'basis': basis, 'labels': labels}
     return text, detail if labels else None
