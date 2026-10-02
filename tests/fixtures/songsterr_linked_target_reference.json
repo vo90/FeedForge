@@ -1,0 +1,6223 @@
+{
+  "version": 1,
+  "referenceSha256": "4219f9dbf0952af83be36c8b590f10fea7a0f36d72bd1f92297a3d768f93f5ab",
+  "scope": "Synthetic source/final fret and identity observations; not authorization to copy synthesis repairs into gameplay.",
+  "cases": [
+    {
+      "id": "shift-0-pitched-attack",
+      "target": "pitched",
+      "tied": false,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 0,
+                            "slide": "shift"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 2
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "356796c823576e14d15b1cdab2dc01f4c976547c028521b37e3f669c6d812d51",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 2,
+              "sourceFret": 2,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 14399,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 2,
+              "preEvents": 1
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 2,
+              "sourceFret": 2,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "cecb715d94d572a514fc2a644e09ac0e1ac32f907ae293ea42059317927df13c"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 2,
+              "sourceFret": 2,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 2,
+              "preEvents": 5
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 2,
+              "sourceFret": 2,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            }
+          ],
+          "generatedSha256": "9059df3066443f641ac16c38c1256439b95e13bd58bccc87c14093028679212d"
+        }
+      ]
+    },
+    {
+      "id": "shift-0-pitched-tied",
+      "target": "pitched",
+      "tied": true,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 0
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 0,
+                            "slide": "shift",
+                            "tie": true
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 2
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "7b04869b0caeeeae86304235cedd1305b3aeb233b35edbdfd686718cb136339c",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 2,
+              "sourceFret": 2,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 15360,
+              "endTick": 29759,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 2,
+              "preEvents": 1
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 2,
+              "sourceFret": 2,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "5e216d18140eea29e4ed895a0e69e28eca85b7d2d68ffc7f8a380044ead1923b"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 2,
+              "sourceFret": 2,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 2,
+              "preEvents": 5
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 2,
+              "sourceFret": 2,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            }
+          ],
+          "generatedSha256": "0a62382c44b5172072de74d970cb886f937b300438a12f739455659ff088c610"
+        }
+      ]
+    },
+    {
+      "id": "shift-0-unpitched-attack",
+      "target": "unpitched",
+      "tied": false,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 0,
+                            "slide": "shift"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "dead": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "a08a31b9394fdbbdb8e3ac75243e1e143168f23562dc6ae77287db20a2fd24ad",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 15840,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "222d3a262b23a75fa8eafc839bee99143e946bf434f920fa8a341975dbe2553a"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            }
+          ],
+          "generatedSha256": "60488ca047f06a894095f84ce692505d5ad9038ba6380924e785e59337bf37ca"
+        }
+      ]
+    },
+    {
+      "id": "shift-0-unpitched-tied",
+      "target": "unpitched",
+      "tied": true,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 0
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 0,
+                            "slide": "shift",
+                            "tie": true
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "dead": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "7c84f4b5cbd67e6880b1e3d1e73fe0194905dab4f7404e323d736ce98dd1b894",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 31200,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "02441cd96019908ac2820fc00b2da155939a1983e757abb855523581889e0019"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 4
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            }
+          ],
+          "generatedSha256": "f860b8a10084abc0b6fe6cc7d97fa48bd87fb7f9d59a18d3ec1184a065ecf002"
+        }
+      ]
+    },
+    {
+      "id": "shift-3-pitched-attack",
+      "target": "pitched",
+      "tied": false,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3,
+                            "slide": "shift"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "09d5c8d54830b2cb390c4252a8a57c16cd7144e2f6ec6b1ba06960df96b5e754",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 5,
+              "sourceFret": 5,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 14399,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 2,
+              "preEvents": 1
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 5,
+              "sourceFret": 5,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "01675890c5ac2f09371eccfd5b1d399b1375888ecb19656e7a0c685e11ef223a"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 5,
+              "sourceFret": 5,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 2,
+              "preEvents": 5
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 5,
+              "sourceFret": 5,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            }
+          ],
+          "generatedSha256": "6b96b92347d31b5f8e83ba3a4268c18d961268fddfd0c2405809abea3c2d99df"
+        }
+      ]
+    },
+    {
+      "id": "shift-3-pitched-tied",
+      "target": "pitched",
+      "tied": true,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3,
+                            "slide": "shift",
+                            "tie": true
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "faeb05bf3f06b4dc23c8168df2dae57962818d2eb0573de218ca0a1874d73eef",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 5,
+              "sourceFret": 5,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 15360,
+              "endTick": 29759,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 2,
+              "preEvents": 1
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 5,
+              "sourceFret": 5,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "ec3896835f3984b4c58d46440f597d7d21de2a68ad1cbc2f6403114c250d61ef"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 5,
+              "sourceFret": 5,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 2,
+              "preEvents": 5
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 5,
+              "sourceFret": 5,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            }
+          ],
+          "generatedSha256": "096bc4c91be7c9987112db6082f9daaeb9ceb00bdf07ce1bb2bd9efd3caa2546"
+        }
+      ]
+    },
+    {
+      "id": "shift-3-unpitched-attack",
+      "target": "unpitched",
+      "tied": false,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3,
+                            "slide": "shift"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "dead": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "fffc2b26d54413e5e4c809bbe1110d026e6ea079823a0e000f2149895ac4508b",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 13439,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 4,
+              "preEvents": 2
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 15840,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "6f14ea40f906be2c620a742b9015e1a6286035577c6fbd91f6d07e71c6e8f2f3"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 4,
+              "preEvents": 6
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            }
+          ],
+          "generatedSha256": "aa4b11547aea319fc5ac8fa5134a9bd3845d4d07020e651a88a7a1b1b12e6d8a"
+        }
+      ]
+    },
+    {
+      "id": "shift-3-unpitched-tied",
+      "target": "unpitched",
+      "tied": true,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3,
+                            "slide": "shift",
+                            "tie": true
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "dead": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "de0c5cfdebdb74d851f17a5dcc2a50f7c2f8cd81ad6f71f1cb1087046d364ac7",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 15360,
+              "endTick": 28799,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 4,
+              "preEvents": 2
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 31200,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "ddff007dbdf71b6d8cd4e89357988290ef6215817a9ceb71451d89bd113c11a0"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 4,
+              "preEvents": 6
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            }
+          ],
+          "generatedSha256": "f0e7313a9eec472251edb7a88683e762bd38d3d59d089674c6a2c0df8c35f216"
+        }
+      ]
+    },
+    {
+      "id": "shift-12-pitched-attack",
+      "target": "pitched",
+      "tied": false,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 12,
+                            "slide": "shift"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 14
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "0e683e5d6cf8cef5ce5cafe26eb021a9c961962e247e6e13dd1c01a5904c513a",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 14,
+              "sourceFret": 14,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 14399,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 2,
+              "preEvents": 1
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 14,
+              "sourceFret": 14,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "f0788f25002d71aba5114726bb70d6bebe3e4594d02f8b23a700b7e56cc42118"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 14,
+              "sourceFret": 14,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 2,
+              "preEvents": 5
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 14,
+              "sourceFret": 14,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            }
+          ],
+          "generatedSha256": "07d749a5453fa5ed77ba3dc61e3cfef3d654afd8178e540ca40ad12220ebe695"
+        }
+      ]
+    },
+    {
+      "id": "shift-12-pitched-tied",
+      "target": "pitched",
+      "tied": true,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 12
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 12,
+                            "slide": "shift",
+                            "tie": true
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 14
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "d136e7e7689afa213712c51bf7cc4572ba560c749fdf00b0553284974d1eb79f",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 14,
+              "sourceFret": 14,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 15360,
+              "endTick": 29759,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 2,
+              "preEvents": 1
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 14,
+              "sourceFret": 14,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "fa8eddf3ae1020d45bfb52c5efcf81166eed15483e4011670fdfca21c991f733"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 14,
+              "sourceFret": 14,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 2,
+              "preEvents": 5
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 14,
+              "sourceFret": 14,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            }
+          ],
+          "generatedSha256": "7fdabd0092d41a50e18ed608dc635129f0e5dac28fb6c3703a1253d6fe401b51"
+        }
+      ]
+    },
+    {
+      "id": "shift-12-unpitched-attack",
+      "target": "unpitched",
+      "tied": false,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 12,
+                            "slide": "shift"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "dead": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "a355480d7fcbe3d80ce1cfc770bf71788c9da95e14f99297149d33b1458c70d4",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 7680,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 22,
+              "preEvents": 11
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 15840,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "15c84289c41a2933966c0fa74179ba22089b246f1af727ad4bdcb4ec4a35b2ad"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 18,
+              "preEvents": 13
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            }
+          ],
+          "generatedSha256": "3f31dc957b36408a3f8a03c05053826cd997f6a08e31a709f9dd9bf93abbf4e2"
+        }
+      ]
+    },
+    {
+      "id": "shift-12-unpitched-tied",
+      "target": "unpitched",
+      "tied": true,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 12
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 12,
+                            "slide": "shift",
+                            "tie": true
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "dead": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "5dae271d868d3889608a5e1080824e25987db0fe4758c85cd79fe69564273499",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 15360,
+              "endTick": 23040,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 22,
+              "preEvents": 11
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 31200,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "8db3a533e2508397fe779708178f499cfdc0a48adda95c51d4b6eb0ddc2a1ae7"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 18,
+              "preEvents": 13
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            }
+          ],
+          "generatedSha256": "da184eac1de46414eec385c132b9572caa79e30d5ec89f93b1b6e3eef892421c"
+        }
+      ]
+    },
+    {
+      "id": "legato-0-pitched-attack",
+      "target": "pitched",
+      "tied": false,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 0,
+                            "slide": "legato"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 2
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "03b0924e11429c58a9dd31348cd81bcd093c346cfd34e2f69af5c47d7d2fae54",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 2,
+              "sourceFret": 2,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 14399,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 2,
+              "preEvents": 1
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 2,
+              "sourceFret": 2,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "bb0c4b20f68cf09996fbf6ada68d7280bed1ebb1d16f21364cae3944db4ce325"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 2,
+              "sourceFret": 2,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 2,
+              "preEvents": 5
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 2,
+              "sourceFret": 2,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 6,
+              "preEvents": 8
+            }
+          ],
+          "generatedSha256": "a25f9c6b70fbdbed333cac519ada0fc1d216cc15e3faacd6099675501b8fd8c6"
+        }
+      ]
+    },
+    {
+      "id": "legato-0-pitched-tied",
+      "target": "pitched",
+      "tied": true,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 0
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 0,
+                            "slide": "legato",
+                            "tie": true
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 2
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "cc163d3d1ec09a54d2bfa994569b1329d8c057a7d8b7d5557b04ea21388c65ac",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 2,
+              "sourceFret": 2,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 15360,
+              "endTick": 29759,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 2,
+              "preEvents": 1
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 2,
+              "sourceFret": 2,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "ef8d93df4d6616fdd72b6cf8cfa60ee9848fdc3a9b4b45642714f15054443c4f"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 2,
+              "sourceFret": 2,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 2,
+              "preEvents": 5
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 2,
+              "sourceFret": 2,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 6,
+              "preEvents": 8
+            }
+          ],
+          "generatedSha256": "c041fac44c958fbeb089923bef9df654935ef67e4504a539ca45bcfc2c091e83"
+        }
+      ]
+    },
+    {
+      "id": "legato-0-unpitched-attack",
+      "target": "unpitched",
+      "tied": false,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 0,
+                            "slide": "legato"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "dead": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "f36280bfcef767f99a94ec907c04339ae1fcec54c478879fd7d1f0a6d9c40503",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 15840,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "fddfaae68d37b6a0aa6b600e294832f660c570f712734dea92c0b6a8ba97f6e0"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            }
+          ],
+          "generatedSha256": "60488ca047f06a894095f84ce692505d5ad9038ba6380924e785e59337bf37ca"
+        }
+      ]
+    },
+    {
+      "id": "legato-0-unpitched-tied",
+      "target": "unpitched",
+      "tied": true,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 0
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 0,
+                            "slide": "legato",
+                            "tie": true
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "dead": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "dad32c631bbbf9ac612493ff8ea581634eebc8330b31bc45efdd62a6abc9c891",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 31200,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "85f5377112589be6c192ad57e51fe36c452d355a45ad53e8d35a77eaf3daab76"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "sourceFret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 4
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            }
+          ],
+          "generatedSha256": "f860b8a10084abc0b6fe6cc7d97fa48bd87fb7f9d59a18d3ec1184a065ecf002"
+        }
+      ]
+    },
+    {
+      "id": "legato-3-pitched-attack",
+      "target": "pitched",
+      "tied": false,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3,
+                            "slide": "legato"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "0b7cef3bd02ce1ca1a59418aed232dfe15680e87fe9a6449867c462d6922de97",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 5,
+              "sourceFret": 5,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 14399,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 2,
+              "preEvents": 1
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 5,
+              "sourceFret": 5,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "e6a0b25f3942d93daaf608dcb983cafd0602518ad3da4cf409ffd833315c526d"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 5,
+              "sourceFret": 5,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 2,
+              "preEvents": 5
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 5,
+              "sourceFret": 5,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 6,
+              "preEvents": 8
+            }
+          ],
+          "generatedSha256": "9850bbab7e4ba61946950bdfd240efb17c105faba042de355a5b0c287817b192"
+        }
+      ]
+    },
+    {
+      "id": "legato-3-pitched-tied",
+      "target": "pitched",
+      "tied": true,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3,
+                            "slide": "legato",
+                            "tie": true
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "7940210aa6ac3b128827e63c54dbc7b799daa4eb35f53cd1a1124710c3d57eb6",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 5,
+              "sourceFret": 5,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 15360,
+              "endTick": 29759,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 2,
+              "preEvents": 1
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 5,
+              "sourceFret": 5,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "9772a558a0e55290a2352bdf96b371619e6c316f68229378b41caa2d0a55b7e3"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 5,
+              "sourceFret": 5,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 2,
+              "preEvents": 5
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 5,
+              "sourceFret": 5,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 6,
+              "preEvents": 8
+            }
+          ],
+          "generatedSha256": "f319524bbd3057d838aa353800feda0156ef8b889bada8781c4ce5801c9f140f"
+        }
+      ]
+    },
+    {
+      "id": "legato-3-unpitched-attack",
+      "target": "unpitched",
+      "tied": false,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3,
+                            "slide": "legato"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "dead": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "0c8ff3e0de8ed1a534fbc6b7e2b977adb97cee03d0e5b080a36f6f2c55cfd358",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 13439,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 4,
+              "preEvents": 2
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 15840,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "5a7c4b14897f05b880a7990e2920ab232f8744a8d5cdba5c5e4075eaca762f5d"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 4,
+              "preEvents": 6
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 6,
+              "preEvents": 8
+            }
+          ],
+          "generatedSha256": "39b64fc86d9cd1be68e57fbf201066c30568e4b2d6d5ac4e36c7f3700088bdc4"
+        }
+      ]
+    },
+    {
+      "id": "legato-3-unpitched-tied",
+      "target": "unpitched",
+      "tied": true,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3,
+                            "slide": "legato",
+                            "tie": true
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "dead": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "0841925399089ef4914ff055609be1eb171974d923dbfba6d5396d2e358a4311",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 15360,
+              "endTick": 28799,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 4,
+              "preEvents": 2
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 31200,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "6b55654882587cb72ec56ba80661284613d6c3e650f2967348dfd4e5a4c2f66f"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 4,
+              "preEvents": 6
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 6,
+              "preEvents": 8
+            }
+          ],
+          "generatedSha256": "250b21cb945403a4311b6a0c9c9856272382f084bb8cc931057ead6bf2e2fc60"
+        }
+      ]
+    },
+    {
+      "id": "legato-12-pitched-attack",
+      "target": "pitched",
+      "tied": false,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 12,
+                            "slide": "legato"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 14
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "13b15a49abccb9bb053b4ad61d9e69817bf9d249c2f5875b34ed77cf0ddacd28",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 14,
+              "sourceFret": 14,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 14399,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 2,
+              "preEvents": 1
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 14,
+              "sourceFret": 14,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "c1894908fb8be3e6788b596d4523117a7697db38ff3b3731dbcb63d1a6e23102"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 14,
+              "sourceFret": 14,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 2,
+              "preEvents": 5
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 14,
+              "sourceFret": 14,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 6,
+              "preEvents": 8
+            }
+          ],
+          "generatedSha256": "2434715e20773ffe53000c26cc92b1440f052bf1ceef443a9a01da0d1c3c67e9"
+        }
+      ]
+    },
+    {
+      "id": "legato-12-pitched-tied",
+      "target": "pitched",
+      "tied": true,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 12
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 12,
+                            "slide": "legato",
+                            "tie": true
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 14
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "fd0f9cef490f05b3dd228b12dfa5b6765d230d8f538696d4083676be787065b2",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 14,
+              "sourceFret": 14,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 15360,
+              "endTick": 29759,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 2,
+              "preEvents": 1
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 14,
+              "sourceFret": 14,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "03a4255d314e665892b575a034a117ddc5506b4a67ccf75e15cafbc7c26db8f9"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 14,
+              "sourceFret": 14,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 2,
+              "preEvents": 5
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 14,
+              "sourceFret": 14,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 6,
+              "preEvents": 8
+            }
+          ],
+          "generatedSha256": "89ebf1c3d00024bedf5e0d49dd1f130acbaba4e53cddf652f56062156af9b27e"
+        }
+      ]
+    },
+    {
+      "id": "legato-12-unpitched-attack",
+      "target": "unpitched",
+      "tied": false,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 12,
+                            "slide": "legato"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "dead": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "ca2b050eddc3a8847e9d8263ebb082a08aca4c2cc9eddc0cdafbb4881b603307",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 7680,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 22,
+              "preEvents": 11
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 15840,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "887479348d8177f4f9d6a33b2366f4b7f667ea3f3d90fa6fa03fa28d5e9d2c6e"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 18,
+              "preEvents": 13
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 6,
+              "preEvents": 8
+            }
+          ],
+          "generatedSha256": "9e4b7df026610739dd439559dd0778980f8c0b0be328c9a47967c03f061fe3c3"
+        }
+      ]
+    },
+    {
+      "id": "legato-12-unpitched-tied",
+      "target": "unpitched",
+      "tied": true,
+      "source": {
+        "format": "songsterr",
+        "songId": 1,
+        "revisionId": 1,
+        "title": "Linked target fixture",
+        "artist": "Synthetic",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "instrumentId": 29,
+            "strings": 6,
+            "frets": 24,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": 0,
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 12
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 12,
+                            "slide": "legato",
+                            "tie": true
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "type": 4,
+                        "notes": [
+                          {
+                            "string": 0,
+                            "dead": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "sourceSha256": "b3670e4871182c8afe27c98c6af013b1277029380e06fd7a16b2eeefa44cc715",
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 15360,
+              "endTick": 23040,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 22,
+              "preEvents": 11
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 31200,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "generatedSha256": "fc544e7275eb6b0f049248cfab01df2bada3e17a1c2834eec481bf45b78ed42a"
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "authored": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 15359,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "final": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 0,
+              "endTick": 30719,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 4
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 12,
+              "sourceFret": 12,
+              "attackTick": 15360,
+              "endTick": 30719,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 18,
+              "preEvents": 13
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 0,
+              "attackTick": 30720,
+              "endTick": 46079,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 6,
+              "preEvents": 8
+            }
+          ],
+          "generatedSha256": "dd129a49476609353906ee19a770876dbacbb7f92c665c70ad26e3a2051057f5"
+        }
+      ]
+    }
+  ]
+}
