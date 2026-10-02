@@ -12,7 +12,7 @@ from .songsterr_tremolo import tremolo_mark
 from .songsterr_fields import validate_sustain_pedal
 from .model import ScoreImportError, integer, rational
 
-VERSION = 47
+VERSION = 48
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -219,6 +219,8 @@ def inspect_songsterr(document, *, track_indices=None):
         inspect(auto, "automations", f"parts/{pi}/automations", coordinates)
         if isinstance(auto, dict):
             tempos = auto.get("tempo", []) if isinstance(auto.get("tempo", []), list) else []
+            from .songsterr_automation import inactive_tempo_context
+            unused_context = inactive_tempo_context(auto)
             positions = {}
             for ti, tempo in enumerate(tempos):
                 inspect(tempo, "tempo", f"parts/{pi}/automations/tempo/{ti}", coordinates)
@@ -228,6 +230,11 @@ def inspect_songsterr(document, *, track_indices=None):
                     except ScoreImportError:
                         continue  # The parser reports malformed coordinates.
                     positions.setdefault(key, []).append(ti)
+                    if key[0] >= len(part.get('measures', [])):
+                        if unused_context:
+                            add_finding(report, feature='tempo.outside_score', category='source_interpretation', impact='display_or_expression',
+                                        message='This tempo instruction belongs to a bar beyond the written score. It has no playback effect without an active ramp or initial-clock shift; the complete instruction is retained in the original source.',
+                                        location=f'parts/{pi}/automations/tempo/{ti}', value=tempo, **coordinates)
             for indices in positions.values():
                 winner = indices[-1]
                 for ti in indices[:-1]:

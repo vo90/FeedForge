@@ -272,6 +272,8 @@ def parse(document: dict, *, track_indices=None) -> Score:
         raw_tempos = automations.get("tempo", [])
         if not isinstance(raw_tempos, list):
             raise ScoreImportError("Invalid Songsterr tempo list.")
+        from .songsterr_automation import inactive_tempo_context
+        unused_context = inactive_tempo_context(automations)
         for tempo_index, tempo in enumerate(raw_tempos):
             inventory.inspect(tempo, "Songsterr tempo", f"$.parts[{part_index}].automations.tempo[{tempo_index}]",
                               playable={"measure", "position", "bpm", "type", "linear", "dotted"}, retained={"text", "visible"}, strict=True)
@@ -280,15 +282,15 @@ def parse(document: dict, *, track_indices=None) -> Score:
             if "text" in tempo and not isinstance(tempo["text"], str):
                 raise ScoreImportError("Invalid descriptive tempo text.")
             bar = integer(tempo.get("measure"), "tempo measure")
-            if not 0 <= bar < count:
-                raise ScoreImportError("Tempo references a missing measure.")
+            if bar < 0:
+                raise ScoreImportError("Tempo references a negative measure.")
             if tempo.get("linear") is not None and type(tempo["linear"]) is not bool:
                 raise ScoreImportError("Invalid linear tempo flag.")
             # Tempo automation uses static ticks (960 per quarter), unlike
             # beat.duration's whole-note fractions. Fractional ticks are valid.
             position = rational(tempo.get("position", 0), "tempo position") / 960
             bpm = float(rational(tempo.get("bpm"), "tempo"))
-            if not 0 <= position < measures[bar].length or bpm <= 0:
+            if position < 0 or (bar < count and position >= measures[bar].length) or bpm <= 0:
                 raise ScoreImportError("Invalid source tempo position or rate.")
             unit = integer(tempo.get("type", 4), "tempo note value")
             if unit <= 0:
@@ -298,6 +300,12 @@ def parse(document: dict, *, track_indices=None) -> Score:
                 raise ScoreImportError("Invalid dotted tempo flag.")
             if tempo.get("dotted") is True:
                 bpm *= 1.5
+            if bar >= count:
+                if not unused_context:
+                    raise ScoreImportError("An outside-score tempo may affect the initial clock or a gradual ramp; review is required.")
+                # Keep the full entry in immutable source and compatibility
+                # evidence. It belongs to no performed bar in this context.
+                continue
             key = (bar, position)
             # Songsterr oi/si replaces the complete earlier entry at this exact
             # coordinate, before holds and ramps. Validate every raw entry;

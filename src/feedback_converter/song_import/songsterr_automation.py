@@ -6,6 +6,25 @@ from math import floor
 from .model import ScoreImportError, integer, rational
 
 
+def inactive_tempo_context(automations):
+    """Qualify unused outside-bar marks, never a missing initial/ramp clock.
+
+    The player attaches step instructions only to existing written measures.
+    Its initial-measure normalization and ramp coordinate fallback can instead
+    activate outside marks, so those contexts are deliberately excluded.
+    Individual entries must still pass ordinary source validation.
+    """
+    raw = automations.get("tempo", [])
+    if not isinstance(raw, list) or not raw or not all(isinstance(t, dict) for t in raw):
+        return False
+    try:
+        return (integer(raw[0].get("measure"), "tempo measure") == 0
+                and rational(raw[0].get("position", 0), "tempo position") == 0
+                and not (automations.get("gradualTempo") is True and any(t.get("linear") for t in raw)))
+    except ScoreImportError:
+        return False
+
+
 def performed_tempos(automations, measures, events):
     """Expand established automation into the existing step-tempo clock."""
     if any(not 0 <= q < measures[bar].length or bpm <= 0 for (bar, q), bpm in events.items()):
