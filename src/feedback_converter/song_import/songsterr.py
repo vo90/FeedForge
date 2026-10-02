@@ -11,7 +11,7 @@ from .inventory import FeatureInventory
 from .model import Measure, Note, Score, ScoreImportError, Track, WrittenBeat, WrittenVoice, integer, rational
 from .songsterr_timing import part_timing, strum_offsets, FEELS
 from .songsterr_fields import bend_points
-from .fingering import left_finger
+from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
 from .songsterr_whammy import source_whammy
 from .songsterr_harmonics import exact_natural, natural_target, natural_alias, source_target
@@ -412,7 +412,8 @@ def parse(document: dict, *, track_indices=None) -> Score:
                         inventory.inspect(note, "Songsterr note", source_id,
                                           playable={"string", "fret", "rest", "tie", "dead", "vibrato", "wideVibrato", "ghost", "accentuated", "tap", "tapping", "hp", "harmonic", "slide", "bend", "trill", "grace", "graceNote", "tremoloBar", "whammy", "staccato", "leftHandVibrato", "pickScrape", "leftFingering", "tremolo"},
                                           notation={"string", "fret", "rest", "tie", "dead", "vibrato", "wideVibrato", "ghost", "accentuated", "tap", "tapping", "hp", "leftHandVibrato"},
-                                          retained={"harmonicFret"}, strict=True)
+                                          retained={"harmonicFret", "rightFingering"}, strict=True)
+                        validate_right_finger(note.get("rightFingering"))
                         if isinstance(note.get("bend"), dict):
                             inventory.inspect(note["bend"], "Songsterr bend", source_id + ".bend", playable={"points", "tone"}, strict=True)
                             for point_index, point in enumerate(note["bend"].get("points", [])):

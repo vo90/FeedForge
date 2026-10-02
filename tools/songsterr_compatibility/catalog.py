@@ -18,6 +18,7 @@ RULES = {
     "timing.pickup": {"files": ["songsterr_pickup.py"], "policy": "source_interpretation"},
     "timing.whole_rest": {"files": ["songsterr_fields.py", "songsterr_timing.py"], "policy": "silent_measure_boundary"},
     "notation.voices": {"files": ["voices.py"], "policy": "approved_game_projection"},
+    "notation.picking_hand": {"files": ["fingering.py"], "policy": "retained_annotation"},
     "technique.harmonics": {"files": ["songsterr_harmonics.py", "tied_harmonics.py"], "policy": "approved_game_projection"},
     "technique.trills": {"files": ["songsterr_trills.py"], "policy": "approved_game_projection"},
     "technique.tremolo_picking": {"files": ["songsterr_tremolo.py"], "policy": "existing_game_instruction"},
@@ -37,6 +38,7 @@ FIELDS = {
     "timing.tempo": "automations.tempo automations.fermata automations.gradualTempo tempo.measure tempo.position tempo.bpm tempo.type tempo.dotted tempo.linear",
     "timing.whole_rest": "beat.rest beat.type beat.dots beat.duration note.rest",
     "notation.voices": "measure.voices voice.beats",
+    "notation.picking_hand": "note.rightFingering",
     "technique.harmonics": "note.harmonic note.harmonicFret",
     "technique.trills": "note.trill",
     "technique.tremolo_picking": "beat.tremolo note.tremolo",
@@ -52,6 +54,7 @@ FAMILIES = {
     "timing.ties": {"timing.ties", "timing.strum_tie_grace"},
 }
 BEHAVIOR = {
+    "notation.picking_hand": "Validate P/I/M/A/C; retain the picking-hand annotation and disclose absent engraving without changing fret-hand hints, pitches, attacks or scoring.",
     "timing.basic": "Preserve exact authored fractions until mapping the performed clock.",
     "technique.tremolo_picking": "Map active beat/per-string tremolo to tr; retain exact subdivision and within-tie timing in source and disclose the whole-sustain display/rate limitation. No expanded scored attacks.",
     "timing.strum_grace": "Apply explicit stroke timing after grace allocation; a consumed attack remains a pending omission decision.",
@@ -100,6 +103,11 @@ def inventory():
             value['reference']['scope'] = 'Beat/per-note scope and precedence only; rate remains source evidence, not expanded gameplay.'
             value['testFixture'] = 'tests/fixtures/songsterr_tremolo_reference.json'
             value['tests'] = 'tests/test_songsterr_note_tremolo.py'
+        if key == 'notation.picking_hand':
+            value['reference']['status'] = 'qualified_examples'
+            value['reference']['scope'] = 'Pinned source enum and unchanged sampled chord/tie/repeat scheduling; picking-hand engraving is not represented.'
+            value['testFixture'] = 'tests/fixtures/songsterr_right_fingering_reference.json'
+            value['tests'] = 'tests/test_songsterr_right_fingering.py'
     fields = [{"field": f"{scope}.{key}", "declarationVersion": VERSION,
                "status": "unimplemented" if key in UNIMPLEMENTED.get(scope, ()) else "recognized_conditional",
                "limitation": LIMITATIONS.get((scope, key)),

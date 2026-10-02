@@ -7,11 +7,11 @@ from copy import deepcopy
 import json
 import math
 from .songsterr_harmonics import exact_natural, natural_alias, source_target
-from .fingering import left_finger
+from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
 from .model import ScoreImportError
 
-VERSION = 43
+VERSION = 44
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -33,9 +33,11 @@ KNOWN["tempo"].add("visible")
 KNOWN["beat"].update({"chord", "upStroke", "downStroke", "pickStroke", "wahwah", "brushStroke", "arpeggio", "vibratoWithTremoloBar"})
 KNOWN["note"].update({"leftHandVibrato", "pickScrape", "vibratoWithTremoloBar"})
 KNOWN["note"].add("leftFingering")
+KNOWN["note"].add("rightFingering")
 KNOWN["note"].add("tremolo")
 KNOWN["beat"].add("hasRasgueado")
 LIMITATIONS = {
+    ("note", "rightFingering"): "The authored picking-hand finger is retained in the original source. The game does not display picking-hand fingering; fretting-hand hints, notes, timing and scoring are unchanged.",
     ("note", "tremolo"): "Tremolo picking uses the game's existing tremolo instruction. Exact subdivision and within-tie timing remain in the source. A tied sustain has one marker for the whole sustain; individual repeated picks are not expanded or scored separately, and the written subdivision is not engraved.",
     ("beat", "tremolo"): "Tremolo picking uses the game's existing tremolo instruction. Exact subdivision and within-tie timing remain in the source. A tied sustain has one marker for the whole sustain; individual repeated picks are not expanded or scored separately, and the written subdivision is not engraved.",
     ("beat", "hasRasgueado"): "The rasgueado strumming instruction is retained in the original source. Written notes, ties, durations and explicit strums are preserved and scored normally; no rasgueado display, additional strokes or special scoring are added.",
@@ -111,6 +113,13 @@ def inspect_songsterr(document, *, track_indices=None):
                         message="Expected a source object.", location=path, value=obj, **coordinates)
             return
         for key, value in obj.items():
+            if scope == "note" and key == "rightFingering":
+                try:
+                    validate_right_finger(value)
+                except ScoreImportError as exc:
+                    add_finding(report, feature="note.rightFingering", category="source_structure", impact="blocking",
+                                message=str(exc), location=path + "/" + key, value=value, **coordinates)
+                    continue
             if scope in {"beat", "note"} and key == "tremolo":
                 try:
                     tremolo_mark(value)

@@ -1,5 +1,12 @@
-"""Authored fret-hand teaching marks; never pitch or scoring instructions."""
+"""Authored hand-specific teaching marks; never pitch or scoring instructions."""
 from .model import ScoreImportError
+
+
+def validate_right_finger(value):
+    # This is a picking-hand annotation, not a fret-hand fg number. Its exact
+    # spelling remains in source evidence and the located compatibility report.
+    if value is not None and (type(value) is not str or value not in ("P", "I", "M", "A", "C")):
+        raise ScoreImportError("Invalid Songsterr rightFingering; expected P, I, M, A or C.")
 
 
 def left_finger(value):
