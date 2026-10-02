@@ -4,6 +4,12 @@ from fractions import Fraction as F
 from .model import ScoreImportError, rational
 
 
+def validate_sustain_pedal(value):
+    """A retained synth-controller flag, never a note-duration instruction."""
+    if value is not None and type(value) is not bool:
+        raise ScoreImportError("Invalid sustainPedal flag; expected a boolean.")
+
+
 def whole_measure_rest(beats):
     """The single, undotted whole-rest glyph denotes the complete measure."""
     if len(beats) != 1:

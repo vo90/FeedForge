@@ -1,0 +1,571 @@
+{
+  "schemaSha256": "8b9267cd39f7f3b0511bade44de01cf3fe7c8025d5a7d534f8a6de448c940e17",
+  "referenceSha256": "4219f9dbf0952af83be36c8b590f10fea7a0f36d72bd1f92297a3d768f93f5ab",
+  "scope": "MIDI CC64 expression differs; sampled authored/final note scheduling does not. No claim of equivalent synthesized sounding duration.",
+  "cases": [
+    {
+      "program": 24,
+      "profile": "authored",
+      "shape": "rest",
+      "active": {
+        "noteHash": "8a1473df93d0312906f477e9ea3346c8ca64229cc97de40e1fc5562629c467ca",
+        "notes": 6,
+        "spans": [
+          [
+            0,
+            2
+          ],
+          [
+            3,
+            6
+          ],
+          [
+            7,
+            8
+          ]
+        ],
+        "controllers": [
+          [
+            0,
+            127
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            3,
+            127
+          ],
+          [
+            6,
+            0
+          ],
+          [
+            7,
+            127
+          ],
+          [
+            8,
+            0
+          ]
+        ]
+      },
+      "control": {
+        "noteHash": "8a1473df93d0312906f477e9ea3346c8ca64229cc97de40e1fc5562629c467ca",
+        "notes": 6,
+        "spans": [],
+        "controllers": []
+      }
+    },
+    {
+      "program": 24,
+      "profile": "authored",
+      "shape": "tie",
+      "active": {
+        "noteHash": "80a93dd1d1a2810e75f60d356a33eb3ea9e81a52f71c1439bdeb308a654d920a",
+        "notes": 10,
+        "spans": [
+          [
+            0,
+            2
+          ],
+          [
+            3,
+            6
+          ],
+          [
+            7,
+            8
+          ]
+        ],
+        "controllers": [
+          [
+            0,
+            127
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            3,
+            127
+          ],
+          [
+            6,
+            0
+          ],
+          [
+            7,
+            127
+          ],
+          [
+            8,
+            0
+          ]
+        ]
+      },
+      "control": {
+        "noteHash": "80a93dd1d1a2810e75f60d356a33eb3ea9e81a52f71c1439bdeb308a654d920a",
+        "notes": 10,
+        "spans": [],
+        "controllers": []
+      }
+    },
+    {
+      "program": 24,
+      "profile": "authored",
+      "shape": "overlap",
+      "active": {
+        "noteHash": "8a1473df93d0312906f477e9ea3346c8ca64229cc97de40e1fc5562629c467ca",
+        "notes": 6,
+        "spans": [
+          [
+            0,
+            8
+          ]
+        ],
+        "controllers": [
+          [
+            0,
+            127
+          ],
+          [
+            8,
+            0
+          ]
+        ]
+      },
+      "control": {
+        "noteHash": "8a1473df93d0312906f477e9ea3346c8ca64229cc97de40e1fc5562629c467ca",
+        "notes": 6,
+        "spans": [],
+        "controllers": []
+      }
+    },
+    {
+      "program": 24,
+      "profile": "player-defaults",
+      "shape": "rest",
+      "active": {
+        "noteHash": "8a1473df93d0312906f477e9ea3346c8ca64229cc97de40e1fc5562629c467ca",
+        "notes": 6,
+        "spans": [
+          [
+            0,
+            2
+          ],
+          [
+            3,
+            6
+          ],
+          [
+            7,
+            8
+          ]
+        ],
+        "controllers": [
+          [
+            0,
+            127
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            3,
+            127
+          ],
+          [
+            6,
+            0
+          ],
+          [
+            7,
+            127
+          ],
+          [
+            8,
+            0
+          ]
+        ]
+      },
+      "control": {
+        "noteHash": "8a1473df93d0312906f477e9ea3346c8ca64229cc97de40e1fc5562629c467ca",
+        "notes": 6,
+        "spans": [],
+        "controllers": []
+      }
+    },
+    {
+      "program": 24,
+      "profile": "player-defaults",
+      "shape": "tie",
+      "active": {
+        "noteHash": "80a93dd1d1a2810e75f60d356a33eb3ea9e81a52f71c1439bdeb308a654d920a",
+        "notes": 10,
+        "spans": [
+          [
+            0,
+            2
+          ],
+          [
+            3,
+            6
+          ],
+          [
+            7,
+            8
+          ]
+        ],
+        "controllers": [
+          [
+            0,
+            127
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            3,
+            127
+          ],
+          [
+            6,
+            0
+          ],
+          [
+            7,
+            127
+          ],
+          [
+            8,
+            0
+          ]
+        ]
+      },
+      "control": {
+        "noteHash": "80a93dd1d1a2810e75f60d356a33eb3ea9e81a52f71c1439bdeb308a654d920a",
+        "notes": 10,
+        "spans": [],
+        "controllers": []
+      }
+    },
+    {
+      "program": 24,
+      "profile": "player-defaults",
+      "shape": "overlap",
+      "active": {
+        "noteHash": "8a1473df93d0312906f477e9ea3346c8ca64229cc97de40e1fc5562629c467ca",
+        "notes": 6,
+        "spans": [
+          [
+            0,
+            8
+          ]
+        ],
+        "controllers": [
+          [
+            0,
+            127
+          ],
+          [
+            8,
+            0
+          ]
+        ]
+      },
+      "control": {
+        "noteHash": "8a1473df93d0312906f477e9ea3346c8ca64229cc97de40e1fc5562629c467ca",
+        "notes": 6,
+        "spans": [],
+        "controllers": []
+      }
+    },
+    {
+      "program": 33,
+      "profile": "authored",
+      "shape": "rest",
+      "active": {
+        "noteHash": "f5c0d070e453dc3974d168fbc277ed79e26b382af1c910d05e180520ec33e61c",
+        "notes": 6,
+        "spans": [
+          [
+            0,
+            2
+          ],
+          [
+            3,
+            6
+          ],
+          [
+            7,
+            8
+          ]
+        ],
+        "controllers": [
+          [
+            0,
+            127
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            3,
+            127
+          ],
+          [
+            6,
+            0
+          ],
+          [
+            7,
+            127
+          ],
+          [
+            8,
+            0
+          ]
+        ]
+      },
+      "control": {
+        "noteHash": "f5c0d070e453dc3974d168fbc277ed79e26b382af1c910d05e180520ec33e61c",
+        "notes": 6,
+        "spans": [],
+        "controllers": []
+      }
+    },
+    {
+      "program": 33,
+      "profile": "authored",
+      "shape": "tie",
+      "active": {
+        "noteHash": "cf4e3a87c551a799bec4bf2d6e639a75a4f2062536cd089fe74a89fe3abfec33",
+        "notes": 10,
+        "spans": [
+          [
+            0,
+            2
+          ],
+          [
+            3,
+            6
+          ],
+          [
+            7,
+            8
+          ]
+        ],
+        "controllers": [
+          [
+            0,
+            127
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            3,
+            127
+          ],
+          [
+            6,
+            0
+          ],
+          [
+            7,
+            127
+          ],
+          [
+            8,
+            0
+          ]
+        ]
+      },
+      "control": {
+        "noteHash": "cf4e3a87c551a799bec4bf2d6e639a75a4f2062536cd089fe74a89fe3abfec33",
+        "notes": 10,
+        "spans": [],
+        "controllers": []
+      }
+    },
+    {
+      "program": 33,
+      "profile": "authored",
+      "shape": "overlap",
+      "active": {
+        "noteHash": "f5c0d070e453dc3974d168fbc277ed79e26b382af1c910d05e180520ec33e61c",
+        "notes": 6,
+        "spans": [
+          [
+            0,
+            8
+          ]
+        ],
+        "controllers": [
+          [
+            0,
+            127
+          ],
+          [
+            8,
+            0
+          ]
+        ]
+      },
+      "control": {
+        "noteHash": "f5c0d070e453dc3974d168fbc277ed79e26b382af1c910d05e180520ec33e61c",
+        "notes": 6,
+        "spans": [],
+        "controllers": []
+      }
+    },
+    {
+      "program": 33,
+      "profile": "player-defaults",
+      "shape": "rest",
+      "active": {
+        "noteHash": "f5c0d070e453dc3974d168fbc277ed79e26b382af1c910d05e180520ec33e61c",
+        "notes": 6,
+        "spans": [
+          [
+            0,
+            2
+          ],
+          [
+            3,
+            6
+          ],
+          [
+            7,
+            8
+          ]
+        ],
+        "controllers": [
+          [
+            0,
+            127
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            3,
+            127
+          ],
+          [
+            6,
+            0
+          ],
+          [
+            7,
+            127
+          ],
+          [
+            8,
+            0
+          ]
+        ]
+      },
+      "control": {
+        "noteHash": "f5c0d070e453dc3974d168fbc277ed79e26b382af1c910d05e180520ec33e61c",
+        "notes": 6,
+        "spans": [],
+        "controllers": []
+      }
+    },
+    {
+      "program": 33,
+      "profile": "player-defaults",
+      "shape": "tie",
+      "active": {
+        "noteHash": "cf4e3a87c551a799bec4bf2d6e639a75a4f2062536cd089fe74a89fe3abfec33",
+        "notes": 10,
+        "spans": [
+          [
+            0,
+            2
+          ],
+          [
+            3,
+            6
+          ],
+          [
+            7,
+            8
+          ]
+        ],
+        "controllers": [
+          [
+            0,
+            127
+          ],
+          [
+            2,
+            0
+          ],
+          [
+            3,
+            127
+          ],
+          [
+            6,
+            0
+          ],
+          [
+            7,
+            127
+          ],
+          [
+            8,
+            0
+          ]
+        ]
+      },
+      "control": {
+        "noteHash": "cf4e3a87c551a799bec4bf2d6e639a75a4f2062536cd089fe74a89fe3abfec33",
+        "notes": 10,
+        "spans": [],
+        "controllers": []
+      }
+    },
+    {
+      "program": 33,
+      "profile": "player-defaults",
+      "shape": "overlap",
+      "active": {
+        "noteHash": "f5c0d070e453dc3974d168fbc277ed79e26b382af1c910d05e180520ec33e61c",
+        "notes": 6,
+        "spans": [
+          [
+            0,
+            8
+          ]
+        ],
+        "controllers": [
+          [
+            0,
+            127
+          ],
+          [
+            8,
+            0
+          ]
+        ]
+      },
+      "control": {
+        "noteHash": "f5c0d070e453dc3974d168fbc277ed79e26b382af1c910d05e180520ec33e61c",
+        "notes": 6,
+        "spans": [],
+        "controllers": []
+      }
+    }
+  ]
+}

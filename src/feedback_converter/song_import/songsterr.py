@@ -10,7 +10,7 @@ from fractions import Fraction
 from .inventory import FeatureInventory
 from .model import Measure, Note, Score, ScoreImportError, Track, WrittenBeat, WrittenVoice, integer, rational
 from .songsterr_timing import part_timing, strum_offsets, FEELS
-from .songsterr_fields import bend_points
+from .songsterr_fields import bend_points, validate_sustain_pedal
 from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
 from .songsterr_whammy import source_whammy
@@ -381,10 +381,11 @@ def parse(document: dict, *, track_indices=None) -> Score:
                     inventory.inspect(beat, "Songsterr beat", beat_id,
                                       playable={"duration", "notes", "rest", "palmMute", "tremolo", "tap", "tapping", "slap", "pop", "slapping", "popping", "vibrato", "wideVibrato", "vibratoWithTremoloBar", "letRing", "graceNote", "grace", "graceNotes", "tremoloBar", "stroke", "whammy", "pickStroke", "brushStroke", "arpeggio", "upStroke", "downStroke", "upArpeggio", "downArpeggio"},
                                       notation={"duration", "notes", "rest", "type", "dots", "tuplet", "text", "velocity", "gradualVelocity", "letRing", "palmMute", "tap", "tapping", "slap", "pop", "vibrato", "wideVibrato", "graceNote"},
-                                      retained={"chord", "wahwah", "hasRasgueado"},
+                                      retained={"chord", "wahwah", "hasRasgueado", "sustainPedal"},
                                       # Attack offsets are kept in the playable chart.
                                       layout={"beamStart", "beamStop", "tupletStart", "tupletStop"},
                                       strict=True)
+                    validate_sustain_pedal(beat.get("sustainPedal"))
                     if beat.get("wahwah") not in (None, "open", "closed"):
                         raise ScoreImportError("Unsupported wah pedal marking.")
                     if beat.get("hasRasgueado") is not None and not isinstance(beat["hasRasgueado"], bool):

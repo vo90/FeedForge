@@ -142,7 +142,7 @@ def test_one_unsupported_arrangement_does_not_hide_other_preparation():
     source = deepcopy(case['source'])
     source['tracks'].append({**source['tracks'][0], 'id': 1})
     source['parts'].append(deepcopy(source['parts'][0]))
-    source['parts'][1]['measures'][0]['voices'][0]['beats'][0]['sustainPedal'] = True
+    source['parts'][1]['measures'][0]['voices'][0]['beats'][0]['unknownActiveTechnique'] = True
     actual = evaluate(source)
     assert actual['converter']['status'] == 'blocked'
     assert [p['index'] for p in actual['sourceTrace']] == [0]
