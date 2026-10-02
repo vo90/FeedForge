@@ -155,7 +155,11 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
         low, high = first_quarter, float(clock.quarters)
         for _ in range(45):
             mid = (low + high) / 2
-            if at(mid) < seconds:
+            # Search the continuous clock. Serialized microsecond rounding
+            # creates plateaus whose left edge is not the inverse position,
+            # especially in short recording intervals. Keep `at` rounded only
+            # for checks against serialized timestamps; do not relax tolerances.
+            if float(recording.raw(clock.at(Fraction(str(mid))))) < seconds:
                 low = mid
             else:
                 high = mid

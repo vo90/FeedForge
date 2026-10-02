@@ -183,7 +183,13 @@ paths remain; older evidence is not presented as current verification. Queue
 publication requires current independent proof tied to the exact staged file.
 
 `verify_hybrid.py` checks exact copies, setup, timing, whole boundaries, notation,
-hashes and lineage. `verify_hybrid_priority.py` independently reconstructs hard
+hashes and lineage. It uses the continuous independent score/recording clock when reconstructing
+quarter-note coverage positions. Six-decimal serialization rounding is applied
+only to comparisons against stored recording timestamps, never inside the
+inverse search. This avoids a systematic early boundary on short timing-map
+intervals without widening coverage tolerances or changing the musical output.
+
+`verify_hybrid_priority.py` independently reconstructs hard
 source relationships and conservative named/dedicated solo requirements without
 importing selection code. Busy rhythm cannot satisfy another guitarist's solo
 merely by changing receipt roles. Its categorical melody/backing contrasts are
