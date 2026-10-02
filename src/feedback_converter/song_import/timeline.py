@@ -147,6 +147,8 @@ def _render(score: Score) -> dict:
             for left, right in sorted(spans):
                 starts.append(left); stop = max(stop, right); ends.append(stop)
             rest_limits[voice] = (starts, ends)
+        from .skipped_slides import omissions as skipped_slide_omissions
+        skipped_slides = skipped_slide_omissions(score, track, visits, at)
         rendered: list[dict] = []
         previous_note = {}
         pending_slide = {}
@@ -367,8 +369,12 @@ def _render(score: Score) -> dict:
                 if note.slide in {"shift", "legato"} and note.fret != 127:
                     from .slide_omissions import origin
                     source_origin = origin(note, track, occurrence, output['t'], at(position)) if score.source.get('format') == 'songsterr' else None
-                    pending_slide[link_key] = (output, note.slide, source_origin)
-                    link_diagnostics.remember('slide', link_key, note, occurrence, at(position + note.attack_offset))
+                    skipped = skipped_slides.get((occurrence, note.source_id))
+                    if skipped:
+                        undefined_slides.append({**source_origin, **skipped})
+                    else:
+                        pending_slide[link_key] = (output, note.slide, source_origin)
+                        link_diagnostics.remember('slide', link_key, note, occurrence, at(position + note.attack_offset))
                 elif note.slide in {"out_down", "out_up"}:
                     # A tied continuation may carry the marking only on its
                     # final written segment. Keep each interval before merging

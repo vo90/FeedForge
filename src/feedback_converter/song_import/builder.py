@@ -466,6 +466,9 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     if performance.get('undefinedSlideEvidence'):
         if source_path is None or (recipe or {}).get('preservationContract', 0) < 54:
             raise ImportFailure('unsupported_score', 'Undefined slide omissions require original source and preservation contract 54.')
+        if (any(r['used']['rule'] == 'omit-slide-skipped-ending-rest' for r in performance['undefinedSlideEvidence'])
+                and (recipe or {}).get('preservationContract', 0) < 55):
+            raise ImportFailure('unsupported_score', 'Skipped-ending slide omissions require preservation contract 55.')
         from .slide_omissions import archive_evidence as slide_omission_archive
         _write_json(package / 'import/undefined-slides.json', slide_omission_archive(performance, source_path))
         manifest.setdefault('song_import', {})['undefinedSlidesFile'] = 'import/undefined-slides.json'

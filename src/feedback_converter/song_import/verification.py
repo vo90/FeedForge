@@ -20,7 +20,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 54
+VERSION = 55
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -338,7 +338,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     reports_precedence = type(report.get('version')) is int and report['version'] >= 46
     if preservation_contract >= 46 and not reports_precedence:
@@ -352,6 +352,10 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_target", "import/compatibility/notation", 1, target.get("notation"))
     expected = {}
     for row in undefined_slides:
+        if row['used']['rule'] == 'omit-slide-skipped-ending-rest':
+            expected[('note.slide_skipped_ending', row['location'] + f"@visit{row['occurrence']}")] = {
+                k: row[k] for k in ('authored', 'used', 'target', 'transition')}
+            continue
         expected[('note.undefined_slide_to_mute', row['location'] + f"@visit{row['occurrence']}")] = {
             **{k: row[k] for k in ('authored', 'used')},
             'target': {k: v for k, v in row['target'].items() if k != 'time'}}
@@ -872,7 +876,10 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 if recipe.get('preservationContract', 0) < 54:
                     check.fail('undefined_slides', 'manifest/song_import', 'Undefined slide omissions require preservation contract 54.')
                 retained = _json(z, recipe.get('undefinedSlidesFile', ''), check)
-                evidence = {'version': 1, 'policy': 'undefined-slide-to-mute-v1', 'timeDomain': 'score_seconds',
+                skipped = any(r['used']['rule'] == 'omit-slide-skipped-ending-rest' for r in wanted['undefined_slides'])
+                if skipped and recipe.get('preservationContract', 0) < 55:
+                    check.fail('undefined_slides', 'manifest/song_import', 'Skipped-ending slide omissions require contract 55.')
+                evidence = {'version': 2 if skipped else 1, 'policy': 'undefined-slides-v2' if skipped else 'undefined-slide-to-mute-v1', 'timeDomain': 'score_seconds',
                             'sourceSha256': report['sourceSha256'], 'gestures': wanted['undefined_slides']}
                 from .verify_policy_receipt import compare
                 compare(evidence, retained, check, 'undefined_slides')

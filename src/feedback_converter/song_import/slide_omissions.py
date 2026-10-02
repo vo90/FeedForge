@@ -21,6 +21,14 @@ def retain(start, note, occurrence, time):
 def report_findings(performance, report):
     from .compatibility import add_finding
     for row in performance.get('undefinedSlideEvidence', []):
+        if row['used']['rule'] == 'omit-slide-skipped-ending-rest':
+            add_finding(report, feature='note.slide_skipped_ending', category='game_limitation',
+                        impact='display_or_expression',
+                        message='An alternate ending skips the slide destination, and a rest interrupts the connection. '
+                                'The note and timing are retained; only the unresolved slide on this pass is omitted and saved with the source.',
+                        location=row['location'] + f"@visit{row['occurrence']}",
+                        value={k: row[k] for k in ('authored', 'used', 'target', 'transition')}, trackId=row['trackId'])
+            continue
         add_finding(report, feature='note.undefined_slide_to_mute', category='game_limitation',
                     impact='display_or_expression',
                     message='The slide ends on an explicit X without a destination fret or direction. '
@@ -33,6 +41,7 @@ def report_findings(performance, report):
 
 
 def archive_evidence(performance, source_path):
-    return {'version': 1, 'policy': 'undefined-slide-to-mute-v1',
+    skipped = any(r['used']['rule'] == 'omit-slide-skipped-ending-rest' for r in performance['undefinedSlideEvidence'])
+    return {'version': 2 if skipped else 1, 'policy': 'undefined-slides-v2' if skipped else 'undefined-slide-to-mute-v1',
             'sourceSha256': hashlib.sha256(source_path.read_bytes()).hexdigest(),
             'timeDomain': 'score_seconds', 'gestures': deepcopy(performance['undefinedSlideEvidence'])}
