@@ -19,9 +19,11 @@ numbers run from low to high. Times are score seconds **before recording
 alignment**, not timestamps in a YouTube video or the final game audio. A fretless
 mute is `null` in these details, never a playable fret 127 or an inferred fret 0.
 
-This is a diagnostic change to contract 53. Successful chart output and the
-independent verification calculations are unchanged. It requires no migration
-of existing packages and does not relax any acceptance guard.
+This was a diagnostic change to contract 53. Contract 54 subsequently added the
+approved [undefined slide-to-mute policy](songsterr-undefined-slides.md); all
+other unresolved-link diagnostics remain in place. The contract-53 diagnostic
+change left successful chart output and independent verification unchanged.
+It required no migration and did not relax acceptance guards.
 
 ## Development reference evidence
 

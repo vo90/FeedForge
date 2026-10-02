@@ -20,7 +20,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 53
+VERSION = 54
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -328,7 +328,7 @@ def _chords(wanted, chart, check, part):
             check.near("chord_time", "tracks/" + part.id + "/chords", wanted_time, actual_time)
 
 
-def _compatibility_report(report, score_path, source, check, harmonic_ties=(), tied_mutes=(), projected_parts=None, muted_slides=(), preservation_contract=0, consumed_strums=(), scrape_entries=()):
+def _compatibility_report(report, score_path, source, check, harmonic_ties=(), tied_mutes=(), projected_parts=None, muted_slides=(), preservation_contract=0, consumed_strums=(), scrape_entries=(), undefined_slides=()):
     """Verify retained limitations from source facts, not the producer's inventory."""
     from .verify_source import _program_instrument, fraction, inactive, integer
     rows = report.get("findings")
@@ -338,7 +338,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     reports_precedence = type(report.get('version')) is int and report['version'] >= 46
     if preservation_contract >= 46 and not reports_precedence:
@@ -351,6 +351,10 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_target", "import/compatibility", "1.16.0", target.get("feedpak"))
     check.equal("compatibility_target", "import/compatibility/notation", 1, target.get("notation"))
     expected = {}
+    for row in undefined_slides:
+        expected[('note.undefined_slide_to_mute', row['location'] + f"@visit{row['occurrence']}")] = {
+            **{k: row[k] for k in ('authored', 'used')},
+            'target': {k: v for k, v in row['target'].items() if k != 'time'}}
     for row in scrape_entries:
         expected[('note.scrape_entry', row['location'] + f"@visit{row['occurrence']}")] = {k:row[k] for k in ('authored','used')}
     for row in consumed_strums:
@@ -861,9 +865,18 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                     check.fail("compatibility", "import/compatibility", "A blocked or invalid compatibility report cannot be published.")
                 if recipe.get("preservationContract", 0) >= 5:
                     _compatibility_report(compatibility, score_path, source, check, wanted['harmonic_ties'], wanted['tied_mutes'],
-                                          [p['source'] for p in wanted['parts']], wanted['muted_slides'], recipe.get('preservationContract', 0), wanted['consumed_strums'], wanted['scrape_entries'])
+                                          [p['source'] for p in wanted['parts']], wanted['muted_slides'], recipe.get('preservationContract', 0), wanted['consumed_strums'], wanted['scrape_entries'], wanted['undefined_slides'])
             elif any(p.notation_unavailable or p.unpitched_mutes for p in source.parts):
                 check.fail("retained_notation", "import", "A notation limitation requires embedded original source and a compatibility report.")
+            if wanted['undefined_slides'] or recipe.get('undefinedSlidesFile'):
+                if recipe.get('preservationContract', 0) < 54:
+                    check.fail('undefined_slides', 'manifest/song_import', 'Undefined slide omissions require preservation contract 54.')
+                retained = _json(z, recipe.get('undefinedSlidesFile', ''), check)
+                evidence = {'version': 1, 'policy': 'undefined-slide-to-mute-v1', 'timeDomain': 'score_seconds',
+                            'sourceSha256': report['sourceSha256'], 'gestures': wanted['undefined_slides']}
+                from .verify_policy_receipt import compare
+                compare(evidence, retained, check, 'undefined_slides')
+                report['scope'].append('undefined_slide_omission_accounting')
             if wanted['scrape_entries'] or recipe.get('scrapeEntriesFile'):
                 if recipe.get('preservationContract', 0) < 53:
                     check.fail('scrape_entries', 'manifest/song_import', 'Scrape entry retention requires preservation contract 53.')

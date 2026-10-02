@@ -98,17 +98,14 @@ def test_other_missing_fret_pitch_gestures_still_fail(fields):
     with pytest.raises(ValueError): expected(songsterr(doc), {'offset': 0, 'scale': 1})
 
 
-@pytest.mark.parametrize('fault', ['missing', 'muted_target', 'unpitched_target', 'pitched_to_x', 'repeat_jump'])
+@pytest.mark.parametrize('fault', ['missing', 'muted_target', 'repeat_jump'])
 def test_unresolved_or_pitched_to_unpitched_links_still_fail(fault):
     doc = shift()
     bars = doc['parts'][0]['measures']
     target = bars[1]['voices'][0]['beats'][0]['notes'][0]
     if fault == 'missing': bars.pop()
     if fault == 'muted_target': target['dead'] = True
-    if fault == 'unpitched_target': target.update(dead=True, fret=None)
     if fault == 'repeat_jump': bars[0].update(repeatStart=True, repeat=2)
-    if fault == 'pitched_to_x':
-        doc = raw_score([measure(beat(slide='shift', duration=(1, 2)), muted(duration=(1, 2)))])
     with pytest.raises(ValueError): render(parse(doc))
     with pytest.raises(ValueError): expected(songsterr(doc), {'offset': 0, 'scale': 1})
 

@@ -184,7 +184,7 @@ def _expected(source, alignment):
     order = visits(source)
     clock, recording = Clock(source, order), RecordingMap(alignment)
     result = {"parts": [], "beats": [], "sections": [], "time_signatures": [], "tempos": [], "order": order,
-              'harmonic_ties': [], 'tied_mutes': [], 'muted_tie_identities': [], 'staccato_bends': [], 'muted_slides': [], 'trills': [], 'strums': [], 'consumed_strums': [], 'scrape_entries': [],
+              'harmonic_ties': [], 'tied_mutes': [], 'muted_tie_identities': [], 'staccato_bends': [], 'muted_slides': [], 'undefined_slides': [], 'trills': [], 'strums': [], 'consumed_strums': [], 'scrape_entries': [],
               "raw_notes": sum(len(bar) for p in source.parts for bar in p.bars), "tie_segments": 0}
     measure_facts = []
     inherited_tempos, inherited = [], F(120)
@@ -256,6 +256,19 @@ def _expected(source, alignment):
             for _, q in spans:
                 last = max(last, q); ends.append(last)
             rest_indices[voice] = (starts, ends)
+        def slide_omission(provenance, destination, visit, target_time):
+            written, origin_visit, attack, marking_time = provenance
+            path = written.location.split('/')
+            target_path = destination.location.split('/')
+            return {'trackId': part.id, 'sourceId': 'songsterr:' + ':'.join(path[i] for i in (1,3,5,7,9)),
+                    'location': written.location, 'occurrence': origin_visit + 1,
+                    'attack': float(clock.at(attack)), 'start': float(clock.at(marking_time)),
+                    'string': written.string, 'fret': None if written.fret == 127 else written.fret,
+                    'muted': written.effects.get('mt') is True, 'authored': {'slide': written.slide},
+                    'target': {'sourceId': 'songsterr:' + ':'.join(target_path[i] for i in (1,3,5,7,9)),
+                               'occurrence': visit + 1, 'time': float(clock.at(target_time)), 'fret': None, 'muted': True},
+                    'used': {'rule': 'omit-undefined-slide-keep-authored-mute'}}
+
         notes, state, pending_slides, pending_hopos = [], {}, {}, {}
         muted_pending = {}
         notation_notes = {}
@@ -399,20 +412,28 @@ def _expected(source, alignment):
                         hopo_links.append((previous, event))
                     if key in muted_pending:
                         event['linked'] = True
-                        if atom.fret == 127 or atom.effects.get('mt'):
+                        omit = source.format == 'songsterr' and atom.fret == 127 and atom.effects.get('mt') is True
+                        if (atom.fret == 127 or atom.effects.get('mt')) and not omit:
                             unsupported(atom.location, 'A muted shift lacks a pitched destination.')
                         path = atom.location.split('/')
-                        for record in muted_pending.pop(key):
+                        for record, provenance in muted_pending.pop(key):
                             record['target'] = {'sourceId': 'songsterr:' + ':'.join(path[i] for i in (1,3,5,7,9)),
-                                                'time': float(clock.at(event['start'])), 'fret': atom.fret}
+                                                'time': float(clock.at(event['start'])), 'fret': None if omit else atom.fret}
+                            if omit:
+                                record['used']['rule'] = 'omitted-shift-to-unpitched-mute'
+                                result['undefined_slides'].append(slide_omission(provenance, atom, occurrence, event['start']))
                     if key in pending_slides:
-                        if atom.fret == 127:
+                        omit = source.format == 'songsterr' and atom.fret == 127 and atom.effects.get('mt') is True
+                        if atom.fret == 127 and not omit:
                             unsupported(atom.location, "A pitched slide has an unpitched destination.")
-                        target, slide = pending_slides.pop(key)
+                        target, slide, provenance = pending_slides.pop(key)
                         event['linked'] = target['linked'] = True
-                        target["effects"]["sl"] = atom.fret
-                        if slide == "legato":
-                            target["effects"]["ln"] = True
+                        if omit:
+                            result['undefined_slides'].append(slide_omission(provenance, atom, occurrence, event['start']))
+                        else:
+                            target['effects']['sl'] = atom.fret
+                            if slide == 'legato':
+                                target['effects']['ln'] = True
                     notes.append(event)
                     if len(notes) > MAX_EVENTS:
                         raise ValueError("source: performed note limit exceeded")
@@ -475,9 +496,9 @@ def _expected(source, alignment):
                               'used':{'rule':'retained-shift-no-pitch-path' if atom.slide=='shift' else 'unscored-directional-slide'},
                               'target':None}
                     result['muted_slides'].append(record)
-                    if atom.slide == 'shift':muted_pending.setdefault(key,[]).append(record)
+                    if atom.slide == 'shift':muted_pending.setdefault(key,[]).append((record, (atom, occurrence, event['start'], start)))
                 if atom.slide in {"shift", "legato"} and atom.fret != 127:
-                    pending_slides[key] = (event, atom.slide)
+                    pending_slides[key] = (event, atom.slide, (atom, occurrence, event['start'], start))
                 elif atom.slide in {'up','down'}:
                     event["slide_marks"].append((atom.slide, start, start + gesture_length))
                 if source_only_entry:
@@ -627,6 +648,7 @@ def _expected(source, alignment):
     result['tied_mutes'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['muted_tie_identities'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['staccato_bends'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
+    result['undefined_slides'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['muted_slides'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['consumed_strums'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['scrape_entries'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))

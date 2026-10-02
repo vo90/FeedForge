@@ -27,33 +27,6 @@ def failure(doc):
     return caught.value
 
 
-@pytest.mark.parametrize('slide', ['shift', 'legato'])
-@pytest.mark.parametrize('fret', [0, 3, 8, 12])
-@pytest.mark.parametrize('dead', [False, True])
-def test_pitched_or_dead_origins_report_unpitched_destination(slide, fret, dead):
-    doc = raw_score([measure(beat(fret=fret, duration=(1, 2), slide=slide, dead=dead),
-                             beat(fret=None, duration=(1, 2), dead=True))])
-    e = failure(doc)
-    assert e.source_feature == 'note.slide_destination'
-    assert e.source_location == {'ruleId': 'technique.linked_targets', 'stage': 'timeline',
-        'measure': 1, 'voice': 1, 'beat': 2, 'note': 1, 'occurrence': 1,
-        'location': 'parts/0/measures/0/voices/0/beats/1/notes/0'}
-    origin = e.source_value['links'][0]
-    assert origin == {'kind': 'slide', 'technique': slide, 'sourceId': 'songsterr:0:0:0:0:0', 'occurrence': 1,
-                      'string': 6, 'fret': fret, 'muted': dead, 'time': 0}
-    assert e.source_value['destination']['fret'] is None
-    assert e.source_value['destination']['time'] == 1
-    assert e.source_value['reason'] == 'unpitched_destination'
-
-
-def test_marking_on_tied_segment_reports_that_segment_not_initial_attack():
-    doc = raw_score([measure(beat(duration=(1, 4)), beat(duration=(1, 4), tie=True, slide='shift'),
-                             beat(fret=None, duration=(1, 2), dead=True))])
-    e = failure(doc)
-    assert e.source_value['links'][0]['sourceId'] == 'songsterr:0:0:0:1:0'
-    assert e.source_value['links'][0]['time'] == .5
-
-
 @pytest.mark.parametrize('gesture', [{'slide': 'shift'}, {'hp': True}, {'slide': 'shift', 'dead': True, 'fret': None}])
 def test_repeat_boundary_keeps_origin_and_current_traversal(gesture):
     doc = raw_score([measure(beat(**gesture), repeatStart=True, repeat=2)])
@@ -91,21 +64,19 @@ def test_multistring_boundary_details_are_bounded():
     assert e.source_value['linksTruncated'] is True
 
 
-def test_existing_arrangement_report_retains_located_reason():
-    doc = raw_score([measure(beat(slide='legato', duration=(1, 2)),
+def test_unresolved_hopo_still_keeps_located_arrangement_failure():
+    doc = raw_score([measure(beat(hp=True, duration=(1, 2)),
                              beat(fret=None, dead=True, duration=(1, 2)))])
     report = new_report()
     diagnose_arrangements(doc, report)
     assert report['arrangementSummary']['scoreReady'] == 0
-    finding = next(f for f in report['findings'] if f['feature'] == 'note.slide_destination')
+    finding = next(f for f in report['findings'] if f['feature'] == 'note.linked_destination')
     assert finding['ruleId'] == 'technique.linked_targets'
     assert finding['measure'] == 1 and finding['beat'] == 2
+    assert finding['value']['reason'] == 'unpitched_hopo'
     assert finding['value']['links'][0]['sourceId'] == 'songsterr:0:0:0:0:0'
     assert finding['value']['destination']['sourceId'] == 'songsterr:0:0:0:1:0'
-    assert finding['valueTruncated'] is False
-    assert finding['impact'] == 'blocking'
-    assert 'Link starts at measure 1, beat 1' in finding['message']
-    assert 'Destination is measure 1, beat 2' in finding['message']
+    assert finding['valueTruncated'] is False and finding['impact'] == 'blocking'
 
 
 @pytest.mark.parametrize('source_id', ['', 'gp:0:0', 'songsterr:abc:1:2:3:4'])
@@ -141,9 +112,13 @@ def test_native_synthesis_fallback_does_not_grant_a_pitched_game_target(case):
             else:
                 assert target['fret'] == target['sourceFret'] == raw_target['fret']
     if case['target'] == 'unpitched':
-        e = failure(doc)
-        assert e.source_value['reason'] == 'unpitched_destination'
-        assert e.source_value['destination']['fret'] is None
+        performance = render(parse(doc))
+        notes = performance['tracks'][0]['notes']
+        assert len(notes) == 2 and notes[1]['f'] == 127 and notes[1]['mt']
+        assert 'sl' not in notes[0] and 'ln' not in notes[0]
+        assert performance['undefinedSlideEvidence'][0]['target']['fret'] is None
+        oracle = expected(songsterr(doc), {'offset': 0, 'scale': 1})
+        assert performance['undefinedSlideEvidence'] == oracle['undefined_slides']
     else:
         performance = render(parse(doc))
         notes = performance['tracks'][0]['notes']
