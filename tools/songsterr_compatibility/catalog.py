@@ -20,6 +20,7 @@ RULES = {
     "notation.voices": {"files": ["voices.py"], "policy": "approved_game_projection"},
     "technique.harmonics": {"files": ["songsterr_harmonics.py", "tied_harmonics.py"], "policy": "approved_game_projection"},
     "technique.trills": {"files": ["songsterr_trills.py"], "policy": "approved_game_projection"},
+    "technique.tremolo_picking": {"files": ["songsterr_tremolo.py"], "policy": "existing_game_instruction"},
     "technique.whammy": {"files": ["songsterr_whammy.py"], "policy": "approved_game_projection"},
     "projection.high_frets": {"files": ["high_frets.py"], "policy": "approved_omission"},
     "projection.hybrid": {"files": ["hybrid_lead.py", "hybrid_selection.py", "hybrid_materialize.py"], "policy": "derived_arrangement"},
@@ -38,6 +39,7 @@ FIELDS = {
     "notation.voices": "measure.voices voice.beats",
     "technique.harmonics": "note.harmonic note.harmonicFret",
     "technique.trills": "note.trill",
+    "technique.tremolo_picking": "beat.tremolo note.tremolo",
     "technique.whammy": "beat.tremoloBar beat.vibratoWithTremoloBar",
     "projection.high_frets": "note.fret",
 }
@@ -51,6 +53,7 @@ FAMILIES = {
 }
 BEHAVIOR = {
     "timing.basic": "Preserve exact authored fractions until mapping the performed clock.",
+    "technique.tremolo_picking": "Map active beat/per-string tremolo to tr; retain exact subdivision in source and disclose the display/rate limitation. No expanded scored attacks or backdated tied instructions.",
     "timing.strum_grace": "Apply explicit stroke timing after grace allocation; a consumed attack remains a pending omission decision.",
     "timing.grace": "Allocate source grace groups with bar and opening context; do not invent minimum note lengths.",
     "timing.swing": "Apply the authored rhythmic feel to eligible groups while retaining written rhythm.",
@@ -92,6 +95,11 @@ def inventory():
             value['reference']['status'] = 'qualified_examples'
             value['testFixture'] = 'tests/fixtures/songsterr_rest_reference.json'
             value['tests'] = 'tests/test_songsterr_dotted_whole_rest.py'
+        if key == 'technique.tremolo_picking':
+            value['reference']['status'] = 'qualified_examples'
+            value['reference']['scope'] = 'Beat/per-note scope and precedence only; rate remains source evidence, not expanded gameplay.'
+            value['testFixture'] = 'tests/fixtures/songsterr_tremolo_reference.json'
+            value['tests'] = 'tests/test_songsterr_note_tremolo.py'
     fields = [{"field": f"{scope}.{key}", "declarationVersion": VERSION,
                "status": "unimplemented" if key in UNIMPLEMENTED.get(scope, ()) else "recognized_conditional",
                "limitation": LIMITATIONS.get((scope, key)),

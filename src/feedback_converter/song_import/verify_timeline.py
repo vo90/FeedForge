@@ -368,6 +368,8 @@ def _expected(source, alignment):
                     if source.format != 'songsterr' and "harmonic_target" in atom.effects and event["effects"].get("harmonic_target") != atom.effects["harmonic_target"]:
                         unsupported(atom.location, "A changing fretted harmonic inside a tie is not independently representable.")
                     event["end"] = end
+                    if source.format == 'songsterr' and atom.effects.get('tr') and not event['effects'].get('tr'):
+                        unsupported(atom.location, 'A later tremolo instruction cannot be moved to the tied attack.')
                     event["effects"].update({k: v for k, v in atom.effects.items() if k not in {"pkd", "fg"} and not (late_mute and k == 'mt') and (source.format != 'songsterr' or k not in harmonic_fields)})
                     event["locations"].append(atom.location)
                     result["tie_segments"] += 1

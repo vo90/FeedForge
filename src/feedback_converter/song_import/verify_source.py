@@ -521,7 +521,7 @@ def songsterr(document, *, track_indices=None):
                 unsupported("automations", "Tracks have different performed tempo automation.")
     parts, excluded = [], []
     note_keys = {"string", "fret", "tie", "rest", "dead", "vibrato", "wideVibrato", "ghost", "accentuated",
-                 "trill", "tap", "tapping", "hp", "harmonic", "harmonicFret", "slide", "bend", "leftHandVibrato", "staccato", "pickScrape", "leftFingering"}
+                 "trill", "tap", "tapping", "hp", "harmonic", "harmonicFret", "slide", "bend", "leftHandVibrato", "staccato", "pickScrape", "leftFingering", "tremolo"}
     beat_keys = {"tremoloBar", "vibratoWithTremoloBar", "duration", "notes", "rest", "type", "dots", "tuplet", "tupletStart", "tupletStop", "graceNote",
                  "palmMute", "letRing", "tremolo", "tap", "tapping", "slap", "pop", "slapping", "popping", "vibrato", "wideVibrato", "text", "velocity", "gradualVelocity", "chord", "pickStroke", "wahwah", "brushStroke", "arpeggio", "upStroke", "downStroke", "upArpeggio", "downArpeggio"}
     for pi, (meta, raw) in enumerate(zip(metadata, raw_parts)):
@@ -650,7 +650,16 @@ def songsterr(document, *, track_indices=None):
                                          "accentuated": "ac", "tap": "tp", "tapping": "tp"}.items():
                             if note.get(key):
                                 fx[out] = True
-                        for key, out in {"palmMute": "pm", "letRing": "lr", "tremolo": "tr", "tap": "tp", "tapping": "tp",
+                        for container, where in ((beat, loc), (note, nloc)):
+                            picking_rate = container.get("tremolo")
+                            if picking_rate is None or picking_rate is False:
+                                continue
+                            if picking_rate is not True:
+                                if (not isinstance(picking_rate, list) or len(picking_rate) != 2
+                                        or any(type(x) is not int or x <= 0 for x in picking_rate)):
+                                    unsupported(where + "/tremolo", "Invalid tremolo-picking rational pair.")
+                            fx["tr"] = True
+                        for key, out in {"palmMute": "pm", "letRing": "lr", "tap": "tp", "tapping": "tp",
                                          "slap": "slp", "pop": "plk", "slapping": "slp", "popping": "plk", "vibrato": "vb", "wideVibrato": "vb"}.items():
                             if beat.get(key):
                                 fx[out] = True

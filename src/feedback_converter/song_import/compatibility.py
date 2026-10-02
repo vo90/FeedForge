@@ -8,9 +8,10 @@ import json
 import math
 from .songsterr_harmonics import exact_natural, natural_alias, source_target
 from .fingering import left_finger
+from .songsterr_tremolo import tremolo_mark
 from .model import ScoreImportError
 
-VERSION = 42
+VERSION = 43
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -32,8 +33,11 @@ KNOWN["tempo"].add("visible")
 KNOWN["beat"].update({"chord", "upStroke", "downStroke", "pickStroke", "wahwah", "brushStroke", "arpeggio", "vibratoWithTremoloBar"})
 KNOWN["note"].update({"leftHandVibrato", "pickScrape", "vibratoWithTremoloBar"})
 KNOWN["note"].add("leftFingering")
+KNOWN["note"].add("tremolo")
 KNOWN["beat"].add("hasRasgueado")
 LIMITATIONS = {
+    ("note", "tremolo"): "Tremolo picking uses the game's existing tremolo instruction. The exact subdivision remains in the source; individual repeated picks are not expanded or scored separately, and the written subdivision is not engraved.",
+    ("beat", "tremolo"): "Tremolo picking uses the game's existing tremolo instruction. The exact subdivision remains in the source; individual repeated picks are not expanded or scored separately, and the written subdivision is not engraved.",
     ("beat", "hasRasgueado"): "The rasgueado strumming instruction is retained in the original source. Written notes, ties, durations and explicit strums are preserved and scored normally; no rasgueado display, additional strokes or special scoring are added.",
     ("beat", "tremoloBar"): "Whammy-bar pitch curves are preserved. Bar expression is optional; an updated game is required for the display and scoring policy.",
     ("beat", "vibratoWithTremoloBar"): "Slight/wide bar vibrato is preserved. These notes are visual only in the updated game because the source does not specify an exact pitch curve; they do not reduce accuracy or streaks.",
@@ -107,6 +111,13 @@ def inspect_songsterr(document, *, track_indices=None):
                         message="Expected a source object.", location=path, value=obj, **coordinates)
             return
         for key, value in obj.items():
+            if scope in {"beat", "note"} and key == "tremolo":
+                try:
+                    tremolo_mark(value)
+                except ScoreImportError as exc:
+                    add_finding(report, feature=f"{scope}.tremolo", category="source_structure", impact="blocking",
+                                message=str(exc), location=path + "/" + key, value=value, **coordinates)
+                    continue
             if scope == "note" and key == "leftFingering":
                 try:
                     left_finger(value)
