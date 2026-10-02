@@ -322,6 +322,8 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
         return result
     from .ending_padding import candidate
     padding = candidate(performance, result, audio) if allow_padding_candidate else None
+    from .ending_cutoff import boundary_policy
+    ending_boundary = boundary_policy(result, duration) if allow_ending_candidate else None
     for track in performance.get("tracks", []):
         notes = [(note, note.get("t")) for note in track.get("notes", [])]
         notes += [(note, note.get("t", chord.get("t"))) for chord in track.get("chords", []) for note in chord.get("notes", [])]
@@ -337,11 +339,9 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
             if mapped_start < 0:
                 _unavailable("negative_note_time")
             if mapped_start >= duration:
-                # A candidate remains unusable by the builder until an acoustic
-                # check authorizes it. A short/missing recording is not a cutoff.
-                if (not allow_ending_candidate or not points[-2] < duration < points[-1]
-                        or points[-1] - duration > 3.0 or points[-1] - points[-2] > 8.0
-                        or start < measures[-1]["start"]):
+                # A candidate cannot omit anything until acoustic evidence
+                # supports the timing across the available recording.
+                if ending_boundary is None:
                     _unavailable("note_outside_recording", mappedNoteEnd=mapped_end, audioDuration=duration)
                 late += 1
                 checked += 1
@@ -367,8 +367,7 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
                 try:
                     # This is only a candidate. Neither the builder nor verifier
                     # permits a slide cutoff until the acoustic check authorizes it.
-                    slide_candidate = (allow_ending_candidate and points[-2] < duration < points[-1]
-                                       and points[-1] - duration <= 3.0 and points[-1] - points[-2] <= 8.0)
+                    slide_candidate = ending_boundary is not None
                     _, adjustment = trim_held_note(mapped, duration, allow_directional_slides=slide_candidate)
                 except ImportFailure as exc:
                     _unavailable("terminal_technique_outside_recording", mappedNoteEnd=mapped_end, audioDuration=duration, message=str(exc))

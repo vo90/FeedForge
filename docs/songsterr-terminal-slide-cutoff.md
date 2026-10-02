@@ -1,5 +1,8 @@
 # Directional slide-out cutoff (preservation contract 33)
 
+[Contract 56](songsterr-ending-suffix.md) also permits multi-bar cutoff candidates
+with the same acoustic and musical-fidelity requirements.
+
 ## Implementation and acceptance plan
 
 1. Extend final-bar candidate detection to overlapping targetless slide-outs.

@@ -88,10 +88,13 @@ def test_preparation_does_not_move_the_cutoff_evidence_windows(recording,tmp_pat
 
 
 @pytest.mark.parametrize('duration', [49.9, 40])
-def test_recording_missing_a_larger_section_is_not_a_final_cut(recording, duration):
+def test_larger_missing_ending_requires_acoustic_authorization(recording, duration):
     _, _, performance, audio, sync, _ = recording
+    candidate = align_from_songsterr(performance, {**audio, 'duration': duration}, sync, META, allow_ending_candidate=True)
+    assert candidate['status'] == 'needs_ending_check'
+    assert not allowed(candidate, duration)
     with pytest.raises(ImportFailure):
-        align_from_songsterr(performance, {**audio, 'duration': duration}, sync, META, allow_ending_candidate=True)
+        align_from_songsterr(performance, {**audio, 'duration': duration}, sync, META)
 
 
 @pytest.mark.parametrize('change', ['shift_left', 'shift_right', 'drift', 'wrong_pitch', 'silence', 'sparse'])
