@@ -6,7 +6,7 @@ from copy import deepcopy
 import hashlib
 from collections import defaultdict
 
-EVIDENCE={'harmonic_ties','tied_mutes','muted_tie_identities','staccato_bends','muted_slides','consumed_strums','trills','strums'}
+EVIDENCE={'harmonic_ties','tied_mutes','muted_tie_identities','staccato_bends','muted_slides','consumed_strums','scrape_entries','trills','strums'}
 
 
 def source_ids(item):

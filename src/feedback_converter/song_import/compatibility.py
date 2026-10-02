@@ -12,7 +12,7 @@ from .songsterr_tremolo import tremolo_mark
 from .songsterr_fields import validate_sustain_pedal
 from .model import ScoreImportError, integer, rational
 
-VERSION = 52
+VERSION = 53
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -274,7 +274,8 @@ def inspect_songsterr(document, *, track_indices=None):
                                         location=npath + '/fret', value=note['fret'], **nc)
                         if (note.get("dead") is True and note.get("fret") is None and not note.get("rest")
                                 and (any(note.get(key) for key in ("hp", "bend", "harmonic", "vibrato", "wideVibrato", "leftHandVibrato"))
-                                     or note.get("slide") not in (None, "shift", "upwards", "downwards"))):
+                                     or note.get("slide") not in (None, "shift", "upwards", "downwards")
+                                     and not (visual_scrape and note.get('slide') in ('above', 'below')))):
                             add_finding(report, feature="note.unpitched_mute", category="game_representation", impact="blocking",
                                         message="This unpitched mute also has a pitch gesture. That combination needs representation support; no fret or pitch was invented.",
                                         location=npath, value=note, **nc)

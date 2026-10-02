@@ -120,6 +120,7 @@ def _render(score: Score) -> dict:
     staccato_bends = []
     muted_slides = []
     consumed_strums = []
+    scrape_entries = []
     strums = []
     trill_evidence = []
     warnings = list(score.warnings)
@@ -274,8 +275,11 @@ def _render(score: Score) -> dict:
                     exc.source_location = {"location": note.source_id + '/trill', "measure": index + 1}
                     raise
                 articulation["staccato"] |= note.staccato
-                articulation["pitch_gesture"] |= bool(note.bends or note.slide or note.slide_in or note.whammy)
-                articulation["other_pitch_gesture"] |= bool(note.slide or note.slide_in or note.whammy)
+                retained_scrape_entry = (score.source.get('format') == 'songsterr' and output.get('mt')
+                                        and note.slide_in and (note.pick_scrape or note.tie and articulation.get('scrape')))
+                incoming_pitch = note.slide_in and not retained_scrape_entry
+                articulation["pitch_gesture"] |= bool(note.bends or note.slide or incoming_pitch or note.whammy)
+                articulation["other_pitch_gesture"] |= bool(note.slide or incoming_pitch or note.whammy)
                 articulation['bend_segments'].append((note, position, end, occurrence))
                 if (articulation["segments"] > 1 and articulation["staccato"] and articulation["pitch_gesture"]
                         and (score.source.get('format') != 'songsterr' or articulation['other_pitch_gesture'])):
@@ -342,7 +346,11 @@ def _render(score: Score) -> dict:
                         output["slide_out"] = marks[0]["direction"]
                     else:
                         output.pop("slide_out", None)
-                if note.slide_in:
+                if retained_scrape_entry:
+                    from .scrape_entries import record as record_scrape_entry
+                    scrape_entries.append(record_scrape_entry(note, track, occurrence, output['t'],
+                                          at(position), at(position + gesture_duration), scrape))
+                elif note.slide_in:
                     # Only the destination segment onset is authored. Keep it
                     # before ties merge; never infer a starting fret or length.
                     output.setdefault("slide_in_marks", []).append({
@@ -489,4 +497,5 @@ def _render(score: Score) -> dict:
             **({"trillEvidence": trill_evidence} if trill_evidence else {}),
             **({'mutedSlideEvidence': sorted(muted_slides, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if muted_slides else {}),
             **({'consumedStrumEvidence': sorted(consumed_strums, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if consumed_strums else {}),
+            **({'scrapeEntryEvidence': sorted(scrape_entries, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if scrape_entries else {}),
             "featureInventory": score.feature_inventory}
