@@ -68,6 +68,29 @@ With `--reduce-failures`, unexpected synthetic stage differences automatically
 receive bounded reduction and a final check against both implementations.
 Expected blocked policy cases are not treated as new musical mismatches.
 
+`--event-details` additionally captures native generated events, including events
+attached to hidden tied notes. It preserves pitch, timestamp, event multiplicity,
+priority and insertion order. Snapshots are copied at each observed stage so a
+later transformation cannot rewrite earlier evidence. With `--trace`, reports
+retain these details; without it, reports retain their version and signature.
+Older reports lacking that evidence cannot pass an event-detail comparison.
+Flat primitive event fields are qualified; new nested fields and nonfinite
+values fail explicitly. The collector has a 500,000-event limit per part.
+
+Eight synthetic tied-trill cases, under both authored and player-defaults
+profiles, qualify this observer against the complete captured script. These are
+development observations, not permission to copy synthesizer repairs or extra
+attacks into gameplay. Hidden notes can still emit sound: visible-note counts
+alone are not a complete playback comparison. Tied-trill gameplay interpretation
+remains unapproved. Generate the synthetic input with
+`tools/songsterr_compatibility/generated-event-cases.cjs`, and use
+`qualify-reference.cjs` with `eventDetails: true` in its input before accepting
+reference changes. Regenerate the reviewed synthetic fixture explicitly with
+`node tools/songsterr_compatibility/generated-event-reference.cjs capture.js new-fixture.json`.
+This also checks determinism, input immutability and observer noninterference.
+Run the offline observer tests with
+`node --test tests/js/songsterr-event-trace.test.cjs`.
+
 Reports record the asset/manifest digest, profile, Python/Node versions and
 implementation digest. Compact reports retain signatures of prepared beats,
 traversal, authored events, final reference events and each evaluator's output.

@@ -236,10 +236,10 @@ def compare_authored_events(actual, reference, source):
     return differences or ([] if reference.get("parts") else [{"code": "authored_events_not_tested"}])
 
 
-def reference_rows(rows, worker, node, trace=False):
+def reference_rows(rows, worker, node, trace=False, event_details=False):
     with tempfile.TemporaryDirectory(prefix="feedforge-reference-") as directory:
         root = Path(directory)
-        data = {"cases": rows, "trace": trace, "profile": "authored"}
+        data = {"cases": rows, "trace": trace, "profile": "authored", "eventDetails": event_details}
         (root / "input.json").write_text(json.dumps(data), encoding="utf-8")
         try:
             p = subprocess.run([node, "--max-old-space-size=512", str(Path(__file__).with_name("reference.cjs")),
@@ -260,12 +260,12 @@ def reference_rows(rows, worker, node, trace=False):
         return value
 
 
-def run(rows, *, worker=None, node="node", trace=False):
+def run(rows, *, worker=None, node="node", trace=False, event_details=False):
     results, node_versions = [], set()
     for row in rows:
         result = {"id": row["id"], "family": row.get("family", "corpus"), **evaluate(row["source"])}
         if worker:
-            captured = reference_rows([{**row, "sourceSha256": result["sourceSha256"]}], worker, node, trace)
+            captured = reference_rows([{**row, "sourceSha256": result["sourceSha256"]}], worker, node, trace, event_details)
             node_versions.add(captured.get("node", "unreported"))
             reference = captured["cases"][0]
             result["reference"] = reference

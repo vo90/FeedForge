@@ -22,6 +22,8 @@ def main():
     p.add_argument("--imports", type=Path)
     p.add_argument("--evidence", type=Path)
     p.add_argument("--trace", action="store_true")
+    p.add_argument("--event-details", action="store_true",
+                   help="Capture native generated events; diagnostic evidence, not game equivalence")
     p.add_argument("--before", type=Path)
     p.add_argument("--after", type=Path)
     p.add_argument("--reduce-failures", action="store_true",
@@ -40,7 +42,7 @@ def main():
         report = inventory()
     elif args.command == "matrix":
         generated = list(cases())
-        report = run(generated, worker=args.worker, node=args.node, trace=args.trace)
+        report = run(generated, worker=args.worker, node=args.node, trace=args.trace, event_details=args.event_details)
         if args.reduce_failures:
             if not args.worker: p.error("--reduce-failures requires --worker")
             by_id = {c["id"]: c for c in generated}
@@ -52,7 +54,8 @@ def main():
         results = []; missing = []; node_versions = set()
         for identity, source in load_manifest(args.manifest):
             if source is None: missing.append(identity); continue
-            checked = run([{"id": identity["id"], "source": source}], worker=args.worker, node=args.node, trace=args.trace)
+            checked = run([{"id": identity["id"], "source": source}], worker=args.worker, node=args.node, trace=args.trace,
+                          event_details=args.event_details)
             results.extend(checked["cases"])
             node_versions.update((checked.get("referenceIdentity") or {}).get("nodeVersions", []))
             print(f"Assessed {len(results)} sources", flush=True)
