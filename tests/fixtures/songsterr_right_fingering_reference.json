@@ -1,0 +1,37 @@
+{
+  "schemaSha256": "8b9267cd39f7f3b0511bade44de01cf3fe7c8025d5a7d534f8a6de448c940e17",
+  "referenceSha256": "4219f9dbf0952af83be36c8b590f10fea7a0f36d72bd1f92297a3d768f93f5ab",
+  "scope": "Recognized picking-hand annotations leave sampled chord/tie/repeat scheduling unchanged; no engraving or scoring claim.",
+  "cases": [
+    {
+      "value": null,
+      "performanceSha256": "b7d3b645d405a75afd4f405b996982c229eb0b00e3db60ae25f21c59b15a664c",
+      "events": 8
+    },
+    {
+      "value": "P",
+      "performanceSha256": "b7d3b645d405a75afd4f405b996982c229eb0b00e3db60ae25f21c59b15a664c",
+      "events": 8
+    },
+    {
+      "value": "I",
+      "performanceSha256": "b7d3b645d405a75afd4f405b996982c229eb0b00e3db60ae25f21c59b15a664c",
+      "events": 8
+    },
+    {
+      "value": "M",
+      "performanceSha256": "b7d3b645d405a75afd4f405b996982c229eb0b00e3db60ae25f21c59b15a664c",
+      "events": 8
+    },
+    {
+      "value": "A",
+      "performanceSha256": "b7d3b645d405a75afd4f405b996982c229eb0b00e3db60ae25f21c59b15a664c",
+      "events": 8
+    },
+    {
+      "value": "C",
+      "performanceSha256": "b7d3b645d405a75afd4f405b996982c229eb0b00e3db60ae25f21c59b15a664c",
+      "events": 8
+    }
+  ]
+}

@@ -610,9 +610,14 @@ def songsterr(document, *, track_indices=None):
                     beat_facts.append(fact)
                     for ni, note in enumerate(beat["notes"]):
                         nloc = loc + f"/notes/{ni}"
+                        # Independent validation. Picking-hand marks never map
+                        # to the fret-hand finger effect or alter an attack.
+                        right_fingering = note.get("rightFingering")
+                        if right_fingering is not None and (type(right_fingering) is not str or right_fingering not in {"P", "I", "M", "A", "C"}):
+                            raise ValueError(nloc + "/rightFingering: invalid picking-hand annotation")
                         if note.get("rest"):
                             continue
-                        _active_unknown(note, note_keys, {"id", "velocity", "finger", "leftFinger", "rightFinger"}, nloc, ignored)
+                        _active_unknown(note, note_keys, {"id", "velocity", "finger", "leftFinger", "rightFinger", "rightFingering"}, nloc, ignored)
                         fx = {}
                         fingering = note.get("leftFingering")
                         if fingering is not None:
