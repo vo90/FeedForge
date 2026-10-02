@@ -6,6 +6,7 @@ const crypto = require('node:crypto');
 const vm = require('node:vm');
 const path = require('node:path');
 const MANIFEST = require('./reference-manifest.json');
+const eventTrace = require('./event-trace.cjs');
 const digest = b => crypto.createHash('sha256').update(b).digest('hex');
 
 function prepare(worker) {
@@ -44,18 +45,23 @@ function snapshot(model) {
   if (rows.length > 500000) throw Error('Reference event limit');
   return rows;
 }
-function runPart(code, part, allMeasures, {trace = false, profile = 'authored', annotateIds = true} = {}) {
+function runPart(code, part, allMeasures, {trace = false, profile = 'authored', annotateIds = true, eventDetails = false} = {}) {
   if (!['authored', 'player-defaults'].includes(profile)) throw Error('Unknown reference profile');
   const input = annotateIds ? annotate(part) : structuredClone(part);
-  const warnings = [], stages = {};
+  const warnings = [], stages = {}, generatedStages = {}, scheduled = eventTrace.collector();
   const ctx = vm.createContext({input, allMeasures, stages, profile,
     console: {warn: (...x) => warnings.push(String(x)), error: (...x) => warnings.push(String(x)), log(){}},
-    capture: (name, model) => { if (trace || name === 'Ts') stages[name] = snapshot(model); }
+    captureScheduled: scheduled.record,
+    capture: (name, model) => {
+      if (trace || name === 'Ts') stages[name] = snapshot(model);
+      if (eventDetails) generatedStages[name] = eventTrace.generatedSnapshot(model);
+    }
   }, {codeGeneration: {strings: false, wasm: false}});
   vm.runInContext(code, ctx, {timeout: 5000});
+  if(eventDetails)vm.runInContext(eventTrace.observeEmitter,ctx,{timeout:1000});
   vm.runInContext('globalThis.tpqn=_r(allMeasures);globalThis.prepared=Pi(input,{useReprisesCheck:true,tpqn});', ctx, {timeout: 5000});
   // Wrap captured native stages for observation only; mc still determines the complete order.
-  vm.runInContext((trace ? MANIFEST.traceStages : ['Ts']).map(name =>
+  vm.runInContext([...new Set([...(trace ? MANIFEST.traceStages : ['Ts']),...(eventDetails?['Is','uo']:[])])].map(name =>
     '{const original=' + name + ';' + name + '=function(model){original(model);capture("' + name + '",model);};}').join('\n'), ctx, {timeout: 1000});
   vm.runInContext('globalThis.model=mc(input,xc(profile==="authored"?{synth:"fluidsynth",useRSE:false,autoFixJson:false,humanize:false,tpqn}:{tpqn}));', ctx, {timeout: 5000});
   const prepared = ctx.prepared;
@@ -65,6 +71,9 @@ function runPart(code, part, allMeasures, {trace = false, profile = 'authored', 
   return {status: 'executed', referenceSha256: MANIFEST.sha256, profile,
     tpqn: ctx.tpqn, beats, traversal: prepared.progression,
     authoredEvents: stages.Ts, events: snapshot(ctx.model), stages: trace ? stages : {}, warnings,
+    ...(eventDetails ? {generatedEventTrace:{version:1,stages:generatedStages,
+      final:eventTrace.generatedSnapshot(ctx.model),scheduled:scheduled.events,
+      scope:'Native synthesis event emission, including hidden-note events; not gameplay instructions or acoustic alignment.'}} : {}),
     scope: 'Source scheduling only; not acoustic alignment or FeedPak verification.'};
 }
 function main() {
@@ -79,7 +88,7 @@ function main() {
     for (let i=0;i<source.parts.length;i++) {
       const program=source.tracks[i]?.instrumentId ?? source.parts[i].instrumentId;
       if (!Number.isInteger(program) || program < 24 || program > 39 || source.tracks[i]?.isVocalTrack) continue;
-      try { parts.push({index:i, ...runPart(code, source.parts[i], allMeasures, {trace:!!input.trace, profile:input.profile})}); }
+      try { parts.push({index:i, ...runPart(code, source.parts[i], allMeasures, {trace:!!input.trace, profile:input.profile, eventDetails:!!input.eventDetails})}); }
       catch (e) { parts.push({index:i,status:'reference_error',error:String(e.message)}); }
     }
     output.cases.push({id:row.id, sourceSha256:row.sourceSha256, parts});

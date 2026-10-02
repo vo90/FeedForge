@@ -23,4 +23,4 @@ jobs:
       - run: python -m pip install '.[dev]'
       # Synthetic fixtures only. No songs, media, profiles or player downloads.
       - run: python -m pytest -q tests/test_songsterr_compatibility_lab.py tests/test_songsterr_dotted_whole_rest.py tests/test_song_import_verification.py
-      - run: node --test tests/js/songsterr-reference.test.cjs
+      - run: node --test tests/js/songsterr-reference.test.cjs tests/js/songsterr-event-trace.test.cjs

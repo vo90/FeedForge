@@ -1,7 +1,7 @@
 """Songsterr's pitched trill sequence, retained separately from written notation.
 
 The interval, short-note threshold and final remainder follow the public
-player's Fs/Ar stages. Use its per-part adaptive clock, not milliseconds.
+player's trill and duration-cap stages. Use its adaptive clock, not milliseconds.
 """
 from copy import deepcopy
 from fractions import Fraction as F
@@ -74,15 +74,15 @@ def read(raw, beat, tpqn):
 
 
 def check_segment(note, state):
-    trill = state.get('trill') or note.trill
+    trill = state.get('trill_validated') or state.get('trill') or note.trill
     if not trill:
         return
-    if note.tie and note.trill:
-        fail('a trill marking on a tied continuation needs separate interpretation.')
+    prior = [n for n, *_ in state.get('bend_segments', [])] if not state.get('trill_validated') else []
     allowed = {'pm', 'ghost', 'ac', 'vb', 'pkd', 'fg', '__hopo_origin', '__wide_vibrato'}
-    if (set(note.effects) - allowed or note.bends or note.slide or note.slide_in
-            or note.whammy or note.pick_scrape or note.attack_offset):
+    if any(set(n.effects) - allowed or n.bends or n.slide or n.slide_in
+           or n.whammy or n.pick_scrape or n.attack_offset for n in [*prior, note]):
         fail('this combination with another gesture needs additional verification.')
+    state['trill_validated'] = True
 
 
 def expand(rendered, states, links, track_id, at, evidence, authored_groups):
@@ -90,22 +90,28 @@ def expand(rendered, states, links, track_id, at, evidence, authored_groups):
     original_count = len(rendered)
     for output in list(rendered):
         state = states[id(output)]
-        spec = state.get('trill')
+        marked_ties = [n for n, *_ in state.get('bend_segments', []) if n.tie and n.trill]
+        spec = state.get('trill') or (marked_ties[0].trill if marked_ties else None)
         if not spec:
             continue
         start, end = state['start'], state['end']
         step = F(spec['ticks'], spec['tpqn'])
         duration = end - start
         count = 1 if duration < step * F(3, 2) else max(2, int((duration + F(1, spec['tpqn'])) / step))
+        retained_segments = None
+        if marked_ties:
+            from .tied_trills import sequence as tied_sequence
+            points, retained_segments = tied_sequence(state, output['f'], fail)
+            count = len(points)
+        else:
+            points = [(start + i * step, end if i == count - 1 else start + (i+1)*step,
+                       output['f'] if i % 2 == 0 else spec['auxiliaryFret']) for i in range(count)] if count <= 500000 else []
         if len(rendered) + count - 1 > 500000:
             fail('expansion exceeds the performed-note limit.')
         original, sequence = deepcopy(output), []
-        for ordinal in range(count):
-            left = start + ordinal * step
-            right = end if ordinal == count - 1 else start + (ordinal + 1) * step
+        for ordinal, (left, right, fret) in enumerate(points):
             if left >= right:
                 fail('the source clock produced an empty final event.')
-            fret = original['f'] if ordinal % 2 == 0 else spec['auxiliaryFret']
             if ordinal == 0:
                 row = output
             else:
@@ -118,8 +124,8 @@ def expand(rendered, states, links, track_id, at, evidence, authored_groups):
                 row['ln'] = True
             sequence.append(row)
         tails[id(output)] = sequence[-1]['f']
-        records.append((state, spec, original, sequence, step))
-    sequences = {id(rows[0]): rows for _, _, _, rows, _ in records}
+        records.append((state, spec, original, sequence, points, retained_segments))
+    sequences = {id(rows[0]): rows for _, _, _, rows, _, _ in records}
     for key, group in list(authored_groups.items()):
         if not any(id(row) in sequences for row in group):
             continue
@@ -135,14 +141,15 @@ def expand(rendered, states, links, track_id, at, evidence, authored_groups):
             fail('the authored outgoing legato reaches the same final trill pitch; its reattack is ambiguous.')
         following.pop('ho', None); following.pop('po', None)
         following['ho' if following['f'] > previous_fret else 'po'] = True
-    for state, spec, original, sequence, step in records:
+    for state, spec, original, sequence, points, retained_segments in records:
         identity = f"{original['source_ids'][0]}@{state['occurrence']}:trill"
         evidence.append({'id': identity, 'trackId': track_id, 'occurrence': state['occurrence'],
             'sourceIds': original['source_ids'], 'string': original['s'], 'mainFret': original['f'],
             **spec, 'startQuarter': str(state['start']), 'endQuarter': str(state['end']),
+            **({'mode': 'native-tied-segments-v1', 'segments': retained_segments} if retained_segments is not None else {}),
             'events': [{'id': f'{identity}:{i}', 'ordinal': i, 'fret': row['f'],
-                        'startQuarter': str(state['start'] + i * step),
-                        'endQuarter': str(state['end'] if i == len(sequence)-1 else state['start'] + (i+1)*step),
+                        'startQuarter': str(points[i][0]),
+                        'endQuarter': str(points[i][1]),
                         'articulation': 'ho' if row.get('ho') else 'po' if row.get('po') else 'initial',
                         'linked': bool(row.get('ln'))} for i, row in enumerate(sequence)]})
     return len(rendered) - original_count
@@ -150,6 +157,7 @@ def expand(rendered, states, links, track_id, at, evidence, authored_groups):
 
 def archive_evidence(performance, source_path):
     import hashlib
-    return {'version': 1, 'policy': POLICY, 'timeDomain': 'quarter_notes',
+    tied = any(t.get('mode') == 'native-tied-segments-v1' for t in performance['trillEvidence'])
+    return {'version': 2 if tied else 1, 'policy': 'songsterr-trill-hopo-v2' if tied else POLICY, 'timeDomain': 'quarter_notes',
             'sourceSha256': hashlib.sha256(source_path.read_bytes()).hexdigest(),
             'trills': performance['trillEvidence']}

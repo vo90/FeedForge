@@ -196,6 +196,28 @@ def test_report_comparison_detects_change_with_unchanged_event_count(stage):
     assert result['changes'][0]['stage'] == 'reference'
 
 
+@pytest.mark.parametrize('change', ['pitch', 'time', 'priority', 'missing', 'duplicate', 'hidden', 'old_report'])
+def test_generated_event_details_cannot_disappear_into_unchanged_note_counts(change):
+    from tools.songsterr_compatibility.reports import compact_reference, compare_reports
+    before = _comparison_report()
+    raw = {'id': 'basic/attack', 'parts': [{'index': 0, 'status': 'executed',
+        'beats': [], 'traversal': [], 'authoredEvents': [], 'events': [],
+        'generatedEventTrace': {'version': 1, 'final': [{'hidden': True}],
+            'scheduled': [{'ordinal': 0, 'priority': 2, 'event': {'pitch': 79, 'time': 992}}]}}]}
+    before['cases'][0]['reference'] = compact_reference(raw)
+    after = deepcopy(before)
+    changed = raw['parts'][0]['generatedEventTrace']
+    if change in ('pitch', 'time'): changed['scheduled'][0]['event'][change] += 1
+    elif change == 'priority': changed['scheduled'][0]['priority'] = 1
+    elif change == 'missing': changed['scheduled'] = []
+    elif change == 'duplicate': changed['scheduled'].append(deepcopy(changed['scheduled'][0]))
+    elif change == 'hidden': changed['final'][0]['hidden'] = False
+    else: raw['parts'][0].pop('generatedEventTrace')
+    after['cases'][0]['reference'] = compact_reference(raw)
+    result = compare_reports(before, after)
+    assert result['status'] == ('incomplete' if change == 'old_report' else 'changed')
+
+
 def test_reducer_automatically_rechecks_both_sides_and_preserves_original():
     from tools.songsterr_compatibility.reduce import reduce_case
     from tools.songsterr_compatibility.cases import envelope, bar, note

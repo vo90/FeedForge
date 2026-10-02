@@ -32,7 +32,8 @@ def reference_identity(manifest):
     data = json.loads(manifest.read_text())
     return {"assetSha256": data["sha256"],
             "manifestSha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
-            "profile": "authored", "qualification": data.get("qualification", {})}
+            "profile": "authored", "qualification": data.get("qualification", {}),
+            "generatedEventQualification": data.get("generatedEventQualification", {})}
 
 
 def compact_reference(reference):
@@ -42,8 +43,11 @@ def compact_reference(reference):
          "tpqn": p.get("tpqn"), "profile": p.get("profile"),
          "events": len(p.get("events", [])),
          "hiddenEvents": sum(n["hidden"] for n in p.get("events", [])),
+         **({"generatedEventTraceVersion": p["generatedEventTrace"]["version"],
+             "scheduledEvents": len(p["generatedEventTrace"]["scheduled"])}
+            if "generatedEventTrace" in p else {}),
          "stageSha256": {k: fingerprint(p[k]) for k in
-                         ("beats", "traversal", "authoredEvents", "events") if k in p}}
+                         ("beats", "traversal", "authoredEvents", "events", "generatedEventTrace") if k in p}}
         for p in reference["parts"]]}
 
 
@@ -74,8 +78,13 @@ def compare_reports(before, after):
         a, b = left[key], right[key]
         if not a.get("sourceSha256") or a.get("sourceSha256") != b.get("sourceSha256"):
             issues.append({"id": key, "code": "different_source"}); continue
+        generated_required = any("generatedEventTrace" in p.get("stageSha256", {})
+                                 for row in (a, b) for p in row.get("reference", {}).get("parts", []))
         for label, row in (("before", a), ("after", b)):
             parts = row.get("reference", {}).get("parts", [])
+            if generated_required and any(p.get("generatedEventTraceVersion") != 1 or
+                    "generatedEventTrace" not in p.get("stageSha256", {}) for p in parts):
+                issues.append({"id": key, "code": "incomplete_generated_event_evidence", "report": label})
             if (row.get("preparationStatus") == "not_tested" or not parts or
                     any(p.get("status") != "executed" or
                         not {"beats", "traversal", "authoredEvents", "events"}.issubset(p.get("stageSha256", {}))

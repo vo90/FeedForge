@@ -2553,6 +2553,15 @@
     },
     "player-defaults": "captured xc defaults"
   },
+  "generatedEventQualification": {
+    "version": 1,
+    "status": "qualified_captured_script",
+    "syntheticCases": 8,
+    "profiles": ["authored", "player-defaults"],
+    "observedStages": ["Ts", "Is", "uo"],
+    "scope": ["hidden tied-trill event capture", "native emission values, priority and insertion order"],
+    "excluded": ["gameplay equivalence", "all pitch-effect semantics", "acoustic alignment"]
+  },
   "scope": "Captured scheduling reference; original recording alignment is separate.",
   "assetUrl": "https://static3.songsterr.com/production-main/static3/latest/FluidsynthAudioPlayerWorkerEntry-C-9Kd3shWgzk98Al.js",
   "qualificationToolchain": {

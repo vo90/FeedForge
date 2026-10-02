@@ -52,19 +52,20 @@ def read(note, beat, measures, location):
 
 def segment(atom, event):
     from .verify_source import unsupported
-    if atom.trill or event.get('trill'):
-        if atom.tie and atom.trill:
-            unsupported(atom.location + '/trill', 'A tied continuation carries another trill.')
-        if (set(atom.effects) - {'pm','ghost','ac','vb','pkd','fg'} or atom.bends or atom.slide
-                or atom.slide_in or atom.whammy or atom.pick_scrape or atom.attack_offset):
+    if atom.trill or event.get('trill') or event.get('trill_checked'):
+        prior = [a for a, *_ in event.get('bend_atoms', [])] if not event.get('trill_checked') else []
+        if any(set(a.effects) - {'pm','ghost','ac','vb','pkd','fg'} or a.bends or a.slide
+               or a.slide_in or a.whammy or a.pick_scrape or a.attack_offset for a in [*prior, atom]):
             unsupported(atom.location + '/trill', 'Combined trill gesture is not independently verified.')
+        event['trill_checked'] = True
 
 
 def expand(events, links, part, notation, retained):
     from .verify_source import unsupported
     expanded, last_pitch, groups = [], {}, []
     for event in events:
-        data = event.get('trill')
+        marked = [a for a, *_ in event.get('bend_atoms', []) if a.tie and a.trill]
+        data = event.get('trill') or (marked[0].trill if marked else None)
         if not data:
             expanded.append(event)
             continue
@@ -76,13 +77,21 @@ def expand(events, links, part, notation, retained):
         step = F(data['ticks'], data['tpqn'])
         intervals = ((right-left)*data['tpqn']+1) // data['ticks']
         length = max(2, intervals) if 2*(right-left) >= 3*step else 1
+        segments = None
+        if marked:
+            from .verify_tied_trills import expected_sequence
+            positions, segments = expected_sequence(event)
+            length = len(positions)
+        else:
+            positions = [(left+i*step, right if i+1 == length else left+(i+1)*step,
+                          data['auxiliaryFret'] if i%2 else event['f']) for i in range(length)] if length<=500000 else []
         if len(expanded) + length > 500000:
             unsupported(event['locations'][0], 'Expanded source note limit exceeded.')
         generated = []
-        for index in range(length):
+        for index, (begin, stop, fret) in enumerate(positions):
             item = deepcopy(event)
-            item.update(start=left+index*step, end=right if index+1 == length else left+(index+1)*step, staccato=False)
-            item['f'] = data['auxiliaryFret'] if index % 2 else event['f']
+            item.update(start=begin, end=stop, staccato=False)
+            item['f'] = fret
             if index:
                 item['effects'] = {k:v for k,v in event['effects'].items() if k in {'pm','ghost','vb'}}
                 item['effects']['ho' if item['f'] > generated[-1]['f'] else 'po'] = True
@@ -93,7 +102,7 @@ def expand(events, links, part, notation, retained):
             generated.append(item)
         last_pitch[id(event)] = generated[-1]['f']
         expanded.extend(generated)
-        groups.append((event, generated, left, right, data))
+        groups.append((event, generated, left, right, data, segments))
     firsts = {id(event): rows[0] for event, rows, *_ in groups}
     for previous, following in links:
         if id(previous) not in last_pitch: continue
@@ -105,7 +114,7 @@ def expand(events, links, part, notation, retained):
         written = notation[(note['occurrence']-1, note['locations'][0])]
         for fx in ('ho','po'): written.pop(fx, None)
         written.update({fx:True for fx in ('ho','po') if note['effects'].get(fx)})
-    for original, rows, left, right, data in groups:
+    for original, rows, left, right, data, segments in groups:
         ids = []
         for path in original['locations']:
             bits = path.split('/')
@@ -114,6 +123,7 @@ def expand(events, links, part, notation, retained):
         retained.append({'id': identity, 'trackId': part.id, 'occurrence': original['occurrence'],
             'sourceIds': ids, 'string': original['s'], 'mainFret': original['f'], **data,
             'startQuarter': str(left), 'endQuarter': str(right),
+            **({'mode': 'native-tied-segments-v1', 'segments': segments} if segments is not None else {}),
             'events': [{'id':f'{identity}:{i}', 'ordinal':i, 'fret':r['f'],
                         'startQuarter':str(r['start']), 'endQuarter':str(r['end']),
                         'articulation':'ho' if r['effects'].get('ho') else 'po' if r['effects'].get('po') else 'initial',
