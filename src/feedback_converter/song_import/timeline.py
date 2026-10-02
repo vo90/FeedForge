@@ -216,8 +216,6 @@ def _render(score: Score) -> dict:
                     articulation["segments"] += 1
                     # A continuation is not an attack. Its finger instruction
                     # must not overwrite the finger displayed at the onset.
-                    if songsterr_tie and effects.get("tr") and not output.get("tr"):
-                        raise ScoreImportError("Tremolo picking starts inside a tied sustain; a timed instruction is needed, not a tremolo mark on the earlier attack.")
                     output.update({k: v for k, v in effects.items() if k not in {"pkd", "fg"} and not (late_mute and k == 'mt') and (not songsterr_tie or k not in FIELDS)})
                     if note.source_id:
                         output.setdefault("source_ids", []).append(note.source_id)

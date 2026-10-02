@@ -36,8 +36,8 @@ KNOWN["note"].add("leftFingering")
 KNOWN["note"].add("tremolo")
 KNOWN["beat"].add("hasRasgueado")
 LIMITATIONS = {
-    ("note", "tremolo"): "Tremolo picking uses the game's existing tremolo instruction. The exact subdivision remains in the source; individual repeated picks are not expanded or scored separately, and the written subdivision is not engraved.",
-    ("beat", "tremolo"): "Tremolo picking uses the game's existing tremolo instruction. The exact subdivision remains in the source; individual repeated picks are not expanded or scored separately, and the written subdivision is not engraved.",
+    ("note", "tremolo"): "Tremolo picking uses the game's existing tremolo instruction. Exact subdivision and within-tie timing remain in the source. A tied sustain has one marker for the whole sustain; individual repeated picks are not expanded or scored separately, and the written subdivision is not engraved.",
+    ("beat", "tremolo"): "Tremolo picking uses the game's existing tremolo instruction. Exact subdivision and within-tie timing remain in the source. A tied sustain has one marker for the whole sustain; individual repeated picks are not expanded or scored separately, and the written subdivision is not engraved.",
     ("beat", "hasRasgueado"): "The rasgueado strumming instruction is retained in the original source. Written notes, ties, durations and explicit strums are preserved and scored normally; no rasgueado display, additional strokes or special scoring are added.",
     ("beat", "tremoloBar"): "Whammy-bar pitch curves are preserved. Bar expression is optional; an updated game is required for the display and scoring policy.",
     ("beat", "vibratoWithTremoloBar"): "Slight/wide bar vibrato is preserved. These notes are visual only in the updated game because the source does not specify an exact pitch curve; they do not reduce accuracy or streaks.",

@@ -53,7 +53,7 @@ FAMILIES = {
 }
 BEHAVIOR = {
     "timing.basic": "Preserve exact authored fractions until mapping the performed clock.",
-    "technique.tremolo_picking": "Map active beat/per-string tremolo to tr; retain exact subdivision in source and disclose the display/rate limitation. No expanded scored attacks or backdated tied instructions.",
+    "technique.tremolo_picking": "Map active beat/per-string tremolo to tr; retain exact subdivision and within-tie timing in source and disclose the whole-sustain display/rate limitation. No expanded scored attacks.",
     "timing.strum_grace": "Apply explicit stroke timing after grace allocation; a consumed attack remains a pending omission decision.",
     "timing.grace": "Allocate source grace groups with bar and opening context; do not invent minimum note lengths.",
     "timing.swing": "Apply the authored rhythmic feel to eligible groups while retaining written rhythm.",

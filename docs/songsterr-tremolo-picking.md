@@ -31,9 +31,12 @@ and synthesizes repetitions; we do not copy that inconsistent behavior into
 an inactive flag. Its automatic chord attack staggering is also not imported.
 Source synthesis rates are not new gameplay rules.
 
-A tied continuation must not turn an earlier plain attack into tremolo. Such
-late onset remains blocked until a timed representation exists. An attack
-already marked tremolo can continue through a tie without another attack.
+Ties retain the established beat-level mapping: a merged sustain has one `tr`
+instruction if an authored segment carries tremolo. Its onset/cessation within
+the tie cannot be displayed separately, and this is disclosed in the located
+compatibility finding. The written boundaries remain in the embedded source;
+no attack or duration is changed. A proposed stricter guard exposed this
+existing limitation in Scar Tissue and was removed before integration.
 
 The converter and verifier independently validate/map the fields. Regression
 tests cover chord membership, repeats, ties, malformed values, independent

@@ -72,17 +72,15 @@ def test_malformed_subdivisions_fail_with_location(tmp_path, scope, bad):
 
 
 @pytest.mark.parametrize('first,last', [(True, True), (True, False), (False, True)])
-def test_ties_do_not_invent_or_backdate_a_tremolo_attack(tmp_path, first, last):
+def test_ties_keep_existing_whole_sustain_instruction_with_disclosed_limitation(tmp_path, first, last):
     doc = raw_score([measure(beat(duration=(1, 2), tremolo=[1,16] if first else None),
                              beat(duration=(1, 2), tie=True, tremolo=[1,16] if last else None))])
-    if not first:
-        with pytest.raises(ScoreImportError, match='Tremolo picking starts'):
-            import_json(tmp_path, doc)
-        with pytest.raises(UnverifiedFeature, match='later tremolo'):
-            expected(songsterr(doc), {'offset':0, 'scale':1})
-    else:
-        notes = flat(import_json(tmp_path, doc)['tracks'][0])
-        assert len(notes) == 1 and notes[0]['tr'] is True and notes[0]['sus'] == 2
+    p = import_json(tmp_path, doc)
+    notes = flat(p['tracks'][0])
+    assert len(notes) == 1 and notes[0]['tr'] is True and notes[0]['sus'] == 2
+    independent = expected(songsterr(doc), {'offset':0, 'scale':1})['parts'][0]['notes']
+    assert len(independent) == 1 and independent[0]['note']['tr'] is True
+    assert any('one marker for the whole sustain' in f['message'] for f in p['compatibilityReport']['findings'])
 
 
 @pytest.mark.parametrize('fault', [None, 'remove_mark', 'extra_mark', 'move_attack', 'change_pitch', 'remove_warning', 'change_rate'])
