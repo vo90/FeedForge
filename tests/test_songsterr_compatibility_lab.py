@@ -25,17 +25,33 @@ def test_preparation_against_pinned_external_reference(case):
     ref = EXPECTED["cases"][case["id"]]
     assert ref["sourceSha256"] == canonical_hash(source)
     result = evaluate(source)
-    assert result["converter"]["status"] == ref["converterDisposition"]
-    assert result["independent"]["status"] == ref["converterDisposition"]
+    # The six historically blocked consumed attacks now use the approved
+    # omission policy. Keep the captured worker/reference fixture unchanged.
+    disposition = 'rendered' if ref['decision'] == 'strum_grace_consumed_attack' else ref['converterDisposition']
+    assert result["converter"]["status"] == disposition
+    assert result["independent"]["status"] == disposition
     assert compare_preparation(result, ref["reference"]) == []
     assert compare_authored_events(result, ref["reference"], source) == []
     assert source == before
 
 
-def test_known_omission_decision_is_visible_not_counted_as_supported():
+def test_approved_omissions_exactly_match_hidden_native_attacks():
     blocked = [r for r in EXPECTED["cases"].values() if r["converterDisposition"] == "blocked"]
     assert len(blocked) == 6
     assert all(r["decision"] == "strum_grace_consumed_attack" for r in blocked)
+    from feedback_converter.song_import.songsterr import parse
+    from feedback_converter.song_import.timeline import render
+    for case in CASES:
+        ref = EXPECTED['cases'][case['id']]
+        if ref['decision'] != 'strum_grace_consumed_attack': continue
+        result = render(parse(case['source']))
+        playback = json.loads((FIXTURE.parent / 'songsterr_consumed_strum_playback.json').read_text())
+        native = next(r for r in playback['cases'] if r['parameters'] == case['parameters'])
+        for profile in native['reference'].values():
+            assert profile['status'] == 'executed'
+            omitted = {5 - r['string'] for r in result['consumedStrumEvidence']}
+            assert omitted == {e['string'] for e in profile['hidden']}
+            assert sum(len(t['notes']) for t in result['tracks']) == profile['ordinaryAttacks']
 
 
 @pytest.mark.parametrize("mutation", ["timing", "missing", "duplicate", "traversal", "unavailable"])

@@ -184,7 +184,7 @@ def _expected(source, alignment):
     order = visits(source)
     clock, recording = Clock(source, order), RecordingMap(alignment)
     result = {"parts": [], "beats": [], "sections": [], "time_signatures": [], "tempos": [], "order": order,
-              'harmonic_ties': [], 'tied_mutes': [], 'muted_tie_identities': [], 'staccato_bends': [], 'muted_slides': [], 'trills': [], 'strums': [],
+              'harmonic_ties': [], 'tied_mutes': [], 'muted_tie_identities': [], 'staccato_bends': [], 'muted_slides': [], 'trills': [], 'strums': [], 'consumed_strums': [],
               "raw_notes": sum(len(bar) for p in source.parts for bar in p.bars), "tie_segments": 0}
     measure_facts = []
     inherited_tempos, inherited = [], F(120)
@@ -398,6 +398,7 @@ def _expected(source, alignment):
                         pending_hopos.pop(key, None)
                         hopo_links.append((previous, event))
                     if key in muted_pending:
+                        event['linked'] = True
                         if atom.fret == 127 or atom.effects.get('mt'):
                             unsupported(atom.location, 'A muted shift lacks a pitched destination.')
                         path = atom.location.split('/')
@@ -408,6 +409,7 @@ def _expected(source, alignment):
                         if atom.fret == 127:
                             unsupported(atom.location, "A pitched slide has an unpitched destination.")
                         target, slide = pending_slides.pop(key)
+                        event['linked'] = target['linked'] = True
                         target["effects"]["sl"] = atom.fret
                         if slide == "legato":
                             target["effects"]["ln"] = True
@@ -501,6 +503,12 @@ def _expected(source, alignment):
                 notation_notes[(occurrence, atom.location)] = written_note
         if pending_slides or pending_hopos or muted_pending:
             unsupported(f"tracks/{part.id}", "Source linked technique has no destination.")
+        from .verify_consumed_strums import reconstruct as consumed_expectations
+        omissions = consumed_expectations(source, part, notes, hopo_links, clock)
+        result['consumed_strums'].extend(omissions)
+        for row in omissions:
+            group = strum_groups[(row['occurrence'] - 1, row['location'].rsplit('/notes/', 1)[0])]
+            group['notes'] = [n for n in group['notes'] if n['s'] != row['string']]
         from .verify_trills import expand as trill_expectations
         for group in strum_groups.values():
             if len(group['notes']) >= 2 and len({n['s'] for n in group['notes']}) == len(group['notes']):
@@ -601,13 +609,15 @@ def _expected(source, alignment):
                                        "quarter": beat["written_q"], "length": beat["length"], "rest": beat["rest"],
                                        "notation": beat["notation"], "notes": [notation_notes[(occurrence, n.location)] for n in beat["notes"]]})
         rendered.sort(key=lambda item: (item["note"]["t"], item["note"]["s"]))
-        result["parts"].append({"source": part, "notes": rendered, "notation_beats": notation_beats, "notation_measures": measure_facts})
+        result["parts"].append({"source": part, "notes": rendered, "notation_beats": notation_beats, "notation_measures": measure_facts,
+                                **({'consumed_strum_omissions': True} if omissions else {})})
     result["score_duration"] = float(clock.at(clock.quarters))
     result['harmonic_ties'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['tied_mutes'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['muted_tie_identities'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['staccato_bends'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['muted_slides'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
+    result['consumed_strums'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['strums'].sort(key=lambda r:(r['trackId'],r['occurrence'],r['time'],r['sourceId']))
     result["mapped_end"] = recording.at(clock.at(clock.quarters))
     return result

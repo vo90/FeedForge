@@ -1,0 +1,235 @@
+{
+  "version": 1,
+  "referenceSha256": "4219f9dbf0952af83be36c8b590f10fea7a0f36d72bd1f92297a3d768f93f5ab",
+  "scope": "Synthetic research cases only: explicit strum followed by grace group; no ties, harmonics, audio or full package verification. Reference profile differences remain explicit.",
+  "cases": [
+    {
+      "parameters": {
+        "direction": "up",
+        "shift": 100,
+        "grace": "beforeBeat",
+        "strings": 4,
+        "denominator": 16,
+        "graceCount": 1
+      },
+      "reference": {
+        "explicitSource": {
+          "status": "executed",
+          "ordinaryAttacks": 5,
+          "hidden": [
+            {
+              "string": 3,
+              "on": 18583,
+              "off": 18431,
+              "durationTicks": -152
+            }
+          ],
+          "tpqn": 16384
+        },
+        "defaultPlayer": {
+          "status": "executed",
+          "ordinaryAttacks": 5,
+          "hidden": [
+            {
+              "string": 3,
+              "on": 18583,
+              "off": 18431,
+              "durationTicks": -152
+            }
+          ],
+          "tpqn": 16384
+        }
+      }
+    },
+    {
+      "parameters": {
+        "direction": "up",
+        "shift": 100,
+        "grace": "beforeBeat",
+        "strings": 4,
+        "denominator": 16,
+        "graceCount": 2
+      },
+      "reference": {
+        "explicitSource": {
+          "status": "executed",
+          "ordinaryAttacks": 6,
+          "hidden": [
+            {
+              "string": 3,
+              "on": 18583,
+              "off": 18431,
+              "durationTicks": -152
+            }
+          ],
+          "tpqn": 16384
+        },
+        "defaultPlayer": {
+          "status": "executed",
+          "ordinaryAttacks": 6,
+          "hidden": [
+            {
+              "string": 3,
+              "on": 18583,
+              "off": 18431,
+              "durationTicks": -152
+            }
+          ],
+          "tpqn": 16384
+        }
+      }
+    },
+    {
+      "parameters": {
+        "direction": "up",
+        "shift": 100,
+        "grace": "beforeBeat",
+        "strings": 4,
+        "denominator": 16,
+        "graceCount": 3
+      },
+      "reference": {
+        "explicitSource": {
+          "status": "executed",
+          "ordinaryAttacks": 7,
+          "hidden": [
+            {
+              "string": 3,
+              "on": 18583,
+              "off": 18431,
+              "durationTicks": -152
+            }
+          ],
+          "tpqn": 16384
+        },
+        "defaultPlayer": {
+          "status": "executed",
+          "ordinaryAttacks": 7,
+          "hidden": [
+            {
+              "string": 3,
+              "on": 18583,
+              "off": 18431,
+              "durationTicks": -152
+            }
+          ],
+          "tpqn": 16384
+        }
+      }
+    },
+    {
+      "parameters": {
+        "direction": "down",
+        "shift": 100,
+        "grace": "beforeBeat",
+        "strings": 4,
+        "denominator": 16,
+        "graceCount": 1
+      },
+      "reference": {
+        "explicitSource": {
+          "status": "executed",
+          "ordinaryAttacks": 5,
+          "hidden": [
+            {
+              "string": 0,
+              "on": 18583,
+              "off": 18431,
+              "durationTicks": -152
+            }
+          ],
+          "tpqn": 16384
+        },
+        "defaultPlayer": {
+          "status": "executed",
+          "ordinaryAttacks": 5,
+          "hidden": [
+            {
+              "string": 0,
+              "on": 18583,
+              "off": 18431,
+              "durationTicks": -152
+            }
+          ],
+          "tpqn": 16384
+        }
+      }
+    },
+    {
+      "parameters": {
+        "direction": "down",
+        "shift": 100,
+        "grace": "beforeBeat",
+        "strings": 4,
+        "denominator": 16,
+        "graceCount": 2
+      },
+      "reference": {
+        "explicitSource": {
+          "status": "executed",
+          "ordinaryAttacks": 6,
+          "hidden": [
+            {
+              "string": 0,
+              "on": 18583,
+              "off": 18431,
+              "durationTicks": -152
+            }
+          ],
+          "tpqn": 16384
+        },
+        "defaultPlayer": {
+          "status": "executed",
+          "ordinaryAttacks": 6,
+          "hidden": [
+            {
+              "string": 0,
+              "on": 18583,
+              "off": 18431,
+              "durationTicks": -152
+            }
+          ],
+          "tpqn": 16384
+        }
+      }
+    },
+    {
+      "parameters": {
+        "direction": "down",
+        "shift": 100,
+        "grace": "beforeBeat",
+        "strings": 4,
+        "denominator": 16,
+        "graceCount": 3
+      },
+      "reference": {
+        "explicitSource": {
+          "status": "executed",
+          "ordinaryAttacks": 7,
+          "hidden": [
+            {
+              "string": 0,
+              "on": 18583,
+              "off": 18431,
+              "durationTicks": -152
+            }
+          ],
+          "tpqn": 16384
+        },
+        "defaultPlayer": {
+          "status": "executed",
+          "ordinaryAttacks": 7,
+          "hidden": [
+            {
+              "string": 0,
+              "on": 18583,
+              "off": 18431,
+              "durationTicks": -152
+            }
+          ],
+          "tpqn": 16384
+        }
+      }
+    }
+  ]
+}
