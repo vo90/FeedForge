@@ -103,7 +103,9 @@ def test_other_expressions_still_require_the_existing_guard(tmp_path,extra):
     doc=source();bs=doc['parts'][0]['measures'][0]['voices'][0]['beats']
     if extra=='incoming-on-bend':bs[0]['notes'][0]['slide']='above'
     elif extra=='targeted-slide':bs[1]['notes'][0]['slide']='shift'
-    elif extra=='competing-bend':bs[1]['notes'][0]['bend']=deepcopy(FALL)
+    elif extra=='competing-bend':
+        bs[1]['duration']=[1,4];bs[1]['notes'][0]['bend']=deepcopy(FALL)
+        bs.insert(1,beat(fret=14,string=2,duration=(1,8),tie=True))
     elif extra=='whammy':bs[0]['tremoloBar']=deepcopy(RISE)
     elif extra=='beat-vibrato':bs[0]['wideVibrato']=True
     else:

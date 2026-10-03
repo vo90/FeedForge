@@ -146,11 +146,12 @@ def reconstruct(event, part, clock, sound_end, terminal_context=()):
             overlap_reason = 'overlap-with-other-expression' if compound else 'overlapping-bend-controls'
     tail, tail_start, tail_end, _ = entries[-1]
     terminal = None
-    if (not overlap and len(entries) > 1 and tail.tie and not tail.bends
+    if (not overlap and len(entries) > 1 and tail.tie
             and tail.slide in {'up', 'down'} and tail_end == sound_end
             and origin < tail_start < sound_end and 0 < tail.fret < 127):
         extras = any(a.slide_in or a.whammy or a.attack_offset or a.hopo_origin or a.hopo_destination
                      or a.trill or a.pick_scrape or a.beat_vibrato or (i < len(entries)-1 and a.slide)
+                     or (tail.bends and a.effects.get('vb') and a.finger_vibrato not in ('slight', 'wide'))
                      or any(a.effects.get(k) for k in ( 'hm', 'hp', 'hn', 'harmonic_target',
                                                        'mt', 'lr', 'pm', 'tr'))
                      for i,(a,*_) in enumerate(entries))
@@ -166,6 +167,7 @@ def reconstruct(event, part, clock, sound_end, terminal_context=()):
             terminal = {'sourceId': identity(tail), 'direction': tail.slide,
                         'start': float(clock.at(tail_start)), 'end': float(clock.at(sound_end)),
                         'value': float(controls[-1][1]),
+                        **({'bendTiming': 'authored-segment'} if tail.bends else {}),
                         **({'bendPhase': 'changing', 'pitchPolicy': 'independent-source-bend'} if not settled else {}),
                         **({'attackTiming': 'authored-chord'} if not settled and 'simultaneous-attack' in terminal_context else {}),
                         **({'endTiming': 'authored-tie'} if not settled and 'following-slide-in' in terminal_context else {})}

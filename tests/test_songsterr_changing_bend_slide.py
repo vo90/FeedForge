@@ -74,6 +74,8 @@ def test_repeated_tempo_changes_do_not_change_the_musical_bend_shape():
 def test_competing_bend_retains_existing_curve_and_warning(tmp_path):
     doc=source();bs=doc['parts'][0]['measures'][0]['voices'][0]['beats']
     bs[-1]['notes'][0]['bend']=deepcopy(FALL)
+    bs[-1]['duration']=[1,2]
+    bs.insert(1,beat(fret=bs[0]['notes'][0]['fret'],string=bs[0]['notes'][0]['string'],duration=(1,4),tie=True))
     p=checked(doc);e=p['fingerBendTimingEvidence'][0]
     assert e['status']=='deferred' and e['rule']=='retained-segment-timing'
     loaded=import_json(tmp_path,doc)
