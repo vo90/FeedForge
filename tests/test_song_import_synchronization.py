@@ -20,6 +20,22 @@ METADATA = {"songId": "12", "revisionId": "34", "approval": "approved"}
 VIDEO = "abcdefghijk"
 
 
+@pytest.mark.parametrize('basis,mode,pending', [('unreviewed', 'no', False), ('awaiting_moderation', 'pre', True), ('awaiting_review', 'post', True)])
+def test_pending_selection_uses_exact_revision_map_with_existing_timing_checks(basis, mode, pending):
+    fixture = json.loads((Path(__file__).parent / 'fixtures/songsterr-revision-selection.json').read_text())
+    metadata = fixture['base']
+    metadata.update(songId='12', revisionId='34')
+    metadata['revisionEvidence'].update(songId='12', revisionId='34', defaultRevisionId='34', basis=basis, moderationType=mode, isOnModeration=pending)
+    performance = render(score_fixture())
+    alignment = align_from_songsterr(performance, audio_fixture(), synchronization(), metadata)
+    assert alignment['status'] == 'validated'
+    assert alignment['provenance']['revisionId'] == '34'
+    unavailable('revision_mismatch', lambda: align_from_songsterr(performance, audio_fixture(), synchronization(revisionId='35'), metadata))
+    unavailable('invalid_points', lambda: align_from_songsterr(performance, audio_fixture(), synchronization(points=(0, None, 4)), metadata))
+    metadata['approval'] = 'approved'
+    unavailable('unapproved_revision', lambda: align_from_songsterr(performance, audio_fixture(), synchronization(), metadata))
+
+
 def score_fixture(measures=None):
     bars = measures or [Measure(tempos=[(Fraction(0), 120)]), Measure()]
     track_bars = [[] for _ in bars]

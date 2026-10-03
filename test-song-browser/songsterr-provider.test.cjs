@@ -15,8 +15,53 @@ const result = { id: '564073', source: 'songsterr', title: 'Woodland Rites', art
 const descriptor = { ...result, revisionId: '2585330', approval: 'approved', approvedUrl: result.url + '/r2585330' };
 const track = { name: 'Eight string guitar', instrument: 'Overdriven Guitar', instrumentId: 29, tuning: [64, 59, 55, 50, 45, 40, 35, 30] };
 const part = { tuning: track.tuning, automations: { tempo: [{ measure: 0, position: [0, 1], bpm: 120, type: 4 }] }, measures: [{ signature: [4, 4], voices: [{ beats: [{ duration: [1, 1], notes: [{ string: 7, fret: 3 }] }] }] }] };
-const meta = { songId: result.id, revisionId: descriptor.revisionId, image: 'fixture-image', title: result.title, artist: result.artist, tracks: [track, { ...track, name: 'Second guitar' }] };
+const meta = { isPublished: true, songId: result.id, revisionId: descriptor.revisionId, image: 'fixture-image', title: result.title, artist: result.artist, tracks: [track, { ...track, name: 'Second guitar' }] };
 const response = (value, status = 200, headers = {}) => new Response(typeof value === 'string' ? value : JSON.stringify(value), { status, headers });
+
+test('pending public revisions can be listed, selected and acquired with their real status', async t => {
+  const root = await temporary(t), state = runtime(root, { pending: true, paginated: true }); t.after(() => state.provider.dispose());
+  await state.provider.search({ query: 'Green Lung' });
+  const catalogue = await state.provider.listRevisions(result);
+  assert.equal(catalogue.recommendedRevisionId, '2585330'); assert.equal(catalogue.revisions.length, 2);
+  assert.ok(state.actions.includes('moreHistory')); assert.equal(state.actions.includes('play'), false);
+  assert.ok(catalogue.revisions.every(row => row.eligible && row.status === 'awaiting_moderation' && !row.evidence));
+  const directory = path.join(root, 'score'); await fs.mkdir(directory);
+  const acquired = await state.provider.acquire(result, { directory, requestedRevisionId: '2585330' });
+  assert.equal(acquired.metadata.approval, 'unreviewed'); assert.equal(acquired.metadata.revisionEvidence.selection, 'explicit');
+  assert.equal(acquired.metadata.revisionEvidence.basis, 'awaiting_moderation');
+  const checked = await state.provider.revalidate(result, { metadata: acquired.metadata });
+  assert.equal(checked.revisionId, '2585330'); assert.equal(checked.status, 'awaiting_moderation');
+  const originalFetch = state.provider.anonymousSession.fetch;
+  state.provider.anonymousSession.fetch = async (url, settings) => {
+    const original = await originalFetch(url, settings);
+    if (!url.endsWith('/revisions')) return original;
+    const rows = await original.json(); Object.assign(rows[1], { isBlocked: true, isOnModeration: false, reviewed: { conclusion: 'rejected' } });
+    return response(rows);
+  };
+  await assert.rejects(state.provider.revalidate(result, { metadata: acquired.metadata }), { code: 'revision_ineligible' });
+});
+
+test('exact metadata rejects unpublished, deleted and rejected pending sources before retrieving parts', async t => {
+  const root = await temporary(t), fixture = require('../tests/fixtures/songsterr-revision-selection.json');
+  const pending = { ...descriptor, approval: 'unreviewed', revisionEvidence: { ...fixture.base.revisionEvidence,
+    songId: result.id, revisionId: descriptor.revisionId, defaultRevisionId: descriptor.revisionId } };
+  for (const fields of [{ isPublished: false }, { isSongDeleted: true }, { isDeleted: true }, { isBlocked: true }, { reviewed: { conclusion: 'rejected' } }]) {
+    let calls = 0;
+    await assert.rejects(acquireAnonymous(pending, { directory: root, fetch: async () => { calls++; return response({ ...meta, ...fields }); } }), { code: 'revision_ineligible' });
+    assert.equal(calls, 1); assert.deepEqual(await fs.readdir(root), []);
+  }
+});
+
+test('explicit older pending selection pins metadata and every part to that revision', async t => {
+  const root = await temporary(t), state = runtime(root, { pending: true }); t.after(() => state.provider.dispose());
+  await state.provider.search({ query: 'Green Lung' });
+  const directory = path.join(root, 'score'); await fs.mkdir(directory);
+  const acquired = await state.provider.acquire(result, { directory, requestedRevisionId: '626617' });
+  assert.equal(acquired.metadata.revisionId, '626617'); assert.equal(acquired.metadata.approval, 'unreviewed');
+  assert.equal(acquired.metadata.revisionEvidence.selection, 'explicit');
+  assert.ok(state.requests.every(request => request.url.includes('/626617')));
+  assert.equal(state.windows[0].webContents.getURL(), result.url + '/r626617');
+});
 async function temporary(t) { const root = await fs.mkdtemp(path.join(os.tmpdir(), 'feedforge-songsterr-provider-')); t.after(() => fs.rm(root, { recursive: true, force: true })); return root; }
 
 test('public URL policy admits only exact Songsterr pages and known export origins', () => {
@@ -114,6 +159,9 @@ function runtime(root, options = {}) {
     author: { personId: 123 }, isDeleted: false, isBlocked: false, isOnModeration: false,
     moderationType: 'pre', reviewed: { conclusion: 'approved' } }));
   if (options.moderatorDefault) Object.assign(history[1], { author: { personId: 123, isModerator: true }, moderationType: 'no', reviewed: null });
+  if (options.pending) for (const row of history) Object.assign(row, { moderationType: 'pre', isOnModeration: true, reviewed: null });
+  const historyRows = () => history.map(row => ({ revisionId: row.revisionId, approved: Boolean(row.reviewed), excluded: row.isOnModeration,
+    status: row.isOnModeration ? 'awaiting_moderation' : row.reviewed ? 'reviewed' : 'unreviewed', moderator: row.author.isModerator === true }));
   function makeSession() {
     const value = new EventEmitter();
     value.setPermissionRequestHandler = (handler) => { value.permission = handler; };
@@ -124,7 +172,7 @@ function runtime(root, options = {}) {
         return response(url.endsWith('/revisions') ? history : { ...meta, isPublished: true,
           latestRevisionId: meta.revisionId, author: history[1].author });
       }
-      requests.push({ url, settings }); return response(url.includes('/api/meta/') ? meta : part);
+      requests.push({ url, settings }); return response(url.includes('/api/meta/') ? { ...meta, revisionId: url.split('/').at(-1) } : part);
     };
     sessions.push(value); return value;
   }
@@ -175,8 +223,11 @@ function runtime(root, options = {}) {
         if (request.action === 'history') {
           if (options.delayedHistory) { assert.ok(wc.controlReads >= 2, 'wait for rendered history controls'); wc.historyPending = true; }
           wc.page = { ...wc.page, historyVisible: true, historyReady: true, approvedRevisions: options.noApproved ? [] : [{ revisionId: '626617', approval: 'approved', date: '10/8/2023' }, { revisionId: '2585330', approval: 'approved', date: '7/31/2025' }] };
-          wc.page.revisionRows = options.noApproved ? [] : history.map(row => ({ revisionId: row.revisionId,
-            approved: Boolean(row.reviewed), excluded: false, moderator: row.author.isModerator === true }));
+          wc.page.revisionRows = options.noApproved ? [] : options.paginated ? historyRows().slice(1) : historyRows();
+          wc.page.historyHasMore = options.paginated === true;
+        }
+        if (request.action === 'moreHistory') {
+          wc.page.revisionRows = historyRows(); wc.page.historyHasMore = false;
         }
         if (request.action === 'copy') wc.page = { ...wc.page, copyForm: true };
         if (request.action === 'create') {
@@ -273,10 +324,10 @@ test('revision resolution waits for rendered controls and populated history rath
   assert.equal(state.requests.length, 0);
 });
 
-test('loaded history without an approved matching revision reports a distinct approval failure', async (t) => {
+test('incomplete rendered revision history reports a verification failure', async (t) => {
   const root = await temporary(t), state = runtime(root, { noApproved: true }); t.after(() => state.provider.dispose());
   await state.provider.search({ query: 'green lung' });
-  await assert.rejects(state.provider.resolve(result), { code: 'unapproved_revision', message: 'Songsterr’s revision approval could not be verified. No unreviewed revision was selected.' });
+  await assert.rejects(state.provider.resolve(result), { code: 'revision_history_unverified' });
   assert.equal(state.requests.length, 0);
 });
 
@@ -407,12 +458,13 @@ test('trusted ledger restoration validates provider, numeric identity and canoni
   assert.equal((await state.provider.resolve(restored)).revisionId, descriptor.revisionId);
 });
 
-test('explicit account retry requires login without attempting anonymous data or creating a copy', async (t) => {
+test('explicit account retry rechecks public eligibility and requires login without downloading parts or creating a copy', async (t) => {
   const root = await temporary(t), state = runtime(root, { signedOut: true }); t.after(() => state.provider.dispose());
   await state.provider.search({ query: 'green lung' }); const pinned = await state.provider.resolve(result);
   const directory = path.join(root, 'job'); await fs.mkdir(directory);
   await assert.rejects(state.provider.acquire(pinned, { directory, allowAccount: true }), { code: 'needs_login' });
-  assert.equal(state.actions.includes('create'), false); assert.equal(state.requests.length, 0);
+  assert.equal(state.actions.includes('create'), false); assert.equal(state.requests.length, 1);
+  assert.ok(state.requests.every(request => request.url.includes('/api/meta/')));
   await state.provider.signIn(); assert.equal(state.windows[1].shown, true); assert.equal(state.windows[0].shown, false);
 });
 
@@ -429,7 +481,8 @@ test('account export creates an unpublished copy once, restores original metadat
   assert.equal(state.actions.filter((action) => action === 'create').length, 1);
   assert.equal(state.actions.filter((action) => action === 'export').length, 2);
   assert.equal(state.actions.some((action) => /publish|delete/.test(action)), false);
-  assert.equal(state.requests.length, 0); assert.equal(state.windows[1].shown, false);
+  assert.equal(state.requests.length, 2); assert.ok(state.requests.every(request => request.url.includes('/api/meta/')));
+  assert.equal(state.windows[1].shown, false);
   const journal = JSON.parse(await fs.readFile(path.join(root, 'profile', 'feedforge-copy-journal.json'), 'utf8'));
   assert.equal(journal.copies['564073:2585330'].copyId, '99999');
 });

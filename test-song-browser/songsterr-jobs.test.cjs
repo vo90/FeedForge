@@ -12,6 +12,62 @@ const { CURRENT_PRESERVATION_CONTRACT: CURRENT } = require('../electron/song-bro
 
 const CHART = { id: '123', title: 'Synthetic Song', artist: 'Synthetic Artist' };
 const SETTINGS = { outputLayout: 'flat', nameTemplate: '{artist} - {title}' };
+const revisionReceipt = require('../tests/fixtures/songsterr-revision-selection.json');
+function pendingMetadata() { return structuredClone(revisionReceipt.base); }
+
+test('unreviewed selection survives conversion with truthful activity and two eligibility rechecks', async t => {
+  const checks = [];
+  const f = await fixture(t, { acquire: async (chart, ctx, normal) => {
+    const acquired = normal(chart, ctx); acquired.metadata = { ...acquired.metadata, ...pendingMetadata() }; return acquired;
+  } });
+  f.config.provider.revalidate = async (chart, ctx) => { checks.push(structuredClone(ctx.metadata)); return { revisionId: '456', status: 'unreviewed' }; };
+  f.enqueue(); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'completed'); assert.equal(f.jobs.snapshot()[0].revisionLabel, 'Unreviewed');
+  assert.equal(checks.length, 2); assert.deepEqual(f.requests[0].metadata.revisionEvidence, pendingMetadata().revisionEvidence);
+  assert.ok(checks.every(metadata => metadata.approval === 'unreviewed' && metadata.revisionId === '456'));
+});
+
+for (const rejectedAt of [1, 2]) test(`rejection on eligibility recheck ${rejectedAt} prevents publication without switching revision`, async t => {
+  let checks = 0;
+  const f = await fixture(t, { acquire: async (chart, ctx, normal) => ({ ...normal(chart, ctx), metadata: pendingMetadata() }) });
+  f.config.provider.revalidate = async (_chart, ctx) => {
+    assert.equal(ctx.metadata.revisionId, '456');
+    if (++checks === rejectedAt) throw Object.assign(new Error('A moderator rejected this revision.'), { code: 'revision_ineligible' });
+    return { revisionId: '456', status: 'unreviewed' };
+  };
+  f.enqueue(); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'failed'); assert.match(f.jobs.snapshot()[0].error, /rejected/);
+  assert.equal(f.requests.length, rejectedAt - 1); assert.equal(f.completed.length, 0);
+  assert.deepEqual(fs.readdirSync(f.outputDir), []); assert.equal(f.acquisitions.length, 1);
+});
+
+test('pending revision retry after restart keeps its receipt and explicit choice despite newer uploads', async t => {
+  const f = await fixture(t, { missingAudio: true, acquire: async (chart, ctx, normal) => {
+    assert.equal(ctx.requestedRevisionId, '456');
+    const metadata = pendingMetadata(); metadata.revisionEvidence.selection = 'explicit';
+    ctx.onPinned({ ...chart, ...metadata });
+    return { ...normal(chart, ctx), metadata };
+  } });
+  f.config.provider.revalidate = async () => ({ revisionId: '456', status: 'unreviewed' });
+  const first = f.jobs.enqueue(CHART, { outputDir: f.outputDir, requestedRevisionId: '456' }); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'needs_audio'); await f.jobs.dispose();
+  f.config.provider.acquire = () => { throw new Error('A retry must not resolve a newer upload.'); };
+  const restored = new SongsterrJobs(f.config); t.after(() => restored.dispose()); await settle(restored);
+  restored.retry(first.id, { audio: { kind: 'url', url: 'https://www.youtube.com/watch?v=abcdefghijk' } }); await settle(restored);
+  assert.equal(restored.snapshot()[0].state, 'completed'); assert.equal(restored.snapshot()[0].requestedRevisionId, '456');
+  assert.equal(f.requests[0].metadata.revisionEvidence.selection, 'explicit'); assert.equal(f.acquisitions.length, 1);
+});
+
+test('explicit choices have separate pending jobs and cannot be replaced by a provider-selected revision', async t => {
+  const gate = deferred();
+  const f = await fixture(t, { acquire: async (chart, ctx, normal) => { await gate.promise; return normal(chart, ctx); } });
+  const options = { outputDir: f.outputDir, requestedRevisionId: '999' };
+  const automatic = f.enqueue(), explicit = f.jobs.enqueue(CHART, options), duplicate = f.jobs.enqueue(CHART, options);
+  assert.notEqual(automatic.id, explicit.id); assert.equal(explicit.id, duplicate.id);
+  gate.resolve(); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot().find(job => job.id === explicit.id).state, 'failed');
+  assert.equal(f.completed.length, 1);
+});
 test('Hybrid main choice releases the queue, persists and resumes against the cached score hash', async t => {
   const f = await fixture(t, { runConverter: async (args, ctx, normal) => {
     if (args[0] === '--song-import-file') {
@@ -582,7 +638,7 @@ test('a general retry still reacquires a missing cached tab and checks its new a
   assert.equal(f.audioProbes.length, 0);
 });
 
-test('Songsterr rejects an unapproved revision before conversion', async (t) => {
+test('Songsterr rejects an unreviewed revision without selection evidence before conversion', async (t) => {
   const f = await fixture(t, { acquire: (chart, context, normal) => {
     const acquired = normal(chart, context);
     acquired.metadata.approval = 'pending';
@@ -590,7 +646,7 @@ test('Songsterr rejects an unapproved revision before conversion', async (t) => 
   } });
   f.enqueue(); await settle(f.jobs);
   assert.equal(f.jobs.snapshot()[0].state, 'failed');
-  assert.match(f.jobs.snapshot()[0].error, /approved revision/);
+  assert.match(f.jobs.snapshot()[0].error, /eligible revision/);
   assert.equal(f.calls.length, 0);
 });
 

@@ -7,7 +7,8 @@ const crypto = require('node:crypto');
 const { readSongsterrPage, actOnSongsterrPage } = require('./dom.cjs');
 const { ORIGIN, MAX_TOTAL_BYTES, failure, check, clean, numeric, sourceFilename, songUrl, safeResult, allowedNavigation, allowedDownload, publicAudio, delay, bounded } = require('./policy.cjs');
 const { acquireAnonymous } = require('./acquire.cjs');
-const { resolveRevision } = require('./revisions.cjs');
+const { resolveRevision, loadCatalogue, chooseRevision, revalidateRevision, MAX_REVISIONS } = require('./revisions.cjs');
+const { validRevisionSelection } = require('./revision-policy.cjs');
 const { retrieveSynchronization, unavailableSynchronization, audioVideo } = require('./synchronization.cjs');
 const { networkTransport } = require('../../songsterr-retry.cjs');
 
@@ -111,7 +112,7 @@ class SongsterrProvider {
       if (page.status === 'needs_login') throw failure('needs_login', 'Songsterr is requesting sign-in to load this tab.');
       return page;
     } catch (error) {
-      if (error.code === 'timeout') throw failure('revision_unavailable', 'The approved Songsterr tab did not finish loading. Please retry.');
+      if (error.code === 'timeout') throw failure('revision_unavailable', 'The selected Songsterr tab did not finish loading. Please retry.');
       throw error;
     }
   }
@@ -280,7 +281,58 @@ class SongsterrProvider {
         sortScope: 'loaded_results', ...(page.hasMore ? { message: 'Showing the loaded Songsterr results. Narrow the search for more specific matches.' } : {}) };
     } finally { this.searching = false; operation.release(); }
   }
-  async resolve(result, { signal, onPinned = () => {} } = {}) {
+  async _revisionHistory(registered, signal) {
+    const win = this._window(false), id = registered.id;
+    await this._navigate(win, registered.url, signal);
+    let page;
+    try {
+      page = await this._wait(win, value => value.songId === id && (value.canOpenHistory || value.historyVisible), signal);
+    } catch (error) {
+      if (error.code === 'timeout') throw failure('revision_controls_unavailable', 'Songsterr’s revision-history control did not become ready. Please retry.');
+      throw error;
+    }
+    if (!page.historyVisible && !(await this._act(win, 'history', signal)).ok) {
+      throw failure('revision_controls_unavailable', 'Songsterr’s revision-history button could not be opened. Please retry.');
+    }
+    try {
+      page = await this._wait(win, value => value.songId === id && value.historyReady === true, signal);
+      for (let count = 0; page.historyHasMore === true; count++) {
+        const previous = page.revisionRows.length;
+        if (count >= 250 || previous >= MAX_REVISIONS || !(await this._act(win, 'moreHistory', signal)).ok) {
+          throw failure('revision_history_unverified', 'The complete revision history could not be read. Please retry.');
+        }
+        page = await this._wait(win, value => value.songId === id && value.historyReady === true
+          && value.revisionRows.length > previous, signal);
+      }
+      return page;
+    } catch (error) {
+      if (error.code === 'timeout') throw Object.assign(failure('revision_history_unavailable', 'Songsterr’s revision history did not finish loading. Please retry.'),
+        { transport: networkTransport(error, 'score', 'revision_history') });
+      throw error;
+    }
+  }
+  async listRevisions(result, { signal } = {}) {
+    if (this.searching || this.resolving) throw failure('busy', 'The Songsterr catalogue is already being read.');
+    const registered = this.results.get(numeric(result?.id));
+    if (!registered) throw failure('invalid_result', 'Search for this song before choosing a revision.');
+    const operation = this._controller(signal); this.resolving = true;
+    try {
+      const page = await this._revisionHistory(registered, operation.signal);
+      const { catalogue } = await loadCatalogue(registered, page, { fetch: this.anonymousSession.fetch.bind(this.anonymousSession), signal: operation.signal });
+      let recommendedRevisionId;
+      try { recommendedRevisionId = chooseRevision(catalogue).revisionId; } catch (error) { if (error.code !== 'no_eligible_revision') throw error; }
+      return { songId: registered.id, recommendedRevisionId, revisions: catalogue.map(({ evidence, ...row }) => row) };
+    } finally { this.resolving = false; operation.release(); }
+  }
+  async revalidate(result, { metadata, signal } = {}) {
+    const registered = this.results.get(numeric(result?.id));
+    if (!registered || numeric(metadata?.songId) !== registered.id) throw failure('invalid_result', 'The selected song could not be verified.');
+    const operation = this._controller(signal);
+    try { return await revalidateRevision({ ...metadata, ...registered, revisionId: numeric(metadata.revisionId) },
+      { fetch: this.anonymousSession.fetch.bind(this.anonymousSession), signal: operation.signal }); }
+    finally { operation.release(); }
+  }
+  async resolve(result, { signal, onPinned = () => {}, requestedRevisionId } = {}) {
     if (this.searching || this.resolving) throw failure('busy', 'The Songsterr catalogue is already being read.');
     const id = numeric(result?.id ?? result?.songId);
     const registered = id && this.results.get(id);
@@ -289,34 +341,16 @@ class SongsterrProvider {
     const operation = this._controller(signal); this.resolving = true;
     try {
       const win = this._window(false);
-      await this._navigate(win, registered.url, operation.signal);
-      let page;
-      try {
-        page = await this._wait(win, (value) => value.songId === id && (value.canOpenHistory || value.historyVisible), operation.signal);
-      } catch (error) {
-        if (error.code === 'timeout') throw failure('revision_controls_unavailable', 'Songsterr loaded, but its revision-history control did not become ready. Please retry.');
-        throw error;
-      }
-      if (!page.historyVisible) {
-        const action = await this._act(win, 'history', operation.signal);
-        if (!action.ok) throw failure('revision_controls_unavailable', 'Songsterr’s revision-history button could not be opened. Please retry.');
-      }
-      try {
-        page = await this._wait(win, (value) => value.songId === id && value.historyReady === true, operation.signal);
-      } catch (error) {
-        if (error.code === 'timeout') throw Object.assign(failure('revision_history_unavailable', 'Songsterr opened revision history, but its revision rows did not become ready. Please retry.'),
-          { transport: networkTransport(error, 'score', 'revision_history') });
-        throw error;
-      }
+      let page = await this._revisionHistory(registered, operation.signal);
       const selected = await resolveRevision(registered, page,
-        { fetch: this.anonymousSession.fetch.bind(this.anonymousSession), signal: operation.signal });
-      const { revisionId, revisionEvidence } = selected, url = `${registered.url}/r${revisionId}`;
+        { fetch: this.anonymousSession.fetch.bind(this.anonymousSession), signal: operation.signal, requestedRevisionId });
+      const { revisionId, revisionEvidence, approval } = selected, url = `${registered.url}/r${revisionId}`;
       await this._navigate(win, url, operation.signal);
       page = await this._readyPinnedPage(win, id, revisionId, operation.signal);
-      const pinned = { ...registered, revisionId, approval: 'approved', revisionEvidence, approvedUrl: url, audioProbePending: true };
+      const pinned = { ...registered, revisionId, approval, revisionEvidence, pinnedUrl: url, audioProbePending: true };
       await onPinned(pinned);
       const audio = await this._discoverAudio(win, { songId: id, revisionId }, page, operation.signal);
-      const descriptor = { ...registered, revisionId, approval: 'approved', revisionEvidence, approvedUrl: url, ...(audio ? { audio } : {}) };
+      const descriptor = { ...registered, revisionId, approval, revisionEvidence, pinnedUrl: url, ...(audio ? { audio } : {}) };
       await onPinned(descriptor);
       this.resolved.set(`${id}:${revisionId}`, descriptor);
       return descriptor;
@@ -361,7 +395,7 @@ class SongsterrProvider {
       return sync;
     } finally { operation.release(); }
   }
-  async acquire(result, { directory, signal, onProgress = () => {}, allowAccount = false, pinnedDescriptor, onPinned = () => {} } = {}) {
+  async acquire(result, { directory, signal, onProgress = () => {}, allowAccount = false, pinnedDescriptor, onPinned = () => {}, requestedRevisionId } = {}) {
     if (this.acquiring) throw failure('busy', 'Another Songsterr tab is being acquired.');
     if (!path.isAbsolute(directory || '')) throw failure('invalid_directory', 'Songsterr needs an absolute job folder.');
     const stat = await fsp.lstat(directory);
@@ -369,21 +403,25 @@ class SongsterrProvider {
     let descriptor = pinnedDescriptor || this.resolved.get(`${numeric(result?.id ?? result?.songId)}:${numeric(result?.revisionId)}`);
     if (descriptor) {
       const registered = this.results.get(String(result.id));
-      if (!registered || descriptor.id !== registered.id || descriptor.approval !== 'approved' || !numeric(descriptor.revisionId)
-          || descriptor.approvedUrl !== `${registered.url}/r${descriptor.revisionId}` || descriptor.title !== registered.title || descriptor.artist !== registered.artist) {
-        throw failure('invalid_result', 'The saved approved revision changed. Search again.');
+      if (!registered || descriptor.id !== registered.id || !validRevisionSelection(descriptor)
+          || (requestedRevisionId != null && descriptor.revisionId !== numeric(requestedRevisionId))
+          || (descriptor.pinnedUrl || descriptor.approvedUrl) !== `${registered.url}/r${descriptor.revisionId}` || descriptor.title !== registered.title || descriptor.artist !== registered.artist) {
+        throw failure('invalid_result', 'The saved revision selection changed. Search again.');
       }
       if (descriptor.audioProbePending) {
         const audio = await this.findAudio(result, { revisionId: descriptor.revisionId, signal });
         descriptor = { ...descriptor, audioProbePending: false, ...(audio ? { audio } : {}) };
       }
       await onPinned(descriptor);
-    } else descriptor = await this.resolve(result, { signal, onPinned });
+    } else descriptor = await this.resolve(result, { signal, onPinned, requestedRevisionId });
     const operation = this._controller(signal); this.acquiring = true;
     try {
       // The UI explicitly chooses the account retry. Never silently create an
       // account copy after a public failure, timeout or changed response shape.
-      if (allowAccount === true) return await this._acquireAccount(descriptor, { directory, signal: operation.signal, onProgress });
+      if (allowAccount === true) {
+        if (descriptor.revisionEvidence?.version === 2) await this.revalidate(result, { metadata: { ...descriptor, songId: descriptor.id }, signal: operation.signal });
+        return await this._acquireAccount(descriptor, { directory, signal: operation.signal, onProgress });
+      }
       try { return await acquireAnonymous(descriptor, { fetch: this.anonymousSession.fetch.bind(this.anonymousSession), directory, signal: operation.signal, onProgress }); }
       catch (error) { error.canUseAccount = ['needs_login', 'access_denied'].includes(error.code); throw error; }
     } finally { this.acquiring = false; operation.release(); }
@@ -422,7 +460,7 @@ class SongsterrProvider {
     if (entry && entry.state !== 'created') {
       throw failure('needs_attention', 'A previous copy request may already have completed. FeedForge will not create another copy automatically.');
     }
-    const editorUrl = new URL(entry?.url || descriptor.approvedUrl); editorUrl.searchParams.set('open', 'editor');
+    const editorUrl = new URL(entry?.url || descriptor.pinnedUrl || descriptor.approvedUrl); editorUrl.searchParams.set('open', 'editor');
     await this._navigate(win, editorUrl.href, signal);
     let page = await this._wait(win, (value) => value.songId || value.status === 'needs_login', signal);
     if (page.status === 'needs_login' || page.signedOut) {
@@ -431,7 +469,7 @@ class SongsterrProvider {
     }
     await this._act(win, 'dismissTutorial', signal);
     if (!entry) {
-      if (page.songId !== descriptor.id || page.revisionId !== descriptor.revisionId) throw failure('revision_unavailable', 'The account page did not load the approved revision.');
+      if (page.songId !== descriptor.id || page.revisionId !== descriptor.revisionId) throw failure('revision_unavailable', 'The account page did not load the selected revision.');
       const copy = await this._act(win, 'copy', signal);
       if (!copy.ok) {
         const editor = await this._act(win, 'editor', signal);
@@ -470,7 +508,8 @@ class SongsterrProvider {
     const downloaded = await this._export(win, directory, signal);
     onProgress({ phase: 'export', completed: 1, total: 1 });
     return { path: downloaded.path, format: 'gpif', metadata: { songId: descriptor.id, revisionId: descriptor.revisionId,
-      title: descriptor.title, artist: descriptor.artist, approval: 'approved', acquisition: 'account_export' },
+      title: descriptor.title, artist: descriptor.artist, approval: descriptor.approval,
+      ...(descriptor.revisionEvidence ? { revisionEvidence: descriptor.revisionEvidence } : {}), acquisition: 'account_export' },
       ...(descriptor.audio ? { audio: descriptor.audio } : {}), sourceFilename: sourceFilename(descriptor.artist, descriptor.title) };
   }
   async _export(win, directory, signal) {

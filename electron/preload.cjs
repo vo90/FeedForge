@@ -3,6 +3,7 @@ const { contextBridge, ipcRenderer, webUtils } = require("electron");
 contextBridge.exposeInMainWorld('songsterrBrowser', {
   getState: () => ipcRenderer.invoke('songsterr:getState'),
   search: (request) => ipcRenderer.invoke('songsterr:search', request),
+  revisions: (request) => ipcRenderer.invoke('songsterr:revisions', request),
   cancelSearch: () => ipcRenderer.invoke('songsterr:cancelSearch'),
   enqueue: (request) => ipcRenderer.invoke('songsterr:enqueue', request),
   retry: (request) => ipcRenderer.invoke('songsterr:retry', request),

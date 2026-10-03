@@ -179,7 +179,8 @@ def test_worker_returns_actionable_missing_audio_without_publishing(tmp_path, mo
     assert all(isinstance(item, dict) and "stage" in item for item in progress)
 
 
-def test_real_score_parser_worker_cli_and_feedpak_validator_end_to_end(tmp_path):
+@pytest.mark.parametrize('pending_revision', [False, True])
+def test_real_score_parser_worker_cli_and_feedpak_validator_end_to_end(tmp_path, pending_revision):
     """Exercise real score parsing and matching; no mocked success/remote downloads."""
     frets = np.random.default_rng(512).integers(0, 12, 48)
     measures = [{"signature": [4, 4], "voices": [{"beats": [
@@ -211,6 +212,12 @@ def test_real_score_parser_worker_cli_and_feedpak_validator_end_to_end(tmp_path)
                "metadata": {"songId": 12, "revisionId": 34, "title": "Real song", "artist": "Original band"},
                "workDir": str(tmp_path / "jobs"), "outputDir": str(tmp_path / "library"),
                "outputSettings": {"nameTemplate": "{artist} - {title}", "outputLayout": "artist"}}
+    if pending_revision:
+        metadata = json.loads((Path(__file__).parent / 'fixtures/songsterr-revision-selection.json').read_text())['base']
+        metadata.update(songId='12', revisionId='34')
+        metadata['revisionEvidence'].update(songId='12', revisionId='34', defaultRevisionId='34',
+                                            basis='awaiting_moderation', moderationType='pre', isOnModeration=True)
+        request['metadata'].update(metadata)
     request_path = tmp_path / "request.json"
     request_path.write_text(json.dumps(request), encoding="utf-8")
     result = subprocess.run([sys.executable, "-m", "feedback_converter.cli", "--song-import-file", str(request_path)],
@@ -221,6 +228,10 @@ def test_real_score_parser_worker_cli_and_feedpak_validator_end_to_end(tmp_path)
     assert imported["alignment"]["offset"] - imported['alignment']['preparation']['seconds'] == pytest.approx(offset, abs=0.06)
     assert imported["alignment"]["scale"] == pytest.approx(scale, abs=0.005)
     assert imported["relativePath"] == "Original band/Original band - Real song.feedpak"
+    if pending_revision:
+        source = imported['recipe']['sourceMetadata']
+        assert source['approval'] == 'unreviewed'
+        assert source['revisionEvidence'] == request['metadata']['revisionEvidence']
     assert not (tmp_path / "library").exists()
     validation = subprocess.run([sys.executable, "-m", "feedback_converter.cli", "--validate-feedpak", imported["stagingPath"]],
                                 capture_output=True, text=True, timeout=30)
