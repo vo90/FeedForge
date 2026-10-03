@@ -132,11 +132,15 @@ def reconstruct(event, part, clock, sound_end, terminal_context=()):
         controls = [(begin+(finish-begin)*p,v) for p,v in bend.bends]
         settled = controls[0][0] <= tail_start and all(
             a[1] == b[1] for a,b in zip(controls,controls[1:]) if b[0] > tail_start)
-        if not extras and (settled or not terminal_context):
+        # Simultaneous source notes remain a chord. Native auto-strumming is
+        # synthesis, not an authored offset; endpoint-changing contexts stay guarded.
+        unsupported_context = any(c != 'simultaneous-attack' for c in terminal_context)
+        if not extras and (settled or not unsupported_context):
             terminal = {'sourceId': identity(tail), 'direction': tail.slide,
                         'start': float(clock.at(tail_start)), 'end': float(clock.at(sound_end)),
                         'value': float(controls[-1][1]),
-                        **({'bendPhase': 'changing', 'pitchPolicy': 'independent-source-bend'} if not settled else {})}
+                        **({'bendPhase': 'changing', 'pitchPolicy': 'independent-source-bend'} if not settled else {}),
+                        **({'attackTiming': 'authored-chord'} if not settled and 'simultaneous-attack' in terminal_context else {})}
             evidence['terminalSlideOut'] = terminal
             mixed = False
     if mixed or overlap_reason:

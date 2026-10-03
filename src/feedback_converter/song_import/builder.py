@@ -512,6 +512,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         if source_path is None or (recipe or {}).get('preservationContract', 0) < 62:
             raise ImportFailure('unsupported_score', 'Timed finger vibrato requires the original tab and preservation contract 62.')
     if performance.get('fingerBendTimingEvidence'):
+        if any(e.get('terminalSlideOut', {}).get('attackTiming') == 'authored-chord' for e in performance['fingerBendTimingEvidence']) and (recipe or {}).get('preservationContract', 0) < 64:
+            raise ImportFailure('unsupported_score', 'Chord bends with a terminal slide require preservation contract 64.')
         if any(e.get('rule') == 'bend-with-slide-out' for e in performance['fingerBendTimingEvidence']) and (recipe or {}).get('preservationContract', 0) < 63:
             raise ImportFailure('unsupported_score', 'Changing bends with a terminal slide require preservation contract 63.')
         if source_path is None or (recipe or {}).get('preservationContract', 0) < 61:

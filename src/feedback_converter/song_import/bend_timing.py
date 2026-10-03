@@ -11,9 +11,8 @@ import hashlib
 def terminal_contexts(articulations):
     """Index surrounding attacks once, outside the curve sampling loop.
 
-    Automatic chord strums and a following slide-in can change the native
-    synthesizer's bend clock. They are not qualified by the isolated terminal
-    slide rule. Keep those contexts conservative, without inventing timings.
+    Chord attacks retain their authored clock, without automatic synth strums.
+    A following slide-in can change the endpoint and remains unqualified.
     """
     onsets, strings, result = {}, {}, {}
     for key, a in articulations.items():
@@ -56,11 +55,12 @@ def _terminal_slide_out(segments, intervals, attack, stop, at, context):
         if a[1] != b[1]:
             last_change = b[0]
     changing = last_change > start
-    if changing and context:
+    if changing and set(context) - {'simultaneous-attack'}:
         return None
     return {'sourceId': last.source_id, 'direction': 'down' if last.slide == 'out_down' else 'up',
             'start': at(start), 'end': at(stop), 'value': controls[-1][1],
-            **({'bendPhase': 'changing', 'pitchPolicy': 'independent-source-bend'} if changing else {})}
+            **({'bendPhase': 'changing', 'pitchPolicy': 'independent-source-bend'} if changing else {}),
+            **({'attackTiming': 'authored-chord'} if changing and 'simultaneous-attack' in context else {})}
 
 
 def finish(output, articulation, track_id, at, tempo_positions, terminal_context=()):
@@ -175,7 +175,9 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
 
 
 def archive_evidence(performance, source_path):
-    version = 4 if any(e.get('rule') == 'bend-with-slide-out' for e in performance['fingerBendTimingEvidence']) else 3
+    gestures = performance['fingerBendTimingEvidence']
+    version = (5 if any(e.get('terminalSlideOut', {}).get('attackTiming') == 'authored-chord' for e in gestures)
+               else 4 if any(e.get('rule') == 'bend-with-slide-out' for e in gestures) else 3)
     return {'version': version, 'policy': f'songsterr-finger-bend-timing-v{version}',
             'timeDomain': 'score_seconds',
             'sourceSha256': hashlib.sha256(source_path.read_bytes()).hexdigest(),
