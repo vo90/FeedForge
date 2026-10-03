@@ -30,7 +30,7 @@ def validate(chart, *, window=None, duration=None):
         proof = chart.get("ext", {}).get("chartGuidance")
         if not isinstance(proof, dict) or proof.get("policy") != POLICY or proof.get("sourceAuthored") is not False:
             return ["Missing or unsupported generated guidance provenance."]
-        if proof.get("positionPolicy") not in (None, "chord-local-v1", "open-preparation-v1"):
+        if proof.get("positionPolicy") not in (None, "chord-local-v1", "open-preparation-v1", "open-preparation-v2"):
             return ["Unsupported generated position policy."]
         fields = proof.get("fields")
         if not isinstance(fields, list) or not fields or len(set(fields)) != len(fields) or any(k not in {"anchors", "handshapes"} for k in fields):

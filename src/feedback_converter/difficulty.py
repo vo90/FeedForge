@@ -93,6 +93,7 @@ def ensure_difficulty(arrangement, *, beats=(), sections=(), duration=0):
             if arrangement.get("ext", {}).get("chartGuidance", {}).get("policy") == "feedforge-chart-guidance-v2":
                 from .chart_guidance import finalize
                 context = {k: deepcopy(arrangement[k]) for k in ("tuning", "capo", "centOffset", "templates") if k in arrangement}
+                context["beats"] = beats
                 context.update({"notes": level["notes"], "chords": level["chords"]})
                 finalize(context, window=(left, right))
                 for key in ("anchors", "handshapes", "ext"):
