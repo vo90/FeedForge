@@ -1,4 +1,4 @@
-"""Recording-end omission requires both source identity and acoustic evidence."""
+"""Recording-end projection with verified or explicitly warned source timing."""
 from __future__ import annotations
 
 from bisect import bisect_right
@@ -59,10 +59,15 @@ def authorize(performance, audio, alignment):
     report = assess(mapped_tracks(performance, alignment), audio["path"], audio["duration"], alignment["provenance"]["mapHash"],
                     **({'analysis_origin':offset} if offset else {}), clock_version=PREVIOUS_VERSION)
     alignment["recordingSync"] = report
+    warning = None
     if report["status"] != "supported":
-        raise ImportFailure("alignment_failed", "The earlier tab could not be matched reliably to this recording, so its ending was not shortened.",
-                            {"sourceSyncReason": "ending_sync_inconclusive", "recordingSync": report})
-    alignment["recordingEnd"] = {**policy, "syncEvidenceHash": digest(report)}
+        from .cutoff_warning import acceptance, matches_recording
+        warning = acceptance(report, alignment) if matches_recording(alignment, audio.get('source', {})) else None
+        if warning is None:
+            raise ImportFailure("alignment_failed", "The earlier tab could not be matched reliably to this recording, so its ending was not shortened.",
+                                {"sourceSyncReason": "ending_sync_inconclusive", "recordingSync": report})
+    alignment["recordingEnd"] = {**policy, "syncEvidenceHash": digest(report),
+                                **({'timingWarning': warning} if warning else {})}
     if (alignment.get("endingCandidate") or {}).get("directionalSlides"):
         from .terminal_sustains import slides_policy_for
         alignment["terminalSlides"] = slides_policy_for(audio["duration"])
@@ -75,11 +80,17 @@ def authorize(performance, audio, alignment):
 def allowed(alignment, duration):
     policy, report = alignment.get("recordingEnd"), alignment.get("recordingSync")
     boundary = boundary_policy(alignment, duration)
-    return (isinstance(policy, dict) and isinstance(report, dict)
-            and alignment.get("status") == "validated" and alignment.get("method") == "songsterr-video-points-v1"
+    if not isinstance(policy, dict) or not isinstance(report, dict):
+        return False
+    from .cutoff_warning import acceptance
+    warning = acceptance(report, alignment) if report.get('status') != 'supported' else None
+    expected = {**(boundary or {}), 'syncEvidenceHash': digest(report),
+                **({'timingWarning': warning} if warning else {})}
+    return (alignment.get("status") == "validated" and alignment.get("method") == "songsterr-video-points-v1"
             and alignment.get("mapping") == "piecewise-linear"
-            and boundary is not None and policy == {**boundary, "syncEvidenceHash": digest(report)}
-            and report.get("version") in (PREVIOUS_VERSION, LEGACY_VERSION) and report.get("status") == "supported"
+            and boundary is not None and policy == expected
+            and report.get("version") in (PREVIOUS_VERSION, LEGACY_VERSION)
+            and (report.get("status") == "supported" or warning is not None)
             and report.get("audioDuration") == duration and report.get("mapHash") == alignment.get("provenance", {}).get("mapHash"))
 
 

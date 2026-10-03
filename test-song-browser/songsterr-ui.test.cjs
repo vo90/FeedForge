@@ -54,6 +54,21 @@ test('a completed ending warning is visible without presenting uncertain timing 
   assert.doesNotMatch(job({ state: 'completed', verification: { ...verification, status: 'modified' } }), /Ending sync not independently confirmed/);
 });
 
+test('cutoff warnings retain timing, show original-recording ranges and do not claim confirmed sync', () => {
+  const verification = { status: 'passed', adjustments: { omittedEndingNotes: 100 },
+    timingWarning: { status: 'accepted_with_warning', uncertainRanges: [{ start: 400, end: 430.834671 }] } };
+  const html = job({ state: 'completed', verification });
+  assert.match(html, /Imported with timing warnings/);
+  assert.match(html, /Songsterr timing was retained/);
+  assert.match(html, /6:40–7:11 in the original recording/);
+  assert.match(html, /100 ending notes omitted/);
+  assert.doesNotMatch(html, /Earlier timing passed the audio check/);
+  assert.doesNotMatch(html, /short ending silence added/);
+  for (const change of [{ state: 'failed' }, { verification: { ...verification, status: 'modified' } }]) {
+    assert.doesNotMatch(job({ state: 'completed', verification, ...change }), /Imported with timing warnings/);
+  }
+});
+
 test('opening repair, acoustic evidence and preparation are distinguished', () => {
   const html = job({ state: 'completed', verification: { status: 'passed', timing: 'source_map_repaired',
     timingAssessment: { windowCount: 10, supportedWindows: 8, everyNoteVerified: false }, preparationSeconds: 1.83,

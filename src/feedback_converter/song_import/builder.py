@@ -237,6 +237,10 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             or (recipe or {}).get('preservationContract', 0) < 56
             or not ending_cutoff_allowed(alignment, audio['duration'])):
         raise ImportFailure('alignment_failed', 'A multi-bar ending cutoff requires verified timing, the original tab and contract 56.')
+    if alignment.get('recordingEnd', {}).get('timingWarning') and (source_path is None
+            or (recipe or {}).get('preservationContract', 0) < 57
+            or not ending_cutoff_allowed(alignment, audio['duration'])):
+        raise ImportFailure('alignment_failed', 'A cutoff with timing warnings requires the original tab and contract 57.')
     if alignment.get('endingPadding',{}).get('timingWarning') and (recipe or {}).get('preservationContract',0)<39:
         raise ImportFailure('alignment_failed','Ending timing warnings require the current preservation contract.')
     if alignment.get("terminalSlides") is not None and (not slides_allowed(alignment, audio["duration"])

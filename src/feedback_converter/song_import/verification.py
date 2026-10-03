@@ -20,7 +20,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 56
+VERSION = 57
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -674,9 +674,20 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
         required = {'version': 2, 'policy': 'cut-at-recording-end-v2', 'audioDuration': duration,
                     'cutoffMeasureIndex': index, 'cutoffMeasureStart': anchors[index]['audio'],
                     'mappedScoreEnd': anchors[-1]['audio'], 'syncEvidenceHash': digest(stored)}
+    warning = policy.get('timingWarning')
+    if warning:
+        from .cutoff_warning import acceptance, matches_recording
+        expected_warning = acceptance(stored, alignment)
+        if (recipe.get('preservationContract', 0) < 57 or expected_warning is None
+                or not matches_recording(alignment, recipe.get('audioSource', {}))
+                or warning != expected_warning):
+            check.fail('ending_warning', 'import', 'The timing warning has no matching source recording evidence.')
+            return None
+        required['timingWarning'] = expected_warning
     if (policy != required or recipe.get("recordingEnd") != required
             or alignment.get("recordingSync") != stored or stored.get("version") not in (SYNC_VERSION, LEGACY_VERSION)
-            or stored.get("status") != "supported" or stored.get("mapHash") != alignment.get("provenance", {}).get("mapHash")):
+            or (stored.get("status") != "supported" and not warning)
+            or stored.get("mapHash") != alignment.get("provenance", {}).get("mapHash")):
         check.fail("ending_policy", "import", "The ending cutoff has no matching current timing evidence.")
         return None
     tracks, omissions = [], []
@@ -732,7 +743,12 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
             fresh = assess(tracks, io.BytesIO(audio_bytes), duration, alignment["provenance"]["mapHash"],
                            **({'analysis_origin':offset} if offset else {}), clock_version=stored['version'])
             timing["independentAudioMatchAssessed"] = True
-            check.equal("ending_audio_sync", "import/recording-sync", "supported", fresh["status"])
+            if warning:
+                check.equal('ending_audio_warning', 'import/recording-sync/timingWarning', warning, acceptance(fresh, alignment))
+                timing['timingWarning'] = warning
+                timing['recordingSyncStatus'] = fresh['status']
+            else:
+                check.equal("ending_audio_sync", "import/recording-sync", "supported", fresh["status"])
     return {"omittedEndingNotes": len(omissions)}
 
 
