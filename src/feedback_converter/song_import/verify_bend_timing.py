@@ -95,6 +95,24 @@ def reconstruct(event, part, clock, sound_end, terminal_context=()):
     evidence = {'trackId': part.id, 'sourceId': identity(first), 'location': first.location,
                 'occurrence': entries[0][3] + 1, 'start': float(clock.at(origin)), 'end': float(clock.at(sound_end)),
                 'string': event['s'], 'fret': event['f'], 'segments': rows}
+    incoming = first.slide_in in ('up', 'down') and 0 < first.fret < 127 and not overlap
+    harmonic_targets = [a.effects.get('harmonic_target') for a, *_ in entries]
+    fixed_artificial = (bool(harmonic_targets[0]) and harmonic_targets[0].get('kind') == 'artificial'
+                        and harmonic_targets[0].get('policy') == 'harmonic'
+                        and all(t == harmonic_targets[0] for t in harmonic_targets))
+    for index, (atom, *_) in enumerate(entries):
+        if (atom.slide or (index != 0 and atom.slide_in) or atom.whammy or atom.attack_offset
+                or atom.hopo_origin or atom.hopo_destination or atom.trill or atom.pick_scrape
+                or atom.beat_vibrato
+                or (atom.effects.get('harmonic_target') and not fixed_artificial)
+                or any(atom.effects.get(k) for k in ('hm', 'hp', 'hn', 'mt', 'lr', 'pm', 'tr'))
+                or (atom.effects.get('vb') and atom.finger_vibrato not in ('slight', 'wide'))):
+            incoming = False
+    if incoming:
+        mixed = False
+        evidence['initialSlideIn'] = {'sourceId': identity(first), 'direction': first.slide_in,
+                                     'start': float(clock.at(origin)), 'attackTiming': 'authored-note',
+                                     'bendTiming': 'authored-tie'}
     overlap_reason = None
     if overlap:
         compound = any(a.hopo_origin or a.hopo_destination or a.trill or a.pick_scrape or
