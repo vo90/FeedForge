@@ -414,7 +414,9 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
                 for vi, voice in enumerate(bar["voices"]):
                     for bti, beat in enumerate(voice["beats"]):
                         where = path + f"/voices/{vi}/beats/{bti}"
-                        remember(beat, ("chord", "wahwah", "letRing", "tremolo", "tremoloBar", "vibratoWithTremoloBar", "hasRasgueado", "sustainPedal"), "beat", where)
+                        # Account for retained legacy beat vibrato limitations
+                        # even when their playback timing is unconfirmed.
+                        remember(beat, ("chord", "wahwah", "letRing", "tremolo", "tremoloBar", "vibratoWithTremoloBar", "vibrato", "wideVibrato", "hasRasgueado", "sustainPedal"), "beat", where)
                         for ni, note in enumerate(beat["notes"]):
                             if (not note.get("rest") and type(note.get("fret")) is int and 24 < note["fret"] <= 48
                                     and not (note.get("dead") is True and note.get("pickScrape") in ("up", "down"))):
