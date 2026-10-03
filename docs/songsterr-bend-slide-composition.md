@@ -1,4 +1,4 @@
-# Changing bends with terminal slide-outs — preservation contract 63
+# Changing bends with terminal slide-outs — preservation contracts 63–64
 
 A direction-only slide-out on a hidden tied continuation must not compress the
 finger bend into the first written segment. For an otherwise isolated gesture,
@@ -20,13 +20,18 @@ whammy, attack offsets, HO/PO, trills, harmonics, mutes, scrapes and other exist
 incompatible expressions remain guarded. Finger vibrato uses its separately
 verified intervals; it is not baked into the bend curve.
 
-For a bend still changing after the written slide segment begins, also retain
-the existing limitation when another attack shares its voice and onset, or the
-next attack on its string has a slide-in. Native automatic strumming and
-neighbouring slide-in synthesis can change the bend clock in these contexts;
-the isolated-note evidence does not qualify them. Settled-bend behaviour is
-unchanged. Surrounding attacks are indexed once per track, before generated
-trill attacks, outside any curve sampling or game frame loop.
+Contract 64 also qualifies an otherwise valid bend when another attack shares
+its voice and onset. Preserve the authored simultaneous chord clock. Native
+automatic strumming introduces instrument-dependent synthesis offsets; those
+are not authored attack times and are not imported. Paired native controls with
+automatic strumming disabled qualify the completed-note bend independently of
+the terminal direction cue. Explicit authored offsets still retain their guard.
+
+If the next attack on the same string has a slide-in, retain the existing
+limitation: it can change the endpoint and is outside this qualification.
+Settled-bend behaviour is unchanged. Surrounding attacks are indexed once per
+track, before generated trill attacks, outside any curve sampling or game frame
+loop. No additional indexing or per-frame work is introduced by contract 64.
 
 Unqualified cases retain their written-segment curve and compatibility finding.
 They are not silently relabelled as exact playback matches. There are no song,
@@ -50,15 +55,17 @@ with tone and MIDI quantization. The converter preserves the continuous authored
 curve instead of importing these synthesis steps. Source-to-package pitch and
 timing checks keep their existing strict tolerances.
 
-Packages with the new rule require contract 63 and finger-bend evidence version
+Isolated changing bends require contract 63 and finger-bend evidence version
 4. Their terminal evidence has `bendPhase: changing` and
 `pitchPolicy: independent-source-bend`; `value` is the terminal bend value, not
-a constant value across the slide interval. Other packages retain evidence
-version 3. The independent verifier reconstructs the rule, context, curve and
+a constant value across the slide interval. Newly qualified chord bends require
+contract 64 and evidence version 5, with `attackTiming: authored-chord` on the
+terminal evidence. Other packages retain evidence version 3 or 4 as applicable.
+The independent verifier reconstructs the rule, context, curve and
 evidence from the retained source, without using the producer's curve or helper.
 
-Tests cover native samples, rise/release, both directions, bass and guitar,
-precise controls, repeats, tempo changes, piecewise recording maps and package
+Tests cover native samples, simultaneous chord membership, rise/release, both
+directions, bass and guitar, precise controls, repeats, tempo changes, piecewise recording maps and package
 mutations. Audio-end handling still rejects a cutoff through a changing bend;
 authorized trimming of a settled tail remains supported. Hybrid Lead continues
 to copy already verified note data.

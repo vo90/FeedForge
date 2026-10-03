@@ -175,7 +175,7 @@ def test_worker_builds_hybrid_with_cutoff_and_independent_evidence(suffix, tmp_p
     assert result['verification']['adjustments']['omittedEndingNotes'] == 26
     assert result['verification']['hybridLead']['status'] == 'no_additions'
     assert result['recipe']['alignment']['recordingEnd']['version'] == 2
-    assert result['evidence']['version'] == 63
+    assert result['evidence']['version'] == 64
     with zipfile.ZipFile(result['stagingPath']) as z:
         manifest = yaml.safe_load(z.read('manifest.yaml'))
         assert len(manifest['arrangements']) == 2
