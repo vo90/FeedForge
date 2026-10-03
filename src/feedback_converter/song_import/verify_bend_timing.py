@@ -99,6 +99,26 @@ def reconstruct(event, part, clock, sound_end):
         evidence['overlap'] = {'classification': label, 'handoffs': handoffs}
         if label != 'clear-handoff':
             overlap_reason = 'overlap-with-other-expression' if compound else 'overlapping-bend-controls'
+    tail, tail_start, tail_end, _ = entries[-1]
+    terminal = None
+    if (not overlap and len(entries) > 1 and tail.tie and not tail.bends
+            and tail.slide in {'up', 'down'} and tail_end == sound_end
+            and origin < tail_start < sound_end and 0 < tail.fret < 127):
+        extras = any(a.slide_in or a.whammy or a.attack_offset or a.hopo_origin or a.hopo_destination
+                     or a.trill or a.pick_scrape or (i < len(entries)-1 and a.slide)
+                     or any(a.effects.get(k) for k in ('vb', 'hm', 'hp', 'hn', 'harmonic_target',
+                                                       'mt', 'lr', 'pm', 'tr'))
+                     for i,(a,*_) in enumerate(entries))
+        bend, begin, finish = gestures[-1]
+        controls = [(begin+(finish-begin)*p,v) for p,v in bend.bends]
+        settled = controls[0][0] <= tail_start and all(
+            a[1] == b[1] for a,b in zip(controls,controls[1:]) if b[0] > tail_start)
+        if not extras and settled:
+            terminal = {'sourceId': identity(tail), 'direction': tail.slide,
+                        'start': float(clock.at(tail_start)), 'end': float(clock.at(sound_end)),
+                        'value': float(controls[-1][1])}
+            evidence['terminalSlideOut'] = terminal
+            mixed = False
     if mixed or overlap_reason:
         return {**evidence, 'status': 'deferred', 'rule': 'retained-segment-timing',
                 'reason': 'mixed-pitch-or-displaced-attack' if mixed else overlap_reason,
@@ -134,5 +154,6 @@ def reconstruct(event, part, clock, sound_end):
             if not knots or knots[-1] != point:
                 knots.append(point)
     event['curve'] = knots
-    return {**evidence, 'status': 'resolved', 'rule': 'settled-bend-handoff' if overlap else 'tie-resolved-finger-bend',
+    return {**evidence, 'status': 'resolved',
+            'rule': 'bend-hold-slide-out' if terminal else 'settled-bend-handoff' if overlap else 'tie-resolved-finger-bend',
             'curve': [{'t': float(q-clock.at(origin)), 'v': float(v)} for q,v in knots]}

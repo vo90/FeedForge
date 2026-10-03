@@ -1,6 +1,6 @@
 # Finger-bend timing on completed notes
 
-Preservation contract 60 resolves Songsterr finger bends after ties.
+Preservation contract 61 resolves Songsterr finger bends after ties.
 An immediately following tied segment with a bend ends the preceding gesture
 at its onset. Otherwise the original attack uses its completed sounding end;
 later hidden continuations use their own segment end. A tie adds no attack.
@@ -26,7 +26,17 @@ remain explicitly deferred. Existing slide/whammy/displaced-attack guards apply.
 The native scheduler can interleave independent pitch updates; that behavior
 must not become invented extra bends or altered attacks in the chart.
 
-Version 2 of `import/finger-bend-timing.json` binds source identities, segment and gesture
+A sequential bend/hold may finish with one plain tied direction-only slide-out.
+The final segment must have no bend of its own, all previous bend motion must
+have settled by its start, and there must be no competing controllers, other
+slides, displaced attacks or compound expression. A bend still changing at the
+slide boundary remains deferred, even for a tiny slope. Both directions use the
+same rule, `bend-hold-slide-out`. The complete source bend clock is retained;
+it is never compressed to fit. The existing slide-out interval, duration, one
+attack and fret are unchanged. No target fret, extra attack, pitch ramp or release
+is invented. The game already combines the held bend and directional flourish.
+
+Version 3 of `import/finger-bend-timing.json` binds source identities, segment and gesture
 intervals, resolved/deferred status and resulting score-time curves to the source
 SHA-256. The independent verifier reconstructs it from its own source atoms and
 rational clock. Missing or altered evidence, old contracts and incorrect chart
@@ -34,6 +44,10 @@ curves fail verification. Existing imports are never rewritten.
 Overlap evidence also records each source-to-source handoff, its original
 controller end and its clear/conflicting/compound classification. Required
 fallback warnings are independently checked in the compatibility report.
+Qualified terminal slide-outs record source identity, direction, source interval
+and held bend value; the independent rational verifier reconstructs them. Native
+pitch correspondence is checked before the slide-out. Its synthesizer-generated
+ending pitch is not a prescribed fret or grading target, so it is not imported.
 Evidence identities and structure must match exactly; timestamps use the existing
 1.1-microsecond chart tolerance and pitch values allow only floating-point error.
 This avoids false failures from rounding equivalent timestamps separately.
@@ -61,3 +75,9 @@ permission to resolve every case: compound expression and changing controls
 still fail the narrower production guard. Native-controller reference tests
 allow only the fixture's documented discrete-step/quantization bound; independent
 source-to-package verification retains its original strict pitch tolerance.
+
+Sequential slide-out validation includes ten synthetic cases and The Trooper's
+complete Dave Murray part against the captured full worker in both profiles.
+Regression cases cover both directions, guitar/bass, tempo and recording maps,
+repeats, chords, voices, and source/evidence/chart mutations. The reference MIDI
+samples have an explicit discrete-step bound; production pitch checks stay strict.
