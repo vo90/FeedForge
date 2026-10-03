@@ -45,7 +45,7 @@ def test_contact_owns_its_remaining_sustain_not_the_initial_attack():
     assert n['harmonic_changes']==check['harmonic_changes']
     event=n['harmonic_changes']['events'][0]
     assert (event['start'],event['end'],n['f']+event['target']['node'])==(.5,2,21)
-    assert n['bnv']==check['bnv']==[{'t':.5,'v':0},{'t':1,'v':2}]
+    assert n['bnv']==check['bnv']==[{'t':0,'v':0},{'t':.5,'v':0},{'t':1,'v':2}]
     assert validate_changes(n)==n['harmonic_changes'] and source==before
 
 

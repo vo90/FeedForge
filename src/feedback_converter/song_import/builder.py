@@ -498,6 +498,12 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         from .muted_slides import archive_evidence as muted_slide_archive
         _write_json(package / 'import/muted-slides.json', muted_slide_archive(performance, source_path))
         manifest.setdefault('song_import', {})['mutedSlidesFile'] = 'import/muted-slides.json'
+    if performance.get('fingerBendTimingEvidence'):
+        if source_path is None or (recipe or {}).get('preservationContract', 0) < 59:
+            raise ImportFailure('unsupported_score', 'Finger bend timing requires the retained original tab and preservation contract 59.')
+        from .bend_timing import archive_evidence as finger_bend_archive
+        _write_json(package / 'import/finger-bend-timing.json', finger_bend_archive(performance, source_path))
+        manifest.setdefault('song_import', {})['fingerBendTimingFile'] = 'import/finger-bend-timing.json'
     if performance.get('staccatoBendEvidence'):
         if source_path is None or (recipe or {}).get('preservationContract', 0) < 31:
             raise ImportFailure('unsupported_score', 'Tied staccato bends require the retained original tab and preservation contract 31.')

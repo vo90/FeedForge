@@ -33,7 +33,7 @@ def test_fallback_preserves_attack_bend_timing_and_literal_source(first,second,r
     assert len(a)==len(b)==1 and a[0]['sus']==2
     for key in ('f','s','t','sus','harmonic_target','hp','bnv','bn'):
         assert a[0].get(key)==b[0]['note'].get(key)
-    assert a[0]['bnv']==[{'t':1,'v':0},{'t':2,'v':2}]
+    assert a[0]['bnv']==[{'t':0,'v':0},{'t':1,'v':0},{'t':2,'v':2}]
     assert actual['harmonicTieEvidence']==verified['harmonic_ties']
     assert actual['harmonicTieEvidence'][0]['rule']==rule
     assert source==original

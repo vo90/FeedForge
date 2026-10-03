@@ -59,6 +59,8 @@ def load_performance(path: Path | str, metadata: dict | None = None, *, composit
     if path.suffix.lower() == ".json":
         from .tied_harmonics import report_findings
         report_findings(performance, report)
+        from .bend_timing import report_findings as report_finger_bends
+        report_finger_bends(performance, report)
         from .tied_mutes import report_findings as report_tied_mutes
         report_tied_mutes(performance, report)
         from .slide_omissions import report_findings as report_slide_omissions

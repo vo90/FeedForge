@@ -119,6 +119,7 @@ def _render(score: Score) -> dict:
     tied_mutes = []
     muted_tie_identities = []
     staccato_bends = []
+    finger_bends = []
     muted_slides = []
     undefined_slides = []
     consumed_strums = []
@@ -414,6 +415,10 @@ def _render(score: Score) -> dict:
                 evidence = finish_bend(output, articulations[id(output)], track.id, at, points)
                 if evidence:
                     staccato_bends.append(evidence)
+                from .bend_timing import finish as finish_finger_bend
+                evidence = finish_finger_bend(output, articulations[id(output)], track.id, at, points)
+                if evidence:
+                    finger_bends.append(evidence)
         from .songsterr_trills import expand
         performed_notes += expand(rendered, articulations, hopo_links, track.id, at, trill_evidence, authored_groups)
         if performed_notes > 500_000:
@@ -536,6 +541,7 @@ def _render(score: Score) -> dict:
             **({'tiedMuteEvidence': sorted(tied_mutes, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if tied_mutes else {}),
             **({'mutedTieIdentityEvidence': sorted(muted_tie_identities, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if muted_tie_identities else {}),
             **({'staccatoBendEvidence': sorted(staccato_bends, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if staccato_bends else {}),
+            **({'fingerBendTimingEvidence': sorted(finger_bends, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if finger_bends else {}),
             'strumEvidence': sorted(strums,key=lambda r:(r['trackId'],r['occurrence'],r['time'],r['sourceId'])),
             **({"trillEvidence": trill_evidence} if trill_evidence else {}),
             **({'undefinedSlideEvidence': sorted(undefined_slides, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if undefined_slides else {}),
