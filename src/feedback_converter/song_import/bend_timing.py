@@ -32,19 +32,23 @@ def terminal_contexts(articulations):
 
 
 def _terminal_slide_out(segments, intervals, attack, stop, at, context):
-    """Independent bend clock with one plain tied, direction-only flourish.
+    """Independent bend clock with one terminal tied, direction-only flourish.
 
     Keep the source bend clock. Never shorten a changing bend to make it fit,
-    or infer a release, target fret or playable pitch for the slide-out.
+    or infer a release, target fret or playable pitch for the slide-out. A bend
+    authored on that last segment uses its own source interval; native synth
+    truncation to make room for slide sounds is not a musical note boundary.
     """
     last, start, end, _ = segments[-1]
-    if (len(segments) < 2 or not last.tie or last.bends
+    if (len(segments) < 2 or not last.tie
             or last.slide not in {'out_down', 'out_up'} or end != stop
             or not attack < start < stop or not 0 < last.fret < 127):
         return None
     for i, (n, *_rest) in enumerate(segments):
         if (n.slide and i != len(segments)-1 or n.slide_in or n.whammy or n.attack_offset
                 or n.hopo or n.trill or n.pick_scrape or n.effects.get('__beat_vibrato')
+                or (last.bends and n.effects.get('vb')
+                    and n.effects.get('__finger_vibrato') not in {'slight', 'wide'})
                 or any(n.effects.get(k) for k in ( 'hm', 'hp', 'hn', 'harmonic_target',
                                                   'mt', 'lr', 'pm', 'tr', '__hopo_origin'))):
             return None
@@ -59,6 +63,7 @@ def _terminal_slide_out(segments, intervals, attack, stop, at, context):
         return None
     return {'sourceId': last.source_id, 'direction': 'down' if last.slide == 'out_down' else 'up',
             'start': at(start), 'end': at(stop), 'value': controls[-1][1],
+            **({'bendTiming': 'authored-segment'} if last.bends else {}),
             **({'bendPhase': 'changing', 'pitchPolicy': 'independent-source-bend'} if changing else {}),
             **({'attackTiming': 'authored-chord'} if changing and 'simultaneous-attack' in context else {}),
             **({'endTiming': 'authored-tie'} if changing and 'following-slide-in' in context else {})}
@@ -213,7 +218,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
 
 def archive_evidence(performance, source_path):
     gestures = performance['fingerBendTimingEvidence']
-    version = (8 if any(e.get('initialSlideIn') for e in gestures)
+    version = (9 if any(e.get('terminalSlideOut', {}).get('bendTiming') == 'authored-segment' for e in gestures)
+               else 8 if any(e.get('initialSlideIn') for e in gestures)
                else 7 if any(e.get('overlap', {}).get('vibratoTiming') == 'independent-note-controls' for e in gestures)
                else 6 if any(e.get('terminalSlideOut', {}).get('endTiming') == 'authored-tie' for e in gestures)
                else 5 if any(e.get('terminalSlideOut', {}).get('attackTiming') == 'authored-chord' for e in gestures)

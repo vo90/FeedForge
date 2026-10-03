@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const CURRENT_PRESERVATION_CONTRACT = 67;
+const CURRENT_PRESERVATION_CONTRACT = 68;
 const CHART_GUIDANCE_POLICY = 'feedforge-chart-guidance-v2';
 const KNOWN_PRESERVATION_CONTRACTS = Array.from({ length: CURRENT_PRESERVATION_CONTRACT }, (_, i) => i + 1);
 const DIGEST = /^[a-f0-9]{64}$/;

@@ -512,6 +512,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         if source_path is None or (recipe or {}).get('preservationContract', 0) < 62:
             raise ImportFailure('unsupported_score', 'Timed finger vibrato requires the original tab and preservation contract 62.')
     if performance.get('fingerBendTimingEvidence'):
+        if any(e.get('terminalSlideOut', {}).get('bendTiming') == 'authored-segment' for e in performance['fingerBendTimingEvidence']) and (recipe or {}).get('preservationContract', 0) < 68:
+            raise ImportFailure('unsupported_score', 'Terminal slide-out segments with bend controls require preservation contract 68.')
         if any(e.get('initialSlideIn') for e in performance['fingerBendTimingEvidence']) and (recipe or {}).get('preservationContract', 0) < 67:
             raise ImportFailure('unsupported_score', 'Bends with an initial slide-in require preservation contract 67.')
         if any(e.get('overlap', {}).get('vibratoTiming') == 'independent-note-controls' for e in performance['fingerBendTimingEvidence']) and (recipe or {}).get('preservationContract', 0) < 66:
