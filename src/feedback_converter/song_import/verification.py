@@ -328,7 +328,7 @@ def _chords(wanted, chart, check, part):
             check.near("chord_time", "tracks/" + part.id + "/chords", wanted_time, actual_time)
 
 
-def _compatibility_report(report, score_path, source, check, harmonic_ties=(), tied_mutes=(), projected_parts=None, muted_slides=(), preservation_contract=0, consumed_strums=(), scrape_entries=(), undefined_slides=()):
+def _compatibility_report(report, score_path, source, check, harmonic_ties=(), tied_mutes=(), projected_parts=None, muted_slides=(), preservation_contract=0, consumed_strums=(), scrape_entries=(), undefined_slides=(), finger_bends=()):
     """Verify retained limitations from source facts, not the producer's inventory."""
     from .verify_source import _program_instrument, fraction, inactive, integer
     rows = report.get("findings")
@@ -351,6 +351,9 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_target", "import/compatibility", "1.16.0", target.get("feedpak"))
     check.equal("compatibility_target", "import/compatibility/notation", 1, target.get("notation"))
     expected = {}
+    for row in finger_bends:
+        if row['status'] == 'deferred':
+            expected[('note.bend_timing', row['location'] + f"@visit{row['occurrence']}")] = {'reason': row['reason']}
     for row in undefined_slides:
         if row['used']['rule'] == 'omit-slide-skipped-ending-rest':
             expected[('note.slide_skipped_ending', row['location'] + f"@visit{row['occurrence']}")] = {
@@ -442,7 +445,9 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
         check.equal("compatibility_value", key[1] + "/truncated", len(encoded) > 2048, row.get("valueTruncated"))
         check.equal("compatibility_retention", key[1], "original_source", row.get("retained"))
         check.equal("compatibility_impact", key[1], "gameplay_omission" if key[0] in ("note.fret_range", "note.consumed_strum_grace") else "display_or_expression", row.get("impact"))
-        check.equal("compatibility_category", key[1], "source_interpretation" if key[0] in ("tempo.superseded", "tempo.outside_score", "note.consumed_strum_grace") else "game_limitation", row.get("category"))
+        category = ("conversion_check" if key[0] == "note.bend_timing" else
+                    "source_interpretation" if key[0] in ("tempo.superseded", "tempo.outside_score", "note.consumed_strum_grace") else "game_limitation")
+        check.equal("compatibility_category", key[1], category, row.get("category"))
 
 
 def _notation(archive, arrangement, wanted, check):
@@ -897,7 +902,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                     check.fail("compatibility", "import/compatibility", "A blocked or invalid compatibility report cannot be published.")
                 if recipe.get("preservationContract", 0) >= 5:
                     _compatibility_report(compatibility, score_path, source, check, wanted['harmonic_ties'], wanted['tied_mutes'],
-                                          [p['source'] for p in wanted['parts']], wanted['muted_slides'], recipe.get('preservationContract', 0), wanted['consumed_strums'], wanted['scrape_entries'], wanted['undefined_slides'])
+                                          [p['source'] for p in wanted['parts']], wanted['muted_slides'], recipe.get('preservationContract', 0), wanted['consumed_strums'], wanted['scrape_entries'], wanted['undefined_slides'], wanted['finger_bends'])
             elif any(p.notation_unavailable or p.unpitched_mutes for p in source.parts):
                 check.fail("retained_notation", "import", "A notation limitation requires embedded original source and a compatibility report.")
             if wanted['undefined_slides'] or recipe.get('undefinedSlidesFile'):

@@ -142,6 +142,34 @@ def test_unqualified_combinations_are_explicitly_reported_without_new_guess(tmp_
         assert rows[0]['curve']==[{'t':0.,'v':0.},{'t':.5,'v':2.}]
     loaded=import_json(tmp_path,doc)
     assert any(f['feature']=='note.bend_timing' for f in loaded['compatibilityReport']['findings'])
+    from test_song_import_builder import inputs
+    from feedback_converter.song_import.builder import build_feedpak
+    _,audio,_,job=inputs(tmp_path)
+    alignment={'status':'validated','offset':1,'scale':1}
+    path=tmp_path/'score.json'
+    result=build_feedpak(loaded,audio,alignment,job,output_dir=tmp_path/'out',source_path=path,
+                        compatibility=loaded['compatibilityReport'],recipe={'preservationContract':59})
+    archive=Path(result['stagingPath'])
+    verified=verify_import(path,archive,alignment)
+    assert verified['status']=='passed',verified
+    with ZipFile(archive) as z: original={name:z.read(name) for name in z.namelist()}
+    manifest=yaml.safe_load(original['manifest.yaml'])
+    report_path=manifest['song_import']['compatibilityFile']
+    for fault in ('missing','reason','category'):
+        files=dict(original); report=json.loads(files[report_path])
+        finding=next(r for r in report['findings'] if r['feature']=='note.bend_timing')
+        if fault=='missing':
+            report['findings'].remove(finding)
+            report['findingCount']-=1
+        elif fault=='reason': finding['value']['reason']='invented'
+        else: finding['category']='game_limitation'
+        files[report_path]=json.dumps(report).encode()
+        altered=tmp_path/f'limitation-{fault}.feedpak'
+        with ZipFile(altered,'w') as z:
+            for name,data in files.items(): z.writestr(name,data)
+        failed=verify_import(path,altered,alignment)
+        assert failed['status']=='failed',fault
+        assert any(e['code'].startswith('compatibility_') for e in failed['errors']),failed
 
 
 @pytest.mark.parametrize('piecewise',[False,True])
