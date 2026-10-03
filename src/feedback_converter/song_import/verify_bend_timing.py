@@ -53,6 +53,7 @@ def reconstruct(event, part, clock, sound_end):
     rows, gestures = [], []
     mixed = any(a.slide or a.slide_in or a.whammy or a.attack_offset for a, *_ in entries)
     overlap = False
+    crossings = []
     last_end = None
     for i, (atom, start, end, visit) in enumerate(entries):
         row = {'sourceId': identity(atom), 'occurrence': visit + 1,
@@ -65,7 +66,9 @@ def reconstruct(event, part, clock, sound_end):
         if i + 1 < len(entries) and entries[i + 1][0].bends:
             stop = entries[i + 1][1]
         row['gestureEnd'] = float(clock.at(stop))
-        overlap |= last_end is not None and start < last_end
+        if last_end is not None and start < last_end:
+            overlap = True
+            crossings.append((len(gestures)-1, start))
         last_end = min(stop, sound_end)
         gestures.append((atom, start, stop))
 
@@ -73,16 +76,41 @@ def reconstruct(event, part, clock, sound_end):
     evidence = {'trackId': part.id, 'sourceId': identity(first), 'location': first.location,
                 'occurrence': entries[0][3] + 1, 'start': float(clock.at(origin)), 'end': float(clock.at(sound_end)),
                 'string': event['s'], 'fret': event['f'], 'segments': rows}
-    if mixed or overlap:
+    overlap_reason = None
+    if overlap:
+        compound = any(a.hopo_origin or a.hopo_destination or a.trill or a.pick_scrape or
+                       any(a.effects.get(k) for k in ('vb', 'hm', 'hp', 'hn', 'harmonic_target',
+                                                      'mt', 'lr', 'pm', 'tr')) for a, *_ in entries)
+        handoffs = []
+        for index, q in crossings:
+            atom, begin, finish = gestures[index]
+            points = [(begin+(finish-begin)*p, v) for p,v in atom.bends]
+            # The suffix must already be flat, including the segment crossing
+            # the handoff. The remaining terminal update must be at note-off.
+            flat = points[0][0] <= q and all(
+                b[1] == a[1] for a,b in zip(points,points[1:]) if b[0] > q)
+            safe = flat and finish == sound_end
+            handoffs.append({'sourceId': identity(atom), 'nextSourceId': identity(gestures[index+1][0]),
+                             'start': float(clock.at(q)), 'end': float(clock.at(finish)),
+                             'classification': 'settled-tail' if safe else 'changing-tail'})
+        label = ('other-expression' if mixed or compound else
+                 'clear-handoff' if all(h['classification']=='settled-tail' for h in handoffs)
+                 else 'conflicting-controls')
+        evidence['overlap'] = {'classification': label, 'handoffs': handoffs}
+        if label != 'clear-handoff':
+            overlap_reason = 'overlap-with-other-expression' if compound else 'overlapping-bend-controls'
+    if mixed or overlap_reason:
         return {**evidence, 'status': 'deferred', 'rule': 'retained-segment-timing',
-                'reason': 'mixed-pitch-or-displaced-attack' if mixed else 'overlapping-bend-controls',
+                'reason': 'mixed-pitch-or-displaced-attack' if mixed else overlap_reason,
                 'curve': [{'t': float(q-clock.at(origin)), 'v': float(v)} for q,v in event['curve']]}
 
     knots = []
-    for atom, begin, finish in gestures:
+    for i, (atom, begin, finish) in enumerate(gestures):
         if begin >= sound_end:
             continue
         lo, hi = max(origin, begin), min(sound_end, finish)
+        if i + 1 < len(gestures):
+            hi = min(hi, gestures[i+1][1])
         controls = [(begin + (finish-begin)*p, v) for p,v in atom.bends]
         if lo > origin and not knots:
             knots.append((clock.at(origin), F(0)))
@@ -106,5 +134,5 @@ def reconstruct(event, part, clock, sound_end):
             if not knots or knots[-1] != point:
                 knots.append(point)
     event['curve'] = knots
-    return {**evidence, 'status': 'resolved', 'rule': 'tie-resolved-finger-bend',
+    return {**evidence, 'status': 'resolved', 'rule': 'settled-bend-handoff' if overlap else 'tie-resolved-finger-bend',
             'curve': [{'t': float(q-clock.at(origin)), 'v': float(v)} for q,v in knots]}
