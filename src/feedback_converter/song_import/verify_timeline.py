@@ -184,7 +184,7 @@ def _expected(source, alignment):
     order = visits(source)
     clock, recording = Clock(source, order), RecordingMap(alignment)
     result = {"parts": [], "beats": [], "sections": [], "time_signatures": [], "tempos": [], "order": order,
-              'harmonic_ties': [], 'tied_mutes': [], 'muted_tie_identities': [], 'staccato_bends': [], 'muted_slides': [], 'undefined_slides': [], 'trills': [], 'strums': [], 'consumed_strums': [], 'scrape_entries': [],
+              'harmonic_ties': [], 'tied_mutes': [], 'muted_tie_identities': [], 'staccato_bends': [], 'finger_bends': [], 'muted_slides': [], 'undefined_slides': [], 'trills': [], 'strums': [], 'consumed_strums': [], 'scrape_entries': [],
               "raw_notes": sum(len(bar) for p in source.parts for bar in p.bars), "tie_segments": 0}
     measure_facts = []
     inherited_tempos, inherited = [], F(120)
@@ -566,6 +566,10 @@ def _expected(source, alignment):
                 evidence = reconstruct(n, part, clock, sound_end)
                 if evidence:
                     result['staccato_bends'].append(evidence)
+                from .verify_bend_timing import reconstruct as reconstruct_finger_bend
+                evidence = reconstruct_finger_bend(n, part, clock, sound_end)
+                if evidence:
+                    result['finger_bends'].append(evidence)
             if (n["start"] < 0 and not n.get('opening_strum')) or sound_end <= n["start"]:
                 unsupported(n["locations"][0], "Strum exceeds its sounding interval; no attack or endpoint was repaired.")
             mapped_start, mapped_end = recording.at(start), recording.at(end)
@@ -654,6 +658,7 @@ def _expected(source, alignment):
     result['tied_mutes'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['muted_tie_identities'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['staccato_bends'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
+    result['finger_bends'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['undefined_slides'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['muted_slides'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['consumed_strums'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))

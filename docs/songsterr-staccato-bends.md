@@ -13,7 +13,7 @@ the resulting curve to the original attack's sounding interval. Boundary values
 are interpolated without accelerating a later target or inventing a release.
 Tempo boundaries are inserted before mapping the curve to recording time.
 Written notation and original source are unchanged. Ordinary tied and untied
-bends keep their existing behavior outside this newly supported combination.
+bends are covered separately by [contract 59](songsterr-finger-bend-timing.md).
 
 The source synth's one-tick MIDI event separation and quantized pitch values do
 not become new musical events: the continuous chart uses exact authored values

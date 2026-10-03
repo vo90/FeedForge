@@ -7,6 +7,7 @@ import hashlib
 from collections import defaultdict
 
 EVIDENCE={'undefined_slides','harmonic_ties','tied_mutes','muted_tie_identities','staccato_bends','muted_slides','consumed_strums','scrape_entries','trills','strums'}
+EVIDENCE.add('finger_bends')
 
 
 def source_ids(item):

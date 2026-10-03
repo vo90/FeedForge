@@ -6,6 +6,7 @@ from .fingering import template_fingers
 
 POLICY = 'source-voices-v1'
 SIDECARS = ('undefinedSlideEvidence', 'harmonicTieEvidence', 'tiedMuteEvidence', 'mutedTieIdentityEvidence', 'staccatoBendEvidence', 'mutedSlideEvidence', 'consumedStrumEvidence', 'scrapeEntryEvidence', 'trillEvidence', 'strumEvidence')
+SIDECARS += ('fingerBendTimingEvidence',)
 
 
 def derived_id(track_id, voice):
