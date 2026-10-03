@@ -1,4 +1,4 @@
-# Changing bends with terminal slide-outs — preservation contracts 63–64
+# Changing bends with terminal slide-outs — preservation contracts 63–65
 
 A direction-only slide-out on a hidden tied continuation must not compress the
 finger bend into the first written segment. For an otherwise isolated gesture,
@@ -27,11 +27,19 @@ are not authored attack times and are not imported. Paired native controls with
 automatic strumming disabled qualify the completed-note bend independently of
 the terminal direction cue. Explicit authored offsets still retain their guard.
 
-If the next attack on the same string has a slide-in, retain the existing
-limitation: it can change the endpoint and is outside this qualification.
+Contract 65 also qualifies a following, separate attack with a slide-in on the
+same string. In the native worker, `Ss`/`ys` can shorten the preceding synth
+note to make room for the incoming slide; `xo` then generates the bend on that
+shorter interval. This instrument-dependent sound-generation interval is not an
+authored note boundary. Preserve the complete source tie and bend clock, both
+direction cues and the following attack. Do not invent an incoming start fret,
+release, earlier attack or pitch for the outgoing slide. A gap before the next
+attack must not prevent qualification either. Incoming slides inside the bend's
+own tied chain, explicit offsets and competing controllers remain guarded.
+
 Settled-bend behaviour is unchanged. Surrounding attacks are indexed once per
 track, before generated trill attacks, outside any curve sampling or game frame
-loop. No additional indexing or per-frame work is introduced by contract 64.
+loop. Contracts 64–65 add no additional indexing or per-frame work.
 
 Unqualified cases retain their written-segment curve and compatibility finding.
 They are not silently relabelled as exact playback matches. There are no song,
@@ -60,9 +68,20 @@ Isolated changing bends require contract 63 and finger-bend evidence version
 `pitchPolicy: independent-source-bend`; `value` is the terminal bend value, not
 a constant value across the slide interval. Newly qualified chord bends require
 contract 64 and evidence version 5, with `attackTiming: authored-chord` on the
-terminal evidence. Other packages retain evidence version 3 or 4 as applicable.
+terminal evidence. Following-slide cases require contract 65 and evidence
+version 6, with `endTiming: authored-tie`. A chord can carry both timing markers.
+Other packages retain evidence versions 3–5 as applicable.
 The independent verifier reconstructs the rule, context, curve and
 evidence from the retained source, without using the producer's curve or helper.
+
+`songsterr_bend_following_slide_reference.json` contains synthetic paired
+controls qualified against the complete pinned worker under both profiles.
+Native bend samples are normalized from the generated note end to the authored
+tie clock, and compared with a control removing only the following slide-in.
+This explicitly preserves source timing rather than claiming identical synth
+timing. The following attack stays at its authored position. Regression tests
+also cover gaps, other strings, separate voices, tempo changes, repeats and
+rejection of stale evidence, compressed bends and shortened sustains.
 
 Tests cover native samples, simultaneous chord membership, rise/release, both
 directions, bass and guitar, precise controls, repeats, tempo changes, piecewise recording maps and package
