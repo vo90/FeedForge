@@ -133,14 +133,16 @@ def reconstruct(event, part, clock, sound_end, terminal_context=()):
         settled = controls[0][0] <= tail_start and all(
             a[1] == b[1] for a,b in zip(controls,controls[1:]) if b[0] > tail_start)
         # Simultaneous source notes remain a chord. Native auto-strumming is
-        # synthesis, not an authored offset; endpoint-changing contexts stay guarded.
-        unsupported_context = any(c != 'simultaneous-attack' for c in terminal_context)
+        # synthesis, not an authored offset. A later slide-in's synth lead also
+        # must not shrink this source note or its bend interval.
+        unsupported_context = any(c not in ('simultaneous-attack', 'following-slide-in') for c in terminal_context)
         if not extras and (settled or not unsupported_context):
             terminal = {'sourceId': identity(tail), 'direction': tail.slide,
                         'start': float(clock.at(tail_start)), 'end': float(clock.at(sound_end)),
                         'value': float(controls[-1][1]),
                         **({'bendPhase': 'changing', 'pitchPolicy': 'independent-source-bend'} if not settled else {}),
-                        **({'attackTiming': 'authored-chord'} if not settled and 'simultaneous-attack' in terminal_context else {})}
+                        **({'attackTiming': 'authored-chord'} if not settled and 'simultaneous-attack' in terminal_context else {}),
+                        **({'endTiming': 'authored-tie'} if not settled and 'following-slide-in' in terminal_context else {})}
             evidence['terminalSlideOut'] = terminal
             mixed = False
     if mixed or overlap_reason:

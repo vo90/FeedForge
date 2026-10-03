@@ -89,11 +89,10 @@ def test_precise_controls_tempo_repeats_and_separate_voice():
     assert e['status']=='resolved' and 'attackTiming' not in e['terminalSlideOut']
 
 
-@pytest.mark.parametrize('context',['following-slide','overlapping-bend','beat-vibrato','actual-strum'])
+@pytest.mark.parametrize('context',['overlapping-bend','beat-vibrato','actual-strum'])
 def test_unqualified_compound_context_still_keeps_warning(tmp_path,context):
     doc=source();bs=doc['parts'][0]['measures'][0]['voices'][0]['beats']
-    if context=='following-slide':doc['parts'][0]['measures'].append(measure(beat(fret=11,string=1,slide='below')))
-    elif context=='overlapping-bend':
+    if context=='overlapping-bend':
         bs[1]['duration']=[1,4]
         bs.insert(1,beat(fret=9,string=1,duration=(1,4),tie=True))
         bs.insert(2,beat(fret=9,string=1,duration=(1,4),tie=True,bend=deepcopy(FALL)))

@@ -71,11 +71,9 @@ def test_repeated_tempo_changes_do_not_change_the_musical_bend_shape():
         assert n['slide_out_marks']==[{'direction':'down','start':.5,'end':3.5}]
 
 
-@pytest.mark.parametrize('context',['following_slide_in','competing_bend'])
-def test_unqualified_surroundings_retain_existing_curve_and_warning(tmp_path,context):
+def test_competing_bend_retains_existing_curve_and_warning(tmp_path):
     doc=source();bs=doc['parts'][0]['measures'][0]['voices'][0]['beats']
-    if context=='following_slide_in':doc['parts'][0]['measures'].append(measure(beat(fret=17,string=1,slide='below')))
-    else:bs[-1]['notes'][0]['bend']=deepcopy(FALL)
+    bs[-1]['notes'][0]['bend']=deepcopy(FALL)
     p=checked(doc);e=p['fingerBendTimingEvidence'][0]
     assert e['status']=='deferred' and e['rule']=='retained-segment-timing'
     loaded=import_json(tmp_path,doc)
