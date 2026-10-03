@@ -1,5 +1,9 @@
 # Verified recording-end cutoff
 
+Contract 57 additionally supports explicitly warned source timing; see
+`songsterr-cutoff-timing-warning.md`. The requirements and initial Working Man
+result below describe contract 56.
+
 Preservation contract 56 extends the existing final-bar cutoff to recordings that
 end several bars before the selected approved tab. It uses the same acoustic
 evidence gate. It does not change or compress the earlier timing map, invent audio,

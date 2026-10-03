@@ -27,7 +27,7 @@ def _choose_alignment(performance: dict, audio: dict, request: dict, progress=No
             return _choose_padding(performance, audio, alignment, request, progress)
         if alignment.get("endingCandidate"):
             if progress:
-                progress({"stage": "aligning", "message": "Verifying the song timing before omitting notes beyond the audio ending."})
+                progress({"stage": "aligning", "message": "Checking source timing and the recording ending."})
             from .ending_cutoff import authorize
             alignment = authorize(performance, audio, alignment)
         return alignment
@@ -245,6 +245,8 @@ def run_import(request: dict, progress=None) -> dict:
         if alignment.get("recordingSync"):
             summary["recordingSync"] = {key: alignment["recordingSync"][key] for key in
                                          ("version", "status", "windowCount", "supportedWindows", "sparseWindows", "everyNoteVerified")}
+            if alignment.get('recordingEnd', {}).get('timingWarning'):
+                summary['timingWarning'] = alignment['recordingEnd']['timingWarning']
         if (request.get("outputSettings") or {}).get("generateDifficulty") is True:
             summary["generatedDifficulty"] = {"requested": True, "sourceAuthored": False,
                                                "verificationScope": "source-chart-with-declared-omissions" if verification.get("omissions") else "full-source-chart"}
@@ -260,6 +262,8 @@ def run_import(request: dict, progress=None) -> dict:
                 "verification": summary, "evidence": evidence, "compatibility": compatibility_summary(compatibility),
                 "artwork": {key: artwork[key] for key in ("status", "albumStatus", "album", "year", "message", "reason") if key in artwork},
                 "warnings": list(performance.get("warnings", [])) + result["warnings"] +
+                            ([alignment['recordingEnd']['timingWarning']['message']]
+                             if alignment.get('recordingEnd',{}).get('timingWarning') else []) +
                             ([alignment['endingPadding']['timingWarning']['message']]
                              if alignment.get('endingPadding',{}).get('timingWarning') else []) +
                             ([f"Audio timing check: {alignment['timingAssessment']['supportedWindows']} of {alignment['timingAssessment']['windowCount']} passages supported. These checks do not establish every note's timing; the imported source timing is retained outside any recorded opening repair."]
