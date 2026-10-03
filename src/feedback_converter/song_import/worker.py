@@ -12,7 +12,7 @@ from .evidence import CONTRACT_VERSION, save_evidence
 from .model import ScoreImportError
 from .compatibility import summary as compatibility_summary, new_report, add_finding
 from .synchronization import align_from_songsterr
-from ..chart_guidance import POLICY as GUIDANCE_POLICY
+from ..chart_guidance import POLICY as GUIDANCE_POLICY, POSITION_POLICY
 
 
 def _choose_alignment(performance: dict, audio: dict, request: dict, progress=None, *, allow_padding=True) -> dict:
@@ -180,7 +180,7 @@ def run_import(request: dict, progress=None) -> dict:
                   "revisionId": metadata.get("revisionId"), "scoreHash": score_hash, "audioHash": audio["hash"],
                   "sourceMetadata": dict(performance.get("source") or {}),
                   "audioSource": {key: audio["source"][key] for key in ("kind", "videoId", "title", "sha256") if key in audio["source"]},
-                  "alignment": alignment_recipe, 'preparation':alignment['preparation'], "chartGuidancePolicy": GUIDANCE_POLICY}
+                  "alignment": alignment_recipe, 'preparation':alignment['preparation'], "chartGuidancePolicy": GUIDANCE_POLICY, "positionPolicy": POSITION_POLICY}
         features = set()
         if hybrid_options["enabled"]:
             recipe["hybridLead"] = hybrid_options
