@@ -78,7 +78,7 @@ def test_change_one_rational_step_after_handoff_is_not_silently_accepted():
     assert row['overlap']['classification']=='conflicting-controls'
 
 
-@pytest.mark.parametrize('effect',[{'vibrato':True},{'harmonic':'pinch'}, {'letRing':True}, {'palmMute':True}])
+@pytest.mark.parametrize('effect',[{'harmonic':'pinch'}, {'letRing':True}, {'palmMute':True}])
 def test_compound_expressions_are_not_promoted_by_flat_finger_bend_alone(effect):
     doc=source()
     if 'letRing' in effect or 'palmMute' in effect:

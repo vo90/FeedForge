@@ -98,7 +98,7 @@ def reconstruct(event, part, clock, sound_end, terminal_context=()):
     overlap_reason = None
     if overlap:
         compound = any(a.hopo_origin or a.hopo_destination or a.trill or a.pick_scrape or
-                       any(a.effects.get(k) for k in ('vb', 'hm', 'hp', 'hn', 'harmonic_target',
+                       any(a.effects.get(k) for k in ('hm', 'hp', 'hn', 'harmonic_target',
                                                       'mt', 'lr', 'pm', 'tr')) for a, *_ in entries)
         handoffs = []
         for index, q in crossings:
@@ -112,10 +112,18 @@ def reconstruct(event, part, clock, sound_end, terminal_context=()):
             handoffs.append({'sourceId': identity(atom), 'nextSourceId': identity(gestures[index+1][0]),
                              'start': float(clock.at(q)), 'end': float(clock.at(finish)),
                              'classification': 'settled-tail' if safe else 'changing-tail'})
+        flat_handoffs = all(h['classification']=='settled-tail' for h in handoffs)
+        vibrato_atoms = [a for a, *_ in entries if a.effects.get('vb')]
+        separate_vibrato = (bool(vibrato_atoms) and flat_handoffs and not mixed and not compound
+                            and not any(a.beat_vibrato for a, *_ in entries)
+                            and all(a.finger_vibrato in ('slight', 'wide') for a in vibrato_atoms))
+        compound = compound or (bool(vibrato_atoms) and not separate_vibrato)
         label = ('other-expression' if mixed or compound else
-                 'clear-handoff' if all(h['classification']=='settled-tail' for h in handoffs)
+                 'clear-handoff' if flat_handoffs
                  else 'conflicting-controls')
         evidence['overlap'] = {'classification': label, 'handoffs': handoffs}
+        if separate_vibrato:
+            evidence['overlap']['vibratoTiming'] = 'independent-note-controls'
         if label != 'clear-handoff':
             overlap_reason = 'overlap-with-other-expression' if compound else 'overlapping-bend-controls'
     tail, tail_start, tail_end, _ = entries[-1]
