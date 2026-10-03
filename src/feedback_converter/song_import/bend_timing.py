@@ -27,6 +27,7 @@ def finish(output, articulation, track_id, at, tempo_positions):
     intervals = []
     previous_end = None
     reason = None
+    overlaps = []
     for i, (note, start, end, visit) in enumerate(segments):
         row = {'sourceId': note.source_id, 'occurrence': visit + 1,
                'start': at(start), 'end': at(end),
@@ -40,18 +41,48 @@ def finish(output, articulation, track_id, at, tempo_positions):
         right = following[1] if following and following[0].bends else stop if i == 0 else end
         row['gestureEnd'] = at(right)
         if previous_end is not None and start < previous_end:
-            reason = reason or 'overlapping-bend-controls'
+            overlaps.append((len(intervals) - 1, start))
         previous_end = min(right, stop)
         intervals.append((note, start, right))
+    if overlaps:
+        # The native worker can keep the initial controller alive across ties.
+        # Only a settled tail is safe to hand off: it emits no more pitch
+        # changes before its terminal reset at note-off. Do not copy competing
+        # synth updates or silently rescale either written gesture.
+        other_expression = any(
+            n.hopo or n.trill or n.pick_scrape
+            or any(n.effects.get(k) for k in ('vb', 'hm', 'hp', 'hn', 'harmonic_target',
+                                             'mt', 'lr', 'pm', 'tr', '__hopo_origin'))
+            for n, *_ in segments)
+        handoffs = []
+        for index, handoff in overlaps:
+            old, left, right = intervals[index]
+            controls = [(left + (right-left)*p, v) for p, v in old.bends]
+            last_change = controls[0][0]
+            for before, after in zip(controls, controls[1:]):
+                if before[1] != after[1]:
+                    last_change = after[0]
+            settled = last_change <= handoff and right == stop
+            handoffs.append({'sourceId': old.source_id,
+                             'nextSourceId': intervals[index + 1][0].source_id,
+                             'start': at(handoff), 'end': at(right),
+                             'classification': 'settled-tail' if settled else 'changing-tail'})
+        evidence['overlap'] = {'classification': 'other-expression' if reason or other_expression
+                              else 'clear-handoff' if all(h['classification'] == 'settled-tail' for h in handoffs)
+                              else 'conflicting-controls', 'handoffs': handoffs}
+        if evidence['overlap']['classification'] != 'clear-handoff':
+            reason = reason or ('overlap-with-other-expression' if other_expression else 'overlapping-bend-controls')
     if reason:
         return {**evidence, 'status': 'deferred', 'reason': reason,
                 'rule': 'retained-segment-timing', 'curve': deepcopy(output.get('bnv', []))}
 
     curve = []
-    for note, start, right in intervals:
+    for i, (note, start, right) in enumerate(intervals):
         if start >= stop:
             continue
         left, right_edge = max(start, attack), min(right, stop)
+        if i + 1 < len(intervals):
+            right_edge = min(right_edge, intervals[i + 1][1])
         controls = [(start + (right - start) * p, v) for p, v in note.bends]
 
         def value_at(q):
@@ -78,11 +109,12 @@ def finish(output, articulation, track_id, at, tempo_positions):
                 curve.append(point)
     output['bnv'] = curve
     output['bn'] = max((p['v'] for p in curve), key=abs)
-    return {**evidence, 'status': 'resolved', 'rule': 'tie-resolved-finger-bend', 'curve': deepcopy(curve)}
+    return {**evidence, 'status': 'resolved',
+            'rule': 'settled-bend-handoff' if overlaps else 'tie-resolved-finger-bend', 'curve': deepcopy(curve)}
 
 
 def archive_evidence(performance, source_path):
-    return {'version': 1, 'policy': 'songsterr-finger-bend-timing-v1',
+    return {'version': 2, 'policy': 'songsterr-finger-bend-timing-v2',
             'timeDomain': 'score_seconds',
             'sourceSha256': hashlib.sha256(source_path.read_bytes()).hexdigest(),
             'gestures': deepcopy(performance['fingerBendTimingEvidence'])}
@@ -92,7 +124,14 @@ def report_findings(performance, report):
     from .compatibility import add_finding
     for row in performance.get('fingerBendTimingEvidence', []):
         if row['status'] == 'deferred':
+            message = ('Overlapping bend instructions have conflicting playback timing. '
+                       'The written bend segments are retained instead of reproducing competing pitch updates. '
+                       'Exact Songsterr playback matching is not claimed; the complete source is preserved.'
+                       if row['reason'] == 'overlapping-bend-controls' else
+                       'This bend combines another expression or displaced attack with its timing. '
+                       'Its written segment timing is retained, but matching Songsterr playback has not yet been verified. '
+                       'The complete source is preserved.')
             add_finding(report, feature='note.bend_timing', category='conversion_check',
                         impact='display_or_expression', location=row['location'] + f"@visit{row['occurrence']}",
                         trackId=row['trackId'], value={'reason': row['reason']},
-                        message='This bend combines overlapping controls or another pitch gesture. Its existing segment timing is retained, but matching Songsterr playback has not yet been verified. The complete source is preserved.')
+                        message=message)

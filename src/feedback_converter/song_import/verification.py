@@ -20,7 +20,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 59
+VERSION = 60
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -966,10 +966,10 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                     check.fail('muted_slide_evidence', 'import/muted-slides', 'Muted slide evidence differs from the independently reconstructed source.')
                 report['scope'].append('muted_slide_interpretation')
             if wanted['finger_bends'] or recipe.get('fingerBendTimingFile'):
-                if recipe.get('preservationContract', 0) < 59:
-                    check.fail('finger_bend_timing', 'manifest/song_import', 'Finger bend timing requires preservation contract 59.')
+                if recipe.get('preservationContract', 0) < 60:
+                    check.fail('finger_bend_timing', 'manifest/song_import', 'Finger bend timing requires preservation contract 60.')
                 retained = _json(z, recipe.get('fingerBendTimingFile', ''), check)
-                evidence = {'version': 1, 'policy': 'songsterr-finger-bend-timing-v1',
+                evidence = {'version': 2, 'policy': 'songsterr-finger-bend-timing-v2',
                             'timeDomain': 'score_seconds', 'sourceSha256': report['sourceSha256'],
                             'gestures': wanted['finger_bends']}
                 from .verify_bend_timing import check_evidence
