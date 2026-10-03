@@ -35,7 +35,7 @@ def _retained_boundary(parent, episode, source, timeline, clock, guard, side):
     from .hybrid_variants import _components, BOUNDARY_COST
     from .hybrid_lead import _hand_endpoints, union
 
-    if parent.get('variant', {}).get('kind') == 'retained_optional_boundary':
+    if parent.get('acceptedEnding') or parent.get('variant', {}).get('kind') == 'retained_optional_boundary':
         return None
     if not (parent['start'] < episode['start' if side == 'before' else 'end'] - EPS < parent['end']):
         return None
@@ -105,7 +105,7 @@ def _edge_omissions(missing, selected, episodes, candidates, sources, guard):
         competing = {_key(candidates[i]) for i in proposal.get('competingCandidateIndices', [])}
         episode_records, episode_refs = [], set()
         for parent in selected:
-            if _key(parent) not in competing:
+            if parent.get('acceptedEnding') or _key(parent) not in competing:
                 continue
             lookup = {(r['kind'], r['index']): r for r in sources[parent['trackId']]['rows']}
             for side in ('before', 'after'):
@@ -230,6 +230,11 @@ def refine_foreground(candidates, incumbent, sources, tracks, timeline, clock, g
     picked_refs = references(picked)
     outside = set()
     for parent in selected:
+        # Terminal acceptance proves this complete phrase with every attack
+        # retained. It cannot authorize the foreground's tiny-edge omissions.
+        if parent.get('acceptedEnding'):
+            outside.update(references([parent]))
+            continue
         source = sources[parent['trackId']]
         lookup = {(r['kind'], r['index']): r for r in source['rows']}
         for ref in parent['events']:

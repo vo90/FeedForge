@@ -4,6 +4,25 @@ Songsterr import can append one **Hybrid Lead** (`type: lead`). The option is of
 by default. All original guitar/bass arrangements, their order, notation and
 audio remain intact. Composition happens inside FeedForge.
 
+## Accepted recording endings
+
+Preservation contract 58 lets optional Hybrid passages use terminal sustain
+shortening that has already been accepted for the original arrangement. Every
+attack and chord member must remain present at its original mapped time. A real
+removed attack, partial strum or unsupported gesture does not qualify.
+
+The receipt separates the effective passage end from `acceptedEnding.sourceEnd`
+and `sourceRecordingEnd`. Musical boundary evidence and written notation keep
+their complete source extent. The derived chart copies the finalized original
+events, including their already shortened sustains; it does not retime them or
+add audio. Independent verification proves the attack membership, source
+boundaries, adjustment authority and actual recording endpoint. Foreground edge
+omissions cannot break up a phrase admitted on this complete-passage proof.
+
+Regression coverage is in `tests/test_hybrid_accepted_ending.py`, including
+single notes/chords, nonuniform recording timing, preparation silence, missing
+events/members, tuning/priority guards, notation and tampered receipts.
+
 ## Automatic selection and fixed tuning
 
 Ordinary imports automatically choose a usable base, including ambiguous or
