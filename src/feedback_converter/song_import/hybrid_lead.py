@@ -291,11 +291,11 @@ def omission_spans(performance, track_id, context, clock):
 def plan(performance, options, main_id, alignment, audio_duration, originals=None):
     from .hybrid_primary import backbone, finish
     primary = backbone(performance, options, main_id, alignment, audio_duration, originals)
-    result = _fill_gaps(performance, options, main_id, alignment, audio_duration, primary)
+    result = _fill_gaps(performance, options, main_id, alignment, audio_duration, primary, originals)
     return finish(result, primary, performance, options, alignment)
 
 
-def _fill_gaps(performance, options, main_id, alignment, audio_duration, primary=None):
+def _fill_gaps(performance, options, main_id, alignment, audio_duration, primary=None, originals=None):
     context = performance.get("compositionContext")
     if not context or context.get("version") != 1:
         raise ImportFailure("hybrid_failed", "Hybrid Lead needs the performed written score context.")
@@ -348,7 +348,7 @@ def _fill_gaps(performance, options, main_id, alignment, audio_duration, primary
                 'past_recording_end' if map_time(alignment, clock.seconds(p['end']), allow_negative=True) > audio_duration + EPS else 'eligible_phrase')
 
     def record(p, reason):
-        evaluated.append({k: deepcopy(p[k]) for k in ('trackId', 'start', 'end', 'boundaries', 'events', 'boundaryQuarters', 'variant') if k in p}
+        evaluated.append({k: deepcopy(p[k]) for k in ('trackId', 'start', 'end', 'boundaries', 'events', 'boundaryQuarters', 'variant', 'acceptedEnding') if k in p}
                          | {'reason': reason})
 
     donors = sorted(performance["tracks"], key=lambda t: (preferred.index(t["id"]) if t["id"] in preferred else len(preferred), t["id"]))
@@ -377,7 +377,9 @@ def _fill_gaps(performance, options, main_id, alignment, audio_duration, primary
                   'context': track_context, 'unsupported': unsupported, 'track': track}
         donor_sources[ident] = source
         accepted, rejected_parents = [], []
+        from .hybrid_endings import project
         for p in possible:
+            p = project(p, source, (originals or {}).get(ident), clock, alignment, audio_duration)
             reason = decision(p, source)
             record(p, reason)
             if reason == 'eligible_phrase':
@@ -393,6 +395,7 @@ def _fill_gaps(performance, options, main_id, alignment, audio_duration, primary
             variant_generation[field] += generation[field]
         variant_generation['budgetLimited'] |= generation['budgetLimited']
         for p in variants:
+            p = project(p, source, (originals or {}).get(ident), clock, alignment, audio_duration)
             reason = decision(p, source)
             record(p, reason)
             if reason == 'eligible_phrase':

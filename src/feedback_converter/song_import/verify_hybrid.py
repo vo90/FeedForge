@@ -201,6 +201,10 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
         for key in ("tuning", "capo"):
             check.equal("hybrid_setup", "hybrid/passages/" + key, main.get(key), donor.get(key))
         a, b = at(lo), at(hi)
+        from .verify_hybrid_endings import audit as audit_ending
+        accepted_ending = audit_ending(passage, parts[tid], donor, recipe, alignment, manifest['duration'], at, check)
+        source_hi = accepted_ending['sourceEnd'] if accepted_ending else hi
+        source_b = at(source_hi)
         primary_passage = primary_policy and passage.get('priority') in {'solo','lead'}
         check.near("hybrid_time", "hybrid/recordingStart", a, passage.get("recordingStart"))
         check.near("hybrid_time", "hybrid/recordingEnd", b, passage.get("recordingEnd"))
@@ -265,7 +269,7 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
                 break  # Selected event footprints above close written dependencies.
             if beat["rest"]:
                 continue
-            if beat["time"] < b - TOL and beat["end"] > a + TOL and (beat["time"] < a - TOL or beat["end"] > b + TOL):
+            if beat["time"] < source_b - TOL and beat["end"] > a + TOL and (beat["time"] < a - TOL or beat["end"] > source_b + TOL):
                 check.fail("hybrid_written_cut", "hybrid/passages", "A written slot was split.")
         for ref in passage["events"]:
             key = (tid, ref["kind"], ref["index"])
@@ -352,7 +356,7 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
                 check.fail("hybrid_whole_passage", "hybrid/passages", "Passage has invalid enclosing boundaries.")
             else:
                 check.near("hybrid_whole_passage", "hybrid/passages/start", min(x[0] for x in complete), lo, 1e-5)
-                check.near("hybrid_whole_passage", "hybrid/passages/end", max(x[1] for x in complete), hi, 1e-5)
+                check.near("hybrid_whole_passage", "hybrid/passages/end", max(x[1] for x in complete), source_hi, 1e-5)
         for q, label in zip(passage.get("boundaryQuarters", []), passage.get("boundaries", [])):
             valid = label == "song" and any(abs(q-x) < 1e-7 for x in (0,float(clock.quarters))) or label == "section" and any(abs(q-x) < 1e-7 for x in sections)
             if label == "rest":
@@ -447,7 +451,8 @@ def _notation(z, arr, receipt, source_rows, check):
     selected_pairs = {id(p): {(sid, occurrence) for ref in p['events'] for sid in ref.get('sourceIds', [])
                               for occurrence in ref.get('occurrences', [])} for p in receipt['passages']}
     def selected(beat, passage, occurrence):
-        within = beat['t'] >= passage['recordingStart'] - TOL and beat['t'] + beat.get('duration_seconds', 0) <= passage['recordingEnd'] + TOL and beat['t'] < passage['recordingEnd'] - 1e-7
+        notation_end = passage.get('acceptedEnding', {}).get('sourceRecordingEnd', passage['recordingEnd'])
+        within = beat['t'] >= passage['recordingStart'] - TOL and beat['t'] + beat.get('duration_seconds', 0) <= notation_end + TOL and beat['t'] < notation_end - 1e-7
         if not within or receipt.get('policy') != 'hybrid-lead-v3' or passage.get('priority') not in {'solo', 'lead'}:
             return within
         if beat.get('rest'):

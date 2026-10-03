@@ -55,7 +55,10 @@ def notation_for(plan, originals):
         selected_pairs = {(occurrence, source_id) for event in p['events']
                           for occurrence in event.get('occurrences', []) for source_id in event.get('sourceIds', [])}
         def selected_beat(beat, occurrence):
-            lo, hi = p['recordingStart'], p['recordingEnd']
+            # Keep the authored final slot/ties; only the playable sustain was
+            # shortened in the original chart, not the source notation.
+            lo = p['recordingStart']
+            hi = p.get('acceptedEnding', {}).get('sourceRecordingEnd', p['recordingEnd'])
             if not (beat['t'] >= lo - 1.1e-6 and beat['t'] + beat.get('duration_seconds', 0) <= hi + 1.1e-6 and beat['t'] < hi - 1e-7):
                 return False
             if 'ownedStart' not in p:
