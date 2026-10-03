@@ -29,9 +29,11 @@ must not become invented extra bends or altered attacks in the chart.
 A sequential bend/hold may finish with one plain tied direction-only slide-out.
 The final segment must have no bend of its own, all previous bend motion must
 have settled by its start, and there must be no competing controllers, other
-slides, displaced attacks or compound expression. A bend still changing at the
-slide boundary remains deferred, even for a tiny slope. Both directions use the
-same rule, `bend-hold-slide-out`. The complete source bend clock is retained;
+slides, displaced attacks or compound expression. Both directions use the
+same rule, `bend-hold-slide-out`. Contract 63 adds a separate qualified rule for
+isolated bends still changing at the slide boundary; see
+[bend/slide composition](songsterr-bend-slide-composition.md) for its context
+guards and evidence. The complete source bend clock is retained;
 it is never compressed to fit. The existing slide-out interval, duration, one
 attack and fret are unchanged. No target fret, extra attack, pitch ramp or release
 is invented. The game already combines the held bend and directional flourish.

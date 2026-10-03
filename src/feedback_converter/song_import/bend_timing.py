@@ -8,8 +8,32 @@ from copy import deepcopy
 import hashlib
 
 
-def _terminal_slide_out(segments, intervals, attack, stop, at):
-    """A completed bend followed by one plain tied, direction-only flourish.
+def terminal_contexts(articulations):
+    """Index surrounding attacks once, outside the curve sampling loop.
+
+    Automatic chord strums and a following slide-in can change the native
+    synthesizer's bend clock. They are not qualified by the isolated terminal
+    slide rule. Keep those contexts conservative, without inventing timings.
+    """
+    onsets, strings, result = {}, {}, {}
+    for key, a in articulations.items():
+        n = a['bend_segments'][0][0]
+        onsets.setdefault((n.voice_id, a['start']), []).append(key)
+        strings.setdefault(n.string, []).append((a['start'], key, n))
+    for members in onsets.values():
+        if len(members) > 1:
+            for key in members:
+                result.setdefault(key, set()).add('simultaneous-attack')
+    for events in strings.values():
+        events.sort(key=lambda e: e[0])
+        for (_, key, _), (_, _, following) in zip(events, events[1:]):
+            if following.slide_in:
+                result.setdefault(key, set()).add('following-slide-in')
+    return result
+
+
+def _terminal_slide_out(segments, intervals, attack, stop, at, context):
+    """Independent bend clock with one plain tied, direction-only flourish.
 
     Keep the source bend clock. Never shorten a changing bend to make it fit,
     or infer a release, target fret or playable pitch for the slide-out.
@@ -31,13 +55,15 @@ def _terminal_slide_out(segments, intervals, attack, stop, at):
     for a,b in zip(controls, controls[1:]):
         if a[1] != b[1]:
             last_change = b[0]
-    if last_change > start:
+    changing = last_change > start
+    if changing and context:
         return None
     return {'sourceId': last.source_id, 'direction': 'down' if last.slide == 'out_down' else 'up',
-            'start': at(start), 'end': at(stop), 'value': controls[-1][1]}
+            'start': at(start), 'end': at(stop), 'value': controls[-1][1],
+            **({'bendPhase': 'changing', 'pitchPolicy': 'independent-source-bend'} if changing else {})}
 
 
-def finish(output, articulation, track_id, at, tempo_positions):
+def finish(output, articulation, track_id, at, tempo_positions, terminal_context=()):
     segments = articulation['bend_segments']
     if not any(n.bends for n, *_ in segments):
         return None
@@ -101,7 +127,7 @@ def finish(output, articulation, track_id, at, tempo_positions):
                               else 'conflicting-controls', 'handoffs': handoffs}
         if evidence['overlap']['classification'] != 'clear-handoff':
             reason = reason or ('overlap-with-other-expression' if other_expression else 'overlapping-bend-controls')
-    terminal = None if overlaps else _terminal_slide_out(segments, intervals, attack, stop, at)
+    terminal = None if overlaps else _terminal_slide_out(segments, intervals, attack, stop, at, terminal_context)
     if terminal is not None:
         reason = None
         evidence['terminalSlideOut'] = terminal
@@ -143,12 +169,14 @@ def finish(output, articulation, track_id, at, tempo_positions):
     output['bnv'] = curve
     output['bn'] = max((p['v'] for p in curve), key=abs)
     return {**evidence, 'status': 'resolved',
-            'rule': 'bend-hold-slide-out' if terminal else 'settled-bend-handoff' if overlaps else 'tie-resolved-finger-bend',
+            'rule': ('bend-with-slide-out' if terminal.get('bendPhase') == 'changing' else 'bend-hold-slide-out')
+                    if terminal else 'settled-bend-handoff' if overlaps else 'tie-resolved-finger-bend',
             'curve': deepcopy(curve)}
 
 
 def archive_evidence(performance, source_path):
-    return {'version': 3, 'policy': 'songsterr-finger-bend-timing-v3',
+    version = 4 if any(e.get('rule') == 'bend-with-slide-out' for e in performance['fingerBendTimingEvidence']) else 3
+    return {'version': version, 'policy': f'songsterr-finger-bend-timing-v{version}',
             'timeDomain': 'score_seconds',
             'sourceSha256': hashlib.sha256(source_path.read_bytes()).hexdigest(),
             'gestures': deepcopy(performance['fingerBendTimingEvidence'])}

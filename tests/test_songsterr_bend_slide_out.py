@@ -17,11 +17,11 @@ REFERENCE = json.loads((Path(__file__).parent/'fixtures/songsterr_bend_slide_out
 
 
 @pytest.mark.parametrize('case',REFERENCE['cases'],ids=lambda c:c['id'])
-def test_prefix_matches_qualified_native_samples_and_changing_overlap_stays_deferred(case):
+def test_prefix_matches_qualified_native_samples_with_independent_slide_composition(case):
     assert REFERENCE['referenceSha256']=='4219f9dbf0952af83be36c8b590f10fea7a0f36d72bd1f92297a3d768f93f5ab'
     p=checked(case['source']);n=p['tracks'][0]['notes'][0];e=p['fingerBendTimingEvidence'][0]
-    assert (e['status']=='resolved')==case['accepted']
-    if case['accepted']:
+    assert e['status']=='resolved'
+    if e['rule']=='bend-hold-slide-out':
         for profile in case['profiles']:
             for point in profile['samples']:
                 assert point['t'] < e['terminalSlideOut']['start']
@@ -54,16 +54,11 @@ def test_bend_hold_slide_out_retains_single_attack_pitch_and_source_interval(tmp
     assert not any(f['feature']=='note.bend_timing' for f in loaded['compatibilityReport']['findings'])
 
 
-@pytest.mark.parametrize('fault', ['changing','tiny_slope','own_bend','early_slide','slide_in','whammy',
+@pytest.mark.parametrize('fault', ['own_bend','early_slide','slide_in','whammy',
                                   'beat_vibrato','harmonic','mute','palm_mute','let_ring','hopo','open','strum'])
 def test_unqualified_combinations_stay_explicitly_deferred(fault):
     doc=source();beats=doc['parts'][0]['measures'][0]['voices'][0]['beats']
-    if fault in ('changing','tiny_slope'):
-        del beats[1]['notes'][0]['bend']
-        if fault=='tiny_slope':
-            beats[0]['notes'][0]['bend']={'points':[{'position':0,'tone':0},
-                {'position':30,'precisePosition':50.0001,'tone':100},{'position':60,'tone':100}]}
-    elif fault=='own_bend':beats[2]['notes'][0]['bend']=deepcopy(RISE)
+    if fault=='own_bend':beats[2]['notes'][0]['bend']=deepcopy(RISE)
     elif fault=='early_slide':
         beats[1]['notes'][0]['slide']=beats[2]['notes'][0].pop('slide')
     elif fault=='slide_in':beats[0]['notes'][0]['slide']='below'
