@@ -355,3 +355,68 @@ def test_source_authored_positions_remain_authored():
     finalize(data)
     assert data["anchors"]==authored
     assert "anchors" not in data["ext"]["chartGuidance"]["fields"]
+
+
+def test_chords_start_at_their_lowest_fret_even_inside_a_covering_anchor():
+    data = chart([note(0, 4, sustain=1)], [chord(1, (5,7,7)), chord(2, (7,8), tid=1)],
+                 [template((5,7,7)), template((7,8))])
+    finalize(data)
+    assert at(data, 1) == {"time":1,"fret":5,"width":4}
+    assert at(data, 2) == {"time":2,"fret":7,"width":4}
+    assert validate(data) == []
+
+
+def test_slide_corridor_releases_at_the_next_chord_in_rats():
+    data = chart([note(105.5375,3,sustain=.24875,sl=8)],
+        [chord(105.78625,(8,7),1.24375), chord(107.03,(3,5,5),.72375,tid=1),
+         chord(107.75375,(5,7,7),1.20625,tid=2)],
+        [template((8,7)),template((3,5,5)),template((5,7,7))])
+    before = music_digest(data)
+    finalize(data)
+    assert data["anchors"] == [{"time":0.,"fret":3,"width":6},
+        {"time":105.78625,"fret":7,"width":4}, {"time":107.03,"fret":3,"width":4},
+        {"time":107.75375,"fret":5,"width":4}]
+    assert music_digest(data) == before
+    assert validate(data) == []
+
+
+def test_overlapping_low_sustain_stays_covered_then_releases_without_three_new_attacks():
+    data = chart([note(0,2,5,1.5)], [chord(1,(7,9),2)], [template((7,9))])
+    finalize(data)
+    assert covers(at(data,1),2,7,9)
+    assert at(data,1.5) == {"time":1.5,"fret":7,"width":4}
+    assert validate(data) == []
+
+
+def test_wide_chord_then_power_chord_has_no_width_memory():
+    data = chart(chords=[chord(0,(3,10),1),chord(1,(5,7),1,tid=1)],
+                 templates=[template((3,10)),template((5,7))])
+    finalize(data)
+    assert at(data,0)["width"] == 8
+    assert at(data,1) == {"time":1,"fret":5,"width":4}
+    assert validate(data) == []
+
+
+def test_open_only_chord_after_a_stretch_returns_to_four_context_cells():
+    data = chart(chords=[chord(0,(3,10),1),chord(1,(0,0),1,tid=1)],
+                 templates=[template((3,10)),template((0,0))])
+    finalize(data)
+    assert at(data,0)["width"] == 8
+    assert at(data,1) == {"time":1,"fret":3,"width":4}
+    assert validate(data) == []
+
+
+def test_explicit_regeneration_upgrades_old_owned_positions_without_changing_music():
+    data = chart(chords=[chord(0,(5,7))],templates=[template((5,7))])
+    finalize(data)
+    data["ext"]["chartGuidance"].pop("positionPolicy")
+    data["anchors"] = [{"time":0.,"fret":4,"width":4}]
+    rehash(data)
+    old = deepcopy(data)
+    finalize(data)
+    assert data == old
+    finalize(data,regenerate=True)
+    assert at(data,0) == {"time":0.,"fret":5,"width":4}
+    assert data["ext"]["chartGuidance"]["positionPolicy"] == "chord-local-v1"
+    assert music_digest(data) == music_digest(old)
+    assert validate(data) == []
