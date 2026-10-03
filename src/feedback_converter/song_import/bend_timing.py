@@ -107,7 +107,7 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
         # synth updates or silently rescale either written gesture.
         other_expression = any(
             n.hopo or n.trill or n.pick_scrape
-            or any(n.effects.get(k) for k in ('vb', 'hm', 'hp', 'hn', 'harmonic_target',
+            or any(n.effects.get(k) for k in ('hm', 'hp', 'hn', 'harmonic_target',
                                              'mt', 'lr', 'pm', 'tr', '__hopo_origin'))
             for n, *_ in segments)
         handoffs = []
@@ -123,9 +123,20 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
                              'nextSourceId': intervals[index + 1][0].source_id,
                              'start': at(handoff), 'end': at(right),
                              'classification': 'settled-tail' if settled else 'changing-tail'})
+        settled_handoffs = all(h['classification'] == 'settled-tail' for h in handoffs)
+        has_vibrato = any(n.effects.get('vb') for n, *_ in segments)
+        # Explicit note vibrato has its own verified control timeline. It does
+        # not displace the source bend clock or create another finger bend.
+        qualified_vibrato = (has_vibrato and settled_handoffs and not reason and not other_expression
+                            and all(not n.effects.get('__beat_vibrato')
+                                    and (not n.effects.get('vb') or n.effects.get('__finger_vibrato') in {'slight', 'wide'})
+                                    for n, *_ in segments))
+        other_expression = other_expression or (has_vibrato and not qualified_vibrato)
         evidence['overlap'] = {'classification': 'other-expression' if reason or other_expression
-                              else 'clear-handoff' if all(h['classification'] == 'settled-tail' for h in handoffs)
+                              else 'clear-handoff' if settled_handoffs
                               else 'conflicting-controls', 'handoffs': handoffs}
+        if qualified_vibrato:
+            evidence['overlap']['vibratoTiming'] = 'independent-note-controls'
         if evidence['overlap']['classification'] != 'clear-handoff':
             reason = reason or ('overlap-with-other-expression' if other_expression else 'overlapping-bend-controls')
     terminal = None if overlaps else _terminal_slide_out(segments, intervals, attack, stop, at, terminal_context)
@@ -177,7 +188,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
 
 def archive_evidence(performance, source_path):
     gestures = performance['fingerBendTimingEvidence']
-    version = (6 if any(e.get('terminalSlideOut', {}).get('endTiming') == 'authored-tie' for e in gestures)
+    version = (7 if any(e.get('overlap', {}).get('vibratoTiming') == 'independent-note-controls' for e in gestures)
+               else 6 if any(e.get('terminalSlideOut', {}).get('endTiming') == 'authored-tie' for e in gestures)
                else 5 if any(e.get('terminalSlideOut', {}).get('attackTiming') == 'authored-chord' for e in gestures)
                else 4 if any(e.get('rule') == 'bend-with-slide-out' for e in gestures) else 3)
     return {'version': version, 'policy': f'songsterr-finger-bend-timing-v{version}',
