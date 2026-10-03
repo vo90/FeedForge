@@ -19,8 +19,10 @@ The completed-tie resolver follows the reviewed Songsterr controller schedule:
 - Direction-only slide-outs keep their existing source interval. Synthesized
   slide destinations, hidden note-ons and shortened synth-control release times
   are not invented as tablature. A settled bend followed by vibrato and a terminal
-  slide-out can now use the verified bend clock. Changing/competing bends, beat-
-  only vibrato and other unqualified compounds keep their existing limitations.
+  slide-out can now use the verified bend clock. Contract 63 additionally handles
+  isolated changing bends with a terminal slide-out (see
+  [bend/slide composition](songsterr-bend-slide-composition.md)). Competing bends,
+  beat-only vibrato and other unqualified compounds keep their limitations.
 
 Interval endpoints pass through tempo changes, repeats, displaced attacks and
 piecewise recording maps. Trill expansion intersects and rebases the intervals

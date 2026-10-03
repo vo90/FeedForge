@@ -20,7 +20,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 62
+VERSION = 63
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -340,7 +340,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     reports_precedence = type(report.get('version')) is int and report['version'] >= 46
     if preservation_contract >= 46 and not reports_precedence:
@@ -978,7 +978,11 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 if recipe.get('preservationContract', 0) < 61:
                     check.fail('finger_bend_timing', 'manifest/song_import', 'Finger bend timing requires preservation contract 61.')
                 retained = _json(z, recipe.get('fingerBendTimingFile', ''), check)
-                evidence = {'version': 3, 'policy': 'songsterr-finger-bend-timing-v3',
+                changing_slide = any(e.get('rule') == 'bend-with-slide-out' for e in wanted['finger_bends'])
+                if changing_slide and recipe.get('preservationContract', 0) < 63:
+                    check.fail('finger_bend_timing', 'manifest/song_import', 'Changing bends with a terminal slide require preservation contract 63.')
+                bend_version = 4 if changing_slide else 3
+                evidence = {'version': bend_version, 'policy': f'songsterr-finger-bend-timing-v{bend_version}',
                             'timeDomain': 'score_seconds', 'sourceSha256': report['sourceSha256'],
                             'gestures': wanted['finger_bends']}
                 from .verify_bend_timing import check_evidence

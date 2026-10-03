@@ -411,6 +411,8 @@ def _render(score: Score) -> dict:
         consumed_strums.extend(omissions)
         if score.source.get('format') == 'songsterr':
             from .staccato_bends import finish as finish_bend
+            from .bend_timing import terminal_contexts
+            bend_contexts = terminal_contexts({id(n): articulations[id(n)] for n in rendered})
             for output in rendered:
                 evidence = finish_bend(output, articulations[id(output)], track.id, at, points)
                 if evidence:
@@ -418,7 +420,8 @@ def _render(score: Score) -> dict:
                 from .bend_timing import finish as finish_finger_bend
                 from .finger_vibrato import finish as finish_vibrato
                 finish_vibrato(output, articulations[id(output)], at)
-                evidence = finish_finger_bend(output, articulations[id(output)], track.id, at, points)
+                evidence = finish_finger_bend(output, articulations[id(output)], track.id, at, points,
+                                             bend_contexts.get(id(output), ()))
                 if evidence:
                     finger_bends.append(evidence)
         from .songsterr_trills import expand
