@@ -8,6 +8,35 @@ from copy import deepcopy
 import hashlib
 
 
+def _terminal_slide_out(segments, intervals, attack, stop, at):
+    """A completed bend followed by one plain tied, direction-only flourish.
+
+    Keep the source bend clock. Never shorten a changing bend to make it fit,
+    or infer a release, target fret or playable pitch for the slide-out.
+    """
+    last, start, end, _ = segments[-1]
+    if (len(segments) < 2 or not last.tie or last.bends
+            or last.slide not in {'out_down', 'out_up'} or end != stop
+            or not attack < start < stop or not 0 < last.fret < 127):
+        return None
+    for i, (n, *_rest) in enumerate(segments):
+        if (n.slide and i != len(segments)-1 or n.slide_in or n.whammy or n.attack_offset
+                or n.hopo or n.trill or n.pick_scrape
+                or any(n.effects.get(k) for k in ('vb', 'hm', 'hp', 'hn', 'harmonic_target',
+                                                  'mt', 'lr', 'pm', 'tr', '__hopo_origin'))):
+            return None
+    bend, left, right = intervals[-1]
+    controls = [(left + (right-left)*p, v) for p,v in bend.bends]
+    last_change = controls[0][0]
+    for a,b in zip(controls, controls[1:]):
+        if a[1] != b[1]:
+            last_change = b[0]
+    if last_change > start:
+        return None
+    return {'sourceId': last.source_id, 'direction': 'down' if last.slide == 'out_down' else 'up',
+            'start': at(start), 'end': at(stop), 'value': controls[-1][1]}
+
+
 def finish(output, articulation, track_id, at, tempo_positions):
     segments = articulation['bend_segments']
     if not any(n.bends for n, *_ in segments):
@@ -72,6 +101,10 @@ def finish(output, articulation, track_id, at, tempo_positions):
                               else 'conflicting-controls', 'handoffs': handoffs}
         if evidence['overlap']['classification'] != 'clear-handoff':
             reason = reason or ('overlap-with-other-expression' if other_expression else 'overlapping-bend-controls')
+    terminal = None if overlaps else _terminal_slide_out(segments, intervals, attack, stop, at)
+    if terminal is not None:
+        reason = None
+        evidence['terminalSlideOut'] = terminal
     if reason:
         return {**evidence, 'status': 'deferred', 'reason': reason,
                 'rule': 'retained-segment-timing', 'curve': deepcopy(output.get('bnv', []))}
@@ -110,11 +143,12 @@ def finish(output, articulation, track_id, at, tempo_positions):
     output['bnv'] = curve
     output['bn'] = max((p['v'] for p in curve), key=abs)
     return {**evidence, 'status': 'resolved',
-            'rule': 'settled-bend-handoff' if overlaps else 'tie-resolved-finger-bend', 'curve': deepcopy(curve)}
+            'rule': 'bend-hold-slide-out' if terminal else 'settled-bend-handoff' if overlaps else 'tie-resolved-finger-bend',
+            'curve': deepcopy(curve)}
 
 
 def archive_evidence(performance, source_path):
-    return {'version': 2, 'policy': 'songsterr-finger-bend-timing-v2',
+    return {'version': 3, 'policy': 'songsterr-finger-bend-timing-v3',
             'timeDomain': 'score_seconds',
             'sourceSha256': hashlib.sha256(source_path.read_bytes()).hexdigest(),
             'gestures': deepcopy(performance['fingerBendTimingEvidence'])}

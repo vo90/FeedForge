@@ -148,7 +148,7 @@ def test_unqualified_combinations_are_explicitly_reported_without_new_guess(tmp_
     alignment={'status':'validated','offset':1,'scale':1}
     path=tmp_path/'score.json'
     result=build_feedpak(loaded,audio,alignment,job,output_dir=tmp_path/'out',source_path=path,
-                        compatibility=loaded['compatibilityReport'],recipe={'preservationContract':60})
+                        compatibility=loaded['compatibilityReport'],recipe={'preservationContract':61})
     archive=Path(result['stagingPath'])
     verified=verify_import(path,archive,alignment)
     assert verified['status']=='passed',verified
@@ -191,7 +191,7 @@ def test_package_verifier_rejects_wrong_timing_and_missing_evidence(tmp_path,pie
             alignment['tempos']=[{'time':.25,'bpm':120},{'time':.75,'bpm':60},{'time':1.,'bpm':50}]
     path=tmp_path/'score.json'
     result=build_feedpak(p,audio,alignment,job,output_dir=tmp_path/'out',source_path=path,
-                        compatibility=p['compatibilityReport'],recipe={'preservationContract':60})
+                        compatibility=p['compatibilityReport'],recipe={'preservationContract':61})
     archive=Path(result['stagingPath'])
     assert validate_feedpak(archive).ok
     verified=verify_import(path,archive,alignment)
@@ -235,6 +235,6 @@ def test_old_contract_cannot_publish_corrected_timing(tmp_path):
     from feedback_converter.song_import.audio import ImportFailure
     _,audio,_,job=inputs(tmp_path)
     p=import_json(tmp_path,source())
-    with pytest.raises(ImportFailure,match='contract 60'):
+    with pytest.raises(ImportFailure,match='contract 61'):
         build_feedpak(p,audio,{'status':'validated','offset':0,'scale':1},job,output_dir=tmp_path/'out',
                       source_path=tmp_path/'score.json',recipe={'preservationContract':59},compatibility=p['compatibilityReport'])

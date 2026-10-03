@@ -135,7 +135,7 @@ def test_packaged_curve_policy_and_source_cannot_be_falsified(tmp_path,conflict,
         alignment.update(mapping='piecewise-linear',anchors=[{'score':0,'audio':.25},{'score':.75,'audio':1.},{'score':4,'audio':4.9}],
                          tempos=[{'time':.25,'bpm':120},{'time':1.,'bpm':100}])
     result=build_feedpak(p,audio,alignment,job,output_dir=tmp_path/'out',source_path=tmp_path/'score.json',
-                        compatibility=p['compatibilityReport'],recipe={'preservationContract':60})
+                        compatibility=p['compatibilityReport'],recipe={'preservationContract':61})
     archive=Path(result['stagingPath'])
     verified=verify_import(tmp_path/'score.json',archive,alignment)
     assert verified['status']=='passed',verified
