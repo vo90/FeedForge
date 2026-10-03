@@ -78,7 +78,7 @@ def check_segment(note, state):
     if not trill:
         return
     prior = [n for n, *_ in state.get('bend_segments', [])] if not state.get('trill_validated') else []
-    allowed = {'pm', 'ghost', 'ac', 'vb', 'pkd', 'fg', '__hopo_origin', '__wide_vibrato'}
+    allowed = {'pm', 'ghost', 'ac', 'vb', 'pkd', 'fg', '__hopo_origin', '__wide_vibrato', '__finger_vibrato', '__beat_vibrato'}
     if any(set(n.effects) - allowed or n.bends or n.slide or n.slide_in
            or n.whammy or n.pick_scrape or n.attack_offset for n in [*prior, note]):
         fail('this combination with another gesture needs additional verification.')
@@ -119,6 +119,9 @@ def expand(rendered, states, links, track_id, at, evidence, authored_groups):
                 row['ho' if fret > sequence[-1]['f'] else 'po'] = True
                 rendered.append(row)
             row.update(t=at(left), sus=at(right) - at(left), f=fret)
+            if 'vibrato_marks' in original:
+                from ..vibrato import slice_marks
+                row['vibrato_marks'] = slice_marks(original['vibrato_marks'], at(left)-original['t'], at(right)-original['t'])
             row.pop('ln', None)
             if ordinal < count - 1 or original.get('ln'):
                 row['ln'] = True

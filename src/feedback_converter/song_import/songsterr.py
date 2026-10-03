@@ -98,8 +98,15 @@ def _note(raw, beat, position, duration, strings, tpqn=16384):
                            "tapping": "tp", "hp": "__hopo_origin"}.items():
         if raw.get(source):
             effects[target] = True
-    if raw.get("wideVibrato") or beat.get("wideVibrato"):
-        effects["__wide_vibrato"] = True
+    # Modern note instruction takes precedence over legacy note and beat flags.
+    kind = vibrato or ('wide' if raw.get('wideVibrato') else 'slight' if raw.get('vibrato') else None)
+    if kind is None and (beat.get('vibrato') or beat.get('wideVibrato')):
+        kind = 'wide' if beat.get('wideVibrato') else 'slight'
+        effects['__beat_vibrato'] = True
+    if kind:
+        effects['__finger_vibrato'] = kind
+    if kind == 'wide':
+        effects['__wide_vibrato'] = True
     # Validate both forms even when the beat instruction takes precedence.
     beat_tremolo, note_tremolo = tremolo_mark(beat.get("tremolo")), tremolo_mark(raw.get("tremolo"))
     if beat_tremolo or note_tremolo:

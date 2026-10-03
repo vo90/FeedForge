@@ -55,7 +55,7 @@ def test_bend_hold_slide_out_retains_single_attack_pitch_and_source_interval(tmp
 
 
 @pytest.mark.parametrize('fault', ['changing','tiny_slope','own_bend','early_slide','slide_in','whammy',
-                                  'vibrato','harmonic','mute','palm_mute','let_ring','hopo','open','strum'])
+                                  'beat_vibrato','harmonic','mute','palm_mute','let_ring','hopo','open','strum'])
 def test_unqualified_combinations_stay_explicitly_deferred(fault):
     doc=source();beats=doc['parts'][0]['measures'][0]['voices'][0]['beats']
     if fault in ('changing','tiny_slope'):
@@ -68,7 +68,7 @@ def test_unqualified_combinations_stay_explicitly_deferred(fault):
         beats[1]['notes'][0]['slide']=beats[2]['notes'][0].pop('slide')
     elif fault=='slide_in':beats[0]['notes'][0]['slide']='below'
     elif fault=='whammy':beats[1]['tremoloBar']=deepcopy(RISE)
-    elif fault=='vibrato':beats[1]['notes'][0]['vibrato']=True
+    elif fault=='beat_vibrato':beats[1]['vibrato']=True
     elif fault=='harmonic':beats[0]['notes'][0]['harmonic']='pinch'
     elif fault=='mute':beats[0]['notes'][0]['dead']=True
     elif fault=='palm_mute':beats[0]['palmMute']=True

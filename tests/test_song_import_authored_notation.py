@@ -48,16 +48,37 @@ def test_legacy_brush_is_not_mistaken_for_pick_direction(tmp_path):
 
 
 def test_independent_verifier_detects_lost_pick_direction_and_vibrato(tmp_path):
+    import json
+    from pathlib import Path
+    from zipfile import ZipFile
+    import yaml
+    from test_song_import_builder import inputs
+    from feedback_converter.song_import.builder import build_feedpak
     source, package = example()
     source["parts"][0]["measures"][0]["voices"][0]["beats"][0]["pickStroke"] = "down"
     note = source["parts"][0]["measures"][0]["voices"][0]["beats"][0]["notes"][0]
     note["leftHandVibrato"] = "wide"
     package["chart.json"]["notes"][0].update(pkd=0, vb=True)
+    package["chart.json"]["notes"][0]['vibrato_marks'] = [{'start':0, 'end':.5, 'intensity':'wide'}]
     package["notation.json"]["measures"][0]["staves"]["staff"]["voices"][0]["beats"][0]["notes"][0].update(vib=True, vibw=True)
-    report = verify(tmp_path, source, package)
+    # Keep the current provenance envelope; compare the produced music to the
+    # hand-calculated values before testing independent corruption detection.
+    _,audio,_,job=inputs(tmp_path)
+    p=import_json(tmp_path,source)
+    result=build_feedpak(p,audio,{'status':'validated','offset':1,'scale':1},job,
+        output_dir=tmp_path/'out',source_path=tmp_path/'score.json',compatibility=p['compatibilityReport'],
+        recipe={'preservationContract':62})
+    with ZipFile(Path(result['stagingPath'])) as z:
+        current={name:(yaml.safe_load(z.read(name)) if name.endswith('.yaml') else json.loads(z.read(name)))
+                 for name in z.namelist() if name.endswith(('.json','.yaml'))}
+    cp=current['manifest.yaml']['arrangements'][0]['file']
+    for actual, wanted in zip(current[cp]['notes'], package['chart.json']['notes']):
+        for key, value in wanted.items():
+            assert actual.get(key) == value, key
+    report = verify(tmp_path, source, current)
     assert report["status"] == "passed", report
-    del package["chart.json"]["notes"][0]["pkd"]
-    assert "note_technique" in {e["code"] for e in verify(tmp_path, source, package)["errors"]}
+    del current[cp]["notes"][0]["pkd"]
+    assert "note_technique" in {e["code"] for e in verify(tmp_path, source, current)["errors"]}
 
 
 @pytest.mark.parametrize('fret,technique', [(7, 'ho'), (3, 'po')])

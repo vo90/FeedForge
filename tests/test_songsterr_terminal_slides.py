@@ -123,7 +123,7 @@ def build_package(source, performance, audio, alignment, root):
     job.mkdir()
     built = build_feedpak(performance, audio, alignment, job, output_dir=root / 'out', source_path=source,
         compatibility=performance['compatibilityReport'], recipe={
-            'preservationContract': 33, 'audioSource': audio['source'],
+            'preservationContract': 62, 'audioSource': audio['source'],
             'sourceMetadata': dict(performance.get('source') or {}),
             'alignment': {'method': alignment['method'], 'provenance': alignment['provenance']}})
     return Path(built['stagingPath'])

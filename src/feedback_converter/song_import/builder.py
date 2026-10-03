@@ -77,6 +77,15 @@ def _retime_note(note: dict, alignment: dict, duration: float, *, chord_time: fl
                                              [p['score'] for p in alignment.get('anchors', [])])
         except ValueError as exc:
             raise ImportFailure("unsupported_score", str(exc)) from exc
+    if 'vibrato_marks' in note:
+        from ..vibrato import validate_marks
+        try:
+            marks = validate_marks(note['vibrato_marks'], original_sustain)
+            result['vibrato_marks'] = validate_marks([{**m,
+                'start': round(map_time(alignment, original+m['start'])-start, 6),
+                'end': round(map_time(alignment, original+m['end'])-start, 6)} for m in marks], round(sustain, 6))
+        except ValueError as exc:
+            raise ImportFailure('alignment_failed', str(exc)) from exc
     if "pick_scrape_marks" in note:
         from .pick_scrape import retime
         result["pick_scrape_marks"] = retime(note, alignment, original, start, sustain)
@@ -498,6 +507,10 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         from .muted_slides import archive_evidence as muted_slide_archive
         _write_json(package / 'import/muted-slides.json', muted_slide_archive(performance, source_path))
         manifest.setdefault('song_import', {})['mutedSlidesFile'] = 'import/muted-slides.json'
+    if any('vibrato_marks' in n for t in performance['tracks'] for n in
+           [*t.get('notes', []), *(n for c in t.get('chords', []) for n in c['notes'])]):
+        if source_path is None or (recipe or {}).get('preservationContract', 0) < 62:
+            raise ImportFailure('unsupported_score', 'Timed finger vibrato requires the original tab and preservation contract 62.')
     if performance.get('fingerBendTimingEvidence'):
         if source_path is None or (recipe or {}).get('preservationContract', 0) < 61:
             raise ImportFailure('unsupported_score', 'Finger bend timing requires the retained original tab and preservation contract 61.')

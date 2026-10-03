@@ -51,7 +51,7 @@ def build(tmp_path, doc=None, enabled=True, mapped=False, difficulty=False, over
         alignment = {"status": "validated", "mapping": "piecewise-linear", "anchors": [
             {"score": 0, "audio": 0}, {"score": 2, "audio": 1.5}, {"score": 8, "audio": 8}],
             "tempos": [{"time": 0, "bpm": 160}, {"time": 1.5, "bpm": 120 / (6.5 / 6)}]}
-    recipe = {"preservationContract": 37, "source": "songsterr", "scoreHash": options["sourceSha256"], "audioHash": audio["hash"]}
+    recipe = {"preservationContract": 62, "source": "songsterr", "scoreHash": options["sourceSha256"], "audioHash": audio["hash"]}
     if enabled:
         recipe["hybridLead"] = options
     result = build_feedpak(p, audio, alignment, directory, output_dir=tmp_path / "out", recipe=recipe,
