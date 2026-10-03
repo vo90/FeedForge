@@ -75,7 +75,8 @@ def package(tmp_path, **kw):
     alignment=align_from_songsterr(performance,audio,SYNC,META)
     job=tmp_path/'job';job.mkdir()
     built=build_feedpak(performance,audio,alignment,job,output_dir=tmp_path/'out',source_path=source,
-                       compatibility=performance['compatibilityReport'],recipe={'preservationContract':10})
+                       compatibility=performance['compatibilityReport'],recipe={'preservationContract':62,
+                           'audioSource':audio['source'], 'alignment':alignment})
     return source,performance,alignment,Path(built['stagingPath'])
 
 

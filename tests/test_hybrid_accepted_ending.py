@@ -51,7 +51,7 @@ def fixture(tmp_path, *, chord=False, duration=3.5, conflict=False, excluded=Fal
     job = tmp_path / 'job'; job.mkdir()
     built = build_feedpak(performance, audio, alignment, job, output_dir=tmp_path / 'out',
         source_path=source, compatibility=performance['compatibilityReport'],
-        recipe={'preservationContract': 58, 'hybridLead': options, 'scoreHash': options['sourceSha256'],
+        recipe={'preservationContract': 62, 'hybridLead': options, 'scoreHash': options['sourceSha256'],
                 'audioHash': audio['hash'], 'audioSource': audio['source'], 'alignment': alignment,
                 **({'preparation': alignment['preparation']} if preparation else {})},
         hybrid_lead={'enabled': True, 'mainTrackId': '0', 'options': options})

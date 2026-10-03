@@ -117,6 +117,12 @@ def trim_held_note(note: dict, duration: float, *, allow_directional_slides: boo
             adjusted['whammy'] = trim_whammy(note['whammy'], shortened)
         except ValueError as exc:
             raise ImportFailure('alignment_failed', str(exc)) from exc
+    if 'vibrato_marks' in note:
+        from ..vibrato import validate_marks, slice_marks
+        try:
+            adjusted['vibrato_marks'] = slice_marks(validate_marks(note['vibrato_marks'], sustain), 0, shortened)
+        except ValueError as exc:
+            raise ImportFailure('alignment_failed', str(exc)) from exc
     if "pick_scrape_marks" in note:
         adjusted["pick_scrape_marks"] = [{**mark, "end": min(mark["end"], shortened)}
             for mark in note["pick_scrape_marks"] if mark["start"] < shortened]

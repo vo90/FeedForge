@@ -552,6 +552,10 @@ def _expected(source, alignment):
             if len(group['notes']) >= 2 and len({n['s'] for n in group['notes']}) == len(group['notes']):
                 group['notes'].sort(key=lambda n:n['s'])
                 result['strums'].append(group)
+        if source.format == 'songsterr':
+            from .verify_vibrato import intervals
+            for event in notes:
+                event['timed_vibrato'] = intervals(event)
         notes = trill_expectations(notes, hopo_links, part, notation_notes, result["trills"])
         rendered = []
         for n in notes:
@@ -574,6 +578,10 @@ def _expected(source, alignment):
                 unsupported(n["locations"][0], "Strum exceeds its sounding interval; no attack or endpoint was repaired.")
             mapped_start, mapped_end = recording.at(start), recording.at(end)
             row = {"t": mapped_start, "sus": round(mapped_end - mapped_start, 6), "s": n["s"], "f": n["f"], **n["effects"]}
+            if n.get('timed_vibrato') is not None:
+                row['vibrato_marks'] = [{'start': round(recording.at(clock.at(max(a, n['start'])))-mapped_start, 6),
+                    'end': round(recording.at(clock.at(min(b, sound_end)))-mapped_start, 6), 'intensity': kind}
+                    for a,b,kind in n['timed_vibrato'] if a < sound_end and b > n['start']]
             if n.get('contact'):
                 contact = n['contact']
                 if (contact['at'] >= sound_end or n['slide_marks'] or n['incoming_marks']

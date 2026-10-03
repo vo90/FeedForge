@@ -20,9 +20,9 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 61
+VERSION = 62
 TIME_TOLERANCE = 0.0000011
-TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "pkd"}
+TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
 TECHNIQUES.add("fg")
 TUNINGS = {"guitar": {6: [40, 45, 50, 55, 59, 64], 7: [35, 40, 45, 50, 55, 59, 64], 8: [30, 35, 40, 45, 50, 55, 59, 64]},
@@ -168,7 +168,7 @@ def _notes(wanted, actual, check, part, duration):
         for key in ("t", "sus"):
             check.near("note_time" if key == "t" else "note_sustain", loc + "/" + key, a[key], b.get(key, 0))
         for key in TECHNIQUES:
-            if key in {"slide_out_marks", "slide_in_marks", "pick_scrape_marks", "whammy", "harmonic_changes"}:
+            if key in {"slide_out_marks", "slide_in_marks", "pick_scrape_marks", "whammy", "harmonic_changes", "vibrato_marks"}:
                 continue
             wanted_value, actual_value = a.get(key), b.get(key)
             if key == "fg" and key in b and (type(actual_value) is not int or not 0 <= actual_value <= 4):
@@ -179,6 +179,8 @@ def _notes(wanted, actual, check, part, duration):
                 check.near("note_technique", loc + "/bn", wanted_value, actual_value, 1e-8)
             else:
                 check.equal("note_technique", loc + "/" + key, wanted_value, actual_value)
+        from .verify_vibrato import compare as compare_vibrato
+        compare_vibrato(a.get('vibrato_marks'), b.get('vibrato_marks'), b.get('sus', 0), check, loc+'/vibrato_marks')
         _slide_marks(a.get("slide_out_marks", []), b, check, loc)
         _incoming_marks(a.get("slide_in_marks", []), b, check, loc)
         _scrape_marks(a.get("pick_scrape_marks", []), b, check, loc)
@@ -613,6 +615,9 @@ def _terminal_adjustments(wanted, alignment, recipe, archive, duration, source, 
                             "exportedDuration": shortened, "trimmedSeconds": round(sustain - shortened, 6),
                             **({"slideOuts": slide_changes} if slide_changes else {})})
             note["sus"] = shortened
+            if 'vibrato_marks' in note:
+                note['vibrato_marks'] = [{**m, 'end': min(m['end'], shortened)}
+                    for m in note['vibrato_marks'] if m['start'] < shortened]
             if "pick_scrape_marks" in note:
                 note["pick_scrape_marks"] = [{**m, "end": min(m["end"], shortened)}
                     for m in note["pick_scrape_marks"] if m["start"] < shortened]
@@ -965,6 +970,10 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 if json.dumps(stable(evidence),sort_keys=True) != json.dumps(stable(retained),sort_keys=True):
                     check.fail('muted_slide_evidence', 'import/muted-slides', 'Muted slide evidence differs from the independently reconstructed source.')
                 report['scope'].append('muted_slide_interpretation')
+            if any('vibrato_marks' in n['note'] for p in wanted['parts'] for n in p['notes']):
+                if recipe.get('preservationContract', 0) < 62:
+                    check.fail('vibrato_contract', 'manifest/song_import', 'Timed vibrato requires preservation contract 62.')
+                report['scope'].append('timed_finger_vibrato')
             if wanted['finger_bends'] or recipe.get('fingerBendTimingFile'):
                 if recipe.get('preservationContract', 0) < 61:
                     check.fail('finger_bend_timing', 'manifest/song_import', 'Finger bend timing requires preservation contract 61.')

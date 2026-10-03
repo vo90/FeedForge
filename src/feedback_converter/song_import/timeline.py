@@ -416,6 +416,8 @@ def _render(score: Score) -> dict:
                 if evidence:
                     staccato_bends.append(evidence)
                 from .bend_timing import finish as finish_finger_bend
+                from .finger_vibrato import finish as finish_vibrato
+                finish_vibrato(output, articulations[id(output)], at)
                 evidence = finish_finger_bend(output, articulations[id(output)], track.id, at, points)
                 if evidence:
                     finger_bends.append(evidence)

@@ -21,8 +21,8 @@ def _terminal_slide_out(segments, intervals, attack, stop, at):
         return None
     for i, (n, *_rest) in enumerate(segments):
         if (n.slide and i != len(segments)-1 or n.slide_in or n.whammy or n.attack_offset
-                or n.hopo or n.trill or n.pick_scrape
-                or any(n.effects.get(k) for k in ('vb', 'hm', 'hp', 'hn', 'harmonic_target',
+                or n.hopo or n.trill or n.pick_scrape or n.effects.get('__beat_vibrato')
+                or any(n.effects.get(k) for k in ( 'hm', 'hp', 'hn', 'harmonic_target',
                                                   'mt', 'lr', 'pm', 'tr', '__hopo_origin'))):
             return None
     bend, left, right = intervals[-1]

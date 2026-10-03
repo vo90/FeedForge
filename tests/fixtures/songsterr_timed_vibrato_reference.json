@@ -1,0 +1,3179 @@
+{
+  "referenceSha256": "4219f9dbf0952af83be36c8b590f10fea7a0f36d72bd1f92297a3d768f93f5ab",
+  "fullWorkerComparisons": 46,
+  "scope": "Pinned full worker, two instrument profiles. Compare source control activation; synth slide destinations and sub-tick resets are not player instructions.",
+  "cases": [
+    {
+      "id": "middle-downwards",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "downwards"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            }
+          ]
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "middle-final-downwards",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "downwards",
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "final-downwards",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "downwards",
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "first-downwards",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "downwards"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 0,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 1.9999348958333334,
+              "value": 0
+            }
+          ]
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 0,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 1.9999348958333334,
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "all-downwards",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "downwards",
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 0,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 1.9999348958333334,
+              "value": 0
+            }
+          ]
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 0,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 1.9999348958333334,
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "slight-to-wide-downwards",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "downwards",
+                            "leftHandVibrato": "wide"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "wide-to-slight-downwards",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "leftHandVibrato": "wide"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "downwards"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 0,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 1.9999348958333334,
+              "value": 0
+            }
+          ]
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 0,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 1.9999348958333334,
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "wide-middle-final-downwards",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "leftHandVibrato": "wide"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "downwards",
+                            "leftHandVibrato": "wide"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "middle-upwards",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "upwards"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            }
+          ]
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "middle-final-upwards",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "upwards",
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "final-upwards",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "upwards",
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "first-upwards",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "upwards"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 0,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 1.9999348958333334,
+              "value": 0
+            }
+          ]
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 0,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 1.9999348958333334,
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "all-upwards",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "upwards",
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 0,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 1.9999348958333334,
+              "value": 0
+            }
+          ]
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 0,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 1.9999348958333334,
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "slight-to-wide-upwards",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "upwards",
+                            "leftHandVibrato": "wide"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "wide-to-slight-upwards",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "leftHandVibrato": "wide"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "upwards"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 0,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 1.9999348958333334,
+              "value": 0
+            }
+          ]
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 0,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:0:0",
+              "elapsed": 1.9999348958333334,
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "wide-middle-final-upwards",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "leftHandVibrato": "wide"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "upwards",
+                            "leftHandVibrato": "wide"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "legacy-note",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "vibrato": true
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "downwards",
+                            "vibrato": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 64
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "legacy-wide-note",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "wideVibrato": true
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "downwards",
+                            "wideVibrato": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": [
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.5,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:1:0",
+              "elapsed": 0.9999348958333333,
+              "value": 0
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1,
+              "value": 127
+            },
+            {
+              "sourceId": "0:0:2:0",
+              "elapsed": 1.7499674479166667,
+              "value": 0
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "beat",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true
+                          }
+                        ],
+                        "vibrato": true
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "downwards"
+                          }
+                        ],
+                        "vibrato": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": []
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": []
+        }
+      }
+    },
+    {
+      "id": "beat-wide",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 15,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true
+                          }
+                        ],
+                        "wideVibrato": true
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 2,
+                            "fret": 14,
+                            "tie": true,
+                            "slide": "downwards"
+                          }
+                        ],
+                        "wideVibrato": true
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "native": {
+        "authored": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": []
+        },
+        "player-defaults": {
+          "tpqn": 15360,
+          "visibleAuthoredAttacks": 1,
+          "vibratoControls": []
+        }
+      }
+    }
+  ]
+}

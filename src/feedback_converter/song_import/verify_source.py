@@ -62,6 +62,8 @@ class Atom:
     hopo_origin: bool = False
     hopo_destination: bool = False
     wide_vibrato: bool = False
+    finger_vibrato: str | None = None
+    beat_vibrato: bool = False
     slide_in: str | None = None
     staccato: bool = False
     pitch_offset: int = 0
@@ -817,7 +819,14 @@ def songsterr(document, *, track_indices=None):
                                            if bar_expression is not None else None)
                         atoms[-1].pitch_offset = harmonic_shift
                         atoms[-1].attack_offset = offset
-                        atoms[-1].wide_vibrato = bool(note.get("wideVibrato")) or note.get("leftHandVibrato") == "wide"
+                        kind = note.get('leftHandVibrato')
+                        if kind is None:
+                            kind = 'wide' if note.get('wideVibrato') else 'slight' if note.get('vibrato') else None
+                        atoms[-1].beat_vibrato = kind is None and bool(beat.get('wideVibrato') or beat.get('vibrato'))
+                        if atoms[-1].beat_vibrato:
+                            kind = 'wide' if beat.get('wideVibrato') else 'slight'
+                        atoms[-1].finger_vibrato = kind
+                        atoms[-1].wide_vibrato = kind == 'wide'
                         if raw_slide in {"above", "aboveshift", "abovelegato", "aboveupwards", "abovedownwards"}:
                             atoms[-1].slide_in = "down"
                         elif raw_slide in {"below", "belowshift", "belowlegato", "belowupwards", "belowdownwards"}:

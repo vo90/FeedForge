@@ -105,8 +105,8 @@ def reconstruct(event, part, clock, sound_end):
             and tail.slide in {'up', 'down'} and tail_end == sound_end
             and origin < tail_start < sound_end and 0 < tail.fret < 127):
         extras = any(a.slide_in or a.whammy or a.attack_offset or a.hopo_origin or a.hopo_destination
-                     or a.trill or a.pick_scrape or (i < len(entries)-1 and a.slide)
-                     or any(a.effects.get(k) for k in ('vb', 'hm', 'hp', 'hn', 'harmonic_target',
+                     or a.trill or a.pick_scrape or a.beat_vibrato or (i < len(entries)-1 and a.slide)
+                     or any(a.effects.get(k) for k in ( 'hm', 'hp', 'hn', 'harmonic_target',
                                                        'mt', 'lr', 'pm', 'tr'))
                      for i,(a,*_) in enumerate(entries))
         bend, begin, finish = gestures[-1]

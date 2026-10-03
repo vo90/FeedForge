@@ -12,7 +12,7 @@ from .songsterr_tremolo import tremolo_mark
 from .songsterr_fields import validate_sustain_pedal
 from .model import ScoreImportError, integer, rational
 
-VERSION = 61
+VERSION = 62
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -39,6 +39,8 @@ KNOWN["note"].add("tremolo")
 KNOWN["beat"].add("hasRasgueado")
 KNOWN["beat"].add("sustainPedal")
 LIMITATIONS = {
+    ("beat", "vibrato"): "Beat-level vibrato is retained as a written instruction; its playback timing is not confirmed by the source player.",
+    ("beat", "wideVibrato"): "Beat-level wide vibrato is retained as a written instruction; its playback timing is not confirmed by the source player.",
     ("beat", "sustainPedal"): "The sustain-pedal marking is retained in the original source. Songsterr uses it for synthesizer pedal control. Written notes, ties and durations are preserved; the game does not display or score the pedal effect, or extend note trails for it.",
     ("note", "rightFingering"): "The authored picking-hand finger is retained in the original source. The game does not display picking-hand fingering; fretting-hand hints, notes, timing and scoring are unchanged.",
     ("note", "tremolo"): "Tremolo picking uses the game's existing tremolo instruction. Exact subdivision and within-tie timing remain in the source. A tied sustain has one marker for the whole sustain; individual repeated picks are not expanded or scored separately, and the written subdivision is not engraved.",

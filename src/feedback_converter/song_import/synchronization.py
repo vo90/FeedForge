@@ -360,7 +360,7 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
                                                         [p['score'] for p in result.get('anchors', [])])
                     except ValueError:
                         _unavailable('invalid_whammy_timing')
-                for key, coordinates in (("bnv", ("t",)), ("slide_out_marks", ("start", "end")), ("slide_in_marks", ("time",))):
+                for key, coordinates in (("bnv", ("t",)), ("slide_out_marks", ("start", "end")), ("vibrato_marks", ("start", "end")), ("slide_in_marks", ("time",))):
                     if key in mapped:
                         mapped[key] = [{**p, **{k: round(_mapped_value(result, start + p[k]) - mapped_start, 6) for k in coordinates}}
                                        for p in mapped[key]]
