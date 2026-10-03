@@ -10,8 +10,8 @@ from collections import Counter, defaultdict
 import math
 
 MAX_FRET = 24
-POSITION_POLICY = "open-preparation-v1"
-PREVIOUS_POSITION_POLICIES = (None, "chord-local-v1")
+POSITION_POLICY = "open-preparation-v2"
+PREVIOUS_POSITION_POLICIES = (None, "chord-local-v1", "open-preparation-v1")
 
 
 def _members(chart):
@@ -203,44 +203,59 @@ def _positions(rows, chords=()):
     return result
 
 
-def _prepare_opens(rows, positions):
-    """Move a nearby destination's position to a plain open pickup's onset.
+def _prepare_opens(rows, positions, beats=()):
+    """Walk backward from each fretted destination through its open pickup.
 
     Resolve the destination first, so its fingering context agrees with the
     open bar. Never borrow a remote position or hide a sounding fretted note.
-    Only connected open durations form a run; silence and techniques break it.
+    The run has no total-duration limit. At most one local beat of silence
+    connects neighbouring attacks (0.5 s without beats, capped at 1 s). This
+    admits detached picks without borrowing a lane across a substantial rest.
     """
     groups = defaultdict(list)
     for start, end, note in rows:
         groups[round(start, 6)].append((round(end, 6), note))
     techniques = ("mt", "fhm", "bn", "bnv", "vb", "vibrato", "vibrato_marks", "tr", "whammy", "hm", "hp", "hn",
                   "harmonic_target", "harmonic_changes", "ho", "po", "ln",
-                  "slide_in_marks", "slide_out", "slide_out_marks", "pick_scrape_marks")
+                  "slide_in_marks", "slide_out", "slideOut", "slide_out_marks", "pick_scrape_marks")
 
     def plain_open(note):
         return (note["f"] == 0 and not any(note.get(k) for k in techniques)
                 and not any(type(note.get(k)) in (int, float) and note[k] >= 0
                             for k in ("sl", "slu", "su")))
 
+    beat_times = sorted({b["time"] for b in beats if isinstance(b, dict)
+                         and type(b.get("time")) in (int, float) and math.isfinite(b["time"])})
+
+    def allowed_gap(time):
+        if len(beat_times) < 2:
+            return .5
+        index = max(0, min(len(beat_times) - 2, bisect_right(beat_times, time) - 1))
+        return max(.1, min(1., beat_times[index + 1] - beat_times[index]))
+
+    attacks, blocked_until, open_until = [], -math.inf, -math.inf
+    for time, members in sorted(groups.items()):
+        plain = all(plain_open(n) for _, n in members)
+        open_until = max(open_until, max((end for end, n in members if plain_open(n)), default=-math.inf))
+        attacks.append((time, max(open_until, max(end for end, _ in members)),
+                        plain and blocked_until <= time,
+                        any(_frets(n) for _, n in members)))
+        blocked_until = max(blocked_until, max((end for end, n in members if not plain_open(n)), default=-math.inf))
+
     times = [a["time"] for a in positions]
     spans = []
-    run_start, run_end, blocked_until = None, -math.inf, -math.inf
-    for time, members in sorted(groups.items()):
-        if all(plain_open(n) for _, n in members) and blocked_until <= time:
-            if run_start is None or time > run_end + .001:
-                run_start = time
-                run_end = time
-            run_end = max(run_end, max(end for end, _ in members))
+    for index, (time, _, _, fretted) in enumerate(attacks):
+        if not fretted:
             continue
-        if (run_start is not None and time - run_start <= .75
-                and time <= run_end + .001 and any(_frets(n) for _, n in members)):
+        start, following = None, time
+        for prior in range(index - 1, -1, -1):
+            onset, end, eligible, _ = attacks[prior]
+            if not eligible or following - end > allowed_gap(onset) + .001:
+                break
+            start = following = onset
+        if start is not None:
             target = positions[max(0, bisect_right(times, time) - 1)]
-            # Wide slides/chords need their own shape; do not turn an open
-            # pickup into an unnecessarily wide bar just to preview them.
-            if target["width"] == 4:
-                spans.append((run_start, time, target))
-        run_start = None
-        blocked_until = max(blocked_until, max((end for end, n in members if not plain_open(n)), default=-math.inf))
+            spans.append((start, time, target))
 
     if not spans:
         return positions
@@ -263,4 +278,4 @@ def _prepare_opens(rows, positions):
 def generate_positions(chart):
     """Return fresh display anchors without changing the input chart."""
     rows = _members(chart)[0]
-    return _prepare_opens(rows, _positions(rows, chart.get("chords", ())))
+    return _prepare_opens(rows, _positions(rows, chart.get("chords", ())), chart.get("beats", ()))
