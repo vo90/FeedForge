@@ -100,6 +100,31 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
             overlaps.append((len(intervals) - 1, start))
         previous_end = min(right, stop)
         intervals.append((note, start, right))
+    first = segments[0][0]
+    harmonic = first.effects.get('harmonic_target')
+    steady_harmonic = (isinstance(harmonic, dict) and harmonic.get('kind') == 'artificial'
+                       and harmonic.get('policy') == 'harmonic'
+                       and all(n.effects.get('harmonic_target') == harmonic for n, *_ in segments))
+    # An approach cue has no authored target interval inside this note. The
+    # native synth's pre-attack flourish does not set the finger-bend clock.
+    # Qualify only an initial cue with independently supported note controls;
+    # later cues, outgoing/targeted slides and overlapping controllers remain
+    # separate compositions requiring their own playback qualification.
+    initial_slide = (first.slide_in in {'up', 'down'} and 0 < first.fret < 127
+                     and not overlaps and all(
+                         not (n.slide or (i and n.slide_in) or n.whammy or n.attack_offset
+                              or n.hopo or n.trill or n.pick_scrape
+                              or n.effects.get('__beat_vibrato')
+                              or (n.effects.get('harmonic_target') and not steady_harmonic)
+                              or any(n.effects.get(k) for k in ('hm', 'hp', 'hn',
+                                                               'mt', 'lr', 'pm', 'tr', '__hopo_origin')))
+                         and (not n.effects.get('vb') or n.effects.get('__finger_vibrato') in {'slight', 'wide'})
+                         for i, (n, *_) in enumerate(segments)))
+    if initial_slide:
+        reason = None
+        evidence['initialSlideIn'] = {'sourceId': first.source_id, 'direction': first.slide_in,
+                                     'start': at(attack), 'attackTiming': 'authored-note',
+                                     'bendTiming': 'authored-tie'}
     if overlaps:
         # The native worker can keep the initial controller alive across ties.
         # Only a settled tail is safe to hand off: it emits no more pitch
@@ -188,7 +213,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
 
 def archive_evidence(performance, source_path):
     gestures = performance['fingerBendTimingEvidence']
-    version = (7 if any(e.get('overlap', {}).get('vibratoTiming') == 'independent-note-controls' for e in gestures)
+    version = (8 if any(e.get('initialSlideIn') for e in gestures)
+               else 7 if any(e.get('overlap', {}).get('vibratoTiming') == 'independent-note-controls' for e in gestures)
                else 6 if any(e.get('terminalSlideOut', {}).get('endTiming') == 'authored-tie' for e in gestures)
                else 5 if any(e.get('terminalSlideOut', {}).get('attackTiming') == 'authored-chord' for e in gestures)
                else 4 if any(e.get('rule') == 'bend-with-slide-out' for e in gestures) else 3)
