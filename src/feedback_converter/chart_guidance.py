@@ -7,7 +7,7 @@ from bisect import bisect_right
 from copy import deepcopy
 import hashlib
 import json
-from .generated_hand_positions import POSITION_POLICY, _members, generate_positions
+from .generated_hand_positions import POSITION_POLICY, PREVIOUS_POSITION_POLICIES, _members, generate_positions
 
 POLICY = "feedforge-chart-guidance-v2"
 FIELDS = ("anchors", "handshapes")
@@ -73,7 +73,7 @@ def finalize(chart, *, regenerate=False, window=None):
     input_hash = music_digest(chart)
     if previous is not None:
         if (previous.get("policy") != POLICY or previous.get("sourceAuthored") is not False
-                or previous.get("positionPolicy") not in (None, POSITION_POLICY)):
+                or previous.get("positionPolicy") not in (*PREVIOUS_POSITION_POLICIES, POSITION_POLICY)):
             raise ValueError("Unknown chart guidance provenance; preserve it for review.")
         fields = previous.get("fields")
         if not isinstance(fields, list) or not fields or any(k not in FIELDS for k in fields) or len(fields) != len(set(fields)):

@@ -10,7 +10,8 @@ from collections import Counter, defaultdict
 import math
 
 MAX_FRET = 24
-POSITION_POLICY = "chord-local-v1"
+POSITION_POLICY = "open-preparation-v1"
+PREVIOUS_POSITION_POLICIES = (None, "chord-local-v1")
 
 
 def _members(chart):
@@ -202,6 +203,64 @@ def _positions(rows, chords=()):
     return result
 
 
+def _prepare_opens(rows, positions):
+    """Move a nearby destination's position to a plain open pickup's onset.
+
+    Resolve the destination first, so its fingering context agrees with the
+    open bar. Never borrow a remote position or hide a sounding fretted note.
+    Only connected open durations form a run; silence and techniques break it.
+    """
+    groups = defaultdict(list)
+    for start, end, note in rows:
+        groups[round(start, 6)].append((round(end, 6), note))
+    techniques = ("mt", "fhm", "bn", "bnv", "vb", "vibrato", "vibrato_marks", "tr", "whammy", "hm", "hp", "hn",
+                  "harmonic_target", "harmonic_changes", "ho", "po", "ln",
+                  "slide_in_marks", "slide_out", "slide_out_marks", "pick_scrape_marks")
+
+    def plain_open(note):
+        return (note["f"] == 0 and not any(note.get(k) for k in techniques)
+                and not any(type(note.get(k)) in (int, float) and note[k] >= 0
+                            for k in ("sl", "slu", "su")))
+
+    times = [a["time"] for a in positions]
+    spans = []
+    run_start, run_end, blocked_until = None, -math.inf, -math.inf
+    for time, members in sorted(groups.items()):
+        if all(plain_open(n) for _, n in members) and blocked_until <= time:
+            if run_start is None or time > run_end + .001:
+                run_start = time
+                run_end = time
+            run_end = max(run_end, max(end for end, _ in members))
+            continue
+        if (run_start is not None and time - run_start <= .75
+                and time <= run_end + .001 and any(_frets(n) for _, n in members)):
+            target = positions[max(0, bisect_right(times, time) - 1)]
+            # Wide slides/chords need their own shape; do not turn an open
+            # pickup into an unnecessarily wide bar just to preview them.
+            if target["width"] == 4:
+                spans.append((run_start, time, target))
+        run_start = None
+        blocked_until = max(blocked_until, max((end for end, n in members if not plain_open(n)), default=-math.inf))
+
+    if not spans:
+        return positions
+    shifted, index = [], 0
+    for anchor in positions:
+        while index < len(spans) and spans[index][1] <= anchor["time"]:
+            index += 1
+        if index < len(spans) and spans[index][0] <= anchor["time"] < spans[index][1]:
+            continue
+        shifted.append(anchor)
+    shifted.extend({**target, "time": start} for start, _, target in spans)
+    result = []
+    for anchor in sorted(shifted, key=lambda a: a["time"]):
+        if result and all(result[-1][k] == anchor[k] for k in ("fret", "width")):
+            continue
+        result.append(anchor)
+    return result
+
+
 def generate_positions(chart):
     """Return fresh display anchors without changing the input chart."""
-    return _positions(_members(chart)[0], chart.get("chords", ()))
+    rows = _members(chart)[0]
+    return _prepare_opens(rows, _positions(rows, chart.get("chords", ())))
