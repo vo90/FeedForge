@@ -101,10 +101,10 @@ def test_archive_contract_and_independent_mutation_rejection(tmp_path,piecewise,
     if piecewise:alignment.update(mapping='piecewise-linear',anchors=[{'score':0,'audio':.25},{'score':.5,'audio':.75},{'score':4,'audio':4.95}],tempos=[{'time':.25,'bpm':120},{'time':.75,'bpm':100}])
     options=normalize_options({'enabled':hybrid});sha=hashlib.sha256(path.read_bytes()).hexdigest()
     if hybrid:options.update(mainTrackId=choose_main(p,options,sha),sourceSha256=sha)
-    recipe={'preservationContract':73,'scoreHash':sha,'audioHash':audio['hash'],**({'hybridLead':options} if hybrid else {})}
+    recipe={'preservationContract':74,'scoreHash':sha,'audioHash':audio['hash'],**({'hybridLead':options} if hybrid else {})}
     old=tmp_path/'old';old.mkdir()
-    with pytest.raises(ImportFailure,match='contract 73'):
-        build_feedpak(p,audio,alignment,old,output_dir=tmp_path/'old-out',source_path=path,compatibility=p['compatibilityReport'],recipe={'preservationContract':72})
+    with pytest.raises(ImportFailure,match='contract 74'):
+        build_feedpak(p,audio,alignment,old,output_dir=tmp_path/'old-out',source_path=path,compatibility=p['compatibilityReport'],recipe={'preservationContract':73})
     built=build_feedpak(p,audio,alignment,job,output_dir=tmp_path/'out',source_path=path,compatibility=p['compatibilityReport'],recipe=recipe,
         hybrid_lead={'enabled':hybrid,'mainTrackId':options.get('mainTrackId'),'options':options})
     archive=Path(built['stagingPath']);verify=lambda f:verify_import(path,f,alignment,hybrid_options=options if hybrid else None)
@@ -129,7 +129,7 @@ def test_archive_contract_and_independent_mutation_rejection(tmp_path,piecewise,
         elif fault=='evidence-policy':ev['gestures'][0]['overlap']['outgoingLegato']['policy']='guessed-link'
         elif fault=='evidence-absent':del ev['gestures'][0]['overlap']['outgoingLegato']
         elif fault=='version':ev.update(version=13,policy='songsterr-finger-bend-timing-v13')
-        else:m['song_import']['preservationContract']=72
+        else:m['song_import']['preservationContract']=73
         files[cp]=json.dumps(chart).encode();files[ep]=json.dumps(ev).encode();files['manifest.yaml']=yaml.safe_dump(m).encode()
         target=tmp_path/f'{fault}.feedpak'
         with ZipFile(target,'w') as z:

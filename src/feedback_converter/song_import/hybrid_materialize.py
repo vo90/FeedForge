@@ -129,6 +129,10 @@ def materialize(plan, originals, options, source_hash, audio_hash, duration, gen
             chart[ref["kind"]].append(event)
     for key in ("notes", "chords"):
         chart[key].sort(key=lambda e: e["t"])
+    from .tone_timeline import hybrid as hybrid_tones
+    tones = hybrid_tones(plan, originals, duration)
+    if tones is not None:
+        chart['tones'] = tones
     # Values above 24 need a referencing unpitched chord: fret 127 is a mute
     # sentinel and other high positions may encode typed pick scrapes. Copying
     # a donor's unused shape supplies no such proof. Keep all referenced shapes

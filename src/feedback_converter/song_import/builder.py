@@ -284,6 +284,11 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
                                     for n, start in originals if map_time(alignment, start) >= duration)
     used = set()
     original_charts = {}
+    tone_rows = []
+    tones_enabled = (performance.get('source', {}).get('format') == 'songsterr'
+                     and (recipe or {}).get('preservationContract', 0) >= 73)
+    if tones_enabled and source_path is None:
+        raise ImportFailure('tone_timing_failed', 'Tone verification requires the original Songsterr document.')
     for index, track in enumerate(performance.get("tracks", [])):
         if track.get("instrument") not in {"guitar", "bass"}:
             raise ImportFailure("unsupported_score", "An unsupported instrument was included in the playable arrangements.")
@@ -344,6 +349,13 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
                     if marks:
                         detail["slideOuts"] = marks
                     sustain_adjustments.append(detail)
+        tone_proof = None
+        if tones_enabled:
+            from .tone_timeline import export as export_tones
+            if 'toneTimeline' not in track:
+                raise ImportFailure('tone_timing_failed', 'Missing source sound timeline.')
+            chart['tones'], tone_proof = export_tones(track['toneTimeline'], alignment, duration)
+            tone_rows.append({'trackId': track['id'], 'arrangementId': ident, **tone_proof})
         from .strum_groups import attach as attach_strum_groups
         attach_strum_groups(chart, track['id'], performance.get('strumEvidence', []), alignment)
         finalize_guidance(chart)
@@ -372,7 +384,7 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
                         indices[(kind, i)] = j
                         j += 1
             identity = performance["compositionContext"]["tracks"][track["id"]]
-            original_charts[track["id"]] = {"chart": chart, "manifest": arrangements[-1], "eventIndices": indices,
+            original_charts[track["id"]] = {"chart": chart, "toneProof": tone_proof, "manifest": arrangements[-1], "eventIndices": indices,
                 "identity": {k: identity[k] for k in ("sourceTrackId", "voices")},
                 "notation": _retime_notation(track["notation"], alignment) if track.get("notation") else None}
     if not arrangements:
@@ -460,6 +472,13 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         shutil.copyfile(source_path, package / original)
         _write_json(package / "import/compatibility.json", compatibility)
         manifest.setdefault("song_import", {}).update(sourceFile=original, compatibilityFile="import/compatibility.json")
+    if tones_enabled:
+        from .tone_timeline import receipt as tone_receipt
+        from .audio import sha256_file
+        from .songsterr_tones import POLICY as TONE_POLICY
+        _write_json(package / 'import/tone-timeline.json',
+                    tone_receipt(tone_rows, source_path, sha256_file(package / 'audio/full.ogg'), alignment, duration))
+        manifest['song_import'].update(toneTimelineFile='import/tone-timeline.json', toneTimelinePolicy=TONE_POLICY)
     if omissions and omissions["notes"]:
         _write_json(package / "import/high-fret-omissions.json", archive_receipt(omissions, source_path))
         coverage["omissions"] = omission_summary(omissions)
@@ -512,8 +531,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         if source_path is None or (recipe or {}).get('preservationContract', 0) < 62:
             raise ImportFailure('unsupported_score', 'Timed finger vibrato requires the original tab and preservation contract 62.')
     if performance.get('fingerBendTimingEvidence'):
-        if any(e.get('overlap', {}).get('outgoingLegato') for e in performance['fingerBendTimingEvidence']) and (recipe or {}).get('preservationContract', 0) < 73:
-            raise ImportFailure('unsupported_score', 'Settled bends with outgoing legato require preservation contract 73.')
+        if any(e.get('overlap', {}).get('outgoingLegato') for e in performance['fingerBendTimingEvidence']) and (recipe or {}).get('preservationContract', 0) < 74:
+            raise ImportFailure('unsupported_score', 'Settled bends with outgoing legato require preservation contract 74.')
         if any(e.get('overlap', {}).get('continuedPinchHarmonic') for e in performance['fingerBendTimingEvidence']) and (recipe or {}).get('preservationContract', 0) < 72:
             raise ImportFailure('unsupported_score', 'Continued pinch harmonics with overlapping bends require preservation contract 72.')
         if any(e.get('overlap', {}).get('fixedHarmonic') for e in performance['fingerBendTimingEvidence']) and (recipe or {}).get('preservationContract', 0) < 71:
