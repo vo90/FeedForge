@@ -130,6 +130,10 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
         evidence['initialSlideIn'] = {'sourceId': first.source_id, 'direction': first.slide_in,
                                      'start': at(attack), 'attackTiming': 'authored-note',
                                      'bendTiming': 'authored-tie'}
+    # Establish slide eligibility independently. A valid flourish alone must
+    # never clear a conflicting bend or another unqualified expression.
+    terminal_candidate = _terminal_slide_out(segments, intervals, attack, stop, at, terminal_context)
+    terminal_handoff = False
     if overlaps:
         # The native worker can keep the initial controller alive across ties.
         # Only a settled tail is safe to hand off: it emits no more pitch
@@ -155,6 +159,12 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
                              'classification': 'settled-tail' if settled else 'changing-tail'})
         settled_handoffs = all(h['classification'] == 'settled-tail' for h in handoffs)
         has_vibrato = any(n.effects.get('vb') for n, *_ in segments)
+        terminal_handoff = (terminal_candidate is not None and settled_handoffs and not other_expression
+                            and all(not n.effects.get('__beat_vibrato')
+                                    and (not n.effects.get('vb') or n.effects.get('__finger_vibrato') in {'slight', 'wide'})
+                                    for n, *_ in segments))
+        if terminal_handoff:
+            reason = None  # Only this independently qualified slide was mixed.
         # Explicit note vibrato has its own verified control timeline. It does
         # not displace the source bend clock or create another finger bend.
         qualified_vibrato = (has_vibrato and settled_handoffs and not reason and not other_expression
@@ -167,9 +177,11 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
                               else 'conflicting-controls', 'handoffs': handoffs}
         if qualified_vibrato:
             evidence['overlap']['vibratoTiming'] = 'independent-note-controls'
+        if terminal_handoff:
+            evidence['overlap']['slideOutTiming'] = 'independent-terminal-cue'
         if evidence['overlap']['classification'] != 'clear-handoff':
             reason = reason or ('overlap-with-other-expression' if other_expression else 'overlapping-bend-controls')
-    terminal = None if overlaps else _terminal_slide_out(segments, intervals, attack, stop, at, terminal_context)
+    terminal = terminal_candidate if not overlaps or terminal_handoff else None
     if terminal is not None:
         reason = None
         evidence['terminalSlideOut'] = terminal
@@ -218,7 +230,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
 
 def archive_evidence(performance, source_path):
     gestures = performance['fingerBendTimingEvidence']
-    version = (9 if any(e.get('terminalSlideOut', {}).get('bendTiming') == 'authored-segment' for e in gestures)
+    version = (10 if any(e.get('overlap', {}).get('slideOutTiming') == 'independent-terminal-cue' for e in gestures)
+               else 9 if any(e.get('terminalSlideOut', {}).get('bendTiming') == 'authored-segment' for e in gestures)
                else 8 if any(e.get('initialSlideIn') for e in gestures)
                else 7 if any(e.get('overlap', {}).get('vibratoTiming') == 'independent-note-controls' for e in gestures)
                else 6 if any(e.get('terminalSlideOut', {}).get('endTiming') == 'authored-tie' for e in gestures)
