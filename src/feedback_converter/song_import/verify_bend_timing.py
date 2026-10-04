@@ -149,15 +149,34 @@ def reconstruct(event, part, clock, sound_end, terminal_context=(), *, following
                                      'start': float(clock.at(origin)), 'attackTiming': 'authored-note',
                                      'bendTiming': 'authored-tie'}
     terminal_candidate = None
+    # Source-only qualification of one held pinch target. Changed or omitted
+    # pinch markings on ties retain their separate harmonic interpretation.
+    initial_target = harmonic_targets[0]
+    terminal_pinch = (bool(initial_target) and initial_target.get('kind') == 'pinch'
+                      and initial_target.get('policy') == 'harmonic' and not overlap
+                      and event['effects'].get('harmonic_target') == initial_target
+                      and event['effects'].get('hp') is True and not event.get('contact')
+                      and 0 < first.fret < 127 and entries[0][1] == origin
+                      and tail_end == sound_end)
+    previous_stop = None
+    for i, (atom, start, stop, _) in enumerate(entries):
+        target = harmonic_targets[i]
+        if ((atom.fret, atom.string, atom.voice) != (first.fret, first.string, first.voice)
+                or (i and (not atom.tie or start != previous_stop))
+                or (target and (target.get('kind') != 'pinch' or target.get('policy') != 'harmonic'
+                                or atom.effects.get('hp') is not True))
+                or (not target and atom.effects.get('hp'))):
+            terminal_pinch = False
+        previous_stop = stop
     if (len(entries) > 1 and tail.tie
             and tail.slide in {'up', 'down'} and tail_end == sound_end
             and origin < tail_start < sound_end and 0 < tail.fret < 127):
         extras = any((a.slide_in and not (boundary_cues and i == 0))
                      or a.whammy or a.attack_offset or a.hopo_origin or a.hopo_destination
                      or a.trill or a.pick_scrape or a.beat_vibrato or (i < len(entries)-1 and a.slide)
-                     or (tail.bends and a.effects.get('vb') and a.finger_vibrato not in ('slight', 'wide'))
-                     or any(a.effects.get(k) for k in ( 'hm', 'hp', 'hn', 'harmonic_target',
-                                                       'mt', 'lr', 'pm', 'tr'))
+                     or ((tail.bends or terminal_pinch) and a.effects.get('vb') and a.finger_vibrato not in ('slight', 'wide'))
+                     or (not terminal_pinch and (a.effects.get('hp') or a.effects.get('harmonic_target')))
+                     or any(a.effects.get(k) for k in ('hm', 'hn', 'mt', 'lr', 'pm', 'tr'))
                      for i,(a,*_) in enumerate(entries))
         bend, begin, finish = gestures[-1]
         controls = [(begin+(finish-begin)*p,v) for p,v in bend.bends]
@@ -171,6 +190,8 @@ def reconstruct(event, part, clock, sound_end, terminal_context=(), *, following
             terminal_candidate = {'sourceId': identity(tail), 'direction': tail.slide,
                         'start': float(clock.at(tail_start)), 'end': float(clock.at(sound_end)),
                         'value': float(controls[-1][1]),
+                        **({'continuedPinchHarmonic': {'initialTarget': dict(initial_target),
+                                                     'policy': 'initial-target-continued'}} if terminal_pinch else {}),
                         **({'bendTiming': 'authored-segment'} if tail.bends else {}),
                         **({'bendPhase': 'changing', 'pitchPolicy': 'independent-source-bend'} if not settled else {}),
                         **({'attackTiming': 'authored-chord'} if not settled and 'simultaneous-attack' in terminal_context else {}),
