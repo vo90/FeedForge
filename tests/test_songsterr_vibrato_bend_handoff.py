@@ -84,7 +84,7 @@ def test_unqualified_combinations_keep_existing_warning_and_curve(extra,tmp_path
     elif extra=='mixed-beat-only':bs[1]['wideVibrato']=True
     elif extra=='harmonic':bs[0]['notes'][0].update(harmonic='pinch',harmonicFret=12)
     elif extra=='whammy':bs[0]['tremoloBar']={'points':[{'position':0,'tone':0},{'position':60,'tone':-50}]}
-    elif extra=='slide':bs[-1]['notes'][0]['slide']='downwards'
+    elif extra=='slide':bs[0]['notes'][0]['slide']='downwards'  # Nonterminal cue remains unqualified.
     elif extra=='incoming':bs[0]['notes'][0]['slide']='above'
     elif extra=='hopo':bs[-1]['notes'][0]['hp']=True;doc['parts'][0]['measures'].append(measure(beat(fret=5)))
     elif extra=='palm-mute':bs[0]['palmMute']=True

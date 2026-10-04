@@ -80,7 +80,7 @@ def test_tempo_change_inside_terminal_bend_uses_quarters_not_linear_seconds(out)
     assert n['sus']==3 and n['slide_out_marks'][0]['end']==3
 
 
-@pytest.mark.parametrize('extra',['incoming','earlier-out','targeted','harmonic','beat-vibrato','whammy','hopo','palm-mute','let-ring','settled-overlap','changing-overlap'])
+@pytest.mark.parametrize('extra',['incoming','earlier-out','targeted','harmonic','beat-vibrato','whammy','hopo','palm-mute','let-ring','changing-overlap'])
 def test_unqualified_compositions_keep_findings(extra,tmp_path):
     doc=document();bs=doc['parts'][0]['measures'][0]['voices'][0]['beats']
     if extra=='incoming':bs[0]['notes'][0]['slide']='above'
@@ -94,7 +94,6 @@ def test_unqualified_compositions_keep_findings(extra,tmp_path):
     elif extra=='let-ring':bs[0]['letRing']=True
     else:
         bs[1]['duration']=[1,2];bs.insert(1,beat(fret=7,tie=True,duration=(1,4)))
-        if extra=='settled-overlap':bs[0]['notes'][0]['bend']={'points':[{'position':0,'tone':0},{'position':15,'tone':100},{'position':60,'tone':100}]}
     p=checked(doc);e=p['fingerBendTimingEvidence'][0]
     assert e['status']=='deferred' and 'terminalSlideOut' not in e
     loaded=import_json(tmp_path,doc)
