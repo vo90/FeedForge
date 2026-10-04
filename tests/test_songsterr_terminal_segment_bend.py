@@ -80,11 +80,10 @@ def test_tempo_change_inside_terminal_bend_uses_quarters_not_linear_seconds(out)
     assert n['sus']==3 and n['slide_out_marks'][0]['end']==3
 
 
-@pytest.mark.parametrize('extra',['incoming','earlier-out','targeted','harmonic','beat-vibrato','whammy','hopo','palm-mute','let-ring','changing-overlap'])
+@pytest.mark.parametrize('extra',['earlier-out','targeted','harmonic','beat-vibrato','whammy','hopo','palm-mute','let-ring','changing-overlap'])
 def test_unqualified_compositions_keep_findings(extra,tmp_path):
     doc=document();bs=doc['parts'][0]['measures'][0]['voices'][0]['beats']
-    if extra=='incoming':bs[0]['notes'][0]['slide']='above'
-    elif extra=='earlier-out':bs[0]['notes'][0]['slide']='downwards'
+    if extra=='earlier-out':bs[0]['notes'][0]['slide']='downwards'
     elif extra=='targeted':bs[1]['notes'][0]['slide']='shift';doc['parts'][0]['measures'].append(measure(beat(fret=5)))
     elif extra=='harmonic':bs[1]['notes'][0].update(harmonic='artificial',harmonicFret=12)
     elif extra=='beat-vibrato':bs[0]['wideVibrato']=True

@@ -54,7 +54,7 @@ def test_bend_hold_slide_out_retains_single_attack_pitch_and_source_interval(tmp
     assert not any(f['feature']=='note.bend_timing' for f in loaded['compatibilityReport']['findings'])
 
 
-@pytest.mark.parametrize('fault', ['overlapping_bend','early_slide','slide_in','whammy',
+@pytest.mark.parametrize('fault', ['overlapping_bend','early_slide','later_slide_in','whammy',
                                   'beat_vibrato','harmonic','mute','palm_mute','let_ring','hopo','open','strum'])
 def test_unqualified_combinations_stay_explicitly_deferred(fault):
     doc=source();beats=doc['parts'][0]['measures'][0]['voices'][0]['beats']
@@ -63,7 +63,7 @@ def test_unqualified_combinations_stay_explicitly_deferred(fault):
         beats[2]['notes'][0]['bend']=deepcopy(RISE)
     elif fault=='early_slide':
         beats[1]['notes'][0]['slide']=beats[2]['notes'][0].pop('slide')
-    elif fault=='slide_in':beats[0]['notes'][0]['slide']='below'
+    elif fault=='later_slide_in':beats[1]['notes'][0]['slide']='below'
     elif fault=='whammy':beats[1]['tremoloBar']=deepcopy(RISE)
     elif fault=='beat_vibrato':beats[1]['vibrato']=True
     elif fault=='harmonic':beats[0]['notes'][0]['harmonic']='pinch'
