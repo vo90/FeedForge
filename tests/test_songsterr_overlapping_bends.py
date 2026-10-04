@@ -113,13 +113,15 @@ def test_repeat_chords_and_voices_are_independent():
     assert len(rows)==4 and all(r['rule']=='settled-bend-handoff' for r in rows)
 
 
-def test_hopo_origin_on_hidden_continuation_keeps_written_fallback():
+def test_terminal_hopo_origin_on_hidden_continuation_uses_completed_bend_clock():
     doc=source()
     doc['parts'][0]['measures'][0]['voices'][0]['beats'][-1]['notes'][0]['hp']=True
     doc['parts'][0]['measures'].append(measure(beat(fret=9)))
     row=checked(doc)['fingerBendTimingEvidence'][0]
-    assert row['overlap']['classification']=='other-expression'
-    assert row['reason']=='overlap-with-other-expression'
+    assert row['overlap']['classification']=='clear-handoff'
+    assert row['status']=='resolved'
+    assert row['overlap']['outgoingLegato']['technique']=='ho'
+    assert row['curve']==[{'t':0.,'v':0.},{'t':.5,'v':2.},{'t':1.,'v':2.},{'t':2.,'v':0.}]
 
 
 @pytest.mark.parametrize('conflict',[False,True])
