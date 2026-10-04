@@ -168,7 +168,7 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
         # synth updates or silently rescale either written gesture.
         other_expression = any(
             n.hopo or n.trill or n.pick_scrape
-            or any(n.effects.get(k) for k in ('hm', 'hp', 'hn', 'harmonic_target',
+            or any(n.effects.get(k) for k in ('hm', 'hp', 'hn',
                                              'mt', 'lr', 'pm', 'tr', '__hopo_origin'))
             for n, *_ in segments)
         handoffs = []
@@ -185,6 +185,17 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
                              'start': at(handoff), 'end': at(right),
                              'classification': 'settled-tail' if settled else 'changing-tail'})
         settled_handoffs = all(h['classification'] == 'settled-tail' for h in handoffs)
+        # A fixed, validated artificial harmonic transposes the sounding pitch
+        # but does not change the source bend clock. Qualify the whole tie;
+        # missing/changing targets and still-moving controllers stay guarded.
+        qualified_harmonic = (steady_harmonic and settled_handoffs and not reason
+                             and not other_expression and 0 < first.fret < 127
+                             and all(n.fret == first.fret and n.string == first.string
+                                     and not n.effects.get('__beat_vibrato')
+                                     and (not n.effects.get('vb') or n.effects.get('__finger_vibrato') in {'slight', 'wide'})
+                                     for n, *_ in segments))
+        other_expression = other_expression or (any(n.effects.get('harmonic_target') for n, *_ in segments)
+                                                and not qualified_harmonic)
         has_vibrato = any(n.effects.get('vb') for n, *_ in segments)
         terminal_handoff = (terminal_candidate is not None and settled_handoffs and not other_expression
                             and all(not n.effects.get('__beat_vibrato')
@@ -202,6 +213,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
         evidence['overlap'] = {'classification': 'other-expression' if reason or other_expression
                               else 'clear-handoff' if settled_handoffs
                               else 'conflicting-controls', 'handoffs': handoffs}
+        if qualified_harmonic:
+            evidence['overlap']['fixedHarmonic'] = deepcopy(harmonic)
         if qualified_vibrato:
             evidence['overlap']['vibratoTiming'] = 'independent-note-controls'
         if terminal_handoff:
@@ -257,7 +270,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
 
 def archive_evidence(performance, source_path):
     gestures = performance['fingerBendTimingEvidence']
-    version = (11 if any(e.get('initialSlideIn') and e.get('terminalSlideOut') for e in gestures)
+    version = (12 if any(e.get('overlap', {}).get('fixedHarmonic') for e in gestures)
+               else 11 if any(e.get('initialSlideIn') and e.get('terminalSlideOut') for e in gestures)
                else 10 if any(e.get('overlap', {}).get('slideOutTiming') == 'independent-terminal-cue' for e in gestures)
                else 9 if any(e.get('terminalSlideOut', {}).get('bendTiming') == 'authored-segment' for e in gestures)
                else 8 if any(e.get('initialSlideIn') for e in gestures)
