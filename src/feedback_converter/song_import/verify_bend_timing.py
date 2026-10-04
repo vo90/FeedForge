@@ -113,6 +113,30 @@ def reconstruct(event, part, clock, sound_end, terminal_context=(), *, following
             'segments': [{'sourceId': identity(a), 'occurrence': visit + 1,
                           'start': float(clock.at(start)), 'end': float(clock.at(end)),
                           'vibrato': a.whammy['vibrato']} for a, start, end, visit in bar_atoms]}
+    # Rebuild explicit control independence from source atoms, not producer
+    # evidence. Bar pitch remains on its own retained timeline, not summed.
+    explicit_bar = (not overlap and 0 < first.fret < 127
+                    and entries[0][1] == origin and entries[-1][2] == sound_end
+                    and any(a.whammy['curve'] for a, *_ in bar_atoms)
+                    and any(r['points'] for r in event.get('whammy', [])))
+    prior_end = None
+    for index, (a, begin, end, _) in enumerate(entries):
+        if ((a.fret, a.string, a.voice) != (first.fret, first.string, first.voice)
+                or (index and (not a.tie or begin != prior_end))
+                or a.slide or a.slide_in or a.attack_offset or a.staccato
+                or a.hopo_origin or a.hopo_destination or a.trill or a.pick_scrape or a.beat_vibrato
+                or any(a.effects.get(k) for k in ('hm', 'hp', 'hn', 'harmonic_target', 'mt', 'lr', 'pm', 'tr'))
+                or (a.effects.get('vb') and a.finger_vibrato not in ('slight', 'wide'))):
+            explicit_bar = False
+        prior_end = end
+    if explicit_bar:
+        mixed = False
+        evidence['barCurve'] = {
+            'policy': 'independent-explicit-control',
+            'segments': [{'sourceId': identity(a), 'occurrence': visit + 1,
+                          'start': float(clock.at(start)), 'end': float(clock.at(end)),
+                          'curve': [{'position': str(p), 'value': float(v)} for p, v in a.whammy['curve']],
+                          'vibrato': a.whammy['vibrato']} for a, start, end, visit in bar_atoms]}
     tail, tail_start, tail_end, _ = entries[-1]
     # Independently establish the complete composition from rational source
     # atoms before either cue may relax the other's expression guard.

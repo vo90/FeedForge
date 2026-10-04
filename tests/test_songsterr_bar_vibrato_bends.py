@@ -48,15 +48,11 @@ def test_independent_bend_clock_preserves_bar_controls(case):
     assert all(p['bendEventsIndependent'] and p['attackAndTieTimesIndependent'] and p['barControllerObserved'] for p in case['profiles'])
 
 
-@pytest.mark.parametrize('fault', ['explicit-bar', 'held-bar', 'flat-bar', 'targeted-slide', 'initial-slide',
+@pytest.mark.parametrize('fault', ['targeted-slide', 'initial-slide',
                                   'later-slide', 'terminal-slide', 'changing-overlap', 'settled-overlap', 'strum'])
 def test_other_pitch_and_attack_interactions_remain_guarded(fault):
     d = document(); bs = d['parts'][0]['measures'][0]['voices'][0]['beats']
-    if fault in ('explicit-bar', 'held-bar', 'flat-bar'):
-        bs[0]['tremoloBar'] = {'points': [{'position': 0, 'tone': 0 if fault != 'held-bar' else -50},
-                                        {'position': 60, 'tone': -100 if fault == 'explicit-bar' else -50 if fault == 'held-bar' else 0}]}
-        if fault == 'held-bar': bs[2]['vibratoWithTremoloBar'] = 'wide'
-    elif fault == 'targeted-slide': bs[2]['notes'][0]['slide'] = 'legato'
+    if fault == 'targeted-slide': bs[2]['notes'][0]['slide'] = 'legato'
     elif fault == 'initial-slide': bs[0]['notes'][0]['slide'] = 'below'
     elif fault == 'later-slide': bs[1]['notes'][0]['slide'] = 'above'
     elif fault == 'terminal-slide': bs[2]['notes'][0]['slide'] = 'downwards'
