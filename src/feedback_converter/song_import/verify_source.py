@@ -107,6 +107,7 @@ class Part:
     notation_unavailable: list = field(default_factory=list)
     unpitched_mutes: list = field(default_factory=list)
     clefs: list = field(default_factory=list)
+    tone_source: dict | None = None
 
 
 @dataclass
@@ -833,6 +834,9 @@ def songsterr(document, *, track_indices=None):
                             atoms[-1].slide_in = "up"
             track.bars.append(atoms)
             track.beats.append(beat_facts)
+        from .verify_tones import read as read_tones
+        track.tone_source = read_tones(raw, meta, bars, all_times, pi, document.get('songId', ''),
+                                      [m for p in raw_parts for m in p['measures']])
         parts.append(track)
     return Source("songsterr", str(document.get("title", "")), str(document.get("artist", "")), bars, parts,
                   excluded, len(metadata), {k: str(document[k]) for k in ("songId", "revisionId") if k in document}, ignored, section_labels)

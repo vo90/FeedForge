@@ -103,6 +103,7 @@ class Track:
     role: str = ""
     written_bars: list[list[WrittenVoice]] = field(default_factory=list)
     clefs: list[str | None] = field(default_factory=list)
+    tone_source: dict | None = None
 
 
 @dataclass

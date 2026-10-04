@@ -45,7 +45,7 @@ function snapshot(model) {
   if (rows.length > 500000) throw Error('Reference event limit');
   return rows;
 }
-function runPart(code, part, allMeasures, {trace = false, profile = 'authored', annotateIds = true, eventDetails = false} = {}) {
+function runPart(code, part, allMeasures, {trace = false, profile = 'authored', annotateIds = true, eventDetails = false, soundDetails = false} = {}) {
   if (!['authored', 'player-defaults'].includes(profile)) throw Error('Unknown reference profile');
   const input = annotateIds ? annotate(part) : structuredClone(part);
   const warnings = [], stages = {}, generatedStages = {}, scheduled = eventTrace.collector();
@@ -74,6 +74,11 @@ function runPart(code, part, allMeasures, {trace = false, profile = 'authored', 
     ...(eventDetails ? {generatedEventTrace:{version:1,stages:generatedStages,
       final:eventTrace.generatedSnapshot(ctx.model),scheduled:scheduled.events,
       scope:'Native synthesis event emission, including hidden-note events; not gameplay instructions or acoustic alignment.'}} : {}),
+    ...(soundDetails ? {
+      soundAutomations: Array.from(ctx.model.soundAutomations || [], e => ({...e})),
+      soundBeatDurations: JSON.parse(JSON.stringify(ctx.model.progression.map(m =>
+        m.voices.map(v => (v.beats || []).map(b => ({duration:b.duration, startTick:b.startTick}))))))
+    } : {}),
     scope: 'Source scheduling only; not acoustic alignment or FeedPak verification.'};
 }
 function main() {
@@ -88,7 +93,7 @@ function main() {
     for (let i=0;i<source.parts.length;i++) {
       const program=source.tracks[i]?.instrumentId ?? source.parts[i].instrumentId;
       if (!Number.isInteger(program) || program < 24 || program > 39 || source.tracks[i]?.isVocalTrack) continue;
-      try { parts.push({index:i, ...runPart(code, source.parts[i], allMeasures, {trace:!!input.trace, profile:input.profile, eventDetails:!!input.eventDetails})}); }
+      try { parts.push({index:i, ...runPart(code, source.parts[i], allMeasures, {trace:!!input.trace, profile:input.profile, eventDetails:!!input.eventDetails, soundDetails:!!input.soundDetails})}); }
       catch (e) { parts.push({index:i,status:'reference_error',error:String(e.message)}); }
     }
     output.cases.push({id:row.id, sourceSha256:row.sourceSha256, parts});

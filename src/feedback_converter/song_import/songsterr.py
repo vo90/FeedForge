@@ -353,7 +353,7 @@ def parse(document: dict, *, track_indices=None) -> Score:
         instrument = _instrument(meta)
         inventory.inspect(meta, "Songsterr track", f"$.tracks[{index}]", playable={"id", "instrumentId", "midiProgram", "name", "instrument", "title", "type", "tuning", "capo", "isVocalTrack"},
                           retained={"views", "difficulty", "hash", "isEmpty"})
-        inventory.inspect(part, "Songsterr part", f"$.parts[{index}]", playable={"measures", "tuning", "automations", "capo", "anacrusis"},
+        inventory.inspect(part, "Songsterr part", f"$.parts[{index}]", playable={"measures", "tuning", "automations", "capo", "anacrusis", "sounds", "trackAutomations"},
                           retained={"name", "balance", "volume", "frets", "strings", "instrumentId", "instrument", "newLyrics", "withLyrics", "tuningFlat", "partId", "version", "songId", "revisionId"})
         if not instrument or track_indices is not None and index not in track_indices:
             warnings.append(f"Excluded non-guitar/bass track: {meta.get('name') or meta.get('instrument') or index}.")
@@ -471,6 +471,10 @@ def parse(document: dict, *, track_indices=None) -> Score:
             "rhythm" if "rhythm" in name.lower() else "lead" if any(w in name.lower() for w in ("lead", "solo")) else "guitar")
         tracks.append(Track(str(meta.get("id", index)), name, instrument, tuning, track_bars,
                             integer(part.get("capo", meta.get("capo", 0)), "capo"), role, written_bars))
+        from .songsterr_tones import read as read_tones
+        tracks[-1].tone_source = read_tones(part, meta, measures, part_clocks, index,
+                                            document.get('songId', ''), inventory,
+                                            [m for p in parts for m in p['measures']])
         clef = None
         for bar in part["measures"]:
             clef = bar.get("clef") or clef
