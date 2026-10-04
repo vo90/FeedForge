@@ -20,7 +20,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 71
+VERSION = 72
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -340,7 +340,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     reports_precedence = type(report.get('version')) is int and report['version'] >= 46
     if preservation_contract >= 46 and not reports_precedence:
@@ -1007,7 +1007,10 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 fixed_harmonic = any(e.get('overlap', {}).get('fixedHarmonic') for e in wanted['finger_bends'])
                 if fixed_harmonic and recipe.get('preservationContract', 0) < 71:
                     check.fail('finger_bend_timing', 'manifest/song_import', 'Fixed harmonics with overlapping bends require preservation contract 71.')
-                bend_version = 12 if fixed_harmonic else 11 if boundary_slides else 10 if overlap_slide else 9 if terminal_bend else 8 if initial_slide else 7 if vibrato_handoff else 6 if following_slide else 5 if chord_slide else 4 if changing_slide else 3
+                continued_pinch = any(e.get('overlap', {}).get('continuedPinchHarmonic') for e in wanted['finger_bends'])
+                if continued_pinch and recipe.get('preservationContract', 0) < 72:
+                    check.fail('finger_bend_timing', 'manifest/song_import', 'Continued pinch harmonics with overlapping bends require preservation contract 72.')
+                bend_version = 13 if continued_pinch else 12 if fixed_harmonic else 11 if boundary_slides else 10 if overlap_slide else 9 if terminal_bend else 8 if initial_slide else 7 if vibrato_handoff else 6 if following_slide else 5 if chord_slide else 4 if changing_slide else 3
                 evidence = {'version': bend_version, 'policy': f'songsterr-finger-bend-timing-v{bend_version}',
                             'timeDomain': 'score_seconds', 'sourceSha256': report['sourceSha256'],
                             'gestures': wanted['finger_bends']}

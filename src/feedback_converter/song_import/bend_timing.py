@@ -134,6 +134,19 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
     steady_harmonic = (isinstance(harmonic, dict) and harmonic.get('kind') == 'artificial'
                        and harmonic.get('policy') == 'harmonic'
                        and all(n.effects.get('harmonic_target') == harmonic for n, *_ in segments))
+    # Tied pinch markings use the already established initial-target policy.
+    # Missing/later pinch targets do not repick the note or replace its target.
+    # Their authored differences remain in the separate harmonic-tie evidence.
+    continued_pinch = (isinstance(harmonic, dict) and harmonic.get('kind') == 'pinch'
+                       and harmonic.get('policy') == 'harmonic'
+                       and output.get('harmonic_target') == harmonic and output.get('hp') is True
+                       and not output.get('harmonic_changes')
+                       and all((not i or n.tie) and (
+                           (not n.effects.get('harmonic_target') and not n.effects.get('hp'))
+                           or (n.effects.get('harmonic_target', {}).get('kind') == 'pinch'
+                               and n.effects['harmonic_target'].get('policy') == 'harmonic'
+                               and n.effects.get('hp') is True))
+                           for i, (n, *_) in enumerate(segments)))
     boundary_slides = _boundary_slides(segments, overlaps, attack, stop, terminal_context)
     # An approach cue has no authored target interval inside this note. The
     # native synth's pre-attack flourish does not set the finger-bend clock.
@@ -168,7 +181,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
         # synth updates or silently rescale either written gesture.
         other_expression = any(
             n.hopo or n.trill or n.pick_scrape
-            or any(n.effects.get(k) for k in ('hm', 'hp', 'hn',
+            or (n.effects.get('hp') and not continued_pinch)
+            or any(n.effects.get(k) for k in ('hm', 'hn',
                                              'mt', 'lr', 'pm', 'tr', '__hopo_origin'))
             for n, *_ in segments)
         handoffs = []
@@ -185,10 +199,10 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
                              'start': at(handoff), 'end': at(right),
                              'classification': 'settled-tail' if settled else 'changing-tail'})
         settled_handoffs = all(h['classification'] == 'settled-tail' for h in handoffs)
-        # A fixed, validated artificial harmonic transposes the sounding pitch
-        # but does not change the source bend clock. Qualify the whole tie;
-        # missing/changing targets and still-moving controllers stay guarded.
-        qualified_harmonic = (steady_harmonic and settled_handoffs and not reason
+        # A fixed artificial target or established pinch continuation does
+        # not change the source bend clock. Qualify the whole tie; conflicting
+        # controllers and other harmonic interpretations stay guarded.
+        qualified_harmonic = ((steady_harmonic or continued_pinch) and settled_handoffs and not reason
                              and not other_expression and 0 < first.fret < 127
                              and all(n.fret == first.fret and n.string == first.string
                                      and not n.effects.get('__beat_vibrato')
@@ -214,7 +228,11 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
                               else 'clear-handoff' if settled_handoffs
                               else 'conflicting-controls', 'handoffs': handoffs}
         if qualified_harmonic:
-            evidence['overlap']['fixedHarmonic'] = deepcopy(harmonic)
+            if continued_pinch:
+                evidence['overlap']['continuedPinchHarmonic'] = {
+                    'initialTarget': deepcopy(harmonic), 'policy': 'initial-target-continued'}
+            else:
+                evidence['overlap']['fixedHarmonic'] = deepcopy(harmonic)
         if qualified_vibrato:
             evidence['overlap']['vibratoTiming'] = 'independent-note-controls'
         if terminal_handoff:
@@ -270,7 +288,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
 
 def archive_evidence(performance, source_path):
     gestures = performance['fingerBendTimingEvidence']
-    version = (12 if any(e.get('overlap', {}).get('fixedHarmonic') for e in gestures)
+    version = (13 if any(e.get('overlap', {}).get('continuedPinchHarmonic') for e in gestures)
+               else 12 if any(e.get('overlap', {}).get('fixedHarmonic') for e in gestures)
                else 11 if any(e.get('initialSlideIn') and e.get('terminalSlideOut') for e in gestures)
                else 10 if any(e.get('overlap', {}).get('slideOutTiming') == 'independent-terminal-cue' for e in gestures)
                else 9 if any(e.get('terminalSlideOut', {}).get('bendTiming') == 'authored-segment' for e in gestures)

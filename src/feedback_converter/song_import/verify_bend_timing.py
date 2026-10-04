@@ -160,8 +160,24 @@ def reconstruct(event, part, clock, sound_end, terminal_context=()):
     terminal_handoff = False
     overlap_reason = None
     if overlap:
+        # Reconstruct initial-target continuation from source atoms, not from
+        # producer evidence. Later pinch targets may be absent or different;
+        # other harmonic kinds and timed contact are outside this rule.
+        initial_pinch = harmonic_targets[0]
+        pinch_continuation = (bool(initial_pinch) and initial_pinch.get('kind') == 'pinch'
+                              and initial_pinch.get('policy') == 'harmonic'
+                              and event['effects'].get('harmonic_target') == initial_pinch
+                              and event['effects'].get('hp') is True and not event.get('contact'))
+        for i, (a, *_) in enumerate(entries):
+            target = harmonic_targets[i]
+            if ((i and not a.tie)
+                    or (target and (target.get('kind') != 'pinch' or target.get('policy') != 'harmonic'
+                                    or a.effects.get('hp') is not True))
+                    or (not target and a.effects.get('hp'))):
+                pinch_continuation = False
         compound = any(a.hopo_origin or a.hopo_destination or a.trill or a.pick_scrape or
-                       any(a.effects.get(k) for k in ('hm', 'hp', 'hn',
+                       (a.effects.get('hp') and not pinch_continuation) or
+                       any(a.effects.get(k) for k in ('hm', 'hn',
                                                       'mt', 'lr', 'pm', 'tr')) for a, *_ in entries)
         handoffs = []
         for index, q in crossings:
@@ -178,8 +194,8 @@ def reconstruct(event, part, clock, sound_end, terminal_context=()):
         flat_handoffs = all(h['classification']=='settled-tail' for h in handoffs)
         vibrato_atoms = [a for a, *_ in entries if a.effects.get('vb')]
         # Reconstruct eligibility from independently parsed source atoms. A
-        # constant harmonic target is separate from the settled bend handoff.
-        harmonic_handoff = (fixed_artificial and flat_handoffs and not mixed and not compound
+        # constant or continued target is separate from the settled handoff.
+        harmonic_handoff = ((fixed_artificial or pinch_continuation) and flat_handoffs and not mixed and not compound
                             and 0 < first.fret < 127
                             and all(a.fret == first.fret and a.string == first.string
                                     and not a.beat_vibrato for a, *_ in entries)
@@ -199,7 +215,11 @@ def reconstruct(event, part, clock, sound_end, terminal_context=()):
                  else 'conflicting-controls')
         evidence['overlap'] = {'classification': label, 'handoffs': handoffs}
         if harmonic_handoff:
-            evidence['overlap']['fixedHarmonic'] = dict(harmonic_targets[0])
+            if pinch_continuation:
+                evidence['overlap']['continuedPinchHarmonic'] = {
+                    'initialTarget': dict(initial_pinch), 'policy': 'initial-target-continued'}
+            else:
+                evidence['overlap']['fixedHarmonic'] = dict(harmonic_targets[0])
         if separate_vibrato:
             evidence['overlap']['vibratoTiming'] = 'independent-note-controls'
         if terminal_handoff:

@@ -75,14 +75,15 @@ def test_context_does_not_change_eligibility(variant):
             assert n['vibrato_marks']==[{'start':1.75,'end':3.75,'intensity':'slight'}]
 
 
-@pytest.mark.parametrize('extra',['conflicting','almost-settled','beat-only','mixed-beat-only','harmonic','whammy','slide','incoming','hopo','palm-mute','let-ring'])
+@pytest.mark.parametrize('extra',['conflicting','almost-settled','beat-only','mixed-beat-only','unknown-harmonic','whammy','slide','incoming','hopo','palm-mute','let-ring'])
 def test_unqualified_combinations_keep_existing_warning_and_curve(extra,tmp_path):
     doc=document();bs=doc['parts'][0]['measures'][0]['voices'][0]['beats']
     if extra in ('conflicting','almost-settled'):
         bs[0]['notes'][0]['bend']={'points':[{'position':0,'precisePosition':0,'tone':0},{'position':60,'precisePosition':100 if extra=='conflicting' else 50.001,'tone':100}]}
     elif extra=='beat-only':del bs[2]['notes'][0]['leftHandVibrato'];bs[2]['vibrato']=True
     elif extra=='mixed-beat-only':bs[1]['wideVibrato']=True
-    elif extra=='harmonic':bs[0]['notes'][0].update(harmonic='pinch',harmonicFret=12)
+    # Validated pinch continuation now composes; an unknown target still cannot.
+    elif extra=='unknown-harmonic':bs[0]['notes'][0]['harmonic']='pinch'
     elif extra=='whammy':bs[0]['tremoloBar']={'points':[{'position':0,'tone':0},{'position':60,'tone':-50}]}
     elif extra=='slide':bs[0]['notes'][0]['slide']='downwards'  # Nonterminal cue remains unqualified.
     elif extra=='incoming':bs[0]['notes'][0]['slide']='above'
