@@ -113,8 +113,8 @@ def test_later_opens_can_prepare_after_conflicting_fretted_hold_releases():
     assert validate(data) == []
 
 
-@pytest.mark.parametrize('technique', [{'mt': True}, {'ho': True}, {'bn': 1},
-                                      {'sl': 2}, {'whammy': [{'time': 0, 'value': 1}]}])
+@pytest.mark.parametrize('technique', [{'ho': True}, {'bn': 1},
+                                      {'sl': 2}, {'vb': True}])
 def test_techniques_do_not_become_plain_open_pickups(technique):
     data = passage([note(2, 0, sustain=.25, **technique)], target=16)
     positions = generate_positions(data)
@@ -150,20 +150,21 @@ def test_wide_destination_is_shared_but_all_open_ending_keeps_context():
     assert rows == [{'time': 0., 'fret': 5, 'width': 4}]
 
 
-@pytest.mark.parametrize('policy', [None, 'chord-local-v1', 'open-preparation-v1'])
+@pytest.mark.parametrize('policy', [None, 'chord-local-v1', 'open-preparation-v1', 'open-preparation-v2', 'slide-follow-v1'])
 def test_recognized_old_positions_upgrade_only_on_explicit_regeneration(policy):
     data = passage()
     finalize(data)
     data['anchors'] = [{'time': 0., 'fret': 5, 'width': 4}, {'time': 2.25, 'fret': 2, 'width': 4}]
     proof = data['ext']['chartGuidance']
     proof['positionPolicy'] = policy
+    proof['slidePolicy'] = 'timed-known-slides' if policy == 'slide-follow-v1' else 'known-corridor'
     proof['guidanceSha256'] = digest({k: data[k] for k in proof['fields']})
     old = deepcopy(data)
     finalize(data)
     assert data == old
     finalize(data, regenerate=True)
     assert at(data, 2)['fret'] == 2
-    assert data['ext']['chartGuidance']['positionPolicy'] == 'slide-follow-v1'
+    assert data['ext']['chartGuidance']['positionPolicy'] == 'positionless-preparation-v1'
     assert music_digest(data) == music_digest(old)
     assert validate(data) == []
 

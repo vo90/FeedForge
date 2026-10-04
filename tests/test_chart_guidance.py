@@ -420,6 +420,6 @@ def test_explicit_regeneration_upgrades_old_owned_positions_without_changing_mus
     assert data == old
     finalize(data,regenerate=True)
     assert at(data,0) == {"time":0.,"fret":5,"width":4}
-    assert data["ext"]["chartGuidance"]["positionPolicy"] == "slide-follow-v1"
+    assert data["ext"]["chartGuidance"]["positionPolicy"] == "positionless-preparation-v1"
     assert music_digest(data) == music_digest(old)
     assert validate(data) == []

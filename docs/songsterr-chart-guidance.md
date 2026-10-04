@@ -137,3 +137,27 @@ publication rejection when guidance evidence is absent or mismatched.
 The corpus work transformed copies in memory. These checks do not establish
 visual comfort or fingering quality during live playback; no live WebGL
 playthrough was performed, and existing library packages were not rewritten.
+
+## Positionless passage preparation
+
+The `positionless-preparation-v1` position policy keeps timed slide-following
+and extends open pickups to plain dead strikes, open fret-hand mutes, mixtures
+of open/dead strings, open tremolo and open whammy effects. Dynamics and picking
+marks do not prescribe a fret. A dead strike's hidden editor fret is ignored;
+positive frets with only palm/fret-hand mute still require their written fret.
+
+The whole connected run adopts the next fretted passage's lane. Existing gap
+limits, simultaneous fretted holds, contact/technique constraints and linked
+gesture boundaries remain protected. Both ends of an explicit link or HOPO
+boundary are considered. Harmonics, slides/scrapes, bends and finger vibrato
+are not treated as freely relocatable open pickups. Camera technique focus is
+separate from lane placement and is unchanged.
+
+New imports record the new policy. Explicit regeneration accepts intact older
+receipts, including `slide-follow-v1`; ordinary finalization preserves them.
+The identical Core generator upgrades verified older positions in memory,
+including phrase levels, without writing song archives or changing music.
+
+Tests exercise Cirice's two muted chords before the 7/9 chord, mixed groups,
+placeholder frets, tremolo/whammy, incoming/outgoing links, retained contacts,
+active strings, rest boundaries, receipt upgrades and independent fret coverage.
