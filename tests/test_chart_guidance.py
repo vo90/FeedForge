@@ -133,11 +133,13 @@ def test_zero_duration_attacks_do_not_leave_a_permanent_wide_lane():
 
 
 @pytest.mark.parametrize("key", ["sl", "slu"])
-def test_known_slide_corridor_and_natural_harmonic_contact(key):
+def test_known_slide_moves_while_preserving_simultaneous_harmonic_contact(key):
     data = chart([note(0, 5, 0, 2, **{key: 12}), note(.5, 3, 1, .5, hm=True, hn=3.2)])
     finalize(data)
-    assert covers(at(data, 0), 5, 12)
-    assert covers(at(data, .5), 3, 4, 5, 12)
+    assert covers(at(data, 0), 5)
+    assert at(data, 0)["width"] == 4
+    assert covers(at(data, .5), 3, 4)
+    assert covers(at(data, 1.999), 12)
     assert validate(data) == []
 
 
@@ -366,14 +368,15 @@ def test_chords_start_at_their_lowest_fret_even_inside_a_covering_anchor():
     assert validate(data) == []
 
 
-def test_slide_corridor_releases_at_the_next_chord_in_rats():
+def test_moving_slide_yields_to_the_next_chord_in_rats():
     data = chart([note(105.5375,3,sustain=.24875,sl=8)],
         [chord(105.78625,(8,7),1.24375), chord(107.03,(3,5,5),.72375,tid=1),
          chord(107.75375,(5,7,7),1.20625,tid=2)],
         [template((8,7)),template((3,5,5)),template((5,7,7))])
     before = music_digest(data)
     finalize(data)
-    assert data["anchors"] == [{"time":0.,"fret":3,"width":6},
+    assert data["anchors"][0] == {"time":0.,"fret":3,"width":4}
+    assert data["anchors"][-3:] == [
         {"time":105.78625,"fret":7,"width":4}, {"time":107.03,"fret":3,"width":4},
         {"time":107.75375,"fret":5,"width":4}]
     assert music_digest(data) == before
@@ -417,6 +420,6 @@ def test_explicit_regeneration_upgrades_old_owned_positions_without_changing_mus
     assert data == old
     finalize(data,regenerate=True)
     assert at(data,0) == {"time":0.,"fret":5,"width":4}
-    assert data["ext"]["chartGuidance"]["positionPolicy"] == "open-preparation-v2"
+    assert data["ext"]["chartGuidance"]["positionPolicy"] == "slide-follow-v1"
     assert music_digest(data) == music_digest(old)
     assert validate(data) == []

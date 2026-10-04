@@ -108,7 +108,7 @@ def finalize(chart, *, regenerate=False, window=None):
                                       for h in additions["handshapes"] if left <= h["start_time"] < right]
     receipt = {"policy": POLICY, "positionPolicy": POSITION_POLICY, "sourceAuthored": False, "fields": fields,
                "musicSha256": input_hash, "guidanceSha256": digest(additions),
-               "slidePolicy": "known-corridor", "legatoPolicy": "compact-explicit-hopo", "fingeringAssessed": False}
+               "slidePolicy": "timed-known-slides", "legatoPolicy": "compact-explicit-hopo", "fingeringAssessed": False}
     if "anchors" in fields:
         receipt["wideAnchorCount"] = sum(a["width"] > 4 for a in additions["anchors"])
     if "handshapes" in fields:

@@ -10,8 +10,8 @@ from collections import Counter, defaultdict
 import math
 
 MAX_FRET = 24
-POSITION_POLICY = "open-preparation-v2"
-PREVIOUS_POSITION_POLICIES = (None, "chord-local-v1", "open-preparation-v1")
+POSITION_POLICY = "slide-follow-v1"
+PREVIOUS_POSITION_POLICIES = (None, "chord-local-v1", "open-preparation-v1", "open-preparation-v2")
 
 
 def _members(chart):
@@ -65,6 +65,59 @@ def _plain_dead(note):
     )) and not any(type(note.get(k)) in (int, float) and note[k] >= 0 for k in ("sl", "slu", "su"))
 
 
+def _position_spans(start, end, note):
+    """Occupied cells along a known slide, bounded by neck size, not duration.
+
+    The highway eases between fret centres in world space. Cover both uniform
+    and logarithmic spacing, so changing the display preference cannot strand
+    the gem outside its generated lane. Other strings still reserve their own
+    cells. Unknown slide directions never become invented fret destinations.
+    """
+    frets = _frets(note)  # Validate even fields hidden by slide precedence.
+    key = next((k for k in ("sl", "slu")
+                if type(note.get(k)) in (int, float) and note[k] >= 0), None)
+    if (not frets or key is None or note["f"] <= 0 or note["f"] != int(note["f"]) or end <= start
+            or note.get("sus", 0) <= 0
+            or note.get("hm") and type(note.get("hn")) in (int, float)):
+        return [(start, end, frets)]
+    target = int(note[key])  # Same precedence/integer target as slideTrailEnd.
+    if target == note["f"]:
+        return [(start, end, frets)]
+
+    # Units of renderer K: FRET_SCALE/K = 330; open centre = -2*K.
+    logarithmic = [330 * (1 - 2 ** (-f / 12)) for f in range(MAX_FRET + 1)]
+    logarithmic = [x if f <= 12 else logarithmic[12] + (x - logarithmic[12]) * 1.1
+                   for f, x in enumerate(logarithmic)]
+    uniform = [logarithmic[-1] * f / MAX_FRET for f in range(MAX_FRET + 1)]
+    paths, cuts = [], {start, end}
+    for wires in (uniform, logarithmic):
+        def centre(f):
+            return -2 if f <= 0 else (wires[f - 1] + wires[f]) / 2
+        origin, destination = centre(int(note["f"])), centre(target)
+        paths.append((wires, origin, destination))
+        for wire in wires:
+            weight = (wire - origin) / (destination - origin)
+            if not 0 < weight < 1:
+                continue
+            progress = (math.asin(weight ** (1 / 3)) * 2 / math.pi if key == "sl"
+                        else 1 - math.asin(1 - weight) * 2 / math.pi)
+            time = round(start + note["sus"] * progress, 6)
+            if start < time < end:
+                cuts.add(time)
+    cuts = sorted(cuts)
+    spans = []
+    for left, right in zip(cuts, cuts[1:]):
+        p = min(1., max(0., ((left + right) / 2 - start) / note["sus"]))
+        weight = math.sin(p * math.pi / 2) ** 3 if key == "sl" else 1 - math.cos(p * math.pi / 2)
+        cells = tuple(sorted({max(1, min(MAX_FRET, bisect_right(wires, origin + (destination - origin) * weight)))
+                              for wires, origin, destination in paths}))
+        if spans and spans[-1][2] == cells:
+            spans[-1] = (spans[-1][0], right, cells)
+        else:
+            spans.append((left, right, cells))
+    return spans
+
+
 def _connected_frets(rows):
     """Reserve a compact, explicit HO/PO phrase at its initiating attack.
 
@@ -114,13 +167,13 @@ def _positions(rows, chords=()):
     # Build instant releases explicitly so zero-duration notes cannot linger.
     changes = defaultdict(lambda: {"add": [], "remove": [], "instant": [], "attack": False})
     for start, end, note in rows:
-        frets = _frets(note)
         changes[start]["attack"] = True
-        changes[start]["add"].append(frets)
-        if end > start:
-            changes[end]["remove"].append(frets)
-        else:
-            changes[start]["instant"].append(frets)
+        for left, right, frets in _position_spans(start, end, note):
+            changes[left]["add"].append(frets)
+            if right > left:
+                changes[right]["remove"].append(frets)
+            else:
+                changes[left]["instant"].append(frets)
     # A chord establishes a position even when an older, wider anchor covers it.
     # Keep its preference through releases of overlapping notes; all-open and
     # unpitched-only shapes have no fret preference.

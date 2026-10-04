@@ -142,8 +142,9 @@ def test_wide_destination_is_shared_but_all_open_ending_keeps_context():
     data = passage()
     data['notes'][-1]['sl'] = 12
     rows = generate_positions(data)
-    assert next(a for a in reversed(rows) if a['time'] <= 2) == rows[-1]
-    assert rows[-1]['width'] == 11
+    assert next(a for a in reversed(rows) if a['time'] <= 2)['fret'] == 2
+    assert rows[-1]['fret'] == 9  # The subsequent slide travels to fret 12.
+    assert rows[-1]['width'] == 4
     data['notes'].pop()
     rows = generate_positions(data)
     assert rows == [{'time': 0., 'fret': 5, 'width': 4}]
@@ -162,7 +163,7 @@ def test_recognized_old_positions_upgrade_only_on_explicit_regeneration(policy):
     assert data == old
     finalize(data, regenerate=True)
     assert at(data, 2)['fret'] == 2
-    assert data['ext']['chartGuidance']['positionPolicy'] == 'open-preparation-v2'
+    assert data['ext']['chartGuidance']['positionPolicy'] == 'slide-follow-v1'
     assert music_digest(data) == music_digest(old)
     assert validate(data) == []
 

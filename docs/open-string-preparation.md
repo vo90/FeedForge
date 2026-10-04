@@ -1,6 +1,7 @@
 # Open-string pickup positions
 
-The shared generated hand-position policy is now `open-preparation-v2`.
+Open-run preparation was introduced in `open-preparation-v2` and is retained by
+[`slide-follow-v1`](slide-following-positions.md).
 Resolve fretted positions first, then walk backward from each destination
 through eligible plain open attacks. The whole run adopts the destination's
 position and width, without a total-duration cutoff. This fixes Cirice at
