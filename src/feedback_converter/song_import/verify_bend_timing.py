@@ -168,12 +168,34 @@ def reconstruct(event, part, clock, sound_end, terminal_context=(), *, following
                 or (not target and atom.effects.get('hp'))):
             terminal_pinch = False
         previous_stop = stop
+    # Independently qualify the written beat instruction from source atoms.
+    # It stays a separate playback limitation, not a new pitch controller.
+    beat_entries = []
+    independent_beat = (not overlap and len(entries) > 1 and 0 < first.fret < 127
+                        and entries[0][1] == origin and tail_end == sound_end
+                        and tail.slide in ('up', 'down'))
+    previous_stop = None
+    for i, (a, begin, finish, visit) in enumerate(entries):
+        if ((a.fret, a.string, a.voice) != (first.fret, first.string, first.voice)
+                or (i and (not a.tie or begin != previous_stop))
+                or a.slide_in or (a.slide and i != len(entries)-1)
+                or a.whammy or a.attack_offset or a.staccato or a.hopo_origin or a.hopo_destination
+                or a.trill or a.pick_scrape
+                or any(a.effects.get(k) for k in ('hm', 'hp', 'hn', 'harmonic_target', 'mt', 'lr', 'pm', 'tr'))
+                or ((a.effects.get('vb') or a.beat_vibrato) and a.finger_vibrato not in ('slight', 'wide'))):
+            independent_beat = False
+        if a.beat_vibrato:
+            beat_entries.append({'sourceId': identity(a), 'occurrence': visit + 1,
+                                 'start': float(clock.at(begin)), 'end': float(clock.at(finish)),
+                                 'intensity': a.finger_vibrato})
+        previous_stop = finish
+    beat_control = {'policy': 'independent-written-instruction', 'segments': beat_entries} if independent_beat and beat_entries else None
     if (len(entries) > 1 and tail.tie
             and tail.slide in {'up', 'down'} and tail_end == sound_end
             and origin < tail_start < sound_end and 0 < tail.fret < 127):
         extras = any((a.slide_in and not (boundary_cues and i == 0))
                      or a.whammy or a.attack_offset or a.hopo_origin or a.hopo_destination
-                     or a.trill or a.pick_scrape or a.beat_vibrato or (i < len(entries)-1 and a.slide)
+                     or a.trill or a.pick_scrape or (a.beat_vibrato and not beat_control) or (i < len(entries)-1 and a.slide)
                      or ((tail.bends or terminal_pinch) and a.effects.get('vb') and a.finger_vibrato not in ('slight', 'wide'))
                      or (not terminal_pinch and (a.effects.get('hp') or a.effects.get('harmonic_target')))
                      or any(a.effects.get(k) for k in ('hm', 'hn', 'mt', 'lr', 'pm', 'tr'))
@@ -190,6 +212,7 @@ def reconstruct(event, part, clock, sound_end, terminal_context=(), *, following
             terminal_candidate = {'sourceId': identity(tail), 'direction': tail.slide,
                         'start': float(clock.at(tail_start)), 'end': float(clock.at(sound_end)),
                         'value': float(controls[-1][1]),
+                        **({'beatVibrato': beat_control} if beat_control else {}),
                         **({'continuedPinchHarmonic': {'initialTarget': dict(initial_target),
                                                      'policy': 'initial-target-continued'}} if terminal_pinch else {}),
                         **({'bendTiming': 'authored-segment'} if tail.bends else {}),
