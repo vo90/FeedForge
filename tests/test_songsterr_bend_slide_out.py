@@ -55,7 +55,7 @@ def test_bend_hold_slide_out_retains_single_attack_pitch_and_source_interval(tmp
 
 
 @pytest.mark.parametrize('fault', ['overlapping_bend','early_slide','later_slide_in','whammy',
-                                  'beat_vibrato','harmonic','mute','palm_mute','let_ring','hopo','open','strum'])
+                                  'harmonic','mute','palm_mute','let_ring','hopo','open','strum'])
 def test_unqualified_combinations_stay_explicitly_deferred(fault):
     doc=source();beats=doc['parts'][0]['measures'][0]['voices'][0]['beats']
     if fault=='overlapping_bend':
@@ -65,7 +65,6 @@ def test_unqualified_combinations_stay_explicitly_deferred(fault):
         beats[1]['notes'][0]['slide']=beats[2]['notes'][0].pop('slide')
     elif fault=='later_slide_in':beats[1]['notes'][0]['slide']='below'
     elif fault=='whammy':beats[1]['tremoloBar']=deepcopy(RISE)
-    elif fault=='beat_vibrato':beats[1]['vibrato']=True
     elif fault=='harmonic':beats[0]['notes'][0]['harmonic']='pinch'
     elif fault=='mute':beats[0]['notes'][0]['dead']=True
     elif fault=='palm_mute':beats[0]['palmMute']=True
@@ -83,6 +82,21 @@ def test_unqualified_combinations_stay_explicitly_deferred(fault):
     e=checked(doc)['fingerBendTimingEvidence'][0]
     assert e['status']=='deferred' and e['reason']=='mixed-pitch-or-displaced-attack'
     assert 'terminalSlideOut' not in e
+
+
+def test_written_beat_vibrato_no_longer_blocks_independent_bend_clock(tmp_path):
+    doc=source();before=checked(doc)['tracks']
+    doc['parts'][0]['measures'][0]['voices'][0]['beats'][1]['vibrato']=True
+    p=checked(doc);e=p['fingerBendTimingEvidence'][0]
+    assert e['status']=='resolved'
+    assert e['terminalSlideOut']['beatVibrato']['segments']==[{
+        'sourceId':'songsterr:0:0:0:1:0','occurrence':1,'start':.5,'end':1.,'intensity':'slight'}]
+    n=p['tracks'][0]['notes'][0];original=before[0]['notes'][0]
+    assert n['bnv']==original['bnv'] and n['slide_out_marks']==original['slide_out_marks']
+    assert n['vibrato_marks']==[{'start':.5,'end':1.,'intensity':'slight'}]
+    findings=import_json(tmp_path,doc)['compatibilityReport']['findings']
+    assert any(f['feature']=='beat.vibrato' for f in findings)
+    assert not any(f['feature']=='note.bend_timing' for f in findings)
 
 
 def test_tempos_repeats_chords_and_voices_preserve_written_grouping():

@@ -25,7 +25,10 @@ def test_qualified_native_controls_match_activation_and_strength_before_syntheti
         assert profile['visibleAuthoredAttacks']==1
         if case['id'].startswith('beat'):
             assert not controls
-            assert p['fingerBendTimingEvidence'][0]['status']=='deferred'
+            e=p['fingerBendTimingEvidence'][0]
+            assert e['status']=='resolved'
+            assert e['terminalSlideOut']['beatVibrato']['policy']=='independent-written-instruction'
+            assert n['vibrato_marks']  # Still a written instruction, not synth-confirmed modulation.
             continue
         # Probe inside intervals, away from sub-tick synth resets. At the
         # terminal slide, its arbitrary synth duration is deliberately excluded.
@@ -72,8 +75,9 @@ def test_modern_intensity_precedes_legacy_flags_and_beat_only_stays_diagnosed(tm
     del beats[1]['notes'][0]['leftHandVibrato'];del beats[1]['notes'][0]['wideVibrato']
     beats[1]['wideVibrato']=True
     p=import_json(tmp_path,doc)
-    assert p['fingerBendTimingEvidence'][0]['status']=='deferred'
+    assert p['fingerBendTimingEvidence'][0]['status']=='resolved'
     assert any(f['feature']=='beat.wideVibrato' for f in p['compatibilityReport']['findings'])
+    assert not any(f['feature']=='note.bend_timing' for f in p['compatibilityReport']['findings'])
 
 
 def test_piecewise_mapping_clipping_and_empty_authoritative_intervals():

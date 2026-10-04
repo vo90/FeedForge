@@ -99,7 +99,7 @@ def test_context_and_tempo_map_do_not_change_the_source_rule(context):
 
 
 @pytest.mark.parametrize('extra',['incoming-on-later-tie','targeted-slide','competing-bend','whammy','beat-vibrato','authored-strum'])
-def test_other_expressions_still_require_the_existing_guard(tmp_path,extra):
+def test_other_expressions_and_independent_beat_vibrato_are_distinguished(tmp_path,extra):
     doc=source();bs=doc['parts'][0]['measures'][0]['voices'][0]['beats']
     if extra=='incoming-on-later-tie':
         bs.insert(1,beat(fret=14,string=2,duration=(1,8),tie=True,slide='above'))
@@ -118,9 +118,13 @@ def test_other_expressions_still_require_the_existing_guard(tmp_path,extra):
         bs[1]['duration']=[1,4]
         bs.insert(1,beat(fret=14,string=2,duration=(1,8),tie=True,bend=bend))
     p=checked(doc)
-    assert all(e['status']=='deferred' for e in p['fingerBendTimingEvidence'])
+    resolved=extra=='beat-vibrato'
+    assert all(e['status']==('resolved' if resolved else 'deferred') for e in p['fingerBendTimingEvidence'])
+    if resolved:assert all(e['terminalSlideOut']['beatVibrato'] for e in p['fingerBendTimingEvidence'])
     loaded=import_json(tmp_path,doc)
-    assert any(f['feature']=='note.bend_timing' for f in loaded['compatibilityReport']['findings'])
+    findings=loaded['compatibilityReport']['findings']
+    assert any(f['feature']=='note.bend_timing' for f in findings)==(not resolved)
+    if resolved:assert any(f['feature']=='beat.wideVibrato' for f in findings)
 
 
 @pytest.mark.parametrize('piecewise',[False,True])

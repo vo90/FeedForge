@@ -81,7 +81,7 @@ def test_tempo_change_inside_terminal_bend_uses_quarters_not_linear_seconds(out)
 
 
 @pytest.mark.parametrize('extra',['earlier-out','targeted','harmonic','beat-vibrato','whammy','hopo','palm-mute','let-ring','changing-overlap'])
-def test_unqualified_compositions_keep_findings(extra,tmp_path):
+def test_compositions_keep_their_independent_findings(extra,tmp_path):
     doc=document();bs=doc['parts'][0]['measures'][0]['voices'][0]['beats']
     if extra=='earlier-out':bs[0]['notes'][0]['slide']='downwards'
     elif extra=='targeted':bs[1]['notes'][0]['slide']='shift';doc['parts'][0]['measures'].append(measure(beat(fret=5)))
@@ -94,9 +94,14 @@ def test_unqualified_compositions_keep_findings(extra,tmp_path):
     else:
         bs[1]['duration']=[1,2];bs.insert(1,beat(fret=7,tie=True,duration=(1,4)))
     p=checked(doc);e=p['fingerBendTimingEvidence'][0]
-    assert e['status']=='deferred' and 'terminalSlideOut' not in e
+    resolved=extra=='beat-vibrato'
+    assert e['status']==('resolved' if resolved else 'deferred')
+    if resolved:assert e['terminalSlideOut']['beatVibrato']
+    else:assert 'terminalSlideOut' not in e
     loaded=import_json(tmp_path,doc)
-    assert any(f['feature']=='note.bend_timing' for f in loaded['compatibilityReport']['findings'])
+    findings=loaded['compatibilityReport']['findings']
+    assert any(f['feature']=='note.bend_timing' for f in findings)==(not resolved)
+    if resolved:assert any(f['feature']=='beat.wideVibrato' for f in findings)
 
 
 @pytest.mark.parametrize('piecewise',[False,True])

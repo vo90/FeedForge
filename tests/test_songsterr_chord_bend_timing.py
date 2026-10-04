@@ -90,7 +90,7 @@ def test_precise_controls_tempo_repeats_and_separate_voice():
 
 
 @pytest.mark.parametrize('context',['overlapping-bend','beat-vibrato','actual-strum'])
-def test_unqualified_compound_context_still_keeps_warning(tmp_path,context):
+def test_compound_context_keeps_each_independent_warning(tmp_path,context):
     doc=source();bs=doc['parts'][0]['measures'][0]['voices'][0]['beats']
     if context=='overlapping-bend':
         bs[1]['duration']=[1,4]
@@ -102,9 +102,13 @@ def test_unqualified_compound_context_still_keeps_warning(tmp_path,context):
         bs[1]['notes'][0]['bend']=bs[0]['notes'][0].pop('bend')
         bs[1]['notes'][0].pop('slide')
     p=checked(doc)
-    assert all(e['status']=='deferred' for e in p['fingerBendTimingEvidence'])
+    resolved=context=='beat-vibrato'
+    assert all(e['status']==('resolved' if resolved else 'deferred') for e in p['fingerBendTimingEvidence'])
+    if resolved:assert all(e['terminalSlideOut']['beatVibrato'] for e in p['fingerBendTimingEvidence'])
     loaded=import_json(tmp_path,doc)
-    assert any(f['feature']=='note.bend_timing' for f in loaded['compatibilityReport']['findings'])
+    findings=loaded['compatibilityReport']['findings']
+    assert any(f['feature']=='note.bend_timing' for f in findings)==(not resolved)
+    if resolved:assert any(f['feature']=='beat.wideVibrato' for f in findings)
 
 
 @pytest.mark.parametrize('piecewise',[False,True])
