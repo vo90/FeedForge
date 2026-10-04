@@ -66,6 +66,15 @@ def _retime_note(note: dict, alignment: dict, duration: float, *, chord_time: fl
                              "audioDuration": duration})
     if "sus" in note:
         result["sus"] = round(sustain, 6)
+    if 'slide_interval' in note:
+        from ..slide_interval import validate
+        try:
+            interval = validate(note)
+            result['slide_interval'] = {k: round(map_time(alignment, original+v)-start, 6)
+                                        for k,v in interval.items()}
+            validate(result)
+        except ValueError as exc:
+            raise ImportFailure('alignment_failed', str(exc)) from exc
     if 'harmonic_changes' in note:
         from ..harmonic_changes import retime_changes
         result['harmonic_changes'] = retime_changes({**note, 't':original}, lambda t: map_time(alignment,t))

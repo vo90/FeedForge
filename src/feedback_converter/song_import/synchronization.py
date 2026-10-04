@@ -352,6 +352,9 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
                     _unavailable("invalid_bend_timing")
             if mapped_end > duration + 0.0000011 and padding is None:
                 mapped = {**note, "t": round(mapped_start, 6), "sus": round(mapped_end - mapped_start, 6)}
+                if 'slide_interval' in note:
+                    mapped['slide_interval'] = {k: round(_mapped_value(result, start + v) - mapped_start, 6)
+                                                for k, v in note['slide_interval'].items()}
                 if 'whammy' in note:
                     from ..whammy import retime_whammy
                     try:

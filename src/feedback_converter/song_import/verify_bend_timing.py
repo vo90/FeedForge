@@ -95,6 +95,21 @@ def reconstruct(event, part, clock, sound_end, terminal_context=(), *, following
     evidence = {'trackId': part.id, 'sourceId': identity(first), 'location': first.location,
                 'occurrence': entries[0][3] + 1, 'start': float(clock.at(origin)), 'end': float(clock.at(sound_end)),
                 'string': event['s'], 'fret': event['f'], 'segments': rows}
+    targeted = event.get('targeted_slide')
+    ordinary_target = bool(targeted) and not overlap
+    for index,(a,*_) in enumerate(entries):
+        if (a.whammy or a.attack_offset or a.staccato or a.hopo_origin or a.hopo_destination
+                or a.trill or a.pick_scrape or a.beat_vibrato
+                or (index and a.slide_in) or (a.slide and index < len(entries)-1)
+                or any(a.effects.get(k) for k in ('hm','hp','hn','harmonic_target','mt','lr','pm','tr'))
+                or (a.effects.get('vb') and a.finger_vibrato not in ('slight','wide'))):
+            ordinary_target = False
+    if ordinary_target:
+        mixed = False
+        a,start,end,visit = entries[-1]
+        evidence['targetedSlide'] = {'sourceId': identity(a), 'occurrence': visit+1,
+            'start': float(clock.at(start)), 'end': float(clock.at(end)),
+            'fret': event['effects']['sl'], 'kind': a.slide, 'policy':'independent-authored-interval'}
     # Reconstruct from independently parsed atoms and retained bar intervals.
     # An empty qualitative control cannot establish an explicit or held pitch.
     bar_atoms = [(a, start, end, visit) for a, start, end, visit in entries if a.whammy]

@@ -160,6 +160,12 @@ def _validate_note(
     # Existing game wire sentinel: a dead strike with no authored fret. Do
     # not widen the physical fret range or accept palm mute alone as evidence.
     scrape = _valid_pick_scrape(note)
+    if 'slide_interval' in note:
+        from .slide_interval import validate
+        try:
+            validate(note)
+        except ValueError as exc:
+            error(f'{path}/slide_interval: {exc}')
     if "harmonic_target" in note:
         from .harmonic_target import valid_note_target
         if not valid_note_target(note):

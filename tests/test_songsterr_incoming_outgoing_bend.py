@@ -106,7 +106,8 @@ def test_individually_supported_combinations_do_not_broaden_this_rule(extra):
         d=overlapping();bs=d['parts'][0]['measures'][0]['voices'][0]['beats']
         bs[0]['notes'][0]['slide']='below';bs[-1]['notes'][0]['slide']='downwards'
     e=checked(d)['fingerBendTimingEvidence'][0]
-    assert e['status']=='deferred'
+    assert e['status']==('resolved' if extra=='targeted' else 'deferred')
+    if extra=='targeted':assert e['targetedSlide']
     assert 'initialSlideIn' not in e and 'terminalSlideOut' not in e
 
 

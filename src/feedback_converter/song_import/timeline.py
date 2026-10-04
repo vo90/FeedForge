@@ -367,6 +367,11 @@ def _render(score: Score) -> dict:
                         sliding['sl'] = note.fret
                         if kind == 'legato':
                             sliding['ln'] = True
+                        if score.source.get('format') == 'songsterr':
+                            from ..slide_interval import authored
+                            interval = authored(articulations[id(sliding)], note, attack, at)
+                            if interval is not None:
+                                sliding['slide_interval'] = interval
                 if note.slide in {"shift", "legato"} and note.fret != 127:
                     from .slide_omissions import origin
                     source_origin = origin(note, track, occurrence, output['t'], at(position)) if score.source.get('format') == 'songsterr' else None

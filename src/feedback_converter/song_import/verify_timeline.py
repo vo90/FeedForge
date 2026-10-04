@@ -436,6 +436,11 @@ def _expected(source, alignment):
                             target['effects']['sl'] = atom.fret
                             if slide == 'legato':
                                 target['effects']['ln'] = True
+                            if source.format == 'songsterr':
+                                from .verify_slide_interval import resolve
+                                interval = resolve(target, atom, event['start'])
+                                if interval is not None:
+                                    target['targeted_slide'] = interval
                     notes.append(event)
                     if len(notes) > MAX_EVENTS:
                         raise ValueError("source: performed note limit exceeded")
@@ -587,6 +592,10 @@ def _expected(source, alignment):
                 unsupported(n["locations"][0], "Strum exceeds its sounding interval; no attack or endpoint was repaired.")
             mapped_start, mapped_end = recording.at(start), recording.at(end)
             row = {"t": mapped_start, "sus": round(mapped_end - mapped_start, 6), "s": n["s"], "f": n["f"], **n["effects"]}
+            if n.get('targeted_slide'):
+                left, right = n['targeted_slide']
+                row['slide_interval'] = {'start': round(recording.at(clock.at(left))-mapped_start,6),
+                                        'end': round(recording.at(clock.at(right))-mapped_start,6)}
             if n.get('timed_vibrato') is not None:
                 row['vibrato_marks'] = [{'start': round(recording.at(clock.at(max(a, n['start'])))-mapped_start, 6),
                     'end': round(recording.at(clock.at(min(b, sound_end)))-mapped_start, 6), 'intensity': kind}

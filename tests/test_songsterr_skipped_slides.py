@@ -125,7 +125,7 @@ def test_independent_package_check_rejects_corrupted_omissions(tmp_path,fault):
     p=load_performance(source);alignment={'status':'validated','offset':.2,'scale':.15}
     assert any(f['feature']=='note.slide_skipped_ending' for f in p['compatibilityReport']['findings'])
     built=build_feedpak(p,audio,alignment,job,output_dir=tmp_path/'out',source_path=source,
-                       compatibility=p['compatibilityReport'],recipe={'preservationContract':55})
+                       compatibility=p['compatibilityReport'],recipe={'preservationContract':80})
     archive=Path(built['stagingPath'])
     if fault:
         with ZipFile(archive) as z:files={n:z.read(n) for n in z.namelist()}

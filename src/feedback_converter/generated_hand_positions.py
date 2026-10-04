@@ -85,6 +85,16 @@ def _position_spans(start, end, note):
     if target == note["f"]:
         return [(start, end, frets)]
 
+    motion_start, motion_duration = start, note['sus']
+    interval = note.get('slide_interval')
+    if key == 'sl' and interval is not None:
+        if (not isinstance(interval, dict) or set(interval) != {'start', 'end'}
+                or any(type(interval[k]) not in (int, float) or not math.isfinite(interval[k]) for k in interval)
+                or not 0 <= interval['start'] < interval['end'] <= note['sus'] + .0000011):
+            raise ValueError('Guidance requires a valid targeted slide interval.')
+        motion_start += interval['start']
+        motion_duration = interval['end'] - interval['start']
+
     # Units of renderer K: FRET_SCALE/K = 330; open centre = -2*K.
     logarithmic = [330 * (1 - 2 ** (-f / 12)) for f in range(MAX_FRET + 1)]
     logarithmic = [x if f <= 12 else logarithmic[12] + (x - logarithmic[12]) * 1.1
@@ -102,13 +112,13 @@ def _position_spans(start, end, note):
                 continue
             progress = (math.asin(weight ** (1 / 3)) * 2 / math.pi if key == "sl"
                         else 1 - math.asin(1 - weight) * 2 / math.pi)
-            time = round(start + note["sus"] * progress, 6)
+            time = round(motion_start + motion_duration * progress, 6)
             if start < time < end:
                 cuts.add(time)
     cuts = sorted(cuts)
     spans = []
     for left, right in zip(cuts, cuts[1:]):
-        p = min(1., max(0., ((left + right) / 2 - start) / note["sus"]))
+        p = min(1., max(0., ((left + right) / 2 - motion_start) / motion_duration))
         weight = math.sin(p * math.pi / 2) ** 3 if key == "sl" else 1 - math.cos(p * math.pi / 2)
         cells = tuple(sorted({max(1, min(MAX_FRET, bisect_right(wires, origin + (destination - origin) * weight)))
                               for wires, origin, destination in paths}))

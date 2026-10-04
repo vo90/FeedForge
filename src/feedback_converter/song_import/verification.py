@@ -22,11 +22,12 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 79
+VERSION = 80
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
 TECHNIQUES.add("fg")
+TECHNIQUES.add("slide_interval")
 TUNINGS = {"guitar": {6: [40, 45, 50, 55, 59, 64], 7: [35, 40, 45, 50, 55, 59, 64], 8: [30, 35, 40, 45, 50, 55, 59, 64]},
            "bass": {4: [28, 33, 38, 43], 5: [23, 28, 33, 38, 43], 6: [23, 28, 33, 38, 43, 48]}}
 
@@ -170,7 +171,7 @@ def _notes(wanted, actual, check, part, duration):
         for key in ("t", "sus"):
             check.near("note_time" if key == "t" else "note_sustain", loc + "/" + key, a[key], b.get(key, 0))
         for key in TECHNIQUES:
-            if key in {"slide_out_marks", "slide_in_marks", "pick_scrape_marks", "whammy", "harmonic_changes", "vibrato_marks"}:
+            if key in {"slide_interval", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "whammy", "harmonic_changes", "vibrato_marks"}:
                 continue
             wanted_value, actual_value = a.get(key), b.get(key)
             if key == "fg" and key in b and (type(actual_value) is not int or not 0 <= actual_value <= 4):
@@ -186,6 +187,10 @@ def _notes(wanted, actual, check, part, duration):
         _slide_marks(a.get("slide_out_marks", []), b, check, loc)
         _incoming_marks(a.get("slide_in_marks", []), b, check, loc)
         _scrape_marks(a.get("pick_scrape_marks", []), b, check, loc)
+        from .verify_slide_interval import compare as compare_slide_interval
+        if 'slide_interval' in b and b['slide_interval'] is None:
+            check.fail('slide_interval', loc, 'A present slide interval cannot be null.')
+        compare_slide_interval(a.get('slide_interval'), b.get('slide_interval'), b, check, loc+'/slide_interval')
         from .verify_whammy import check_bar
         check_bar(a.get('whammy'), b.get('whammy'), check, loc+'/whammy')
         from .verify_harmonic_changes import check_changes
@@ -342,7 +347,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     reports_precedence = type(report.get('version')) is int and report['version'] >= 46
     if preservation_contract >= 46 and not reports_precedence:
@@ -817,6 +822,9 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             manifest = yaml.safe_load(z.read("manifest.yaml"))
             _finite(manifest, "manifest", check)
             recipe = manifest.get("song_import", {})
+            if any(n['note'].get('slide_interval') for p in wanted['parts'] for n in p['notes']):
+                if recipe.get('preservationContract', 0) < 80:
+                    check.fail('contract', 'manifest', 'Targeted slide intervals require preservation contract 80.')
             if alignment.get('timingAssessment') or recipe.get('timingAssessmentFile'):
                 from .local_sync import assess, tracks_from_expected, compare_assessment
                 # The independent evaluator maps exact rational source times.
@@ -1027,7 +1035,10 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 bar_curve = any(e.get('barCurve') for e in wanted['finger_bends'])
                 if bar_curve and recipe.get('preservationContract', 0) < 78:
                     check.fail('finger_bend_timing', 'manifest/song_import', 'Independent finger bends with explicit bar curves require preservation contract 78.')
-                bend_version = 18 if bar_curve else 17 if beat_slide else 16 if pinch_slide else 15 if bar_vibrato else 14 if outgoing_legato else 13 if continued_pinch else 12 if fixed_harmonic else 11 if boundary_slides else 10 if overlap_slide else 9 if terminal_bend else 8 if initial_slide else 7 if vibrato_handoff else 6 if following_slide else 5 if chord_slide else 4 if changing_slide else 3
+                targeted_slide = any(e.get('targetedSlide') for e in wanted['finger_bends'])
+                if targeted_slide and recipe.get('preservationContract', 0) < 80:
+                    check.fail('finger_bend_timing', 'manifest/song_import', 'Targeted slide bend timing requires preservation contract 80.')
+                bend_version = 19 if targeted_slide else 18 if bar_curve else 17 if beat_slide else 16 if pinch_slide else 15 if bar_vibrato else 14 if outgoing_legato else 13 if continued_pinch else 12 if fixed_harmonic else 11 if boundary_slides else 10 if overlap_slide else 9 if terminal_bend else 8 if initial_slide else 7 if vibrato_handoff else 6 if following_slide else 5 if chord_slide else 4 if changing_slide else 3
                 evidence = {'version': bend_version, 'policy': f'songsterr-finger-bend-timing-v{bend_version}',
                             'timeDomain': 'score_seconds', 'sourceSha256': report['sourceSha256'],
                             'gestures': wanted['finger_bends']}

@@ -117,9 +117,10 @@ def test_other_compositions_remain_guarded(extra,tmp_path):
     elif extra=='overlap':
         bs[1]['duration']=[1,4];bs.append(beat(fret=7,tie=True,duration=(1,2),bend=deepcopy(FALL)))
     p=checked(doc);e=p['fingerBendTimingEvidence'][0]
-    assert e['status']=='deferred' and 'initialSlideIn' not in e
+    assert e['status']==('resolved' if extra=='targeted' else 'deferred') and 'initialSlideIn' not in e
+    if extra=='targeted':assert e['targetedSlide']
     loaded=import_json(tmp_path,doc)
-    assert any(f['feature']=='note.bend_timing' for f in loaded['compatibilityReport']['findings'])
+    assert any(f['feature']=='note.bend_timing' for f in loaded['compatibilityReport']['findings'])==(extra!='targeted')
 
 
 def test_source_slide_disables_strum_spreading_but_explicit_offsets_remain_guarded(monkeypatch):

@@ -257,6 +257,21 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
     if bar_curve:
         reason = None
         evidence['barCurve'] = bar_curve
+    # A separately retained terminal slide interval does not set the bend
+    # clock. Never clear the guard for competing controllers or other gestures.
+    targeted = output.get('slide_interval')
+    if (targeted and not overlaps and segments[-1][0].slide in {'shift', 'legato'}
+            and all(not (n.whammy or n.attack_offset or n.staccato or n.hopo or n.trill
+                         or n.pick_scrape or n.effects.get('__beat_vibrato')
+                         or (i and n.slide_in) or (n.slide and i != len(segments)-1)
+                         or any(n.effects.get(k) for k in ('hm','hp','hn','harmonic_target','mt','lr','pm','tr','__hopo_origin'))
+                         or (n.effects.get('vb') and n.effects.get('__finger_vibrato') not in {'slight','wide'}))
+                    for i,(n,*_) in enumerate(segments))):
+        reason = None
+        last, left, right, visit = segments[-1]
+        evidence['targetedSlide'] = {'sourceId': last.source_id, 'occurrence': visit+1,
+            'start': at(left), 'end': at(right), 'fret': output['sl'], 'kind': last.slide,
+            'policy': 'independent-authored-interval'}
     harmonic = first.effects.get('harmonic_target')
     steady_harmonic = (isinstance(harmonic, dict) and harmonic.get('kind') == 'artificial'
                        and harmonic.get('policy') == 'harmonic'
@@ -431,7 +446,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
 
 def archive_evidence(performance, source_path):
     gestures = performance['fingerBendTimingEvidence']
-    version = (18 if any(e.get('barCurve') for e in gestures)
+    version = (19 if any(e.get('targetedSlide') for e in gestures)
+               else 18 if any(e.get('barCurve') for e in gestures)
                else 17 if any(e.get('terminalSlideOut', {}).get('beatVibrato') for e in gestures)
                else 16 if any(e.get('terminalSlideOut', {}).get('continuedPinchHarmonic') for e in gestures)
                else 15 if any(e.get('barVibrato') for e in gestures)

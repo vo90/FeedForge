@@ -186,7 +186,7 @@ def run_import(request: dict, progress=None) -> dict:
             recipe["hybridLead"] = hybrid_options
         for track in performance.get("tracks", []):
             notes = list(track.get("notes", [])) + [note for chord in track.get("chords", []) for note in chord.get("notes", [])]
-            features.update(key for key in ("vibrato_marks", "ghost", "slide_out", "slide_out_marks", "slide_in_marks", "hn", "hps", "pick_scrape_marks", "harmonic_target", "harmonic_changes", "whammy") if any(note.get(key) for note in notes))
+            features.update(key for key in ("slide_interval", "vibrato_marks", "ghost", "slide_out", "slide_out_marks", "slide_in_marks", "hn", "hps", "pick_scrape_marks", "harmonic_target", "harmonic_changes", "whammy") if any(note.get(key) for note in notes))
         recipe["compatibility"] = {"version": 6, "extensions": sorted(features),
                                    "status": "requires_consumer_support" if features else "standard_fields"}
         if request.get("artworkLookup", True):

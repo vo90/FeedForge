@@ -16,6 +16,15 @@ POLICY = "feedforge-chart-guidance-v2"
 def _slide_fits(note, start, time, anchor):
     """Check continuous slide geometry directly, independently of anchor cuts."""
     key = next(k for k in ("sl", "slu") if type(note.get(k)) in (int, float) and note[k] >= 0)
+    motion_start, motion_duration = start, note['sus']
+    if key == 'sl' and 'slide_interval' in note:
+        interval = note['slide_interval']
+        if (not isinstance(interval, dict) or set(interval) != {'start', 'end'}
+                or any(type(v) not in (int, float) or not math.isfinite(v) for v in interval.values())
+                or not 0 <= interval['start'] < interval['end'] <= note['sus'] + .0000011):
+            return False
+        motion_start = start + interval['start']
+        motion_duration = interval['end'] - interval['start']
     def wire(f, logarithmic):
         raw = 330 * (1 - 2 ** (-f / 12))
         return (raw if f <= 12 else 165 + (raw - 165) * 1.1) if logarithmic else 255.75 * f / 24
@@ -27,7 +36,7 @@ def _slide_fits(note, start, time, anchor):
         # Anchors serialize to microseconds. Permit boundary rounding only;
         # never borrow a whole future fret cell or the original slide corridor.
         for offset in (-.000001, .000001):
-            p = min(1., max(0., (time + offset - start) / note["sus"]))
+            p = min(1., max(0., (time + offset - motion_start) / motion_duration))
             weight = math.sin(p * math.pi / 2) ** 3 if key == "sl" else 1 - math.cos(p * math.pi / 2)
             positions.append(origin + (destination - origin) * weight)
         low = -2 if anchor["fret"] == 1 else wire(anchor["fret"] - 1, logarithmic)

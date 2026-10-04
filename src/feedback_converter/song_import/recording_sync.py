@@ -26,7 +26,7 @@ PITCH_EXCLUSIONS = ('mt', 'bn', 'bnv', 'sl', 'slu', 'whammy')
 ATTACK_EXCLUSIONS = ('ho', 'po', 'ln')
 SPARSE_EXCLUSIONS = PITCH_EXCLUSIONS + ATTACK_EXCLUSIONS + (
     'hm', 'hp', 'hn', 'hps', 'harmonic_target', 'harmonic_changes',
-    'harmonic_alias', 'pick_scrape_marks', 'slide_out', 'slide_out_marks', 'slide_in_marks', 'tr',
+    'harmonic_alias', 'pick_scrape_marks', 'slide_out', 'slide_out_marks', 'slide_in_marks', 'slide_interval', 'tr',
 )
 
 def features(path, *, reference_hz=440.0):

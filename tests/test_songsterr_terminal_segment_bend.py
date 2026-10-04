@@ -94,14 +94,15 @@ def test_compositions_keep_their_independent_findings(extra,tmp_path):
     else:
         bs[1]['duration']=[1,2];bs.insert(1,beat(fret=7,tie=True,duration=(1,4)))
     p=checked(doc);e=p['fingerBendTimingEvidence'][0]
-    resolved=extra=='beat-vibrato'
+    resolved=extra in ('beat-vibrato','targeted')
     assert e['status']==('resolved' if resolved else 'deferred')
-    if resolved:assert e['terminalSlideOut']['beatVibrato']
+    if extra=='beat-vibrato':assert e['terminalSlideOut']['beatVibrato']
     else:assert 'terminalSlideOut' not in e
     loaded=import_json(tmp_path,doc)
     findings=loaded['compatibilityReport']['findings']
     assert any(f['feature']=='note.bend_timing' for f in findings)==(not resolved)
-    if resolved:assert any(f['feature']=='beat.wideVibrato' for f in findings)
+    if extra=='beat-vibrato':assert any(f['feature']=='beat.wideVibrato' for f in findings)
+    if extra=='targeted':assert e['targetedSlide']
 
 
 @pytest.mark.parametrize('piecewise',[False,True])
