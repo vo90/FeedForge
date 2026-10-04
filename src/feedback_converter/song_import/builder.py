@@ -479,6 +479,28 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         _write_json(package / 'import/tone-timeline.json',
                     tone_receipt(tone_rows, source_path, sha256_file(package / 'audio/full.ogg'), alignment, duration))
         manifest['song_import'].update(toneTimelineFile='import/tone-timeline.json', toneTimelinePolicy=TONE_POLICY)
+    lyric_warnings = []
+    if source.get('format') == 'songsterr' and (recipe or {}).get('preservationContract', 0) >= 78:
+        if source_path is None or performance.get('lyricTimeline') is None:
+            raise ImportFailure('lyrics_failed', 'Lyrics export requires retained source and its lyric timeline.')
+        from .lyric_timeline import export as export_lyrics, receipt as lyric_receipt
+        from .songsterr_lyrics import POLICY as LYRIC_POLICY
+        from .audio import sha256_file
+        lyrics, lyric_report = export_lyrics(performance['lyricTimeline'], alignment, duration)
+        _write_json(package / 'import/lyrics.json', lyric_receipt(
+            lyric_report, source_path, sha256_file(package / 'audio/full.ogg'), alignment))
+        manifest['song_import'].update(lyricsPolicy=LYRIC_POLICY, lyricsFile='import/lyrics.json',
+                                      lyricsStatus=lyric_report['status'])
+        if lyrics:
+            _write_json(package / 'lyrics.json', lyrics)
+            manifest.update(lyrics='lyrics.json', lyrics_source='authored',
+                            lyric_tracks=[{'id': 'original', 'file': 'lyrics.json', 'language': 'und', 'kind': 'original',
+                                           'lyrics_source': 'authored', 'stem': 'full',
+                                           'name': lyric_report.get('trackName', 'Original lyrics')}])
+        if lyric_report['status'] in ('unsupported', 'unavailable'):
+            lyric_warnings.append('Lyrics were not imported: ' + lyric_report.get('reason', 'source unavailable') + '.')
+        lyric_warnings.extend(lyric_report.get('warnings', []))
+        coverage['lyrics'] = {'status': lyric_report['status'], 'events': len(lyrics)}
     if omissions and omissions["notes"]:
         _write_json(package / "import/high-fret-omissions.json", archive_receipt(omissions, source_path))
         coverage["omissions"] = omission_summary(omissions)
@@ -663,5 +685,5 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             "title": title, "artist": artist, "duration": duration,
             "coverage": coverage,
             **({"hybridLead": hybrid_summary} if hybrid_summary else {}),
-            "warnings": list(validation.warnings) + ([f"Completed with omitted notes: {len(omissions['notes'])} unsupported high-fret or connected slide events are not displayed or scored. Original tab retained. Staff notation for affected arrangements is retained in the source only."]
+            "warnings": lyric_warnings + list(validation.warnings) + ([f"Completed with omitted notes: {len(omissions['notes'])} unsupported high-fret or connected slide events are not displayed or scored. Original tab retained. Staff notation for affected arrangements is retained in the source only."]
                                                        if omissions and omissions["notes"] else [])}

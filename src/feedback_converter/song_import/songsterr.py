@@ -222,7 +222,7 @@ def parse(document: dict, *, track_indices=None) -> Score:
     metadata, parts = document.get("tracks"), document.get("parts")
     inventory = FeatureInventory()
     inventory.inspect(document, "Songsterr document", "$", playable={"format", "songId", "revisionId", "title", "artist", "tracks", "parts"},
-                      retained={"album", "year", "approved", "url", "version"})
+                      retained={"album", "year", "approved", "url", "version", "legacyLyrics", "lyricsAcquisition"})
     if not isinstance(metadata, list) or not isinstance(parts, list) or not metadata or len(metadata) != len(parts):
         raise ScoreImportError("Songsterr track metadata and note parts are incomplete.")
     for part in parts:

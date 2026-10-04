@@ -15,6 +15,10 @@ function partUrl(songId, revisionId, image, index) {
   const host = image.endsWith('-stage') ? 'd3d3l6a6rcgkaf' : 'dqsljvtekg760';
   return `https://${host}.cloudfront.net/${songId}/${revisionId}/${image}/${index}.json`;
 }
+function lyricsUrl(songId, revisionId, image) {
+  const part = partUrl(songId, revisionId, image, 0);
+  return image ? part.replace(/\/0\.json$/, '/lyrics.json') : part.replace(/\/part\/(\d+)\/0$/, '/lyrics/$1');
+}
 async function readJson(fetch, url, signal, budget, { array = false } = {}) {
   const operation = new URL(url).pathname.startsWith('/api/meta/') ? 'score_metadata' : 'score_part';
   check(signal);
@@ -50,7 +54,11 @@ async function readJson(fetch, url, signal, budget, { array = false } = {}) {
       if (!value || typeof value !== 'object' || Array.isArray(value) !== array) throw failure('invalid_score', 'The score response has an unsupported format.');
       return value;
     };
-    return await bounded(request(), signal, 30000, abort);
+    const pending = request();
+    // The fetch callback can abort synchronously before bounded attaches its
+    // handlers. Observe the pending rejection even in that cancellation race.
+    pending.catch(() => {});
+    return await bounded(pending, signal, 30000, abort);
   } catch (error) {
     check(signal);
     const detail = error.transport || networkTransport(error, 'score', operation);
@@ -88,6 +96,18 @@ async function acquireAnonymous(descriptor, { fetch, directory, signal, onProgre
   check(signal);
   const payload = { format: 'songsterr', songId: descriptor.id, revisionId: descriptor.revisionId,
     title: descriptor.title, artist: descriptor.artist, tracks: meta.tracks, parts };
+  if (meta.lyrics && parts.some((part) => part.withLyrics && !part.newLyrics?.[0]?.text)) {
+    try {
+      payload.legacyLyrics = await readJson(fetch, lyricsUrl(descriptor.id, descriptor.revisionId, meta.image), signal, budget, { array: true });
+      payload.lyricsAcquisition = { status: 'captured', songId: descriptor.id, revisionId: descriptor.revisionId };
+    } catch (error) {
+      check(signal);
+      // Optional lyrics never discard a complete instrument score. Record the
+      // outcome so an unavailable legacy sidecar is not reported as no lyrics.
+      payload.lyricsAcquisition = { status: 'unavailable', code: error.code || 'network_error',
+        songId: descriptor.id, revisionId: descriptor.revisionId };
+    }
+  }
   const destination = path.join(directory, 'score.songsterr.json');
   const stat = await fs.lstat(directory);
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw failure('invalid_directory', 'Use a regular job folder for this import.');
@@ -99,4 +119,4 @@ async function acquireAnonymous(descriptor, { fetch, directory, signal, onProgre
     ...(audio ? { audio } : {}), sourceFilename: sourceFilename(descriptor.artist, descriptor.title) };
 }
 
-module.exports = { acquireAnonymous, partUrl, validateMeta, validatePart, readJson };
+module.exports = { acquireAnonymous, partUrl, lyricsUrl, validateMeta, validatePart, readJson };
