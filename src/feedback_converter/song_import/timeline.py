@@ -474,10 +474,13 @@ def _render(score: Score) -> dict:
                            "notes": [{key: value for key, value in note.items() if key != "t"} for note in group]})
         notation, notation_warnings = (None, []) if omissions else render_notation(score, track, visits, at, rendered)
         warnings.extend(notation_warnings)
+        from .songsterr_tones import perform as perform_tones
+        tone_timeline = perform_tones(track.tone_source, visits, at, cursor)
         outputs.append({"id": track.id, "name": track.name, "instrument": track.instrument,
                         "role": track.role or track.instrument, "tuning": track.tuning,
                         "capo": track.capo, "notes": [note for note in rendered if id(note) not in grouped],
-                        "chords": chords, "templates": templates, **({"notation": notation} if notation else {})})
+                        "chords": chords, "templates": templates, **({"notation": notation} if notation else {}),
+                        **({"toneTimeline": tone_timeline} if tone_timeline is not None else {})})
     if not outputs:
         raise ScoreImportError("No playable notes were found.")
     source["playableTrackCount"] = len(outputs)

@@ -1,0 +1,2121 @@
+{
+  "cases": [
+    {
+      "id": "ordinary",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 27,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 27,
+            "sounds": [
+              {
+                "instrumentId": 27,
+                "label": "Clean"
+              },
+              {
+                "instrumentId": 30,
+                "label": "Distortion"
+              },
+              {
+                "instrumentId": 29,
+                "label": "Overdrive"
+              }
+            ],
+            "trackAutomations": {
+              "trackSoundAutomations": [
+                {
+                  "measure": 0,
+                  "position": 960,
+                  "soundId": 1
+                },
+                {
+                  "measure": 1,
+                  "position": 0,
+                  "soundId": 0
+                },
+                {
+                  "measure": 1,
+                  "position": 1920,
+                  "soundId": 2
+                }
+              ]
+            },
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ]
+      },
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 16384,
+          "soundAutomations": [
+            {
+              "absoluteTick": 16384,
+              "instrumentId": 30,
+              "label": "Distortion"
+            },
+            {
+              "absoluteTick": 65536,
+              "instrumentId": 27,
+              "label": "Clean"
+            },
+            {
+              "absoluteTick": 98304,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            }
+          ],
+          "soundBeatDurations": [
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 0
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 65536
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 16384,
+          "soundAutomations": [
+            {
+              "absoluteTick": 16384,
+              "instrumentId": 30,
+              "label": "Distortion"
+            },
+            {
+              "absoluteTick": 65536,
+              "instrumentId": 27,
+              "label": "Clean"
+            },
+            {
+              "absoluteTick": 98304,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            }
+          ],
+          "soundBeatDurations": [
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 0
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 65536
+                }
+              ]
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pickup",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 27,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 27,
+            "sounds": [
+              {
+                "instrumentId": 27,
+                "label": "Clean"
+              },
+              {
+                "instrumentId": 30,
+                "label": "Distortion"
+              },
+              {
+                "instrumentId": 29,
+                "label": "Overdrive"
+              }
+            ],
+            "trackAutomations": {
+              "trackSoundAutomations": [
+                {
+                  "measure": 0,
+                  "position": 960,
+                  "soundId": 1
+                },
+                {
+                  "measure": 1,
+                  "position": 0,
+                  "soundId": 0
+                },
+                {
+                  "measure": 1,
+                  "position": 1920,
+                  "soundId": 2
+                }
+              ]
+            },
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ],
+            "anacrusis": true
+          }
+        ]
+      },
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 16384,
+          "soundAutomations": [
+            {
+              "absoluteTick": 4096,
+              "instrumentId": 30,
+              "label": "Distortion"
+            },
+            {
+              "absoluteTick": 16384,
+              "instrumentId": 27,
+              "label": "Clean"
+            },
+            {
+              "absoluteTick": 49152,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            }
+          ],
+          "soundBeatDurations": [
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    4
+                  ],
+                  "startTick": 0
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 16384
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 16384,
+          "soundAutomations": [
+            {
+              "absoluteTick": 4096,
+              "instrumentId": 30,
+              "label": "Distortion"
+            },
+            {
+              "absoluteTick": 16384,
+              "instrumentId": 27,
+              "label": "Clean"
+            },
+            {
+              "absoluteTick": 49152,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            }
+          ],
+          "soundBeatDurations": [
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    4
+                  ],
+                  "startTick": 0
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 16384
+                }
+              ]
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tied",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 27,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          3,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3,
+                            "tie": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 27,
+            "sounds": [
+              {
+                "instrumentId": 27,
+                "label": "Clean"
+              },
+              {
+                "instrumentId": 30,
+                "label": "Distortion"
+              },
+              {
+                "instrumentId": 29,
+                "label": "Overdrive"
+              }
+            ],
+            "trackAutomations": {
+              "trackSoundAutomations": [
+                {
+                  "measure": 0,
+                  "position": 960,
+                  "soundId": 1
+                },
+                {
+                  "measure": 1,
+                  "position": 0,
+                  "soundId": 0
+                },
+                {
+                  "measure": 1,
+                  "position": 1920,
+                  "soundId": 2
+                }
+              ]
+            },
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ]
+      },
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 16384,
+          "soundAutomations": [
+            {
+              "absoluteTick": 16385,
+              "instrumentId": 30,
+              "label": "Distortion"
+            },
+            {
+              "absoluteTick": 65536,
+              "instrumentId": 27,
+              "label": "Clean"
+            },
+            {
+              "absoluteTick": 98304,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            }
+          ],
+          "soundBeatDurations": [
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    4
+                  ],
+                  "startTick": 0
+                },
+                {
+                  "duration": [
+                    3,
+                    4
+                  ],
+                  "startTick": 16384
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 65536
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 16384,
+          "soundAutomations": [
+            {
+              "absoluteTick": 16385,
+              "instrumentId": 30,
+              "label": "Distortion"
+            },
+            {
+              "absoluteTick": 65536,
+              "instrumentId": 27,
+              "label": "Clean"
+            },
+            {
+              "absoluteTick": 98304,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            }
+          ],
+          "soundBeatDurations": [
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    4
+                  ],
+                  "startTick": 0
+                },
+                {
+                  "duration": [
+                    3,
+                    4
+                  ],
+                  "startTick": 16384
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 65536
+                }
+              ]
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "repeat",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 27,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "repeatStart": true
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "repeat": 2
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 27,
+            "sounds": [
+              {
+                "instrumentId": 27,
+                "label": "Clean"
+              },
+              {
+                "instrumentId": 30,
+                "label": "Distortion"
+              },
+              {
+                "instrumentId": 29,
+                "label": "Overdrive"
+              }
+            ],
+            "trackAutomations": {
+              "trackSoundAutomations": [
+                {
+                  "measure": 0,
+                  "position": 960,
+                  "soundId": 1
+                },
+                {
+                  "measure": 1,
+                  "position": 0,
+                  "soundId": 0
+                },
+                {
+                  "measure": 1,
+                  "position": 1920,
+                  "soundId": 2
+                }
+              ]
+            },
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ]
+      },
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 16384,
+          "soundAutomations": [
+            {
+              "absoluteTick": 16384,
+              "instrumentId": 30,
+              "label": "Distortion"
+            },
+            {
+              "absoluteTick": 65536,
+              "instrumentId": 27,
+              "label": "Clean"
+            },
+            {
+              "absoluteTick": 98304,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            },
+            {
+              "absoluteTick": 147456,
+              "instrumentId": 30,
+              "label": "Distortion"
+            },
+            {
+              "absoluteTick": 196608,
+              "instrumentId": 27,
+              "label": "Clean"
+            },
+            {
+              "absoluteTick": 229376,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            }
+          ],
+          "soundBeatDurations": [
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 0
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 65536
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 131072
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 196608
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 16384,
+          "soundAutomations": [
+            {
+              "absoluteTick": 16384,
+              "instrumentId": 30,
+              "label": "Distortion"
+            },
+            {
+              "absoluteTick": 65536,
+              "instrumentId": 27,
+              "label": "Clean"
+            },
+            {
+              "absoluteTick": 98304,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            },
+            {
+              "absoluteTick": 147456,
+              "instrumentId": 30,
+              "label": "Distortion"
+            },
+            {
+              "absoluteTick": 196608,
+              "instrumentId": 27,
+              "label": "Clean"
+            },
+            {
+              "absoluteTick": 229376,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            }
+          ],
+          "soundBeatDurations": [
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 0
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 65536
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 131072
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 196608
+                }
+              ]
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "same-time",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 27,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 27,
+            "sounds": [
+              {
+                "instrumentId": 27,
+                "label": "Clean"
+              },
+              {
+                "instrumentId": 30,
+                "label": "Distortion"
+              },
+              {
+                "instrumentId": 29,
+                "label": "Overdrive"
+              }
+            ],
+            "trackAutomations": {
+              "trackSoundAutomations": [
+                {
+                  "measure": 0,
+                  "position": 960,
+                  "soundId": 1
+                },
+                {
+                  "measure": 0,
+                  "position": 960,
+                  "soundId": 2
+                },
+                {
+                  "measure": 1,
+                  "position": 0,
+                  "soundId": 0
+                },
+                {
+                  "measure": 1,
+                  "position": 1920,
+                  "soundId": 2
+                }
+              ]
+            },
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ]
+      },
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 16384,
+          "soundAutomations": [
+            {
+              "absoluteTick": 16384,
+              "instrumentId": 30,
+              "label": "Distortion"
+            },
+            {
+              "absoluteTick": 16384,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            },
+            {
+              "absoluteTick": 65536,
+              "instrumentId": 27,
+              "label": "Clean"
+            },
+            {
+              "absoluteTick": 98304,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            }
+          ],
+          "soundBeatDurations": [
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 0
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 65536
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 16384,
+          "soundAutomations": [
+            {
+              "absoluteTick": 16384,
+              "instrumentId": 30,
+              "label": "Distortion"
+            },
+            {
+              "absoluteTick": 16384,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            },
+            {
+              "absoluteTick": 65536,
+              "instrumentId": 27,
+              "label": "Clean"
+            },
+            {
+              "absoluteTick": 98304,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            }
+          ],
+          "soundBeatDurations": [
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 0
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 65536
+                }
+              ]
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cross-track-clock",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 27,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          },
+          {
+            "id": 1,
+            "name": "Lead Guitar",
+            "instrumentId": 27,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 27,
+            "sounds": [
+              {
+                "instrumentId": 27,
+                "label": "Clean"
+              },
+              {
+                "instrumentId": 30,
+                "label": "Distortion"
+              },
+              {
+                "instrumentId": 29,
+                "label": "Overdrive"
+              }
+            ],
+            "trackAutomations": {
+              "trackSoundAutomations": [
+                {
+                  "measure": 0,
+                  "position": 961,
+                  "soundId": 1
+                },
+                {
+                  "measure": 1,
+                  "position": 0,
+                  "soundId": 0
+                },
+                {
+                  "measure": 1,
+                  "position": 1920,
+                  "soundId": 2
+                }
+              ]
+            },
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          },
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 27,
+            "sounds": [
+              {
+                "instrumentId": 27,
+                "label": "Clean"
+              },
+              {
+                "instrumentId": 30,
+                "label": "Distortion"
+              },
+              {
+                "instrumentId": 29,
+                "label": "Overdrive"
+              }
+            ],
+            "trackAutomations": {
+              "trackSoundAutomations": [
+                {
+                  "measure": 0,
+                  "position": 960,
+                  "soundId": 1
+                },
+                {
+                  "measure": 1,
+                  "position": 0,
+                  "soundId": 0
+                },
+                {
+                  "measure": 1,
+                  "position": 1920,
+                  "soundId": 2
+                }
+              ]
+            },
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ]
+      },
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 15360,
+          "soundAutomations": [
+            {
+              "absoluteTick": 15376,
+              "instrumentId": 30,
+              "label": "Distortion"
+            },
+            {
+              "absoluteTick": 61440,
+              "instrumentId": 27,
+              "label": "Clean"
+            },
+            {
+              "absoluteTick": 92160,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            }
+          ],
+          "soundBeatDurations": [
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 0
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 61440
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 15360,
+          "soundAutomations": [
+            {
+              "absoluteTick": 15376,
+              "instrumentId": 30,
+              "label": "Distortion"
+            },
+            {
+              "absoluteTick": 61440,
+              "instrumentId": 27,
+              "label": "Clean"
+            },
+            {
+              "absoluteTick": 92160,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            }
+          ],
+          "soundBeatDurations": [
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 0
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 61440
+                }
+              ]
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bar-end",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 27,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 27,
+            "sounds": [
+              {
+                "instrumentId": 27,
+                "label": "Clean"
+              },
+              {
+                "instrumentId": 30,
+                "label": "Distortion"
+              },
+              {
+                "instrumentId": 29,
+                "label": "Overdrive"
+              }
+            ],
+            "trackAutomations": {
+              "trackSoundAutomations": [
+                {
+                  "measure": 0,
+                  "position": 3840,
+                  "soundId": 1
+                },
+                {
+                  "measure": 1,
+                  "position": 0,
+                  "soundId": 0
+                },
+                {
+                  "measure": 1,
+                  "position": 1920,
+                  "soundId": 2
+                }
+              ]
+            },
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ]
+      },
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 16384,
+          "soundAutomations": [
+            {
+              "absoluteTick": 65536,
+              "instrumentId": 30,
+              "label": "Distortion"
+            },
+            {
+              "absoluteTick": 65536,
+              "instrumentId": 27,
+              "label": "Clean"
+            },
+            {
+              "absoluteTick": 98304,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            }
+          ],
+          "soundBeatDurations": [
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 0
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 65536
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 16384,
+          "soundAutomations": [
+            {
+              "absoluteTick": 65536,
+              "instrumentId": 30,
+              "label": "Distortion"
+            },
+            {
+              "absoluteTick": 65536,
+              "instrumentId": 27,
+              "label": "Clean"
+            },
+            {
+              "absoluteTick": 98304,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            }
+          ],
+          "soundBeatDurations": [
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 0
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 65536
+                }
+              ]
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "swung-tied",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 27,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          8
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          8
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3,
+                            "tie": true
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          3,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 3,
+                            "tie": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ],
+                "tripletFeel": "8th"
+              },
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          1
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 27,
+            "sounds": [
+              {
+                "instrumentId": 27,
+                "label": "Clean"
+              },
+              {
+                "instrumentId": 30,
+                "label": "Distortion"
+              },
+              {
+                "instrumentId": 29,
+                "label": "Overdrive"
+              }
+            ],
+            "trackAutomations": {
+              "trackSoundAutomations": [
+                {
+                  "measure": 0,
+                  "position": 640,
+                  "soundId": 1
+                },
+                {
+                  "measure": 1,
+                  "position": 0,
+                  "soundId": 0
+                },
+                {
+                  "measure": 1,
+                  "position": 1920,
+                  "soundId": 2
+                }
+              ]
+            },
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ]
+      },
+      "profiles": [
+        {
+          "profile": "authored",
+          "tpqn": 12288,
+          "soundAutomations": [
+            {
+              "absoluteTick": 8192,
+              "instrumentId": 30,
+              "label": "Distortion"
+            },
+            {
+              "absoluteTick": 49152,
+              "instrumentId": 27,
+              "label": "Clean"
+            },
+            {
+              "absoluteTick": 73728,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            }
+          ],
+          "soundBeatDurations": [
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    8
+                  ],
+                  "startTick": 0
+                },
+                {
+                  "duration": [
+                    1,
+                    8
+                  ],
+                  "startTick": 8192
+                },
+                {
+                  "duration": [
+                    3,
+                    4
+                  ],
+                  "startTick": 12288
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 49152
+                }
+              ]
+            ]
+          ]
+        },
+        {
+          "profile": "player-defaults",
+          "tpqn": 12288,
+          "soundAutomations": [
+            {
+              "absoluteTick": 8192,
+              "instrumentId": 30,
+              "label": "Distortion"
+            },
+            {
+              "absoluteTick": 49152,
+              "instrumentId": 27,
+              "label": "Clean"
+            },
+            {
+              "absoluteTick": 73728,
+              "instrumentId": 29,
+              "label": "Overdrive"
+            }
+          ],
+          "soundBeatDurations": [
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    8
+                  ],
+                  "startTick": 0
+                },
+                {
+                  "duration": [
+                    1,
+                    8
+                  ],
+                  "startTick": 8192
+                },
+                {
+                  "duration": [
+                    3,
+                    4
+                  ],
+                  "startTick": 12288
+                }
+              ]
+            ],
+            [
+              [
+                {
+                  "duration": [
+                    1,
+                    1
+                  ],
+                  "startTick": 49152
+                }
+              ]
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "referenceSha256": "4219f9dbf0952af83be36c8b590f10fea7a0f36d72bd1f92297a3d768f93f5ab",
+  "referenceUrl": "https://static3.songsterr.com/production-main/static3/latest/FluidsynthAudioPlayerWorkerEntry-C-9Kd3shWgzk98Al.js",
+  "scope": "Native model sound scheduling in authored and player-defaults profiles; not an acoustic alignment test."
+}

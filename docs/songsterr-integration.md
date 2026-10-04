@@ -70,6 +70,7 @@ FF frontend is ui/src/main.jsx unless specified; backend names are source files.
 | Queue status/artist/album/tuning filters | React Queue | sorted songs/grouped links | Preserve + library search | Retained; shared filtering + original queue controls |
 | Delete/reveal files, output selection | files:* and dialog:* | reveal/output dialogs | Shared native services | Retained; native folder/output dialogs verified |
 | Rigs, equipment images/knobs, timeline, B-standard seven-string | converter.py; ToneInspector | no generated rigs | Preserve PSARC semantics | Retained; existing conversion/tone regressions |
+| Songsterr tone schedules | song_import/songsterr_tones.py; tone_timeline.py | source sound identities and timed changes | Shared final audio clock; no generated rigs | Contract 73; independent source/Hybrid verification; [tone policy](songsterr-tones.md) |
 | Logs, renderer failures, version/update/support links | app:*, updates:* | website/Discord/support | One shell | Retained; packaged diagnostics/logs verified |
 | Settings persistence | desktop-settings localStorage | no persisted settings | Keep key and fields | Retained; restart verified with isolated QA profile |
 | Link parsing, duplicate grouping, multisong batch | — | inspect/load_songsterr; analyze/create/batch | Source workflow | Migrated; link/part tests + live analysis |
