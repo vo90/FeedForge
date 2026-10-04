@@ -10,8 +10,8 @@ from collections import Counter, defaultdict
 import math
 
 MAX_FRET = 24
-POSITION_POLICY = "slide-follow-v1"
-PREVIOUS_POSITION_POLICIES = (None, "chord-local-v1", "open-preparation-v1", "open-preparation-v2")
+POSITION_POLICY = "positionless-preparation-v1"
+PREVIOUS_POSITION_POLICIES = (None, "chord-local-v1", "open-preparation-v1", "open-preparation-v2", "slide-follow-v1")
 
 
 def _members(chart):
@@ -60,8 +60,9 @@ def _frets(note):
 def _plain_dead(note):
     """A dead strike's stored editor fret is not a hand-position target."""
     return note.get("mt") is True and (type(note.get("f")) is int and (0 <= note["f"] <= MAX_FRET or note["f"] == 127)) and not any(note.get(k) for k in (
-        "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "bnv",
-        "vb", "tr", "whammy", "hm", "hp", "harmonic_target", "harmonic_changes", "ho", "po", "ln"
+        "slide_out", "slideOut", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "bn", "bnv", "bt",
+        "vb", "vibrato", "vibrato_marks", "whammy", "hm", "hp", "hn", "harmonic_target",
+        "harmonic_changes", "harmonic_alias", "ho", "po", "ln"
     )) and not any(type(note.get(k)) in (int, float) and note[k] >= 0 for k in ("sl", "slu", "su"))
 
 
@@ -256,8 +257,42 @@ def _positions(rows, chords=()):
     return result
 
 
+def _positionless_pickup(note):
+    """An attack may prepare a lane only when no contact or gesture pins it.
+
+    Dynamics, picking style, tremolo and muting an open string need no fret.
+    Open whammy motion is also positionless; camera focus is decided separately.
+    Dead strikes may carry an editor placeholder instead of a played fret.
+    Fret-hand mute alone never turns a positive fret into a dead strike.
+    """
+    context = ("bn", "bnv", "bt", "vb", "vibrato", "vibrato_marks",
+               "hm", "hp", "hn", "harmonic_target", "harmonic_changes", "harmonic_alias",
+               "ho", "po", "ln", "slide_in_marks", "slide_out", "slideOut",
+               "slide_out_marks", "pick_scrape_marks")
+    if any(note.get(k) for k in context) or any(
+            type(note.get(k)) in (int, float) and note[k] >= 0 for k in ("sl", "slu", "su")):
+        return False
+    return type(note.get("f")) is int and (note["f"] == 0 or _plain_dead(note))
+
+
+def _linked_pickup_context(rows):
+    """Protect both ends when only one note declares the connected gesture."""
+    by_string = defaultdict(lambda: defaultdict(list))
+    for row in rows:
+        by_string[row[2]["s"]][round(row[0], 6)].append(row)
+    linked = set()
+    for groups in by_string.values():
+        sequence = sorted(groups.items())
+        for (_, source), (time, targets) in zip(sequence, sequence[1:]):
+            if any(n.get("ln") and abs(end - time) <= .001000001 for _, end, n in source):
+                linked.update(id(n) for _, _, n in targets)
+            if any(n.get("ho") or n.get("po") for _, _, n in targets):
+                linked.update(id(n) for _, end, n in source if abs(end - time) <= .001000001)
+    return linked
+
+
 def _prepare_opens(rows, positions, beats=()):
-    """Walk backward from each fretted destination through its open pickup.
+    """Walk backward from each fretted destination through positionless play.
 
     Resolve the destination first, so its fingering context agrees with the
     open bar. Never borrow a remote position or hide a sounding fretted note.
@@ -268,14 +303,10 @@ def _prepare_opens(rows, positions, beats=()):
     groups = defaultdict(list)
     for start, end, note in rows:
         groups[round(start, 6)].append((round(end, 6), note))
-    techniques = ("mt", "fhm", "bn", "bnv", "vb", "vibrato", "vibrato_marks", "tr", "whammy", "hm", "hp", "hn",
-                  "harmonic_target", "harmonic_changes", "ho", "po", "ln",
-                  "slide_in_marks", "slide_out", "slideOut", "slide_out_marks", "pick_scrape_marks")
+    linked = _linked_pickup_context(rows)
 
-    def plain_open(note):
-        return (note["f"] == 0 and not any(note.get(k) for k in techniques)
-                and not any(type(note.get(k)) in (int, float) and note[k] >= 0
-                            for k in ("sl", "slu", "su")))
+    def eligible_pickup(note):
+        return id(note) not in linked and _positionless_pickup(note)
 
     beat_times = sorted({b["time"] for b in beats if isinstance(b, dict)
                          and type(b.get("time")) in (int, float) and math.isfinite(b["time"])})
@@ -288,12 +319,12 @@ def _prepare_opens(rows, positions, beats=()):
 
     attacks, blocked_until, open_until = [], -math.inf, -math.inf
     for time, members in sorted(groups.items()):
-        plain = all(plain_open(n) for _, n in members)
-        open_until = max(open_until, max((end for end, n in members if plain_open(n)), default=-math.inf))
+        plain = all(eligible_pickup(n) for _, n in members)
+        open_until = max(open_until, max((end for end, n in members if eligible_pickup(n)), default=-math.inf))
         attacks.append((time, max(open_until, max(end for end, _ in members)),
                         plain and blocked_until <= time,
                         any(_frets(n) for _, n in members)))
-        blocked_until = max(blocked_until, max((end for end, n in members if not plain_open(n)), default=-math.inf))
+        blocked_until = max(blocked_until, max((end for end, n in members if not eligible_pickup(n)), default=-math.inf))
 
     times = [a["time"] for a in positions]
     spans = []

@@ -54,8 +54,8 @@ def validate(chart, *, window=None, duration=None):
         proof = chart.get("ext", {}).get("chartGuidance")
         if not isinstance(proof, dict) or proof.get("policy") != POLICY or proof.get("sourceAuthored") is not False:
             return ["Missing or unsupported generated guidance provenance."]
-        timed_slides = proof.get("positionPolicy") == "slide-follow-v1"
-        if proof.get("positionPolicy") not in (None, "chord-local-v1", "open-preparation-v1", "open-preparation-v2", "slide-follow-v1"):
+        timed_slides = proof.get("positionPolicy") in ("slide-follow-v1", "positionless-preparation-v1")
+        if proof.get("positionPolicy") not in (None, "chord-local-v1", "open-preparation-v1", "open-preparation-v2", "slide-follow-v1", "positionless-preparation-v1"):
             return ["Unsupported generated position policy."]
         fields = proof.get("fields")
         if not isinstance(fields, list) or not fields or len(set(fields)) != len(fields) or any(k not in {"anchors", "handshapes"} for k in fields):
@@ -85,8 +85,9 @@ def validate(chart, *, window=None, duration=None):
         events, motions = defaultdict(list), {}
         for index, (start, note) in enumerate(members):
             sustain = note.get("sus", 0)
-            moving = any(note.get(k) for k in ("slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks",
-                "bn", "bnv", "vb", "tr", "whammy", "hm", "hp", "harmonic_target", "harmonic_changes", "ho", "po", "ln"))
+            moving = any(note.get(k) for k in ("slide_out", "slideOut", "slide_out_marks", "slide_in_marks", "pick_scrape_marks",
+                "bn", "bnv", "bt", "vb", "vibrato", "vibrato_marks", "whammy", "hm", "hp", "hn",
+                "harmonic_target", "harmonic_changes", "harmonic_alias", "ho", "po", "ln"))
             moving |= any(number(note.get(k)) and note[k] >= 0 for k in ("sl", "slu", "su"))
             unpitched = note.get("mt") is True and (note["f"] == 127 or bool(note.get("pick_scrape_marks")) or (not moving and type(note["f"]) is int and 0 <= note["f"] <= 24))
             if not number(sustain) or sustain < 0 or not number(note["f"]) or not (-1 <= note["f"] <= 24 or unpitched):
