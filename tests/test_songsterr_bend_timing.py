@@ -125,20 +125,19 @@ def test_cross_bar_repeat_chord_and_separate_voices_keep_attacks_and_notation():
     assert all(r['trackId']==p['tracks'][0]['id'] for r in rows)
 
 
-@pytest.mark.parametrize('kind',['overlap','slide','whammy','strum'])
+@pytest.mark.parametrize('kind',['overlap','slide','strum'])
 def test_unqualified_combinations_are_explicitly_reported_without_new_guess(tmp_path,kind):
     doc=source(initial=False,later=FALL) if kind=='strum' else source()
     beats=doc['parts'][0]['measures'][0]['voices'][0]['beats']
     if kind=='overlap': beats[-1]=beat(fret=7,duration=(1,2),tie=True,bend=deepcopy(FALL))
     if kind=='slide': beats[0]['notes'][0]['slide']='upwards'
-    if kind=='whammy': beats[0]['tremoloBar']=deepcopy(FALL)
     if kind=='strum':
         beats[0]['upStroke']=1
         beats[0]['notes'].append({'fret':9,'string':1})
     p=checked(doc)
     rows=p['fingerBendTimingEvidence']
     assert rows[0]['status']=='deferred'
-    if kind in {'slide','whammy'}:
+    if kind == 'slide':
         assert rows[0]['curve']==[{'t':0.,'v':0.},{'t':.5,'v':2.}]
     loaded=import_json(tmp_path,doc)
     assert any(f['feature']=='note.bend_timing' for f in loaded['compatibilityReport']['findings'])

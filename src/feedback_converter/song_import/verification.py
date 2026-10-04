@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 78
+VERSION = 79
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -1024,7 +1024,10 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 beat_slide = any(e.get('terminalSlideOut', {}).get('beatVibrato') for e in wanted['finger_bends'])
                 if beat_slide and recipe.get('preservationContract', 0) < 77:
                     check.fail('finger_bend_timing', 'manifest/song_import', 'Bends with written beat vibrato and terminal slides require preservation contract 77.')
-                bend_version = 17 if beat_slide else 16 if pinch_slide else 15 if bar_vibrato else 14 if outgoing_legato else 13 if continued_pinch else 12 if fixed_harmonic else 11 if boundary_slides else 10 if overlap_slide else 9 if terminal_bend else 8 if initial_slide else 7 if vibrato_handoff else 6 if following_slide else 5 if chord_slide else 4 if changing_slide else 3
+                bar_curve = any(e.get('barCurve') for e in wanted['finger_bends'])
+                if bar_curve and recipe.get('preservationContract', 0) < 78:
+                    check.fail('finger_bend_timing', 'manifest/song_import', 'Independent finger bends with explicit bar curves require preservation contract 78.')
+                bend_version = 18 if bar_curve else 17 if beat_slide else 16 if pinch_slide else 15 if bar_vibrato else 14 if outgoing_legato else 13 if continued_pinch else 12 if fixed_harmonic else 11 if boundary_slides else 10 if overlap_slide else 9 if terminal_bend else 8 if initial_slide else 7 if vibrato_handoff else 6 if following_slide else 5 if chord_slide else 4 if changing_slide else 3
                 evidence = {'version': bend_version, 'policy': f'songsterr-finger-bend-timing-v{bend_version}',
                             'timeDomain': 'score_seconds', 'sourceSha256': report['sourceSha256'],
                             'gestures': wanted['finger_bends']}
@@ -1237,7 +1240,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                              report['sourceSha256'], manifest, check)
                 report['scope'].append('authored_tone_timelines')
             report["counts"]["archivedNotes"] = actual_note_count
-            if source.format == 'songsterr' and (recipe.get('preservationContract', 0) >= 78
+            if source.format == 'songsterr' and (recipe.get('preservationContract', 0) >= 79
                     or recipe.get('lyricsPolicy') or recipe.get('lyricsFile') or manifest.get('lyrics')):
                 from .verify_lyrics import verify as verify_lyrics
                 verify_lyrics(z, recipe, manifest, score_path, source, alignment, duration, check, _json)

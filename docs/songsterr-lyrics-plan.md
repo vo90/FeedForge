@@ -45,4 +45,18 @@ isolated `feat/songsterr-lyrics` worktree.
 
 ## Progress
 
-- Plan created; implementation and validation in progress.
+- Steps 1-5 implemented on `feat/songsterr-lyrics`. No game files changed.
+- Incorporated Songsterr integration `b251efe` during validation. Lyrics use
+  preservation contract 79, following that integration's contract 78 bend fix.
+- All 188 comparisons against the public player's syllable placement passed.
+- Final combined-change regression run: 491 Python tests passed, one skipped.
+  The complete JavaScript suite passed 988 tests, with two skipped, and the
+  existing lyrics utility checks passed.
+  The broader Python run had 5,518 passes; 16 old version assertions were fixed
+  and passed on rerun. Eight unrelated download/packaging tests were blocked by
+  missing `yt-dlp` / `yt-dlp-getpot-wpc` in the test environment.
+- Six real imports produced 1,467 lyric events. Their archive verification and
+  current game loader passed; the unchanged renderer passed 4,749 probes using
+  an instrumented canvas. This was not a live audio/display listening test.
+- The feature is implemented in the isolated branch. It has not been activated
+  in the running paired runtime or applied to the user's existing library.

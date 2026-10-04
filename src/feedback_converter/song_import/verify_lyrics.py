@@ -73,8 +73,8 @@ def expected(document, source, alignment, duration):
 def verify(archive, recipe, manifest, source_path, source, alignment, duration, check, read_json):
     check.equal('lyrics_policy', 'song_import', POLICY, recipe.get('lyricsPolicy'))
     check.equal('lyrics_report_path', 'song_import', 'import/lyrics.json', recipe.get('lyricsFile'))
-    if recipe.get('preservationContract', 0) < 78:
-        check.fail('lyrics_contract', 'song_import', 'Lyrics require preservation contract 78.')
+    if recipe.get('preservationContract', 0) < 79:
+        check.fail('lyrics_contract', 'song_import', 'Lyrics require preservation contract 79.')
     proof = read_json(archive, recipe.get('lyricsFile', ''), check)
     document = json.loads(source_path.read_text(encoding='utf-8-sig'))
     wanted, plan, ledger = expected(document, source, alignment, duration)

@@ -178,7 +178,7 @@ def package(tmp_path, raw=None):
     audio, alignment = finalize(performance, audio, alignment, job)
     result = build_feedpak(performance, audio, alignment, job, output_dir=tmp_path/'out',
                           source_path=source, compatibility=performance['compatibilityReport'],
-                          recipe={'preservationContract': 78, 'preparation': alignment['preparation'],
+                          recipe={'preservationContract': 79, 'preparation': alignment['preparation'],
                                   'scoreHash': hashlib.sha256(source.read_bytes()).hexdigest(), 'audioHash': audio['hash']})
     return source, Path(result['stagingPath']), alignment
 
@@ -217,7 +217,7 @@ def test_verifier_rejects_corrupt_or_missing_lyrics(tmp_path, fault):
     else:
         manifest = yaml.safe_load(contents['manifest.yaml'])
         if fault == 'remove': manifest.pop('lyrics')
-        else: manifest['song_import']['preservationContract'] = 77
+        else: manifest['song_import']['preservationContract'] = 78
         contents['manifest.yaml'] = yaml.safe_dump(manifest).encode()
     contents['lyrics.json'] = json.dumps(events).encode()
     altered = tmp_path / 'altered.feedpak'

@@ -480,7 +480,7 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
                     tone_receipt(tone_rows, source_path, sha256_file(package / 'audio/full.ogg'), alignment, duration))
         manifest['song_import'].update(toneTimelineFile='import/tone-timeline.json', toneTimelinePolicy=TONE_POLICY)
     lyric_warnings = []
-    if source.get('format') == 'songsterr' and (recipe or {}).get('preservationContract', 0) >= 78:
+    if source.get('format') == 'songsterr' and (recipe or {}).get('preservationContract', 0) >= 79:
         if source_path is None or performance.get('lyricTimeline') is None:
             raise ImportFailure('lyrics_failed', 'Lyrics export requires retained source and its lyric timeline.')
         from .lyric_timeline import export as export_lyrics, receipt as lyric_receipt
@@ -553,6 +553,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         if source_path is None or (recipe or {}).get('preservationContract', 0) < 62:
             raise ImportFailure('unsupported_score', 'Timed finger vibrato requires the original tab and preservation contract 62.')
     if performance.get('fingerBendTimingEvidence'):
+        if any(e.get('barCurve') for e in performance['fingerBendTimingEvidence']) and (recipe or {}).get('preservationContract', 0) < 78:
+            raise ImportFailure('unsupported_score', 'Independent finger bends with explicit bar curves require preservation contract 78.')
         if any(e.get('terminalSlideOut', {}).get('beatVibrato') for e in performance['fingerBendTimingEvidence']) and (recipe or {}).get('preservationContract', 0) < 77:
             raise ImportFailure('unsupported_score', 'Bends with written beat vibrato and terminal slides require preservation contract 77.')
         if any(e.get('terminalSlideOut', {}).get('continuedPinchHarmonic') for e in performance['fingerBendTimingEvidence']) and (recipe or {}).get('preservationContract', 0) < 76:

@@ -56,7 +56,7 @@ to its presentation behavior. Language remains `und` because it is not inferred.
 
 ## Retained evidence
 
-Preservation contract 78 adds `import/lyrics.json` for Songsterr JSON imports,
+Preservation contract 79 adds `import/lyrics.json` for Songsterr JSON imports,
 including imports without usable lyrics. The report records source/audio/map
 hashes, candidates, selected track, source coordinates, performed spans, recording
 spans, clipping/omissions and export status. The original source is retained.
