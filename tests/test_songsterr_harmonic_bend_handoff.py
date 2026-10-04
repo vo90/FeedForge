@@ -77,12 +77,13 @@ def test_authored_clock_is_general(variant):
     else:assert p['tracks'][0]['notes'][0]['sus']==2
 
 
-@pytest.mark.parametrize('fault',['changing','missing','pinch','semi','conflicting','nearly-settled','beat-only','palm-mute','let-ring','hopo','slide-in','slide-out','whammy'])
+@pytest.mark.parametrize('fault',['changing','missing','mixed-pinch','semi','conflicting','nearly-settled','beat-only','palm-mute','let-ring','hopo','slide-in','slide-out','whammy'])
 def test_unqualified_combinations_keep_warning(fault,tmp_path):
     d=document(vibrato=True);bs=d['parts'][0]['measures'][0]['voices'][0]['beats']
     if fault=='changing':bs[-1]['notes'][0]['harmonicFret']=7
     elif fault=='missing':del bs[1]['notes'][0]['harmonic'];del bs[1]['notes'][0]['harmonicFret']
-    elif fault in ('pinch','semi'):
+    elif fault=='mixed-pinch':bs[-1]['notes'][0]['harmonic']='pinch'
+    elif fault=='semi':
         for b in bs:b['notes'][0]['harmonic']=fault
     elif fault in ('conflicting','nearly-settled'):
         bs[0]['notes'][0]['bend']={'points':[{'position':0,'precisePosition':0,'tone':0},{'position':60,'precisePosition':100 if fault=='conflicting' else 50.001,'tone':100}]}
