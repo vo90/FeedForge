@@ -31,7 +31,30 @@ def terminal_contexts(articulations):
     return result
 
 
-def _terminal_slide_out(segments, intervals, attack, stop, at, context):
+def _boundary_slides(segments, overlaps, attack, stop, context):
+    """Qualify independent approach/departure cues on one held fret.
+
+    This composition has no overlapping bend controllers. Other expressions
+    keep their own qualification boundaries; a slide cue cannot clear them.
+    """
+    first = segments[0][0]
+    last, start, end, _ = segments[-1]
+    return (len(segments) > 1 and not overlaps and 0 < first.fret < 127
+            and first.slide_in in {'up', 'down'} and last.tie
+            and last.slide in {'out_up', 'out_down'} and end == stop
+            and attack < start < stop
+            and not set(context) - {'simultaneous-attack', 'following-slide-in'}
+            and all(n.fret == first.fret and n.string == first.string
+                    and not (n.slide and i != len(segments)-1 or n.slide_in and i != 0
+                             or n.whammy or n.attack_offset or n.staccato or n.hopo
+                             or n.trill or n.pick_scrape or n.effects.get('__beat_vibrato')
+                             or (n.effects.get('vb') and n.effects.get('__finger_vibrato') not in {'slight', 'wide'})
+                             or any(n.effects.get(k) for k in ('hm', 'hp', 'hn', 'harmonic_target',
+                                                              'mt', 'lr', 'pm', 'tr', '__hopo_origin')))
+                    for i, (n, *_) in enumerate(segments)))
+
+
+def _terminal_slide_out(segments, intervals, attack, stop, at, context, *, boundary_slides=False):
     """Independent bend clock with one terminal tied, direction-only flourish.
 
     Keep the source bend clock. Never shorten a changing bend to make it fit,
@@ -45,7 +68,8 @@ def _terminal_slide_out(segments, intervals, attack, stop, at, context):
             or not attack < start < stop or not 0 < last.fret < 127):
         return None
     for i, (n, *_rest) in enumerate(segments):
-        if (n.slide and i != len(segments)-1 or n.slide_in or n.whammy or n.attack_offset
+        if (n.slide and i != len(segments)-1 or (n.slide_in and not (boundary_slides and i == 0))
+                or n.whammy or n.attack_offset
                 or n.hopo or n.trill or n.pick_scrape or n.effects.get('__beat_vibrato')
                 or (last.bends and n.effects.get('vb')
                     and n.effects.get('__finger_vibrato') not in {'slight', 'wide'})
@@ -110,14 +134,16 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
     steady_harmonic = (isinstance(harmonic, dict) and harmonic.get('kind') == 'artificial'
                        and harmonic.get('policy') == 'harmonic'
                        and all(n.effects.get('harmonic_target') == harmonic for n, *_ in segments))
+    boundary_slides = _boundary_slides(segments, overlaps, attack, stop, terminal_context)
     # An approach cue has no authored target interval inside this note. The
     # native synth's pre-attack flourish does not set the finger-bend clock.
     # Qualify only an initial cue with independently supported note controls;
-    # later cues, outgoing/targeted slides and overlapping controllers remain
-    # separate compositions requiring their own playback qualification.
+    # The separately qualified boundary composition permits only the terminal
+    # direction cue. Later cues, targeted slides and overlap stay guarded.
     initial_slide = (first.slide_in in {'up', 'down'} and 0 < first.fret < 127
                      and not overlaps and all(
-                         not (n.slide or (i and n.slide_in) or n.whammy or n.attack_offset
+                         not ((n.slide and not (boundary_slides and i == len(segments)-1))
+                              or (i and n.slide_in) or n.whammy or n.attack_offset
                               or n.hopo or n.trill or n.pick_scrape
                               or n.effects.get('__beat_vibrato')
                               or (n.effects.get('harmonic_target') and not steady_harmonic)
@@ -132,7 +158,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
                                      'bendTiming': 'authored-tie'}
     # Establish slide eligibility independently. A valid flourish alone must
     # never clear a conflicting bend or another unqualified expression.
-    terminal_candidate = _terminal_slide_out(segments, intervals, attack, stop, at, terminal_context)
+    terminal_candidate = _terminal_slide_out(segments, intervals, attack, stop, at, terminal_context,
+                                             boundary_slides=boundary_slides)
     terminal_handoff = False
     if overlaps:
         # The native worker can keep the initial controller alive across ties.
@@ -230,7 +257,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
 
 def archive_evidence(performance, source_path):
     gestures = performance['fingerBendTimingEvidence']
-    version = (10 if any(e.get('overlap', {}).get('slideOutTiming') == 'independent-terminal-cue' for e in gestures)
+    version = (11 if any(e.get('initialSlideIn') and e.get('terminalSlideOut') for e in gestures)
+               else 10 if any(e.get('overlap', {}).get('slideOutTiming') == 'independent-terminal-cue' for e in gestures)
                else 9 if any(e.get('terminalSlideOut', {}).get('bendTiming') == 'authored-segment' for e in gestures)
                else 8 if any(e.get('initialSlideIn') for e in gestures)
                else 7 if any(e.get('overlap', {}).get('vibratoTiming') == 'independent-note-controls' for e in gestures)

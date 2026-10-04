@@ -100,11 +100,10 @@ def test_general_source_contexts(variant):
     if variant in ('repeat-tempo','single-tempo'):assert n['bnv']==[{'t':0.,'v':0.},{'t':.5,'v':.5},{'t':3.5,'v':2.}]
 
 
-@pytest.mark.parametrize('extra',['later-cue','outgoing','targeted','whammy','beat-vibrato','hopo','harmonic','changing-harmonic','late-harmonic','palm-mute','let-ring','overlap'])
+@pytest.mark.parametrize('extra',['later-cue','targeted','whammy','beat-vibrato','hopo','harmonic','changing-harmonic','late-harmonic','palm-mute','let-ring','overlap'])
 def test_other_compositions_remain_guarded(extra,tmp_path):
     doc=document();bar=doc['parts'][0]['measures'][0];bs=bar['voices'][0]['beats']
     if extra=='later-cue':bs[1]['notes'][0]['slide']='above'
-    elif extra=='outgoing':bs[1]['notes'][0]['slide']='downwards'
     elif extra=='targeted':bs[1]['notes'][0]['slide']='shift';doc['parts'][0]['measures'].append(measure(beat(fret=5)))
     elif extra=='whammy':bs[0]['tremoloBar']=deepcopy(FALL)
     elif extra=='beat-vibrato':bs[0]['wideVibrato']=True

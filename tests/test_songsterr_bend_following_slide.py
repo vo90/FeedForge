@@ -98,10 +98,11 @@ def test_context_and_tempo_map_do_not_change_the_source_rule(context):
     if context=='repeat-tempo':assert len(p['fingerBendTimingEvidence'])==2
 
 
-@pytest.mark.parametrize('extra',['incoming-on-bend','targeted-slide','competing-bend','whammy','beat-vibrato','authored-strum'])
+@pytest.mark.parametrize('extra',['incoming-on-later-tie','targeted-slide','competing-bend','whammy','beat-vibrato','authored-strum'])
 def test_other_expressions_still_require_the_existing_guard(tmp_path,extra):
     doc=source();bs=doc['parts'][0]['measures'][0]['voices'][0]['beats']
-    if extra=='incoming-on-bend':bs[0]['notes'][0]['slide']='above'
+    if extra=='incoming-on-later-tie':
+        bs.insert(1,beat(fret=14,string=2,duration=(1,8),tie=True,slide='above'))
     elif extra=='targeted-slide':bs[1]['notes'][0]['slide']='shift'
     elif extra=='competing-bend':
         bs[1]['duration']=[1,4];bs[1]['notes'][0]['bend']=deepcopy(FALL)
