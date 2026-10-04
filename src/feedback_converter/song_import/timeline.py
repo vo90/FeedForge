@@ -545,6 +545,11 @@ def _render(score: Score) -> dict:
         if signature != previous_signature:
             time_signatures.append({"time": at(start), "ts": signature})
             previous_signature = signature
+    lyric_timeline = None
+    if score.source.get('format') == 'songsterr':
+        from .songsterr_lyrics import perform
+        lyric_timeline = perform(score.source_document['document'],
+                                 [bar.length for bar in score.measures], visits, at)
     return {"title": score.title, "artist": score.artist, "album": score.album, "year": score.year,
             "duration": at(cursor), "tracks": outputs,
             "beats": [{"time": at(p), "measure": n} for p, n in beat_positions],
@@ -554,6 +559,7 @@ def _render(score: Score) -> dict:
             "scoreTimeline": score_timeline,
             "warnings": warnings, "source": source,
             "sourceScore": score.source_document,
+            **({'lyricTimeline': lyric_timeline} if lyric_timeline is not None else {}),
             **({'harmonicTieEvidence': sorted(harmonic_ties, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if harmonic_ties else {}),
             **({'tiedMuteEvidence': sorted(tied_mutes, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if tied_mutes else {}),
             **({'mutedTieIdentityEvidence': sorted(muted_tie_identities, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if muted_tie_identities else {}),

@@ -1,8 +1,10 @@
 """Independent raw-source-to-archive fidelity verification.
 
 ``passed`` concerns the explicitly listed conversion checks, not musical quality
-or proof of audio synchronization. No production score parser, renderer or time
-mapper is used to construct expected values. The caller retains raw sources and
+or proof of audio synchronization. Instrument expectations use no production
+score parser, renderer or time mapper. Lyrics share the separately qualified
+lexical interpretation/phrase policy and use independent performance clocks.
+The caller retains raw sources and
 the complete applied alignment alongside this bounded, JSON-serializable report.
 """
 from __future__ import annotations
@@ -20,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 78
+VERSION = 79
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -1238,6 +1240,11 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                              report['sourceSha256'], manifest, check)
                 report['scope'].append('authored_tone_timelines')
             report["counts"]["archivedNotes"] = actual_note_count
+            if source.format == 'songsterr' and (recipe.get('preservationContract', 0) >= 79
+                    or recipe.get('lyricsPolicy') or recipe.get('lyricsFile') or manifest.get('lyrics')):
+                from .verify_lyrics import verify as verify_lyrics
+                verify_lyrics(z, recipe, manifest, score_path, source, alignment, duration, check, _json)
+                report['scope'].append('authored_lyrics_export')
             report["counts"]["archivedChords"] = actual_chord_count
             report["counts"]["notationBeats"] = notation_beat_count
             if hybrid_facts is not None:
