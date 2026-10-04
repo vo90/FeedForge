@@ -174,6 +174,23 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
         previous_end = min(right, stop)
         intervals.append((note, start, right))
     first = segments[0][0]
+    # Qualitative bar vibrato is a separate modulation control, not an
+    # authored pitch curve. Qualify only non-overlapping finger bends with
+    # no displaced attack or slide; explicit/held bar pitch stays guarded.
+    bar_vibrato = (not overlaps and any(n.whammy for n, *_ in segments)
+                   and all(not (n.slide or n.slide_in or n.attack_offset)
+                           and (not n.whammy or (not n.whammy['curve']
+                                and n.whammy['vibrato'] in {'slight', 'wide'}))
+                           for n, *_ in segments)
+                   and bool(output.get('whammy', {}).get('segments'))
+                   and all(not s['curve'] for s in output['whammy']['segments']))
+    if bar_vibrato:
+        reason = None
+        evidence['barVibrato'] = {
+            'policy': 'independent-qualitative-control',
+            'segments': [{'sourceId': n.source_id, 'occurrence': visit + 1,
+                          'start': at(start), 'end': at(end), 'vibrato': n.whammy['vibrato']}
+                         for n, start, end, visit in segments if n.whammy]}
     harmonic = first.effects.get('harmonic_target')
     steady_harmonic = (isinstance(harmonic, dict) and harmonic.get('kind') == 'artificial'
                        and harmonic.get('policy') == 'harmonic'
@@ -338,7 +355,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
 
 def archive_evidence(performance, source_path):
     gestures = performance['fingerBendTimingEvidence']
-    version = (14 if any(e.get('overlap', {}).get('outgoingLegato') for e in gestures)
+    version = (15 if any(e.get('barVibrato') for e in gestures)
+               else 14 if any(e.get('overlap', {}).get('outgoingLegato') for e in gestures)
                else 13 if any(e.get('overlap', {}).get('continuedPinchHarmonic') for e in gestures)
                else 12 if any(e.get('overlap', {}).get('fixedHarmonic') for e in gestures)
                else 11 if any(e.get('initialSlideIn') and e.get('terminalSlideOut') for e in gestures)

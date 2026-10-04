@@ -12,7 +12,7 @@ from pathlib import Path
 import uuid
 import zipfile
 
-CONTRACT_VERSION = 74
+CONTRACT_VERSION = 75
 MAX_OBJECT_BYTES = 128 * 1024 * 1024
 
 
