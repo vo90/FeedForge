@@ -83,6 +83,36 @@ def _terminal_beat_vibrato(segments, overlaps, attack, stop, at):
     return {'policy': 'independent-written-instruction', 'segments': written} if written else None
 
 
+def _independent_bar_curve(segments, overlaps, attack, stop, output, at):
+    """An explicit bar controller does not set the finger-bend clock.
+
+    Preserve the bar's own curve/held resets. Qualify only one continuous
+    ordinary held fret with noncompeting finger controls, never a summed pitch.
+    """
+    first = segments[0][0]
+    if (overlaps or not 0 < first.fret < 127 or segments[0][1] != attack
+            or segments[-1][2] != stop
+            or not any(n.whammy and n.whammy['curve'] for n, *_ in segments)
+            or not any(s['curve'] for s in output.get('whammy', {}).get('segments', []))):
+        return None
+    controls = []
+    for i, (n, start, end, visit) in enumerate(segments):
+        if ((n.fret, n.string, n.voice_id) != (first.fret, first.string, first.voice_id)
+                or (i and (not n.tie or start != segments[i-1][2]))
+                or n.slide or n.slide_in or n.attack_offset or n.staccato or n.hopo
+                or n.trill or n.pick_scrape or n.effects.get('__beat_vibrato')
+                or any(n.effects.get(k) for k in ('hm', 'hp', 'hn', 'harmonic_target',
+                                                 'mt', 'lr', 'pm', 'tr', '__hopo_origin'))
+                or (n.effects.get('vb') and n.effects.get('__finger_vibrato') not in {'slight', 'wide'})):
+            return None
+        if n.whammy:
+            controls.append({'sourceId': n.source_id, 'occurrence': visit + 1,
+                             'start': at(start), 'end': at(end),
+                             'curve': [{'position': str(p), 'value': v} for p, v in n.whammy['curve']],
+                             'vibrato': n.whammy['vibrato']})
+    return {'policy': 'independent-explicit-control', 'segments': controls}
+
+
 def _terminal_slide_out(segments, intervals, attack, stop, at, context, *, boundary_slides=False, continued_pinch=None, beat_vibrato=None):
     """Independent bend clock with one terminal tied, direction-only flourish.
 
@@ -208,7 +238,7 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
     first = segments[0][0]
     # Qualitative bar vibrato is a separate modulation control, not an
     # authored pitch curve. Qualify only non-overlapping finger bends with
-    # no displaced attack or slide; explicit/held bar pitch stays guarded.
+    # no displaced attack or slide. Explicit curves qualify separately below.
     bar_vibrato = (not overlaps and any(n.whammy for n, *_ in segments)
                    and all(not (n.slide or n.slide_in or n.attack_offset)
                            and (not n.whammy or (not n.whammy['curve']
@@ -223,6 +253,10 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
             'segments': [{'sourceId': n.source_id, 'occurrence': visit + 1,
                           'start': at(start), 'end': at(end), 'vibrato': n.whammy['vibrato']}
                          for n, start, end, visit in segments if n.whammy]}
+    bar_curve = _independent_bar_curve(segments, overlaps, attack, stop, output, at)
+    if bar_curve:
+        reason = None
+        evidence['barCurve'] = bar_curve
     harmonic = first.effects.get('harmonic_target')
     steady_harmonic = (isinstance(harmonic, dict) and harmonic.get('kind') == 'artificial'
                        and harmonic.get('policy') == 'harmonic'
@@ -397,7 +431,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
 
 def archive_evidence(performance, source_path):
     gestures = performance['fingerBendTimingEvidence']
-    version = (17 if any(e.get('terminalSlideOut', {}).get('beatVibrato') for e in gestures)
+    version = (18 if any(e.get('barCurve') for e in gestures)
+               else 17 if any(e.get('terminalSlideOut', {}).get('beatVibrato') for e in gestures)
                else 16 if any(e.get('terminalSlideOut', {}).get('continuedPinchHarmonic') for e in gestures)
                else 15 if any(e.get('barVibrato') for e in gestures)
                else 14 if any(e.get('overlap', {}).get('outgoingLegato') for e in gestures)
