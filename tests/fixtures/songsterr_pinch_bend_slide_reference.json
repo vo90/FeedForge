@@ -1,0 +1,4934 @@
+{
+  "referenceSha256": "4219f9dbf0952af83be36c8b590f10fea7a0f36d72bd1f92297a3d768f93f5ab",
+  "scope": "Synthetic source cases with completed-tie bend clocks. Native original/control harmonic independence confirmed in both profiles against the full worker, within one MIDI quantization step. Terminal synthesized slide pitches are not authored targets.",
+  "cases": [
+    {
+      "id": "False-upwards-absent-False",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "upwards"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 5,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 1.0,
+              "v": 2.0
+            }
+          ],
+          "bn": 2.0,
+          "slide_out_marks": [
+            {
+              "direction": "up",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "up",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 1.0,
+              "intensity": "slight"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "False-upwards-absent-False",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "False-upwards-absent-False",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "False-upwards-absent-True",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "upwards",
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 150
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 0
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 5,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.25,
+              "v": 2.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 0.75,
+              "v": 3.0
+            },
+            {
+              "t": 1.0,
+              "v": 0.0
+            }
+          ],
+          "bn": 3.0,
+          "slide_out_marks": [
+            {
+              "direction": "up",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "up",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 1.0,
+              "intensity": "slight"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "False-upwards-absent-True",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "False-upwards-absent-True",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "False-upwards-same-False",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "upwards",
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "wide"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 5,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 1.0,
+              "v": 2.0
+            }
+          ],
+          "bn": 2.0,
+          "slide_out_marks": [
+            {
+              "direction": "up",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "up",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 0.5,
+              "intensity": "slight"
+            },
+            {
+              "start": 0.5,
+              "end": 1.0,
+              "intensity": "wide"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "False-upwards-same-False",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "False-upwards-same-False",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "False-upwards-same-True",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "upwards",
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "wide",
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 150
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 0
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 5,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.25,
+              "v": 2.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 0.75,
+              "v": 3.0
+            },
+            {
+              "t": 1.0,
+              "v": 0.0
+            }
+          ],
+          "bn": 3.0,
+          "slide_out_marks": [
+            {
+              "direction": "up",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "up",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 0.5,
+              "intensity": "slight"
+            },
+            {
+              "start": 0.5,
+              "end": 1.0,
+              "intensity": "wide"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "False-upwards-same-True",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "False-upwards-same-True",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "False-upwards-changed-False",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "upwards",
+                            "harmonic": "pinch",
+                            "harmonicFret": 5,
+                            "leftHandVibrato": "wide"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 5,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 1.0,
+              "v": 2.0
+            }
+          ],
+          "bn": 2.0,
+          "slide_out_marks": [
+            {
+              "direction": "up",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "up",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 0.5,
+              "intensity": "slight"
+            },
+            {
+              "start": 0.5,
+              "end": 1.0,
+              "intensity": "wide"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "False-upwards-changed-False",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "False-upwards-changed-False",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "False-upwards-changed-True",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "upwards",
+                            "harmonic": "pinch",
+                            "harmonicFret": 5,
+                            "leftHandVibrato": "wide",
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 150
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 0
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 5,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.25,
+              "v": 2.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 0.75,
+              "v": 3.0
+            },
+            {
+              "t": 1.0,
+              "v": 0.0
+            }
+          ],
+          "bn": 3.0,
+          "slide_out_marks": [
+            {
+              "direction": "up",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "up",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 0.5,
+              "intensity": "slight"
+            },
+            {
+              "start": 0.5,
+              "end": 1.0,
+              "intensity": "wide"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "False-upwards-changed-True",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "False-upwards-changed-True",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "False-downwards-absent-False",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "downwards"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 5,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 1.0,
+              "v": 2.0
+            }
+          ],
+          "bn": 2.0,
+          "slide_out_marks": [
+            {
+              "direction": "down",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "down",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 1.0,
+              "intensity": "slight"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "False-downwards-absent-False",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "False-downwards-absent-False",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "False-downwards-absent-True",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "downwards",
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 150
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 0
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 5,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.25,
+              "v": 2.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 0.75,
+              "v": 3.0
+            },
+            {
+              "t": 1.0,
+              "v": 0.0
+            }
+          ],
+          "bn": 3.0,
+          "slide_out_marks": [
+            {
+              "direction": "down",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "down",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 1.0,
+              "intensity": "slight"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "False-downwards-absent-True",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "False-downwards-absent-True",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "False-downwards-same-False",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "downwards",
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "wide"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 5,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 1.0,
+              "v": 2.0
+            }
+          ],
+          "bn": 2.0,
+          "slide_out_marks": [
+            {
+              "direction": "down",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "down",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 0.5,
+              "intensity": "slight"
+            },
+            {
+              "start": 0.5,
+              "end": 1.0,
+              "intensity": "wide"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "False-downwards-same-False",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "False-downwards-same-False",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "False-downwards-same-True",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "downwards",
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "wide",
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 150
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 0
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 5,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.25,
+              "v": 2.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 0.75,
+              "v": 3.0
+            },
+            {
+              "t": 1.0,
+              "v": 0.0
+            }
+          ],
+          "bn": 3.0,
+          "slide_out_marks": [
+            {
+              "direction": "down",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "down",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 0.5,
+              "intensity": "slight"
+            },
+            {
+              "start": 0.5,
+              "end": 1.0,
+              "intensity": "wide"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "False-downwards-same-True",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "False-downwards-same-True",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "False-downwards-changed-False",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "downwards",
+                            "harmonic": "pinch",
+                            "harmonicFret": 5,
+                            "leftHandVibrato": "wide"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 5,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 1.0,
+              "v": 2.0
+            }
+          ],
+          "bn": 2.0,
+          "slide_out_marks": [
+            {
+              "direction": "down",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "down",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 0.5,
+              "intensity": "slight"
+            },
+            {
+              "start": 0.5,
+              "end": 1.0,
+              "intensity": "wide"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "False-downwards-changed-False",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "False-downwards-changed-False",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "False-downwards-changed-True",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "downwards",
+                            "harmonic": "pinch",
+                            "harmonicFret": 5,
+                            "leftHandVibrato": "wide",
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 150
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 0
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 29,
+            "tuning": [
+              64,
+              59,
+              55,
+              50,
+              45,
+              40
+            ]
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 5,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.25,
+              "v": 2.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 0.75,
+              "v": 3.0
+            },
+            {
+              "t": 1.0,
+              "v": 0.0
+            }
+          ],
+          "bn": 3.0,
+          "slide_out_marks": [
+            {
+              "direction": "down",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "down",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 0.5,
+              "intensity": "slight"
+            },
+            {
+              "start": 0.5,
+              "end": 1.0,
+              "intensity": "wide"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "False-downwards-changed-True",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "False-downwards-changed-True",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "True-upwards-absent-False",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "upwards"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ],
+            "id": 0,
+            "name": "Lead Guitar"
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 3,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 1.0,
+              "v": 2.0
+            }
+          ],
+          "bn": 2.0,
+          "slide_out_marks": [
+            {
+              "direction": "up",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "up",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 1.0,
+              "intensity": "slight"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "True-upwards-absent-False",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "True-upwards-absent-False",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0.001953125,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "True-upwards-absent-True",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "upwards",
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 150
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 0
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ],
+            "id": 0,
+            "name": "Lead Guitar"
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 3,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.25,
+              "v": 2.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 0.75,
+              "v": 3.0
+            },
+            {
+              "t": 1.0,
+              "v": 0.0
+            }
+          ],
+          "bn": 3.0,
+          "slide_out_marks": [
+            {
+              "direction": "up",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "up",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 1.0,
+              "intensity": "slight"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "True-upwards-absent-True",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "True-upwards-absent-True",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0.001953125,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "True-upwards-same-False",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "upwards",
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "wide"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ],
+            "id": 0,
+            "name": "Lead Guitar"
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 3,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 1.0,
+              "v": 2.0
+            }
+          ],
+          "bn": 2.0,
+          "slide_out_marks": [
+            {
+              "direction": "up",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "up",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 0.5,
+              "intensity": "slight"
+            },
+            {
+              "start": 0.5,
+              "end": 1.0,
+              "intensity": "wide"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "True-upwards-same-False",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "True-upwards-same-False",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0.001953125,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "True-upwards-same-True",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "upwards",
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "wide",
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 150
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 0
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ],
+            "id": 0,
+            "name": "Lead Guitar"
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 3,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.25,
+              "v": 2.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 0.75,
+              "v": 3.0
+            },
+            {
+              "t": 1.0,
+              "v": 0.0
+            }
+          ],
+          "bn": 3.0,
+          "slide_out_marks": [
+            {
+              "direction": "up",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "up",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 0.5,
+              "intensity": "slight"
+            },
+            {
+              "start": 0.5,
+              "end": 1.0,
+              "intensity": "wide"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "True-upwards-same-True",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "True-upwards-same-True",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0.001953125,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "True-upwards-changed-False",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "upwards",
+                            "harmonic": "pinch",
+                            "harmonicFret": 5,
+                            "leftHandVibrato": "wide"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ],
+            "id": 0,
+            "name": "Lead Guitar"
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 3,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 1.0,
+              "v": 2.0
+            }
+          ],
+          "bn": 2.0,
+          "slide_out_marks": [
+            {
+              "direction": "up",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "up",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 0.5,
+              "intensity": "slight"
+            },
+            {
+              "start": 0.5,
+              "end": 1.0,
+              "intensity": "wide"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "True-upwards-changed-False",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "True-upwards-changed-False",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0.001953125,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "True-upwards-changed-True",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "upwards",
+                            "harmonic": "pinch",
+                            "harmonicFret": 5,
+                            "leftHandVibrato": "wide",
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 150
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 0
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ],
+            "id": 0,
+            "name": "Lead Guitar"
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 3,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.25,
+              "v": 2.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 0.75,
+              "v": 3.0
+            },
+            {
+              "t": 1.0,
+              "v": 0.0
+            }
+          ],
+          "bn": 3.0,
+          "slide_out_marks": [
+            {
+              "direction": "up",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "up",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 0.5,
+              "intensity": "slight"
+            },
+            {
+              "start": 0.5,
+              "end": 1.0,
+              "intensity": "wide"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "True-upwards-changed-True",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "True-upwards-changed-True",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0.001953125,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "True-downwards-absent-False",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "downwards"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ],
+            "id": 0,
+            "name": "Lead Guitar"
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 3,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 1.0,
+              "v": 2.0
+            }
+          ],
+          "bn": 2.0,
+          "slide_out_marks": [
+            {
+              "direction": "down",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "down",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 1.0,
+              "intensity": "slight"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "True-downwards-absent-False",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "True-downwards-absent-False",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0.001953125,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "True-downwards-absent-True",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "downwards",
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 150
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 0
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ],
+            "id": 0,
+            "name": "Lead Guitar"
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 3,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.25,
+              "v": 2.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 0.75,
+              "v": 3.0
+            },
+            {
+              "t": 1.0,
+              "v": 0.0
+            }
+          ],
+          "bn": 3.0,
+          "slide_out_marks": [
+            {
+              "direction": "down",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "down",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 1.0,
+              "intensity": "slight"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "True-downwards-absent-True",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "True-downwards-absent-True",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0.001953125,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "True-downwards-same-False",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "downwards",
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "wide"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ],
+            "id": 0,
+            "name": "Lead Guitar"
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 3,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 1.0,
+              "v": 2.0
+            }
+          ],
+          "bn": 2.0,
+          "slide_out_marks": [
+            {
+              "direction": "down",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "down",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 0.5,
+              "intensity": "slight"
+            },
+            {
+              "start": 0.5,
+              "end": 1.0,
+              "intensity": "wide"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "True-downwards-same-False",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "True-downwards-same-False",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0.001953125,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "True-downwards-same-True",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "downwards",
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "wide",
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 150
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 0
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ],
+            "id": 0,
+            "name": "Lead Guitar"
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 3,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.25,
+              "v": 2.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 0.75,
+              "v": 3.0
+            },
+            {
+              "t": 1.0,
+              "v": 0.0
+            }
+          ],
+          "bn": 3.0,
+          "slide_out_marks": [
+            {
+              "direction": "down",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "down",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 0.5,
+              "intensity": "slight"
+            },
+            {
+              "start": 0.5,
+              "end": 1.0,
+              "intensity": "wide"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "True-downwards-same-True",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "True-downwards-same-True",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0.001953125,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "True-downwards-changed-False",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "downwards",
+                            "harmonic": "pinch",
+                            "harmonicFret": 5,
+                            "leftHandVibrato": "wide"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ],
+            "id": 0,
+            "name": "Lead Guitar"
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 3,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 1.0,
+              "v": 2.0
+            }
+          ],
+          "bn": 2.0,
+          "slide_out_marks": [
+            {
+              "direction": "down",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "down",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 0.5,
+              "intensity": "slight"
+            },
+            {
+              "start": 0.5,
+              "end": 1.0,
+              "intensity": "wide"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "True-downwards-changed-False",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "True-downwards-changed-False",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0.001953125,
+          "sourceAttacks": 2
+        }
+      ]
+    },
+    {
+      "id": "True-downwards-changed-True",
+      "source": {
+        "format": "songsterr",
+        "songId": 123,
+        "revisionId": 456,
+        "title": "Synthetic \u266f song",
+        "artist": "Synthetic artist",
+        "tracks": [
+          {
+            "id": 0,
+            "name": "Lead Guitar",
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ]
+          }
+        ],
+        "parts": [
+          {
+            "measures": [
+              {
+                "signature": [
+                  4,
+                  4
+                ],
+                "voices": [
+                  {
+                    "beats": [
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 0
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 100
+                                }
+                              ]
+                            },
+                            "harmonic": "pinch",
+                            "harmonicFret": 3.2,
+                            "leftHandVibrato": "slight"
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          4
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 7,
+                            "tie": true,
+                            "slide": "downwards",
+                            "harmonic": "pinch",
+                            "harmonicFret": 5,
+                            "leftHandVibrato": "wide",
+                            "bend": {
+                              "points": [
+                                {
+                                  "position": 0,
+                                  "tone": 100
+                                },
+                                {
+                                  "position": 30,
+                                  "tone": 150
+                                },
+                                {
+                                  "position": 60,
+                                  "tone": 0
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "duration": [
+                          1,
+                          2
+                        ],
+                        "notes": [
+                          {
+                            "string": 0,
+                            "fret": 5
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ],
+            "automations": {
+              "tempo": [
+                {
+                  "measure": 0,
+                  "position": [
+                    0,
+                    1
+                  ],
+                  "bpm": 120,
+                  "type": 4
+                }
+              ]
+            },
+            "instrumentId": 33,
+            "tuning": [
+              43,
+              38,
+              33,
+              28
+            ],
+            "id": 0,
+            "name": "Lead Guitar"
+          }
+        ]
+      },
+      "notes": [
+        {
+          "t": 0.0,
+          "s": 3,
+          "f": 7,
+          "sus": 1.0,
+          "vb": true,
+          "harmonic_target": {
+            "kind": "pinch",
+            "node": 3.2,
+            "interval": 31,
+            "policy": "harmonic"
+          },
+          "hp": true,
+          "source_ids": [
+            "songsterr:0:0:0:0:0",
+            "songsterr:0:0:0:1:0"
+          ],
+          "bnv": [
+            {
+              "t": 0.0,
+              "v": 0.0
+            },
+            {
+              "t": 0.25,
+              "v": 2.0
+            },
+            {
+              "t": 0.5,
+              "v": 2.0
+            },
+            {
+              "t": 0.75,
+              "v": 3.0
+            },
+            {
+              "t": 1.0,
+              "v": 0.0
+            }
+          ],
+          "bn": 3.0,
+          "slide_out_marks": [
+            {
+              "direction": "down",
+              "start": 0.5,
+              "end": 1.0
+            }
+          ],
+          "slide_out": "down",
+          "vibrato_marks": [
+            {
+              "start": 0.0,
+              "end": 0.5,
+              "intensity": "slight"
+            },
+            {
+              "start": 0.5,
+              "end": 1.0,
+              "intensity": "wide"
+            }
+          ]
+        }
+      ],
+      "profiles": [
+        {
+          "id": "True-downwards-changed-True",
+          "profile": "authored",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0,
+          "sourceAttacks": 2
+        },
+        {
+          "id": "True-downwards-changed-True",
+          "profile": "player-defaults",
+          "harmonicIndependentWithinNativeQuantization": true,
+          "maxPitchDifference": 0.001953125,
+          "sourceAttacks": 2
+        }
+      ]
+    }
+  ]
+}

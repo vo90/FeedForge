@@ -132,7 +132,7 @@ def test_independent_checker_rejects_missing_changed_or_invented_segments(tmp_pa
     elif fault == "outside": marked["slide_out_marks"][0]["end"] = 1
     elif fault == "shape": marked["slide_out_marks"] = None
     report = verify(tmp_path, source, package)
-    assert report["version"] == 75 and report["status"] == "failed", report
+    assert report["version"] == 76 and report["status"] == "failed", report
     assert code in {e["code"] for e in report["errors"]}, report
 
 

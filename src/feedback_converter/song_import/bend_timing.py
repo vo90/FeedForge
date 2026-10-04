@@ -54,7 +54,7 @@ def _boundary_slides(segments, overlaps, attack, stop, context):
                     for i, (n, *_) in enumerate(segments)))
 
 
-def _terminal_slide_out(segments, intervals, attack, stop, at, context, *, boundary_slides=False):
+def _terminal_slide_out(segments, intervals, attack, stop, at, context, *, boundary_slides=False, continued_pinch=None):
     """Independent bend clock with one terminal tied, direction-only flourish.
 
     Keep the source bend clock. Never shorten a changing bend to make it fit,
@@ -71,10 +71,10 @@ def _terminal_slide_out(segments, intervals, attack, stop, at, context, *, bound
         if (n.slide and i != len(segments)-1 or (n.slide_in and not (boundary_slides and i == 0))
                 or n.whammy or n.attack_offset
                 or n.hopo or n.trill or n.pick_scrape or n.effects.get('__beat_vibrato')
-                or (last.bends and n.effects.get('vb')
+                or ((last.bends or continued_pinch) and n.effects.get('vb')
                     and n.effects.get('__finger_vibrato') not in {'slight', 'wide'})
-                or any(n.effects.get(k) for k in ( 'hm', 'hp', 'hn', 'harmonic_target',
-                                                  'mt', 'lr', 'pm', 'tr', '__hopo_origin'))):
+                or (not continued_pinch and (n.effects.get('hp') or n.effects.get('harmonic_target')))
+                or any(n.effects.get(k) for k in ('hm', 'hn', 'mt', 'lr', 'pm', 'tr', '__hopo_origin'))):
             return None
     bend, left, right = intervals[-1]
     controls = [(left + (right-left)*p, v) for p,v in bend.bends]
@@ -87,6 +87,8 @@ def _terminal_slide_out(segments, intervals, attack, stop, at, context, *, bound
         return None
     return {'sourceId': last.source_id, 'direction': 'down' if last.slide == 'out_down' else 'up',
             'start': at(start), 'end': at(stop), 'value': controls[-1][1],
+            **({'continuedPinchHarmonic': {'initialTarget': deepcopy(continued_pinch),
+                                         'policy': 'initial-target-continued'}} if continued_pinch else {}),
             **({'bendTiming': 'authored-segment'} if last.bends else {}),
             **({'bendPhase': 'changing', 'pitchPolicy': 'independent-source-bend'} if changing else {}),
             **({'attackTiming': 'authored-chord'} if changing and 'simultaneous-attack' in context else {}),
@@ -232,8 +234,17 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
                                      'bendTiming': 'authored-tie'}
     # Establish slide eligibility independently. A valid flourish alone must
     # never clear a conflicting bend or another unqualified expression.
+    # A continued pinch target is independent of this bend clock. Qualify the
+    # entire held note before allowing its terminal cue through; do not extend
+    # this rule to overlapping controls or timed harmonic contact.
+    pinch_slide = (continued_pinch and not overlaps and 0 < first.fret < 127
+                   and segments[0][1] == attack and segments[-1][2] == stop
+                   and all((n.fret, n.string, n.voice_id) == (first.fret, first.string, first.voice_id)
+                           and (not i or (n.tie and start == segments[i-1][2]))
+                           for i, (n, start, _, _) in enumerate(segments)))
     terminal_candidate = _terminal_slide_out(segments, intervals, attack, stop, at, terminal_context,
-                                             boundary_slides=boundary_slides)
+                                             boundary_slides=boundary_slides,
+                                             continued_pinch=harmonic if pinch_slide else None)
     terminal_handoff = False
     if overlaps:
         # The native worker can keep the initial controller alive across ties.
@@ -355,7 +366,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
 
 def archive_evidence(performance, source_path):
     gestures = performance['fingerBendTimingEvidence']
-    version = (15 if any(e.get('barVibrato') for e in gestures)
+    version = (16 if any(e.get('terminalSlideOut', {}).get('continuedPinchHarmonic') for e in gestures)
+               else 15 if any(e.get('barVibrato') for e in gestures)
                else 14 if any(e.get('overlap', {}).get('outgoingLegato') for e in gestures)
                else 13 if any(e.get('overlap', {}).get('continuedPinchHarmonic') for e in gestures)
                else 12 if any(e.get('overlap', {}).get('fixedHarmonic') for e in gestures)
