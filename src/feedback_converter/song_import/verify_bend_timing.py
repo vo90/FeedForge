@@ -95,6 +95,24 @@ def reconstruct(event, part, clock, sound_end, terminal_context=(), *, following
     evidence = {'trackId': part.id, 'sourceId': identity(first), 'location': first.location,
                 'occurrence': entries[0][3] + 1, 'start': float(clock.at(origin)), 'end': float(clock.at(sound_end)),
                 'string': event['s'], 'fret': event['f'], 'segments': rows}
+    # Reconstruct from independently parsed atoms and retained bar intervals.
+    # An empty qualitative control cannot establish an explicit or held pitch.
+    bar_atoms = [(a, start, end, visit) for a, start, end, visit in entries if a.whammy]
+    separate_bar = bool(bar_atoms) and not overlap and bool(event.get('whammy'))
+    for atom, *_ in entries:
+        if (atom.slide or atom.slide_in or atom.attack_offset
+                or (atom.whammy and (atom.whammy['curve']
+                    or atom.whammy['vibrato'] not in ('slight', 'wide')))):
+            separate_bar = False
+    if any(region['points'] for region in event.get('whammy', [])):
+        separate_bar = False
+    if separate_bar:
+        mixed = False
+        evidence['barVibrato'] = {
+            'policy': 'independent-qualitative-control',
+            'segments': [{'sourceId': identity(a), 'occurrence': visit + 1,
+                          'start': float(clock.at(start)), 'end': float(clock.at(end)),
+                          'vibrato': a.whammy['vibrato']} for a, start, end, visit in bar_atoms]}
     tail, tail_start, tail_end, _ = entries[-1]
     # Independently establish the complete composition from rational source
     # atoms before either cue may relax the other's expression guard.
