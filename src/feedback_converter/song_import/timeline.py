@@ -413,6 +413,13 @@ def _render(score: Score) -> dict:
             from .staccato_bends import finish as finish_bend
             from .bend_timing import terminal_contexts
             bend_contexts = terminal_contexts({id(n): articulations[id(n)] for n in rendered})
+            # Retain actual resolved links, including ambiguity, after consumed
+            # strums are removed. Never infer a legato link from nearby frets.
+            outgoing_hopos = {}
+            live = {id(n) for n in rendered}
+            for origin, destination in hopo_links:
+                if id(origin) in live and id(destination) in live:
+                    outgoing_hopos.setdefault(id(origin), []).append((destination, articulations[id(destination)]))
             for output in rendered:
                 evidence = finish_bend(output, articulations[id(output)], track.id, at, points)
                 if evidence:
@@ -420,8 +427,10 @@ def _render(score: Score) -> dict:
                 from .bend_timing import finish as finish_finger_bend
                 from .finger_vibrato import finish as finish_vibrato
                 finish_vibrato(output, articulations[id(output)], at)
+                links = outgoing_hopos.get(id(output), ())
                 evidence = finish_finger_bend(output, articulations[id(output)], track.id, at, points,
-                                             bend_contexts.get(id(output), ()))
+                                             bend_contexts.get(id(output), ()),
+                                             following_hopo=links[0] if len(links) == 1 else None)
                 if evidence:
                     finger_bends.append(evidence)
         from .songsterr_trills import expand

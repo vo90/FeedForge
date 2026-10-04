@@ -54,7 +54,7 @@ def terminal_contexts(events):
     return result
 
 
-def reconstruct(event, part, clock, sound_end, terminal_context=()):
+def reconstruct(event, part, clock, sound_end, terminal_context=(), *, following_hopo=None):
     entries = event['bend_atoms']
     if not any(a.bends for a, *_ in entries):
         return None
@@ -175,7 +175,41 @@ def reconstruct(event, part, clock, sound_end, terminal_context=()):
                                     or a.effects.get('hp') is not True))
                     or (not target and a.effects.get('hp'))):
                 pinch_continuation = False
-        compound = any(a.hopo_origin or a.hopo_destination or a.trill or a.pick_scrape or
+        # Derive terminal outgoing legato from independently resolved source
+        # links. Neither producer output nor retained evidence establishes it.
+        outgoing = None
+        if following_hopo is not None and len(entries) > 1:
+            tail, _, tail_end, tail_visit = entries[-1]
+            dest, dest_start, _, dest_visit = following_hopo['bend_atoms'][0]
+            technique = 'ho' if dest.fret > first.fret else 'po'
+            valid = (tail.hopo_origin and tail.tie and event['effects'].get('ln') is True
+                     and not event['effects'].get('ho') and not event['effects'].get('po')
+                     and tail_end == sound_end == dest_start == following_hopo['start']
+                     and 0 < first.fret < 127 and 0 <= dest.fret < 127 and dest.fret != first.fret
+                     and (dest.string, dest.voice) == (first.string, first.voice)
+                     and following_hopo['effects'].get(technique) is True)
+            previous_end = None
+            for i, (atom, begin, end, _) in enumerate(entries):
+                if ((atom.fret, atom.string, atom.voice) != (first.fret, first.string, first.voice)
+                        or (i and (not atom.tie or begin != previous_end))
+                        or (atom.hopo_origin and i != len(entries)-1) or atom.hopo_destination
+                        or atom.slide or atom.slide_in or atom.whammy or atom.attack_offset
+                        or atom.staccato or atom.trill or atom.pick_scrape or atom.beat_vibrato
+                        or any(atom.effects.get(k) for k in ('hm', 'hp', 'hn', 'harmonic_target',
+                                                             'mt', 'lr', 'pm', 'tr', 'vb'))):
+                    valid = False
+                previous_end = end
+            if (dest.tie or dest.bends or dest.hopo_origin or dest.slide or dest.slide_in or dest.whammy
+                    or dest.attack_offset or dest.staccato or dest.trill or dest.pick_scrape or dest.beat_vibrato
+                    or any(dest.effects.get(k) for k in ('hm', 'hp', 'hn', 'harmonic_target',
+                                                        'mt', 'lr', 'pm', 'tr', 'vb'))):
+                valid = False
+            if valid:
+                outgoing = {'sourceId': identity(tail), 'occurrence': tail_visit + 1,
+                            'destinationSourceId': identity(dest), 'destinationOccurrence': dest_visit + 1,
+                            'start': float(clock.at(dest_start)), 'fret': dest.fret, 'technique': technique,
+                            'policy': 'independent-outgoing-link'}
+        compound = any((a.hopo_origin and outgoing is None) or a.hopo_destination or a.trill or a.pick_scrape or
                        (a.effects.get('hp') and not pinch_continuation) or
                        any(a.effects.get(k) for k in ('hm', 'hn',
                                                       'mt', 'lr', 'pm', 'tr')) for a, *_ in entries)
@@ -192,6 +226,7 @@ def reconstruct(event, part, clock, sound_end, terminal_context=()):
                              'start': float(clock.at(q)), 'end': float(clock.at(finish)),
                              'classification': 'settled-tail' if safe else 'changing-tail'})
         flat_handoffs = all(h['classification']=='settled-tail' for h in handoffs)
+        compound = compound or (outgoing is not None and not flat_handoffs)
         vibrato_atoms = [a for a, *_ in entries if a.effects.get('vb')]
         # Reconstruct eligibility from independently parsed source atoms. A
         # constant or continued target is separate from the settled handoff.
@@ -214,6 +249,8 @@ def reconstruct(event, part, clock, sound_end, terminal_context=()):
                  'clear-handoff' if flat_handoffs
                  else 'conflicting-controls')
         evidence['overlap'] = {'classification': label, 'handoffs': handoffs}
+        if outgoing is not None and label == 'clear-handoff':
+            evidence['overlap']['outgoingLegato'] = outgoing
         if harmonic_handoff:
             if pinch_continuation:
                 evidence['overlap']['continuedPinchHarmonic'] = {

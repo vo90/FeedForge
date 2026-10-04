@@ -93,7 +93,51 @@ def _terminal_slide_out(segments, intervals, attack, stop, at, context, *, bound
             **({'endTiming': 'authored-tie'} if changing and 'following-slide-in' in context else {})}
 
 
-def finish(output, articulation, track_id, at, tempo_positions, terminal_context=()):
+def _outgoing_legato(output, articulation, following, at):
+    """Prove one terminal legato link without changing the preceding bend.
+
+    `following` comes from resolved source links, not fret/time proximity. Only
+    plain, continuous fretted ties and a plain adjacent destination are covered.
+    Incoming/intermediate legato and other pitch gestures remain unqualified.
+    """
+    if following is None:
+        return None
+    destination, target = following
+    segments = articulation['bend_segments']
+    first = segments[0][0]
+    last, _, end, occurrence = segments[-1]
+    note, start, _, visit = target['bend_segments'][0]
+    if (len(segments) < 2 or not last.tie or not last.effects.get('__hopo_origin')
+            or not output.get('ln') or output.get('ho') or output.get('po')
+            or end != articulation['end'] or start != end
+            or target['start'] != start or not 0 < first.fret < 127
+            or not 0 <= note.fret < 127 or note.fret == first.fret
+            or (note.string, note.voice_id) != (first.string, first.voice_id)):
+        return None
+    for i, (n, begin, _, _) in enumerate(segments):
+        if (n.fret != first.fret or n.string != first.string or n.voice_id != first.voice_id
+                or (i and (not n.tie or begin != segments[i-1][2]))
+                or (i != len(segments)-1 and n.effects.get('__hopo_origin'))
+                or n.hopo or n.slide or n.slide_in or n.whammy or n.attack_offset
+                or n.staccato or n.trill or n.pick_scrape or n.effects.get('__beat_vibrato')
+                or any(n.effects.get(k) for k in ('hm', 'hp', 'hn', 'harmonic_target',
+                                                 'mt', 'lr', 'pm', 'tr', 'vb'))):
+            return None
+    if (note.tie or note.bends or note.slide or note.slide_in or note.whammy or note.attack_offset
+            or note.staccato or note.trill or note.pick_scrape or note.effects.get('__beat_vibrato')
+            or any(note.effects.get(k) for k in ('hm', 'hp', 'hn', 'harmonic_target',
+                                                'mt', 'lr', 'pm', 'tr', 'vb', '__hopo_origin'))):
+        return None
+    technique = 'ho' if note.fret > first.fret else 'po'
+    if destination.get(technique) is not True:
+        return None
+    return {'sourceId': last.source_id, 'occurrence': occurrence + 1,
+            'destinationSourceId': note.source_id, 'destinationOccurrence': visit + 1,
+            'start': at(start), 'fret': note.fret, 'technique': technique,
+            'policy': 'independent-outgoing-link'}
+
+
+def finish(output, articulation, track_id, at, tempo_positions, terminal_context=(), *, following_hopo=None):
     segments = articulation['bend_segments']
     if not any(n.bends for n, *_ in segments):
         return None
@@ -179,11 +223,13 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
         # Only a settled tail is safe to hand off: it emits no more pitch
         # changes before its terminal reset at note-off. Do not copy competing
         # synth updates or silently rescale either written gesture.
+        outgoing = _outgoing_legato(output, articulation, following_hopo, at)
         other_expression = any(
             n.hopo or n.trill or n.pick_scrape
             or (n.effects.get('hp') and not continued_pinch)
+            or (n.effects.get('__hopo_origin') and outgoing is None)
             or any(n.effects.get(k) for k in ('hm', 'hn',
-                                             'mt', 'lr', 'pm', 'tr', '__hopo_origin'))
+                                             'mt', 'lr', 'pm', 'tr'))
             for n, *_ in segments)
         handoffs = []
         for index, handoff in overlaps:
@@ -199,6 +245,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
                              'start': at(handoff), 'end': at(right),
                              'classification': 'settled-tail' if settled else 'changing-tail'})
         settled_handoffs = all(h['classification'] == 'settled-tail' for h in handoffs)
+        # Legato eligibility alone must not reclassify an unresolved overlap.
+        other_expression = other_expression or (outgoing is not None and not settled_handoffs)
         # A fixed artificial target or established pinch continuation does
         # not change the source bend clock. Qualify the whole tie; conflicting
         # controllers and other harmonic interpretations stay guarded.
@@ -227,6 +275,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
         evidence['overlap'] = {'classification': 'other-expression' if reason or other_expression
                               else 'clear-handoff' if settled_handoffs
                               else 'conflicting-controls', 'handoffs': handoffs}
+        if outgoing is not None and evidence['overlap']['classification'] == 'clear-handoff':
+            evidence['overlap']['outgoingLegato'] = outgoing
         if qualified_harmonic:
             if continued_pinch:
                 evidence['overlap']['continuedPinchHarmonic'] = {
@@ -288,7 +338,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
 
 def archive_evidence(performance, source_path):
     gestures = performance['fingerBendTimingEvidence']
-    version = (13 if any(e.get('overlap', {}).get('continuedPinchHarmonic') for e in gestures)
+    version = (14 if any(e.get('overlap', {}).get('outgoingLegato') for e in gestures)
+               else 13 if any(e.get('overlap', {}).get('continuedPinchHarmonic') for e in gestures)
                else 12 if any(e.get('overlap', {}).get('fixedHarmonic') for e in gestures)
                else 11 if any(e.get('initialSlideIn') and e.get('terminalSlideOut') for e in gestures)
                else 10 if any(e.get('overlap', {}).get('slideOutTiming') == 'independent-terminal-cue' for e in gestures)

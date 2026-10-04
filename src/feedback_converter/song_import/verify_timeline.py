@@ -558,6 +558,11 @@ def _expected(source, alignment):
                 event['timed_vibrato'] = intervals(event)
         from .verify_bend_timing import terminal_contexts
         bend_contexts = terminal_contexts(notes) if source.format == 'songsterr' else {}
+        legato_successors = {}
+        live_events = {id(e) for e in notes}
+        for origin, destination in hopo_links:
+            if id(origin) in live_events and id(destination) in live_events:
+                legato_successors.setdefault(id(origin), []).append(destination)
         notes = trill_expectations(notes, hopo_links, part, notation_notes, result["trills"])
         rendered = []
         for n in notes:
@@ -573,7 +578,9 @@ def _expected(source, alignment):
                 if evidence:
                     result['staccato_bends'].append(evidence)
                 from .verify_bend_timing import reconstruct as reconstruct_finger_bend
-                evidence = reconstruct_finger_bend(n, part, clock, sound_end, bend_contexts.get(id(n), ()))
+                successors = legato_successors.get(id(n), ())
+                evidence = reconstruct_finger_bend(n, part, clock, sound_end, bend_contexts.get(id(n), ()),
+                                                  following_hopo=successors[0] if len(successors) == 1 else None)
                 if evidence:
                     result['finger_bends'].append(evidence)
             if (n["start"] < 0 and not n.get('opening_strum')) or sound_end <= n["start"]:
