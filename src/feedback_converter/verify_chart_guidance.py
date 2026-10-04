@@ -13,6 +13,30 @@ import math
 POLICY = "feedforge-chart-guidance-v2"
 
 
+def _slide_fits(note, start, time, anchor):
+    """Check continuous slide geometry directly, independently of anchor cuts."""
+    key = next(k for k in ("sl", "slu") if type(note.get(k)) in (int, float) and note[k] >= 0)
+    def wire(f, logarithmic):
+        raw = 330 * (1 - 2 ** (-f / 12))
+        return (raw if f <= 12 else 165 + (raw - 165) * 1.1) if logarithmic else 255.75 * f / 24
+    for logarithmic in (False, True):
+        def centre(f):
+            return -2 if f <= 0 else (wire(f - 1, logarithmic) + wire(f, logarithmic)) / 2
+        origin, destination = centre(int(note["f"])), centre(int(note[key]))
+        positions = []
+        # Anchors serialize to microseconds. Permit boundary rounding only;
+        # never borrow a whole future fret cell or the original slide corridor.
+        for offset in (-.000001, .000001):
+            p = min(1., max(0., (time + offset - start) / note["sus"]))
+            weight = math.sin(p * math.pi / 2) ** 3 if key == "sl" else 1 - math.cos(p * math.pi / 2)
+            positions.append(origin + (destination - origin) * weight)
+        low = -2 if anchor["fret"] == 1 else wire(anchor["fret"] - 1, logarithmic)
+        high = wire(anchor["fret"] + anchor["width"] - 1, logarithmic)
+        if max(positions) < low - 1e-8 or min(positions) > high + 1e-8:
+            return False
+    return True
+
+
 def _hash(value):
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True,
                                     allow_nan=False, separators=(",", ":")).encode()).hexdigest()
@@ -30,7 +54,8 @@ def validate(chart, *, window=None, duration=None):
         proof = chart.get("ext", {}).get("chartGuidance")
         if not isinstance(proof, dict) or proof.get("policy") != POLICY or proof.get("sourceAuthored") is not False:
             return ["Missing or unsupported generated guidance provenance."]
-        if proof.get("positionPolicy") not in (None, "chord-local-v1", "open-preparation-v1", "open-preparation-v2"):
+        timed_slides = proof.get("positionPolicy") == "slide-follow-v1"
+        if proof.get("positionPolicy") not in (None, "chord-local-v1", "open-preparation-v1", "open-preparation-v2", "slide-follow-v1"):
             return ["Unsupported generated position policy."]
         fields = proof.get("fields")
         if not isinstance(fields, list) or not fields or len(set(fields)) != len(fields) or any(k not in {"anchors", "handshapes"} for k in fields):
@@ -40,7 +65,7 @@ def validate(chart, *, window=None, duration=None):
             fail("Guidance describes different musical events.")
         if proof.get("guidanceSha256") != _hash({k: chart.get(k) for k in fields}):
             fail("Generated guidance content changed.")
-        if (proof.get("slidePolicy") != "known-corridor" or proof.get("fingeringAssessed") is not False
+        if (proof.get("slidePolicy") != ("timed-known-slides" if timed_slides else "known-corridor") or proof.get("fingeringAssessed") is not False
                 or proof.get("legatoPolicy") != "compact-explicit-hopo"):
             fail("Unsupported guidance interpretation.")
         if proof.get("window") != (list(window) if window is not None else None):
@@ -57,7 +82,7 @@ def validate(chart, *, window=None, duration=None):
         times = {s: sorted(values) for s, values in times.items()}
         # Independent end-time heap; release old strings before checking the
         # next attack, then include all simultaneous and zero-length attacks.
-        events = defaultdict(list)
+        events, motions = defaultdict(list), {}
         for index, (start, note) in enumerate(members):
             sustain = note.get("sus", 0)
             moving = any(note.get(k) for k in ("slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks",
@@ -82,9 +107,16 @@ def validate(chart, *, window=None, duration=None):
                         return errors + ["Slide or harmonic contact outside the supported neck."]
                     if value > 0:
                         needed += [max(1, math.floor(value)), math.ceil(value)]
+                target = next((note[k] for k in ("sl", "slu") if number(note.get(k)) and note[k] >= 0), None)
+                if (timed_slides and target is not None and note["f"] > 0 and note["f"] == int(note["f"])
+                        and sustain > 0 and end > start
+                        and int(target) != note["f"] and not (note.get("hm") and number(note.get("hn")))):
+                    motions[index] = (note, start)
+                    needed = []
             # Compare occupancy on the archive's microsecond clock. Keep this
             # independent of the generator and leave the musical data intact.
             events[round(start, 6)].append((round(end, 6), index, needed))
+            events[round(end, 6)]  # A release also ends an interval to verify.
         anchors = chart.get("anchors", [])
         if "anchors" in fields:
             if not anchors or anchors[0].get("time") != left:
@@ -103,13 +135,14 @@ def validate(chart, *, window=None, duration=None):
                 fail("Wide-position diagnostic differs from generated anchors.")
             checkpoints = sorted(set(events) | {round(t, 6) for t in anchor_times})
             sounding, expiry = {}, []
-            for t in checkpoints:
+            for ci, t in enumerate(checkpoints):
                 while expiry and expiry[0][0] <= t:
                     _, index = heapq.heappop(expiry)
                     sounding.pop(index, None)
-                instant = []
+                instant, instant_ids = [], []
                 for end, index, frets in events.get(t, []):
                     instant.extend(frets)
+                    instant_ids.append(index)
                     if end > t:
                         sounding[index] = frets
                         heapq.heappush(expiry, (end, index))
@@ -117,6 +150,15 @@ def validate(chart, *, window=None, duration=None):
                 needed = instant + [f for values in sounding.values() for f in values]
                 if any(f < a["fret"] or f >= a["fret"] + a["width"] for f in needed):
                     fail(f"Generated lane excludes an active fret at {t}.")
+                through = checkpoints[ci + 1] if ci + 1 < len(checkpoints) else t
+                for index in sounding.keys() | set(instant_ids):
+                    if index not in motions:
+                        continue
+                    note, start = motions[index]
+                    # Each path is monotone between onset, release and anchor
+                    # boundaries, so its two endpoints cover the whole interval.
+                    if not all(_slide_fits(note, start, sample, a) for sample in (t, through)):
+                        fail(f"Generated lane excludes an active slide at {t}.")
         if "handshapes" in fields:
             permitted = defaultdict(list)
             for chord in chart.get("chords", []):
