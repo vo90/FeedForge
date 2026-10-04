@@ -161,7 +161,7 @@ def reconstruct(event, part, clock, sound_end, terminal_context=()):
     overlap_reason = None
     if overlap:
         compound = any(a.hopo_origin or a.hopo_destination or a.trill or a.pick_scrape or
-                       any(a.effects.get(k) for k in ('hm', 'hp', 'hn', 'harmonic_target',
+                       any(a.effects.get(k) for k in ('hm', 'hp', 'hn',
                                                       'mt', 'lr', 'pm', 'tr')) for a, *_ in entries)
         handoffs = []
         for index, q in crossings:
@@ -177,6 +177,14 @@ def reconstruct(event, part, clock, sound_end, terminal_context=()):
                              'classification': 'settled-tail' if safe else 'changing-tail'})
         flat_handoffs = all(h['classification']=='settled-tail' for h in handoffs)
         vibrato_atoms = [a for a, *_ in entries if a.effects.get('vb')]
+        # Reconstruct eligibility from independently parsed source atoms. A
+        # constant harmonic target is separate from the settled bend handoff.
+        harmonic_handoff = (fixed_artificial and flat_handoffs and not mixed and not compound
+                            and 0 < first.fret < 127
+                            and all(a.fret == first.fret and a.string == first.string
+                                    and not a.beat_vibrato for a, *_ in entries)
+                            and all(a.finger_vibrato in ('slight', 'wide') for a in vibrato_atoms))
+        compound = compound or (any(harmonic_targets) and not harmonic_handoff)
         terminal_handoff = (terminal_candidate is not None and flat_handoffs and not compound
                             and not any(a.beat_vibrato for a, *_ in entries)
                             and all(a.finger_vibrato in ('slight', 'wide') for a in vibrato_atoms))
@@ -190,6 +198,8 @@ def reconstruct(event, part, clock, sound_end, terminal_context=()):
                  'clear-handoff' if flat_handoffs
                  else 'conflicting-controls')
         evidence['overlap'] = {'classification': label, 'handoffs': handoffs}
+        if harmonic_handoff:
+            evidence['overlap']['fixedHarmonic'] = dict(harmonic_targets[0])
         if separate_vibrato:
             evidence['overlap']['vibratoTiming'] = 'independent-note-controls'
         if terminal_handoff:
