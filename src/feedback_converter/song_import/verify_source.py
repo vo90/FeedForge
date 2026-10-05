@@ -7,8 +7,10 @@ Unknown active musical fields are reported as unverified instead of being ignore
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from copy import deepcopy
 from fractions import Fraction as F
 import json
+import math
 from pathlib import Path
 import re
 import xml.etree.ElementTree as ET
@@ -44,6 +46,94 @@ def integer(value, location="source"):
     if n.denominator != 1:
         raise ValueError(f"{location}: expected integer")
     return int(n)
+
+
+def _finite_number(value):
+    # JSON integers are exact and finite; avoid coercing retained metadata to
+    # float (which could overflow). Active clock rationals have separate bounds.
+    return type(value) is int or type(value) is float and math.isfinite(value)
+
+
+def _scalar_decimal(value):
+    return (_finite_number(value) or isinstance(value, str) and re.fullmatch(
+        r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", value))
+
+
+def effective_tempo_entries(automations, location="automations", *, qualify_clock=False):
+    """Independently derive the prepared clock from the first raw instruction.
+
+    The browser and synth subtract the first authored measure before selecting
+    duplicate instructions. Only newly admitted nonzero origins need the narrow
+    scalar-position and integer-rate qualification; established origin-zero
+    interpretation remains unchanged. Fermata coordinates are never shifted.
+    """
+    if not isinstance(automations, dict):
+        raise ValueError(location + ": invalid automation data")
+    raw = automations.get("tempo", [])
+    if not isinstance(raw, list) or not all(isinstance(t, dict) for t in raw):
+        raise ValueError(location + ": invalid tempo list")
+    origin = integer(raw[0].get("measure"), location + "/tempo/0/measure") if raw else 0
+    if origin < 0:
+        raise ValueError(location + ": negative tempo origin")
+    if qualify_clock and not raw:
+        unsupported(location, "A shared shifted clock needs an explicit initial tempo in every part.")
+    if origin or qualify_clock:
+        first = raw[0].get("position")
+        if isinstance(first, bool) or first not in (0, "0"):
+            unsupported(location, "A shifted tempo origin needs an explicit scalar zero opening position.")
+    prepared = deepcopy(raw)
+    for index, (authored, used) in enumerate(zip(raw, prepared)):
+        loc = location + f"/tempo/{index}"
+        measure = integer(authored.get("measure"), loc + "/measure")
+        if measure < 0 or measure < origin:
+            raise ValueError(loc + ": negative raw or effective tempo measure")
+        used["measure"] = measure - origin
+        if not origin and not qualify_clock:
+            continue
+        if not _scalar_decimal(authored.get("measure")):
+            unsupported(loc, "Shifted tempo measures require qualified scalar integer coordinates.")
+        position = authored.get("position")
+        if not _scalar_decimal(position):
+            unsupported(loc, "A shifted tempo needs an explicit scalar tick position.")
+        ticks = fraction(position, loc + "/position")
+        if ticks < 0 or (ticks / 960).denominator != 1 or index == 0 and ticks != 0:
+            unsupported(loc, "Shifted tempos require an initial zero and whole-quarter tick positions.")
+        unit = authored.get("type", 4)
+        rate = authored.get("bpm")
+        if (not _finite_number(unit) or unit not in (2, 4, 8)
+                or not _finite_number(rate) or rate <= 0):
+            unsupported(loc, "A shifted tempo has an unqualified source rate or note unit.")
+        effective_rate = fraction(rate, loc + "/bpm") * F(4, int(unit))
+        if authored.get("dotted") is True:
+            effective_rate *= F(3, 2)
+        if effective_rate.denominator != 1:
+            unsupported(loc, "Shifted tempo rounding is not independently qualified.")
+    return prepared, origin
+
+
+def _legacy_measure_index(bar, location):
+    value = bar.get("index")
+    if value is not None and (not _finite_number(value)
+                              or value < 0 or int(value) != value):
+        raise ValueError(location + "/index: invalid retained measure index")
+
+
+def _legacy_beat_tempo(beat, location):
+    value = beat.get("tempo")
+    if value is None:
+        return
+    if not isinstance(value, dict) or set(value) != {"type", "bpm"}:
+        raise ValueError(location + "/tempo: invalid retained beat tempo structure")
+    rate = value["bpm"]
+    if (type(value["type"]) is not int or value["type"] not in (1, 2, 4, 8, 16, 32, 64)
+            or not _finite_number(rate) or rate <= 0):
+        raise ValueError(location + "/tempo: invalid retained beat tempo value")
+
+
+def _legacy_note_grace(note, location):
+    value = note.get("grace")
+    if value is not None and type(value) is not bool:
+        raise ValueError(location + "/grace: invalid retained grace flag")
 
 
 @dataclass
@@ -426,7 +516,8 @@ def songsterr(document, *, track_indices=None):
             signature = next(iter(signatures))
         if len(signature) != 2 or min(signature) < 1:
             raise ValueError(f"{loc}: invalid meter")
-        for b in samples:
+        for pi, b in enumerate(samples):
+            _legacy_measure_index(b, f"parts/{pi}/measures/{bi}")
             _active_unknown(b, {"voices", "signature", "rest", "marker", "repeat", "repeatStart", "alternateEnding", "tripletFeel", "clef"},
                             {"width", "id", "index", "doubleBarline", "keySignature"}, loc, ignored)
         annotations = []
@@ -514,14 +605,22 @@ def songsterr(document, *, track_indices=None):
         if len(spans) != 1:
             unsupported('parts/anacrusis', 'Source parts disagree about pickup duration.')
         bars[0].actual_length = spans.pop()
+    # Qualify every shared clock when any part introduces the new origin rule.
+    # A default/ambiguous origin-zero part must not appear to agree merely
+    # because both local readers happen to use the same fallback tempo.
+    tempo_views = [effective_tempo_entries(p.get("automations", {}), f"parts/{pi}/automations")
+                   for pi, p in enumerate(raw_parts)]
+    origin_shift = any(origin for _, origin in tempo_views)
+    if origin_shift:
+        tempo_views = [effective_tempo_entries(p.get("automations", {}), f"parts/{pi}/automations", qualify_clock=True)
+                       for pi, p in enumerate(raw_parts)]
     all_clocks = []
     for pi, raw in enumerate(raw_parts):
         automations = raw.get("automations", {})
         _active_unknown(automations, {"tempo", "gradualTempo", "fermata"}, {"volume", "balance"}, f"parts/{pi}/automations", ignored)
         part_events, selected = {}, []
         raw_tempos = automations.get("tempo", [])
-        if not isinstance(raw_tempos, list) or not all(isinstance(t, dict) for t in raw_tempos):
-            raise ValueError(f"parts/{pi}/automations: invalid tempo list")
+        prepared_tempos, origin = tempo_views[pi]
         outside_qualified = False
         for ti, tempo in enumerate(raw_tempos):
             loc = f"parts/{pi}/automations/tempo/{ti}"
@@ -532,7 +631,7 @@ def songsterr(document, *, track_indices=None):
                 raise ValueError(loc + ": invalid tempo text")
             if tempo.get("linear") is not None and type(tempo["linear"]) is not bool:
                 raise ValueError(loc + ": invalid linear flag")
-            bi = integer(tempo["measure"], loc)
+            bi = prepared_tempos[ti]["measure"]
             q = fraction(tempo.get("position", 0), loc) / 960
             unit = integer(tempo.get("type", 4), loc)
             if unit <= 0:
@@ -545,9 +644,9 @@ def songsterr(document, *, track_indices=None):
             if bi < 0 or q < 0 or (bi < count and q >= bars[bi].length) or bpm <= 0:
                 raise ValueError(f"{loc}: invalid tempo coordinate")
             if bi >= count and not outside_qualified:
-                # Derive independently: no initial-measure normalization and
-                # no enabled ramp may turn this unattached event into a clock.
-                initial = raw_tempos[0]
+                # Qualify the prepared opening independently. No enabled ramp
+                # may turn this unattached instruction into a performed clock.
+                initial = prepared_tempos[0]
                 if (integer(initial['measure'], loc) != 0 or fraction(initial.get('position', 0), loc) != 0
                         or automations.get('gradualTempo') is True and any(t.get('linear') for t in raw_tempos)):
                     unsupported(loc, 'Outside-score tempo in an initial/ramp clock is not independently verified.')
@@ -555,7 +654,7 @@ def songsterr(document, *, track_indices=None):
             if bi >= count:
                 continue
             part_events[bi, q] = bpm
-            selected.append(((bi, q), tempo))
+            selected.append(((bi, q), prepared_tempos[ti]))
         # Independent reverse scan: retain only each coordinate's final entry,
         # including its flags. The original source stays untouched.
         seen, effective = set(), []
@@ -570,7 +669,7 @@ def songsterr(document, *, track_indices=None):
             if q in bars[bi].tempos and bars[bi].tempos[q] != bpm:
                 unsupported(loc, "Source tracks disagree about tempo.")
             bars[bi].tempos[q] = bpm
-    if any(p.get("automations", {}).get("gradualTempo") or p.get("automations", {}).get("fermata") for p in raw_parts):
+    if origin_shift or any(p.get("automations", {}).get("gradualTempo") or p.get("automations", {}).get("fermata") for p in raw_parts):
         points = sorted(set().union(*(c.keys() for c in all_clocks)))
         for point in points:
             rates = []
@@ -620,7 +719,8 @@ def songsterr(document, *, track_indices=None):
                 times = all_times[bi][vi]
                 for bti, beat in enumerate(voice["beats"]):
                     loc = f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}"
-                    _active_unknown(beat, beat_keys, {"beamStart", "beamStop", "id", "hasRasgueado", "sustainPedal"}, loc, ignored)
+                    _legacy_beat_tempo(beat, loc)
+                    _active_unknown(beat, beat_keys, {"beamStart", "beamStop", "id", "hasRasgueado", "sustainPedal", "tempo"}, loc, ignored)
                     # Independent validation; MIDI pedal control cannot become
                     # longer game trails, more attacks or a let-ring instruction.
                     if beat.get("sustainPedal") is not None and type(beat["sustainPedal"]) is not bool:
@@ -675,6 +775,7 @@ def songsterr(document, *, track_indices=None):
                     beat_facts.append(fact)
                     for ni, note in enumerate(beat["notes"]):
                         nloc = loc + f"/notes/{ni}"
+                        _legacy_note_grace(note, nloc)
                         # Independent validation. Picking-hand marks never map
                         # to the fret-hand finger effect or alter an attack.
                         right_fingering = note.get("rightFingering")
@@ -682,7 +783,7 @@ def songsterr(document, *, track_indices=None):
                             raise ValueError(nloc + "/rightFingering: invalid picking-hand annotation")
                         if note.get("rest"):
                             continue
-                        _active_unknown(note, note_keys, {"id", "velocity", "finger", "leftFinger", "rightFinger", "rightFingering"}, nloc, ignored)
+                        _active_unknown(note, note_keys, {"id", "velocity", "finger", "leftFinger", "rightFinger", "rightFingering", "grace"}, nloc, ignored)
                         fx = {}
                         fingering = note.get("leftFingering")
                         if fingering is not None:

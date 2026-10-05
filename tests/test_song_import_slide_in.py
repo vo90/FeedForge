@@ -144,7 +144,7 @@ def incoming_example():
 def test_hand_calculated_incoming_and_outgoing_archive_passes(tmp_path):
     source, package = incoming_example()
     report = verify(tmp_path, source, package)
-    assert report["version"] == 87 and report["status"] == "passed", report
+    assert report["version"] == 88 and report["status"] == "passed", report
     assert "slide_in_destination_timing" in report["scope"]
 
 

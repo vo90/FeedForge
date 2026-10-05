@@ -10,9 +10,10 @@ from .songsterr_harmonics import exact_natural, natural_alias, source_target
 from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
 from .songsterr_fields import validate_sustain_pedal, effective_dots, validate_bend_point_vibrato
+from .songsterr_legacy import LEGACY_METADATA, validate_legacy_field
 from .model import ScoreImportError, integer, rational
 
-VERSION = 87
+VERSION = 88
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -26,6 +27,7 @@ KNOWN = {
 }
 KNOWN["measure"].add("doubleBarline")
 KNOWN["measure"].add("clef")
+KNOWN["measure"].add("index")
 KNOWN["beat"].update({"slapping", "popping", "upArpeggio", "downArpeggio"})
 KNOWN["tempo"].add("dotted")
 KNOWN["bend_point"].add("precisePosition")
@@ -40,6 +42,7 @@ KNOWN["note"].add("tremolo")
 KNOWN["beat"].add("hasRasgueado")
 KNOWN["beat"].add("sustainPedal")
 KNOWN["beat"].add("dotted")
+KNOWN["beat"].add("tempo")
 LIMITATIONS = {
     ("beat", "vibrato"): "Beat-level vibrato is retained as a written instruction; its playback timing is not confirmed by the source player.",
     ("beat", "wideVibrato"): "Beat-level wide vibrato is retained as a written instruction; its playback timing is not confirmed by the source player.",
@@ -63,7 +66,7 @@ LIMITATIONS = {
 UNIMPLEMENTED = {
     "measure": {"direction", "directions", "fromDirection", "fermata", "freeTime"},
     "beat": {"grace", "graceNotes", "stroke", "whammy"},
-    "note": {"grace", "graceNote", "tremoloBar", "whammy", "harmonicFret", "vibratoWithTremoloBar"},
+    "note": {"graceNote", "tremoloBar", "whammy", "harmonicFret", "vibratoWithTremoloBar"},
     "tempo": set(),
 }
 
@@ -93,7 +96,7 @@ def add_finding(report, *, feature, category, impact, message, location="source"
         encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
         decision = DECISIONS.get(feature.split(".")[-1]) if impact == "blocking" else None
         report["findings"].append({"feature": feature, "category": category, "impact": impact,
-            "workStatus": "decision_required" if decision else "gameplay_omission" if impact == "gameplay_omission" else "display_limitation" if impact == "display_or_expression" else "technical_work",
+            "workStatus": "decision_required" if decision else "source_retained" if impact == "source_retained" else "gameplay_omission" if impact == "gameplay_omission" else "display_limitation" if impact == "display_or_expression" else "technical_work",
             **({"decisionId": decision} if decision else {}),
             "message": message, "location": location, **coordinates,
             "value": deepcopy(value) if len(encoded) <= 2048 else encoded[:2048],
@@ -102,7 +105,7 @@ def add_finding(report, *, feature, category, impact, message, location="source"
         report["truncated"] = True
     if impact == "blocking" or report["truncated"]:
         report["status"] = "blocked"
-    elif report["status"] != "blocked":
+    elif impact != "source_retained" and report["status"] != "blocked":
         report["status"] = "limitations"
 
 
@@ -130,6 +133,21 @@ def inspect_songsterr(document, *, track_indices=None):
                 add_finding(report, feature=f"beat.{field}", category="source_structure", impact="blocking",
                             message=str(exc), location=path + "/" + field, value=value, **coordinates)
         for key, value in obj.items():
+            if (scope, key) in LEGACY_METADATA:
+                try:
+                    validate_legacy_field(scope, key, value)
+                except ScoreImportError as exc:
+                    try:
+                        json.dumps(value, allow_nan=False)
+                        diagnostic = value
+                    except (TypeError, ValueError):
+                        diagnostic = str(value)
+                    add_finding(report, feature=f"{scope}.{key}", category="source_structure", impact="blocking",
+                                message=str(exc), location=path + "/" + key, value=diagnostic, **coordinates)
+                else:
+                    add_finding(report, feature=f"{scope}.{key}", category="source_metadata", impact="source_retained",
+                                message=LEGACY_METADATA[scope, key], location=path + "/" + key, value=value, **coordinates)
+                continue
             if scope == "bend_point" and key == "vibrato":
                 try:
                     validate_bend_point_vibrato(value)
@@ -227,6 +245,15 @@ def inspect_songsterr(document, *, track_indices=None):
         add_finding(report, feature="track_inventory", category="source_structure", impact="blocking",
                     message="Track metadata and note parts are incomplete.")
         return report
+    shifted_context = False
+    for part in parts:
+        auto = part.get("automations", {}) if isinstance(part, dict) else {}
+        raw = auto.get("tempo", []) if isinstance(auto, dict) else []
+        if isinstance(raw, list) and raw and isinstance(raw[0], dict):
+            try:
+                shifted_context = shifted_context or integer(raw[0].get("measure"), "tempo measure") > 0
+            except ScoreImportError:
+                pass  # Each part still receives its own structural finding.
     for pi, (meta, part) in enumerate(zip(metadata, parts)):
         if not isinstance(meta, dict) or not isinstance(part, dict):
             add_finding(report, feature="track", category="source_structure", impact="blocking",
@@ -243,21 +270,40 @@ def inspect_songsterr(document, *, track_indices=None):
         inspect(auto, "automations", f"parts/{pi}/automations", coordinates)
         if isinstance(auto, dict):
             tempos = auto.get("tempo", []) if isinstance(auto.get("tempo", []), list) else []
-            from .songsterr_automation import inactive_tempo_context
-            unused_context = inactive_tempo_context(auto)
+            from .songsterr_automation import effective_tempo_entries, inactive_tempo_context
+            try:
+                effective_tempos, origin = effective_tempo_entries(auto, qualify_clock=shifted_context)
+            except ScoreImportError as exc:
+                value = tempos[0].get("measure") if tempos and isinstance(tempos[0], dict) else auto.get("tempo", [])
+                try:
+                    json.dumps(value, allow_nan=False)
+                except (TypeError, ValueError):
+                    value = str(value)
+                add_finding(report, feature="tempo.origin", category="source_interpretation", impact="blocking",
+                            message=str(exc), location=f"parts/{pi}/automations/tempo/0/measure", value=value, **coordinates)
+                effective_tempos = None
+                unused_context = False
+            else:
+                unused_context = inactive_tempo_context({**auto, "tempo": effective_tempos})
+                if origin:
+                    add_finding(report, feature="tempo.origin", category="source_interpretation", impact="source_retained",
+                                message="Tempo measure coordinates are relative to the first authored instruction. Original coordinates are retained in the source.",
+                                location=f"parts/{pi}/automations/tempo/0/measure",
+                                value={"authoredOrigin": origin, "effectiveOrigin": 0}, **coordinates)
             positions = {}
             for ti, tempo in enumerate(tempos):
                 inspect(tempo, "tempo", f"parts/{pi}/automations/tempo/{ti}", coordinates)
-                if isinstance(tempo, dict):
+                if isinstance(tempo, dict) and effective_tempos is not None:
                     try:
-                        key = integer(tempo.get('measure'), 'tempo measure'), rational(tempo.get('position', 0), 'tempo position')
+                        effective = effective_tempos[ti]
+                        key = integer(effective.get('measure'), 'tempo measure'), rational(effective.get('position', 0), 'tempo position')
                     except ScoreImportError:
                         continue  # The parser reports malformed coordinates.
                     positions.setdefault(key, []).append(ti)
                     if key[0] >= len(part.get('measures', [])):
                         if unused_context:
                             add_finding(report, feature='tempo.outside_score', category='source_interpretation', impact='display_or_expression',
-                                        message='This tempo instruction belongs to a bar beyond the written score. It has no playback effect without an active ramp or initial-clock shift; the complete instruction is retained in the original source.',
+                                        message='After origin normalization, this tempo instruction belongs to a bar beyond the written score. Without an active ramp it has no playback effect; the complete instruction is retained in the original source.',
                                         location=f'parts/{pi}/automations/tempo/{ti}', value=tempo, **coordinates)
             for indices in positions.values():
                 winner = indices[-1]

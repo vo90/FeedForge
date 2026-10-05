@@ -15,7 +15,8 @@ from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
 from .songsterr_whammy import source_whammy
 from .songsterr_harmonics import exact_natural, natural_target, natural_alias, source_target
-from .songsterr_automation import performed_tempos
+from .songsterr_automation import performed_tempos, effective_tempo_entries
+from .songsterr_legacy import validate_legacy_metadata
 from .songsterr_sections import section_label
 
 
@@ -67,7 +68,7 @@ def _note(raw, beat, position, duration, strings, tpqn=16384):
                         or raw.get("slide") not in (None, "shift", "upwards", "downwards")
                         and not (scrape in ('up', 'down') and raw.get('slide') in ('above', 'below'))):
         raise ScoreImportError("An unpitched mute with a pitch gesture needs additional representation support.")
-    unsupported = ("grace", "graceNote", "tremoloBar", "whammy")
+    unsupported = ("graceNote", "tremoloBar", "whammy")
     for key in unsupported:
         if raw.get(key):
             raise ScoreImportError(f"Songsterr {key} needs additional conversion support.")
@@ -247,6 +248,7 @@ def parse(document: dict, *, track_indices=None) -> Score:
         if n <= 0 or d <= 0:
             raise ScoreImportError("Invalid time signature.")
         for m in candidates:
+            validate_legacy_metadata(m, "measure")
             if any(m.get(key) for key in ("direction", "directions", "fromDirection", "fermata", "freeTime")):
                 raise ScoreImportError("Songsterr navigation/free time requires additional support.")
             if m.get("tripletFeel") not in (None, "off", *FEELS):
@@ -268,6 +270,15 @@ def parse(document: dict, *, track_indices=None) -> Score:
     measures[0].length = actual_opening
     tempo_events = {}
     part_clocks = []
+    normalized_tempos = []
+    for part in parts:
+        automations = part.get("automations", {})
+        if not isinstance(automations, dict):
+            raise ScoreImportError("Invalid Songsterr automation data.")
+        normalized_tempos.append(effective_tempo_entries(automations))
+    shifted_origin = any(origin for _, origin in normalized_tempos)
+    if shifted_origin:
+        normalized_tempos = [effective_tempo_entries(part.get("automations", {}), qualify_clock=True) for part in parts]
     for part_index, part in enumerate(parts):
         automations = part.get("automations", {})
         if not isinstance(automations, dict):
@@ -275,11 +286,9 @@ def parse(document: dict, *, track_indices=None) -> Score:
         inventory.inspect(automations, "Songsterr automations", f"$.parts[{part_index}].automations",
                           playable={"tempo", "fermata", "gradualTempo"}, retained={"volume", "balance"}, strict=True)
         part_events, effective = {}, {}
-        raw_tempos = automations.get("tempo", [])
-        if not isinstance(raw_tempos, list):
-            raise ScoreImportError("Invalid Songsterr tempo list.")
+        raw_tempos, origin = normalized_tempos[part_index]
         from .songsterr_automation import inactive_tempo_context
-        unused_context = inactive_tempo_context(automations)
+        unused_context = inactive_tempo_context({**automations, "tempo": raw_tempos})
         for tempo_index, tempo in enumerate(raw_tempos):
             inventory.inspect(tempo, "Songsterr tempo", f"$.parts[{part_index}].automations.tempo[{tempo_index}]",
                               playable={"measure", "position", "bpm", "type", "linear", "dotted"}, retained={"text", "visible"}, strict=True)
@@ -324,10 +333,10 @@ def parse(document: dict, *, track_indices=None) -> Score:
             if key in tempo_events and tempo_events[key] != bpm:
                 raise ScoreImportError("Tracks disagree about tempo.")
             tempo_events[key] = bpm
-    if any(p.get("automations", {}).get("gradualTempo") or p.get("automations", {}).get("fermata") for p in parts):
+    if shifted_origin or any(p.get("automations", {}).get("gradualTempo") or p.get("automations", {}).get("fermata") for p in parts):
         clocks = []
         for events in part_clocks:
-            if not events:
+            if not events and not shifted_origin:
                 continue
             changes, prior = [], None
             for point, bpm in sorted(events.items()):
@@ -373,7 +382,7 @@ def parse(document: dict, *, track_indices=None) -> Score:
         for bi, measure in enumerate(part["measures"]):
             inventory.inspect(measure, "Songsterr measure", f"$.parts[{index}].measures[{bi}]",
                               playable={"signature", "voices", "rest", "repeat", "repeatStart", "alternateEnding", "marker", "direction", "directions", "fromDirection", "fermata", "freeTime", "tripletFeel"},
-                              notation={"signature", "voices", "rest", "clef"}, retained={"keySignature", "doubleBarline"}, strict=True)
+                              notation={"signature", "voices", "rest", "clef"}, retained={"keySignature", "doubleBarline", "index"}, strict=True)
             if measure.get("clef") not in (None, "G2", "F4", "C3", "C4", "neutral"):
                 raise ScoreImportError("This authored clef needs additional notation support.")
             if "doubleBarline" in measure and not isinstance(measure["doubleBarline"], bool):
@@ -399,10 +408,11 @@ def parse(document: dict, *, track_indices=None) -> Score:
                 written_voice = WrittenVoice(voice_id, source_index=vi)
                 for beat_index, beat in enumerate(voice["beats"]):
                     beat_id = f"{voice_id}:{beat_index}"
+                    validate_legacy_metadata(beat, "beat")
                     inventory.inspect(beat, "Songsterr beat", beat_id,
                                       playable={"duration", "notes", "rest", "palmMute", "tremolo", "tap", "tapping", "slap", "pop", "slapping", "popping", "vibrato", "wideVibrato", "vibratoWithTremoloBar", "letRing", "graceNote", "grace", "graceNotes", "tremoloBar", "stroke", "whammy", "pickStroke", "brushStroke", "arpeggio", "upStroke", "downStroke", "upArpeggio", "downArpeggio"},
                                       notation={"duration", "notes", "rest", "type", "dots", "dotted", "tuplet", "text", "velocity", "gradualVelocity", "letRing", "palmMute", "tap", "tapping", "slap", "pop", "vibrato", "wideVibrato", "graceNote"},
-                                      retained={"chord", "wahwah", "hasRasgueado", "sustainPedal"},
+                                      retained={"chord", "wahwah", "hasRasgueado", "sustainPedal", "tempo"},
                                       # Attack offsets are kept in the playable chart.
                                       layout={"beamStart", "beamStop", "tupletStart", "tupletStop"},
                                       strict=True)
@@ -431,10 +441,11 @@ def parse(document: dict, *, track_indices=None) -> Score:
                     written_beat.chord_label = _chord_label(beat)
                     for note_index, note in enumerate(beat["notes"]):
                         source_id = f"{beat_id}:{note_index}"
+                        validate_legacy_metadata(note, "note")
                         inventory.inspect(note, "Songsterr note", source_id,
-                                          playable={"string", "fret", "rest", "tie", "dead", "vibrato", "wideVibrato", "ghost", "accentuated", "tap", "tapping", "hp", "harmonic", "slide", "bend", "trill", "grace", "graceNote", "tremoloBar", "whammy", "staccato", "leftHandVibrato", "pickScrape", "leftFingering", "tremolo"},
+                                          playable={"string", "fret", "rest", "tie", "dead", "vibrato", "wideVibrato", "ghost", "accentuated", "tap", "tapping", "hp", "harmonic", "slide", "bend", "trill", "graceNote", "tremoloBar", "whammy", "staccato", "leftHandVibrato", "pickScrape", "leftFingering", "tremolo"},
                                           notation={"string", "fret", "rest", "tie", "dead", "vibrato", "wideVibrato", "ghost", "accentuated", "tap", "tapping", "hp", "leftHandVibrato"},
-                                          retained={"harmonicFret", "rightFingering"}, strict=True)
+                                          retained={"harmonicFret", "rightFingering", "grace"}, strict=True)
                         validate_right_finger(note.get("rightFingering"))
                         if isinstance(note.get("bend"), dict):
                             inventory.inspect(note["bend"], "Songsterr bend", source_id + ".bend", playable={"points", "tone"}, strict=True)
