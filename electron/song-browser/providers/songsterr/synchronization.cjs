@@ -61,7 +61,8 @@ function selectSynchronization(entries, identity) {
     const values = entry.points;
     if (!Array.isArray(values) || values.length < 2 || values.length > MAX_MEASURES + 1
         || values.some((point, index) => typeof point !== 'number' || !Number.isFinite(point) || Math.abs(point) > 86400
-          || (index > 0 && point <= values[index - 1]))) return unavailableSynchronization(identity, 'invalid_points');
+          || (index > 0 && (point < values[index - 1] || point === values[index - 1] && point !== values[0])))) return unavailableSynchronization(identity, 'invalid_points');
+    if (values.at(-1) === values[0]) return unavailableSynchronization(identity, 'invalid_points');
     if (points && (points.length !== values.length || points.some((point, index) => point !== values[index]))) {
       return unavailableSynchronization(identity, 'ambiguous');
     }

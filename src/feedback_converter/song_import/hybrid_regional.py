@@ -476,7 +476,9 @@ def finish(result, primary, performance, options, alignment):
             if (tid, r['kind'], r['index']) in chosen:
                 status, reason = 'included', 'copied_source_event'
             elif not r['available']:
-                status, reason = 'source_limitation', 'recording_end'
+                from .collapsed_opening import omitted
+                status = 'source_limitation'
+                reason = 'recording_opening' if all(omitted(alignment, n['t']) for n in r['notes']) else 'recording_end'
             elif tid == main_id:
                 status, reason = 'superseded', 'regional_primary'
                 superseded = sorted({p['trackId'] for p in [*primary['passages'], *primary['primaryReservations']]

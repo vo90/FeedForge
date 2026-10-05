@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 86
+VERSION = 87
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -822,6 +822,12 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             manifest = yaml.safe_load(z.read("manifest.yaml"))
             _finite(manifest, "manifest", check)
             recipe = manifest.get("song_import", {})
+            if alignment.get('collapsedOpening') or recipe.get('collapsedOpening') or recipe.get('collapsedOpeningFile'):
+                from .verify_collapsed_opening import verify as verify_opening
+                retained = _json(z, recipe.get('collapsedOpeningFile', ''), check) if recipe.get('collapsedOpeningFile') else None
+                verify_opening(wanted, alignment, recipe, retained, report['sourceSha256'], check)
+                report['omissions'] = {'omittedOpeningNotes': len(wanted.get('collapsed_opening_notes', []))}
+                report['scope'].append('collapsed_opening_omission_accounting')
             if any(n['note'].get('slide_interval') for p in wanted['parts'] for n in p['notes']):
                 if recipe.get('preservationContract', 0) < 80:
                     check.fail('contract', 'manifest', 'Targeted slide intervals require preservation contract 80.')
@@ -1152,9 +1158,9 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration <= 0:
                 raise ValueError("manifest/duration: invalid audio duration")
             from .verify_high_frets import verify as verify_omissions
-            omissions = verify_omissions(source, wanted, score_path, recipe, z, check, _json)
+            omissions = verify_omissions(source, wanted, score_path, recipe, z, check, _json, alignment)
             if omissions:
-                report["omissions"] = omissions
+                report.setdefault("omissions", {}).update(omissions)
                 report["scope"].append("declared_high_fret_gameplay_omissions")
                 check.equal("omission_compatibility", "import/compatibility", omissions, compatibility.get("omissions"))
                 report["counts"]["expectedPlayableNotes"] = sum(len(p["notes"]) for p in wanted["parts"])

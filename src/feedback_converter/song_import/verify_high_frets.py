@@ -78,14 +78,16 @@ def check_receipt(expected_receipt, actual, check):
                     check.fail("omission_receipt", location + "/" + field, "Omission event identity differs from the original source.")
 
 
-def verify(source, wanted, source_path, recipe, archive, check, read_json):
+def verify(source, wanted, source_path, recipe, archive, check, read_json, alignment=None):
     if source.format != "songsterr":
         if recipe.get("highFretOmissionsFile") or recipe.get("omissions"):
             check.fail("omission_contract", "import", "The high-fret policy applies only to Songsterr imports.")
         return None
+    from copy import deepcopy
+    mapped = {**wanted, "parts": deepcopy(wanted["pre_opening_parts"])} if "pre_opening_parts" in wanted else wanted
     has_high = any(not n["note"].get("pick_scrape_marks") and
                    any(type(n["note"].get(k)) is int and 24 < n["note"][k] <= 48 for k in ("f", "sl", "slu"))
-                   for p in wanted["parts"] for n in p["notes"])
+                   for p in mapped["parts"] for n in p["notes"])
     filename = recipe.get("highFretOmissionsFile")
     if not has_high:
         if filename or recipe.get("omissions") or "import/high-fret-omissions.json" in archive.namelist():
@@ -98,7 +100,10 @@ def verify(source, wanted, source_path, recipe, archive, check, read_json):
     if recipe.get('preservationContract',0)<27 and not recipe.get('voicesFile'):
         from .verify_timeline import _expected as expected
     reference = expected(source, {"offset": 0, "scale": 1})
-    receipt = reconstruct(reference, wanted)
+    receipt = reconstruct(reference, mapped)
+    if mapped is not wanted:
+        from .verify_collapsed_opening import project
+        wanted["parts"] = project(mapped, alignment)["parts"]
     receipt["sourceSha256"] = hashlib.sha256(source_path.read_bytes()).hexdigest()
     check.equal("omission_file", "import", "import/high-fret-omissions.json", filename)
     if filename:

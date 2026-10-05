@@ -100,6 +100,8 @@ def project(source, alignment, mapped, reconstruct):
                 duration=max(ref['notes'][i]['note']['sus'] for i in indices)
                 if rule=='let-ring':
                     b['sus']=max(target['notes'][i]['note']['sus'] for i in indices);b['lr']=True
+                    if '_scoreEnd' in target['notes'][base]:
+                        target['notes'][base]['_scoreEnd'] = max(target['notes'][i]['_scoreEnd'] for i in indices)
                 target['notes'][base]['locations']=locations
                 discard.update(i for i in indices if i!=base);affected.update(target['notes'][i]['note']['t'] for i in indices)
                 entry['combinedAttacks'].append({'sourceIds':ids,'time':round(a['t'],6),'duration':round(duration,6),

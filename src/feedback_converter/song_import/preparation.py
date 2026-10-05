@@ -9,6 +9,7 @@ import soundfile as sf
 
 from .alignment import map_time
 from .audio import ImportFailure, sha256_file
+from . import collapsed_opening
 
 POLICY = 'minimum-two-second-preparation-v1'
 
@@ -34,8 +35,8 @@ def finalize(performance,audio,alignment,directory):
     playable=project(performance)[0] if performance.get('source',{}).get('format')=='songsterr' else performance
     starts=[]
     for track in playable['tracks']:
-        starts += [map_time(alignment,n['t']) for n in track.get('notes',[])]
-        starts += [map_time(alignment,n.get('t',c['t'])) for c in track.get('chords',[]) for n in c.get('notes',[])]
+        starts += [map_time(alignment,n['t']) for n in track.get('notes',[]) if not collapsed_opening.omitted(alignment,n['t'])]
+        starts += [map_time(alignment,n.get('t',c['t'])) for c in track.get('chords',[]) for n in c.get('notes',[]) if not collapsed_opening.omitted(alignment,n.get('t',c['t']))]
     if not starts or min(starts)<0:
         raise ImportFailure('alignment_failed','Preparation time requires a synchronized playable chart.')
     first=min(starts)
@@ -84,6 +85,8 @@ def finalize(performance,audio,alignment,directory):
         times=[p['time'] for p in points]
         tempos=[]
         for t in sorted({a['score'] for a in result['anchors'][:-1]}|set(times)):
+            if collapsed_opening.omitted(result,t):
+                continue
             bpm=points[bisect_right(times,t)-1]['bpm']/source_time_scale(result,t)
             row={'time':max(0,map_source_time(result,t,allow_negative=True)),'bpm':bpm}
             if tempos and tempos[-1]['time']==row['time']:tempos[-1]=row

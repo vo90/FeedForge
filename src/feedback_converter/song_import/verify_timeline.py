@@ -129,10 +129,30 @@ class RecordingMap:
     def __init__(self, alignment):
         self.piecewise = alignment.get("mapping") == "piecewise-linear"
         self.anchors = []
+        self.opening_end = F(0)
+        self.collapsed_count = 0
         if self.piecewise:
             self.anchors = [(fraction(a["score"]), fraction(a["audio"])) for a in alignment["anchors"]]
-            if len(self.anchors) < 2 or any(s1 <= s0 or a1 <= a0 for (s0, a0), (s1, a1) in zip(self.anchors, self.anchors[1:])):
-                raise ValueError("alignment: anchors must be strictly increasing")
+            if len(self.anchors) < 2:
+                raise ValueError("alignment: missing anchors")
+            while (self.collapsed_count + 1 < len(self.anchors)
+                   and self.anchors[self.collapsed_count + 1][1] == self.anchors[0][1]):
+                self.collapsed_count += 1
+            skipped = alignment.get('collapsedOpening')
+            if self.collapsed_count:
+                if (not isinstance(skipped, dict) or skipped.get('version') != 1
+                        or skipped.get('policy') != 'songsterr-collapsed-opening-v1'
+                        or alignment.get('method') != 'songsterr-video-points-v1'
+                        or skipped.get('measureCount') != self.collapsed_count
+                        or self.collapsed_count >= len(self.anchors)-1
+                        or alignment.get('openingRepair') or alignment.get('provenance', {}).get('openingStrum')):
+                    raise ValueError('alignment: unverified collapsed opening')
+                self.opening_end = self.anchors[self.collapsed_count][0]
+            elif skipped is not None:
+                raise ValueError('alignment: unexpected collapsed opening')
+            if any(s1 <= s0 or a1 < a0 or (i >= self.collapsed_count and a1 == a0)
+                   for i, ((s0, a0), (s1, a1)) in enumerate(zip(self.anchors, self.anchors[1:]))):
+                raise ValueError("alignment: anchors must increase after the skipped opening")
             self.scores = [a[0] for a in self.anchors]
             self.lower = self.scores[0]
             opening = alignment.get('provenance', {}).get('openingStrum')
@@ -177,7 +197,9 @@ class RecordingMap:
 def expected(source, alignment):
     from .verify_voices import project
     result = _expected(source, alignment)
-    return project(source, alignment, result, _expected) if source.format == 'songsterr' else result
+    result = project(source, alignment, result, _expected) if source.format == 'songsterr' else result
+    from .verify_collapsed_opening import project as project_opening
+    return project_opening(result, alignment)
 
 
 def _expected(source, alignment):
@@ -199,14 +221,14 @@ def _expected(source, alignment):
         start_time = recording.at(clock.at(origin))
         measure_facts.append({"idx": occurrence + 1, "source_measure": index + 1, "t": start_time,
                               "ts": list(bar.signature), "written_tempo": float(inherited_tempos[index]),
-                              "tempo": float(inherited_tempos[index] / recording.ratio(clock.at(origin))),
+                              "tempo": float(inherited_tempos[index] / recording.ratio(max(clock.at(origin), recording.opening_end))),
                               "duration_seconds": round(recording.at(clock.at(origin + bar.length)) - start_time, 6)})
         if bar.pickup:
             measure_facts[-1]['pickup'] = True
         q = bar.length % F(4, bar.signature[1]) if bar.pickup else F(0)
         while q < bar.length:
             time = recording.at(clock.at(origin + q))
-            if time >= 0:
+            if time >= 0 and clock.at(origin + q) >= recording.opening_end - F(1,10**8):
                 if q == 0 and not bar.pickup:
                     visible_downbeats += 1
                 result["beats"].append({"time": time, "measure": visible_downbeats if q == 0 and not bar.pickup else -1})
@@ -214,7 +236,11 @@ def _expected(source, alignment):
         if bar.section:
             time = recording.at(clock.at(origin))
             if time >= 0:
-                result["sections"].append({"time": time, "name": bar.section})
+                row = {"time": time, "name": bar.section}
+                if recording.collapsed_count and result["sections"] and result["sections"][-1]["time"] == time:
+                    result["sections"][-1] = row
+                else:
+                    result["sections"].append(row)
         if bar.signature != previous_signature:
             meter = {"time": max(0., recording.at(clock.at(origin))), "ts": list(bar.signature)}
             # If several silent bars precede audio, only the last meter at its
@@ -229,6 +255,8 @@ def _expected(source, alignment):
     if recording.piecewise:
         tempo_seconds.update(recording.scores[:-1])
     for time in sorted(tempo_seconds):
+        if time < recording.opening_end - F(1,10**8):
+            continue
         idx = max(0, bisect_right(clock.seconds, time + F(1, 10_000_000)) - 1)
         bpm = float(clock.bpms[idx] / recording.ratio(time))
         entry = {"time": max(0., recording.at(time)), "bpm": bpm}
@@ -668,7 +696,7 @@ def _expected(source, alignment):
                     curve.append(p)
                 row["bnv"] = [{"t": round(recording.at(p) - mapped_start, 6), "v": float(v)} for p, v in curve]
                 row["bn"] = float(max((v for _, v in curve), key=abs))
-            rendered.append({"note": row, "locations": n["locations"], "occurrence": n["occurrence"], "beat": n["beat"],
+            rendered.append({**({"_scoreStart": float(start), "_scoreEnd": float(end)} if recording.collapsed_count else {}), "note": row, "locations": n["locations"], "occurrence": n["occurrence"], "beat": n["beat"],
                              **({'trill': True} if n.get('trill') else {})})
         notation_beats = []
         for occurrence, index in enumerate(order):
@@ -679,7 +707,7 @@ def _expected(source, alignment):
                                        "end": recording.at(clock.at(origin + beat["q"] + beat["length"])),
                                        "quarter": beat["written_q"], "length": beat["length"], "rest": beat["rest"],
                                        "notation": beat["notation"], "notes": [notation_notes[(occurrence, n.location)] for n in beat["notes"]]})
-        rendered.sort(key=lambda item: (item["note"]["t"], item["note"]["s"]))
+        rendered.sort(key=lambda item: (item.get("_scoreStart", item["note"]["t"]), item["note"]["s"]))
         result["parts"].append({"source": part, "notes": rendered, "notation_beats": notation_beats, "notation_measures": measure_facts,
                                 **({'consumed_strum_omissions': True} if omissions else {})})
     result["score_duration"] = float(clock.at(clock.quarters))
