@@ -155,7 +155,7 @@ def classify_preparation_differences(source, differences):
                 if measure.get('signature'): meter = measure['signature']
             beats = measures[mi]['voices'][vi]['beats']; b = beats[bi]
             qualifies = (len(beats) == 1 and b.get('rest') is True and b.get('type') == 1
-                         and b.get('duration') == [1, 1] and not any(b.get(k) for k in ('dots','tuplet','graceNote'))
+                         and b.get('duration') == [1, 1] and not any(b.get(k) for k in ('dots','dotted','tuplet','graceNote'))
                          and b.get('notes') and all(n.get('rest') is True for n in b['notes'])
                          and Fraction(d['converter']) == Fraction(4*meter[0], meter[1]))
         if qualifies:

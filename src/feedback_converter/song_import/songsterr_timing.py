@@ -6,7 +6,7 @@ All offsets remain rational until the audio clock is applied.
 from fractions import Fraction as F
 
 from .model import ScoreImportError, integer, rational
-from .songsterr_fields import whole_measure_rest, bounded_dotted_whole_rest
+from .songsterr_fields import whole_measure_rest, bounded_dotted_whole_rest, effective_dots
 
 
 FEELS = {f"{prefix}{unit}": (F(4, unit), first, second)
@@ -121,9 +121,7 @@ def voice_timing(beats, bar_length, performed_lengths=None, *, previous=None, in
             group = beats[index:principal]
             # The source clock allocates grace time to beats, including rests.
             # A grace rest can deliberately delay the following attack.
-            dots = max(integer(b.get("dots", 0), "grace dots") for b in group)
-            if not 0 <= dots <= 4:
-                raise ScoreImportError("Invalid grace dot count.")
+            dots = max(effective_dots(b) for b in group)
             reserved = F(1, 8 if dots >= 2 else 4 if dots == 1 else 2)
             # All source group budgets are calculated before grace durations
             # are subtracted. A previous on-beat group must not shrink the

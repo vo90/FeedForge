@@ -1,7 +1,28 @@
 """Explicit Songsterr fields, without altering the retained source document."""
 from fractions import Fraction as F
 
-from .model import ScoreImportError, rational
+from .model import ScoreImportError, integer, rational
+
+
+def effective_dots(beat):
+    """Read the modern count or legacy flag without reapplying written duration.
+
+    The source player prefers a positive dots count; zero/null falls back to
+    dotted. Validate both fields even when the modern count takes precedence.
+    """
+    legacy = beat.get("dotted")
+    if legacy is not None and type(legacy) is not bool:
+        raise ScoreImportError("Invalid dotted flag; expected a boolean.")
+    value = beat.get("dots")
+    if value is None:
+        dots = 0
+    else:
+        if type(value) not in (int, float):
+            raise ScoreImportError("Invalid dots count; expected a number.")
+        dots = integer(value, "dots count")
+        if not 0 <= dots <= 4:
+            raise ScoreImportError("Unsupported dots count.")
+    return dots if dots > 0 else int(legacy is True)
 
 
 def validate_sustain_pedal(value):
@@ -16,7 +37,7 @@ def whole_measure_rest(beats):
         return False
     b = beats[0]
     return (b.get("rest") is True and b.get("type") == 1
-            and not b.get("graceNote") and not b.get("dots") and not b.get("tuplet")
+            and not b.get("graceNote") and not effective_dots(b) and not b.get("tuplet")
             and rational(b.get("duration"), "whole rest") == 1
             and isinstance(b.get("notes"), list)
             and all(n.get("rest") is True for n in b["notes"]))
@@ -32,7 +53,7 @@ def bounded_dotted_whole_rest(beats, bar_length):
     if len(beats) != 1:
         return False
     b = beats[0]
-    dots = b.get("dots")
+    dots = effective_dots(b)
     if (b.get("rest") is not True or b.get("type") != 1
             or type(dots) is not int or not 1 <= dots <= 4
             or b.get("graceNote") or b.get("tuplet")

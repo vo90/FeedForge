@@ -10,7 +10,7 @@ from fractions import Fraction
 from .inventory import FeatureInventory
 from .model import Measure, Note, Score, ScoreImportError, Track, WrittenBeat, WrittenVoice, integer, rational
 from .songsterr_timing import part_timing, strum_offsets, FEELS
-from .songsterr_fields import bend_points, validate_sustain_pedal
+from .songsterr_fields import bend_points, validate_sustain_pedal, effective_dots
 from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
 from .songsterr_whammy import source_whammy
@@ -167,9 +167,7 @@ def _note(raw, beat, position, duration, strings, tpqn=16384):
 def _written_rhythm(beat, duration):
     """Keep supplied notation; derive a ratio only from two explicit durations."""
     denominator = integer(beat["type"], "written duration") if beat.get("type") is not None else None
-    dots = integer(beat.get("dots", 0), "dot count")
-    if not 0 <= dots <= 4:
-        raise ScoreImportError("Unsupported written dot count.")
+    dots = effective_dots(beat)
     if denominator is None:
         for candidate in (1, 2, 4, 8, 16, 32, 64, 128, 256):
             if Fraction(4, candidate) * (2 - Fraction(1, 2 ** dots)) == duration:
@@ -403,7 +401,7 @@ def parse(document: dict, *, track_indices=None) -> Score:
                     beat_id = f"{voice_id}:{beat_index}"
                     inventory.inspect(beat, "Songsterr beat", beat_id,
                                       playable={"duration", "notes", "rest", "palmMute", "tremolo", "tap", "tapping", "slap", "pop", "slapping", "popping", "vibrato", "wideVibrato", "vibratoWithTremoloBar", "letRing", "graceNote", "grace", "graceNotes", "tremoloBar", "stroke", "whammy", "pickStroke", "brushStroke", "arpeggio", "upStroke", "downStroke", "upArpeggio", "downArpeggio"},
-                                      notation={"duration", "notes", "rest", "type", "dots", "tuplet", "text", "velocity", "gradualVelocity", "letRing", "palmMute", "tap", "tapping", "slap", "pop", "vibrato", "wideVibrato", "graceNote"},
+                                      notation={"duration", "notes", "rest", "type", "dots", "dotted", "tuplet", "text", "velocity", "gradualVelocity", "letRing", "palmMute", "tap", "tapping", "slap", "pop", "vibrato", "wideVibrato", "graceNote"},
                                       retained={"chord", "wahwah", "hasRasgueado", "sustainPedal"},
                                       # Attack offsets are kept in the playable chart.
                                       layout={"beamStart", "beamStop", "tupletStart", "tupletStop"},

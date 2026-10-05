@@ -9,10 +9,10 @@ import math
 from .songsterr_harmonics import exact_natural, natural_alias, source_target
 from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
-from .songsterr_fields import validate_sustain_pedal
+from .songsterr_fields import validate_sustain_pedal, effective_dots
 from .model import ScoreImportError, integer, rational
 
-VERSION = 84
+VERSION = 85
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -38,6 +38,7 @@ KNOWN["note"].add("rightFingering")
 KNOWN["note"].add("tremolo")
 KNOWN["beat"].add("hasRasgueado")
 KNOWN["beat"].add("sustainPedal")
+KNOWN["beat"].add("dotted")
 LIMITATIONS = {
     ("beat", "vibrato"): "Beat-level vibrato is retained as a written instruction; its playback timing is not confirmed by the source player.",
     ("beat", "wideVibrato"): "Beat-level wide vibrato is retained as a written instruction; its playback timing is not confirmed by the source player.",
@@ -117,6 +118,16 @@ def inspect_songsterr(document, *, track_indices=None):
             add_finding(report, feature=scope, category="source_structure", impact="blocking",
                         message="Expected a source object.", location=path, value=obj, **coordinates)
             return
+        if scope == "beat":
+            try:
+                effective_dots(obj)
+            except ScoreImportError as exc:
+                field = "dotted" if obj.get("dotted") is not None and type(obj["dotted"]) is not bool else "dots"
+                value = obj.get(field)
+                if isinstance(value, float) and not math.isfinite(value):
+                    value = str(value)
+                add_finding(report, feature=f"beat.{field}", category="source_structure", impact="blocking",
+                            message=str(exc), location=path + "/" + field, value=value, **coordinates)
         for key, value in obj.items():
             if scope == "beat" and key == "sustainPedal":
                 try:
