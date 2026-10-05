@@ -564,6 +564,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     if performance.get('fingerBendTimingEvidence'):
         if any(e.get('barCurve') and e.get('terminalSlideOut') for e in performance['fingerBendTimingEvidence']) and (recipe or {}).get('preservationContract', 0) < 81:
             raise ImportFailure('unsupported_score', 'Finger bends with explicit bar curves and terminal slides require preservation contract 81.')
+        if any(e.get('terminalSlideOut', {}).get('continuedSemiHarmonic') for e in performance['fingerBendTimingEvidence']) and (recipe or {}).get('preservationContract', 0) < 83:
+            raise ImportFailure('unsupported_score', 'Semi-harmonic bends with terminal slides require preservation contract 83.')
         if any(e.get('terminalSlideOut', {}).get('continuedArtificialHarmonic') for e in performance['fingerBendTimingEvidence']) and (recipe or {}).get('preservationContract', 0) < 82:
             raise ImportFailure('unsupported_score', 'Artificial harmonic bends with terminal slides require preservation contract 82.')
         if any(e.get('barCurve') for e in performance['fingerBendTimingEvidence']) and (recipe or {}).get('preservationContract', 0) < 78:

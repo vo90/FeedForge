@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 82
+VERSION = 83
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -1044,7 +1044,10 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 artificial_slide = any(e.get('terminalSlideOut', {}).get('continuedArtificialHarmonic') for e in wanted['finger_bends'])
                 if artificial_slide and recipe.get('preservationContract', 0) < 82:
                     check.fail('finger_bend_timing', 'manifest/song_import', 'Artificial harmonic bends with terminal slides require preservation contract 82.')
-                bend_version = 21 if artificial_slide else 20 if bar_slide else 19 if targeted_slide else 18 if bar_curve else 17 if beat_slide else 16 if pinch_slide else 15 if bar_vibrato else 14 if outgoing_legato else 13 if continued_pinch else 12 if fixed_harmonic else 11 if boundary_slides else 10 if overlap_slide else 9 if terminal_bend else 8 if initial_slide else 7 if vibrato_handoff else 6 if following_slide else 5 if chord_slide else 4 if changing_slide else 3
+                semi_slide = any(e.get('terminalSlideOut', {}).get('continuedSemiHarmonic') for e in wanted['finger_bends'])
+                if semi_slide and recipe.get('preservationContract', 0) < 83:
+                    check.fail('finger_bend_timing', 'manifest/song_import', 'Semi-harmonic bends with terminal slides require preservation contract 83.')
+                bend_version = 22 if semi_slide else 21 if artificial_slide else 20 if bar_slide else 19 if targeted_slide else 18 if bar_curve else 17 if beat_slide else 16 if pinch_slide else 15 if bar_vibrato else 14 if outgoing_legato else 13 if continued_pinch else 12 if fixed_harmonic else 11 if boundary_slides else 10 if overlap_slide else 9 if terminal_bend else 8 if initial_slide else 7 if vibrato_handoff else 6 if following_slide else 5 if chord_slide else 4 if changing_slide else 3
                 evidence = {'version': bend_version, 'policy': f'songsterr-finger-bend-timing-v{bend_version}',
                             'timeDomain': 'score_seconds', 'sourceSha256': report['sourceSha256'],
                             'gestures': wanted['finger_bends']}

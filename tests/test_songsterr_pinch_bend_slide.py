@@ -62,13 +62,12 @@ def test_source_clock_contexts_are_general(variant):
         assert p['tracks'][0]['notes'][0]['bnv'] == [{'t':0.,'v':0.},{'t':.25,'v':1.},{'t':.75,'v':2.},{'t':1.75,'v':2.}]
 
 
-@pytest.mark.parametrize('fault', ['semi', 'later-kind', 'missing-initial', 'beat-vibrato',
+@pytest.mark.parametrize('fault', ['later-kind', 'missing-initial', 'beat-vibrato',
                                   'whammy', 'bar-vibrato', 'targeted-slide', 'initial-slide', 'earlier-out',
                                   'hopo', 'palm-mute', 'let-ring', 'changing-overlap', 'settled-overlap', 'strum'])
 def test_unqualified_gestures_keep_their_warning(fault, tmp_path):
     d = document(); bs = d['parts'][0]['measures'][0]['voices'][0]['beats']; first = bs[0]['notes'][0]; tail = bs[1]['notes'][0]
-    if fault == 'semi': first['harmonic'] = fault
-    elif fault == 'later-kind': tail.update(harmonic='artificial', harmonicFret=12)
+    if fault == 'later-kind': tail.update(harmonic='artificial', harmonicFret=12)
     elif fault == 'missing-initial':
         del first['harmonic']; del first['harmonicFret']; tail.update(harmonic='pinch', harmonicFret=5)
     elif fault == 'beat-vibrato':

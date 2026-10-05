@@ -240,6 +240,30 @@ def reconstruct(event, part, clock, sound_end, terminal_context=(), *, following
                 or (not target and atom.effects.get('hp'))):
             terminal_pinch = False
         previous_stop = stop
+    # Independently prove semi/mixed continuation. Unlike pinch, this rule
+    # does not admit explicitly changed targets; no competing controls qualify.
+    terminal_semi = (bool(initial_target) and initial_target.get('kind') == 'semi'
+                     and initial_target.get('policy') == 'mixed' and not overlap
+                     and event['effects'].get('harmonic_target') == initial_target
+                     and event['effects'].get('hp') is True and not event.get('contact')
+                     and len(entries) > 1 and 0 < first.fret < 127
+                     and entries[0][1] == origin and tail_end == sound_end
+                     and tail.slide in ('up', 'down'))
+    previous_stop = None
+    for i, (atom, start, stop, _) in enumerate(entries):
+        target = harmonic_targets[i]
+        if ((atom.fret, atom.string, atom.voice) != (first.fret, first.string, first.voice)
+                or (i and (not atom.tie or start != previous_stop))
+                or target not in (None, initial_target)
+                or (bool(target) != (atom.effects.get('hp') is True))
+                or atom.slide_in or (atom.slide and i != len(entries)-1)
+                or atom.whammy or atom.attack_offset or atom.staccato
+                or atom.hopo_origin or atom.hopo_destination or atom.trill or atom.pick_scrape
+                or atom.beat_vibrato
+                or any(atom.effects.get(k) for k in ('hm', 'hn', 'mt', 'lr', 'pm', 'tr'))
+                or (atom.effects.get('vb') and atom.finger_vibrato not in ('slight', 'wide'))):
+            terminal_semi = False
+        previous_stop = stop
     # Independently qualify the written beat instruction from source atoms.
     # It stays a separate playback limitation, not a new pitch controller.
     beat_entries = []
@@ -270,7 +294,7 @@ def reconstruct(event, part, clock, sound_end, terminal_context=(), *, following
                      or (a.whammy and not bar_slide) or a.attack_offset or a.hopo_origin or a.hopo_destination
                      or a.trill or a.pick_scrape or (a.beat_vibrato and not beat_control) or (i < len(entries)-1 and a.slide)
                      or ((tail.bends or terminal_pinch) and a.effects.get('vb') and a.finger_vibrato not in ('slight', 'wide'))
-                     or (not (terminal_pinch or artificial_slide) and (a.effects.get('hp') or a.effects.get('harmonic_target')))
+                     or (not (terminal_pinch or artificial_slide or terminal_semi) and (a.effects.get('hp') or a.effects.get('harmonic_target')))
                      or any(a.effects.get(k) for k in ('hm', 'hn', 'mt', 'lr', 'pm', 'tr'))
                      for i,(a,*_) in enumerate(entries))
         bend, begin, finish = gestures[-1]
@@ -290,6 +314,8 @@ def reconstruct(event, part, clock, sound_end, terminal_context=(), *, following
                                                      'policy': 'initial-target-continued'}} if terminal_pinch else {}),
                         **({'continuedArtificialHarmonic': {'initialTarget': dict(initial_target),
                                                           'policy': 'fixed-or-omitted-tied-target'}} if artificial_slide else {}),
+                        **({'continuedSemiHarmonic': {'initialTarget': dict(initial_target),
+                                                    'policy': 'fixed-or-omitted-tied-target'}} if terminal_semi else {}),
                         **({'bendTiming': 'authored-segment'} if tail.bends else {}),
                         **({'bendPhase': 'changing', 'pitchPolicy': 'independent-source-bend'} if not settled else {}),
                         **({'attackTiming': 'authored-chord'} if not settled and 'simultaneous-attack' in terminal_context else {}),

@@ -90,6 +90,36 @@ def _terminal_artificial(segments, intervals, overlaps, attack, stop, output):
     return target
 
 
+def _terminal_semi(segments, overlaps, attack, stop, output):
+    """Preserve a fixed semi/mixed target while independently timing the bend.
+
+    A tied omission keeps the initial target. Explicit target changes, delayed
+    contact and overlapping controllers need their own proof, even if settled.
+    """
+    first = segments[0][0]
+    target = first.effects.get('harmonic_target')
+    if (not isinstance(target, dict) or target.get('kind') != 'semi'
+            or target.get('policy') != 'mixed' or output.get('harmonic_target') != target
+            or output.get('hp') is not True or output.get('harmonic_changes')
+            or overlaps or len(segments) < 2 or not 0 < first.fret < 127
+            or segments[0][1] != attack or segments[-1][2] != stop
+            or segments[-1][0].slide not in {'out_up', 'out_down'}):
+        return None
+    for i, (n, begin, _, _) in enumerate(segments):
+        marked = n.effects.get('harmonic_target')
+        if ((n.fret, n.string, n.voice_id) != (first.fret, first.string, first.voice_id)
+                or (i and (not n.tie or begin != segments[i-1][2]))
+                or marked not in (None, target)
+                or (bool(marked) != (n.effects.get('hp') is True))
+                or n.slide_in or (n.slide and i != len(segments)-1)
+                or n.whammy or n.attack_offset or n.staccato or n.hopo or n.trill or n.pick_scrape
+                or n.effects.get('__beat_vibrato')
+                or any(n.effects.get(k) for k in ('hm', 'hn', 'mt', 'lr', 'pm', 'tr', '__hopo_origin'))
+                or (n.effects.get('vb') and n.effects.get('__finger_vibrato') not in {'slight', 'wide'})):
+            return None
+    return target
+
+
 def _terminal_beat_vibrato(segments, overlaps, attack, stop, at, *, artificial=None):
     """Written beat vibrato does not set this independent finger-bend clock.
 
@@ -155,7 +185,7 @@ def _independent_bar_curve(segments, overlaps, attack, stop, output, at, *, term
     return {'policy': 'independent-explicit-control', 'segments': controls}
 
 
-def _terminal_slide_out(segments, intervals, attack, stop, at, context, *, boundary_slides=False, continued_pinch=None, beat_vibrato=None, bar_curve=None, artificial=None):
+def _terminal_slide_out(segments, intervals, attack, stop, at, context, *, boundary_slides=False, continued_pinch=None, beat_vibrato=None, bar_curve=None, artificial=None, semi=None):
     """Independent bend clock with one terminal tied, direction-only flourish.
 
     Keep the source bend clock. Never shorten a changing bend to make it fit,
@@ -174,7 +204,7 @@ def _terminal_slide_out(segments, intervals, attack, stop, at, context, *, bound
                 or n.hopo or n.trill or n.pick_scrape or (n.effects.get('__beat_vibrato') and not beat_vibrato)
                 or ((last.bends or continued_pinch) and n.effects.get('vb')
                     and n.effects.get('__finger_vibrato') not in {'slight', 'wide'})
-                or (not (continued_pinch or artificial) and (n.effects.get('hp') or n.effects.get('harmonic_target')))
+                or (not (continued_pinch or artificial or semi) and (n.effects.get('hp') or n.effects.get('harmonic_target')))
                 or any(n.effects.get(k) for k in ('hm', 'hn', 'mt', 'lr', 'pm', 'tr', '__hopo_origin'))):
             return None
     bend, left, right = intervals[-1]
@@ -193,6 +223,8 @@ def _terminal_slide_out(segments, intervals, attack, stop, at, context, *, bound
                                          'policy': 'initial-target-continued'}} if continued_pinch else {}),
             **({'continuedArtificialHarmonic': {'initialTarget': deepcopy(artificial),
                                               'policy': 'fixed-or-omitted-tied-target'}} if artificial else {}),
+            **({'continuedSemiHarmonic': {'initialTarget': deepcopy(semi),
+                                        'policy': 'fixed-or-omitted-tied-target'}} if semi else {}),
             **({'bendTiming': 'authored-segment'} if last.bends else {}),
             **({'bendPhase': 'changing', 'pitchPolicy': 'independent-source-bend'} if changing else {}),
             **({'attackTiming': 'authored-chord'} if changing and 'simultaneous-attack' in context else {}),
@@ -367,11 +399,12 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
                            for i, (n, start, _, _) in enumerate(segments)))
     terminal_bar = _independent_bar_curve(segments, overlaps, attack, stop, output, at, terminal_slide=True)
     artificial_slide = _terminal_artificial(segments, intervals, overlaps, attack, stop, output)
+    semi_slide = _terminal_semi(segments, overlaps, attack, stop, output)
     terminal_candidate = _terminal_slide_out(segments, intervals, attack, stop, at, terminal_context,
                                              boundary_slides=boundary_slides,
                                              continued_pinch=harmonic if pinch_slide else None,
                                              beat_vibrato=_terminal_beat_vibrato(segments, overlaps, attack, stop, at, artificial=artificial_slide),
-                                             bar_curve=terminal_bar, artificial=artificial_slide)
+                                             bar_curve=terminal_bar, artificial=artificial_slide, semi=semi_slide)
     if artificial_slide and terminal_candidate:
         reason = None  # The complete composition, including every handoff, qualified.
     terminal_handoff = False
@@ -503,7 +536,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
 
 def archive_evidence(performance, source_path):
     gestures = performance['fingerBendTimingEvidence']
-    version = (21 if any(e.get('terminalSlideOut', {}).get('continuedArtificialHarmonic') for e in gestures)
+    version = (22 if any(e.get('terminalSlideOut', {}).get('continuedSemiHarmonic') for e in gestures)
+               else 21 if any(e.get('terminalSlideOut', {}).get('continuedArtificialHarmonic') for e in gestures)
                else 20 if any(e.get('barCurve') and e.get('terminalSlideOut') for e in gestures)
                else 19 if any(e.get('targetedSlide') for e in gestures)
                else 18 if any(e.get('barCurve') for e in gestures)
