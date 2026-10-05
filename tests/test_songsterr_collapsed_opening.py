@@ -163,10 +163,11 @@ def test_unsafe_projection_is_rejected(tmp_path, fault):
     assert exc.value.diagnostics['sourceSyncReason'] == 'collapsed_opening_crossing'
 
 
-@pytest.mark.parametrize('case', ['two_bars', 'high_before', 'high_after', 'lyrics', 'donor'])
+@pytest.mark.parametrize('case', ['two_bars', 'high_before', 'high_after', 'lyrics', 'donor', 'exact_preparation'])
 def test_projection_interactions_verify_independently(tmp_path, case):
     raw = document()
     points = [.53, .53, 2.62, 4.76]
+    if case == 'exact_preparation': points = [.5, .5, 2.6, 4.7]
     if case == 'two_bars': points = [.53, .53, .53, 4.76]
     if case.startswith('high_'):
         bar = 0 if case == 'high_before' else 1
