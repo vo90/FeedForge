@@ -14,7 +14,8 @@ def origin(note, track, occurrence, attack, start):
 
 def retain(start, note, occurrence, time):
     return {**deepcopy(start), 'target': {'sourceId': note.source_id,
-            'occurrence': occurrence + 1, 'time': time, 'fret': None, 'muted': True},
+            'occurrence': occurrence + 1, 'time': time,
+            'fret': None if note.fret == 127 else note.fret, 'muted': True},
             'used': {'rule': 'omit-undefined-slide-keep-authored-mute'}}
 
 
@@ -31,7 +32,7 @@ def report_findings(performance, report):
             continue
         add_finding(report, feature='note.undefined_slide_to_mute', category='game_limitation',
                     impact='display_or_expression',
-                    message='The slide ends on an explicit X without a destination fret or direction. '
+                    message='The slide ends on an explicit X without a definite pitched destination. '
                             'The written notes, mute and timing are retained; only the undefined slide path is omitted. '
                             'Its original instruction is saved with the source.',
                     location=row['location'] + f"@visit{row['occurrence']}",
@@ -42,6 +43,9 @@ def report_findings(performance, report):
 
 def archive_evidence(performance, source_path):
     skipped = any(r['used']['rule'] == 'omit-slide-skipped-ending-rest' for r in performance['undefinedSlideEvidence'])
-    return {'version': 2 if skipped else 1, 'policy': 'undefined-slides-v2' if skipped else 'undefined-slide-to-mute-v1',
+    zero = any(r['used']['rule'] == 'omit-undefined-slide-keep-authored-mute' and r['target']['fret'] == 0
+               for r in performance['undefinedSlideEvidence'])
+    return {'version': 3 if zero else 2 if skipped else 1,
+            'policy': 'undefined-slides-v3' if zero else 'undefined-slides-v2' if skipped else 'undefined-slide-to-mute-v1',
             'sourceSha256': hashlib.sha256(source_path.read_bytes()).hexdigest(),
             'timeDomain': 'score_seconds', 'gestures': deepcopy(performance['undefinedSlideEvidence'])}

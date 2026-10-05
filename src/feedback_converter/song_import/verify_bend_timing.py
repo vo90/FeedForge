@@ -24,7 +24,7 @@ def check_evidence(wanted, actual, check, path='import/finger-bend-timing', fiel
         check.equal(code, path + '/count', len(wanted), len(actual))
         for i, (a, b) in enumerate(zip(wanted, actual)):
             check_evidence(a, b, check, path + '/' + str(i))
-    elif field in {'start', 'end', 'gestureEnd', 't'}:
+    elif field in {'start', 'end', 'gestureEnd', 't', 'attack', 'time'}:
         check.near(code, path, wanted, actual)
     elif field in {'v', 'value'}:
         check.near(code, path, wanted, actual, 1e-9)
@@ -95,6 +95,40 @@ def reconstruct(event, part, clock, sound_end, terminal_context=(), *, following
     evidence = {'trackId': part.id, 'sourceId': identity(first), 'location': first.location,
                 'occurrence': entries[0][3] + 1, 'start': float(clock.at(origin)), 'end': float(clock.at(sound_end)),
                 'string': event['s'], 'fret': event['f'], 'segments': rows}
+    # These receipts were reconstructed from raw source links in this reader,
+    # never supplied by the producer or trusted from the retained archive.
+    omissions = event.get('omitted_slide_links', ())
+    tail, begin, end, visit = entries[-1]
+    omitted = (len(omissions) == 1 and not overlap and 0 < first.fret <= 24
+               and tail.slide in ('shift', 'legato')
+               and entries[0][1] == origin and end == sound_end
+               and not event.get('targeted_slide')
+               and not any(k in event['effects'] for k in ('sl', 'ln')))
+    previous = origin
+    for i, (a, start, finish, _) in enumerate(entries):
+        if ((a.fret, a.string, a.voice) != (first.fret, first.string, first.voice)
+                or (i and (not a.tie or start != previous))
+                or (a.slide and i != len(entries)-1)
+                or a.slide_in or a.whammy or a.attack_offset or a.staccato
+                or a.hopo_origin or a.hopo_destination or a.trill or a.pick_scrape or a.beat_vibrato
+                or any(a.effects.get(k) for k in ('hm', 'hp', 'hn', 'harmonic_target',
+                                                  'mt', 'lr', 'pm', 'tr', 'vb'))):
+            omitted = False
+        previous = finish
+    if omitted:
+        receipt = omissions[0]
+        target = receipt['target']
+        omitted = (receipt['trackId'] == part.id and receipt['sourceId'] == identity(tail)
+                   and receipt['occurrence'] == visit + 1 and receipt['string'] == first.string
+                   and receipt['fret'] == first.fret and receipt['muted'] is False
+                   and receipt['attack'] == float(clock.at(origin)) and receipt['start'] == float(clock.at(begin))
+                   and receipt['authored'] == {'slide': tail.slide}
+                   and receipt['used'] == {'rule': 'omit-undefined-slide-keep-authored-mute'}
+                   and target['muted'] is True and target['fret'] in (None, 0)
+                   and target['time'] == float(clock.at(end)))
+        if omitted:
+            evidence['omittedTerminalSlide'] = receipt
+            mixed = False
     targeted = event.get('targeted_slide')
     ordinary_target = bool(targeted) and not overlap
     for index,(a,*_) in enumerate(entries):

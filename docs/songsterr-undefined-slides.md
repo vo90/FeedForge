@@ -39,3 +39,20 @@ origins, tied segments, repeats, mixed chords, separate voices, incoming-slide
 combinations, boundaries and deliberate package corruption. Captured player
 fixtures remain evidence of synthesis behavior only: an internal fallback to
 fret zero is never copied into the playable chart.
+
+Contract 84 extends the same omission to an explicitly dead destination encoded
+with fret zero. Zero on an X does not establish an open pitched destination.
+The retained X keeps its original encoding (zero or missing), ghost marking,
+time and duration. Ordinary open-string destinations, nonzero muted positions
+and direction-only slides keep their existing handling. A zero-muted omission
+uses undefined-slide evidence version 3; missing-fret-only archives retain
+their existing version.
+
+A continuous, same-fret tied finger bend may now be verified after omitting its
+terminal slide. The producer and independent verifier must each establish the
+exact per-occurrence omission, including the source and target identities and
+timing. Bend evidence version 23 retains that proof as `omittedTerminalSlide`.
+It does not change the bend curve or normalize conflicting expressions: gaps,
+overlaps, incoming slides, harmonics, whammy and other unsupported combinations
+retain their guards. The intentional slide-omission notice remains visible;
+only the redundant bend-timing limitation clears for a proven case.

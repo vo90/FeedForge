@@ -531,6 +531,9 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             _write_json(package / 'import/pickup-timeline.json', pickups)
             manifest.setdefault('song_import', {})['pickupTimelineFile'] = 'import/pickup-timeline.json'
     if performance.get('undefinedSlideEvidence'):
+        if (any(r['used']['rule'] == 'omit-undefined-slide-keep-authored-mute' and r['target']['fret'] == 0
+                for r in performance['undefinedSlideEvidence']) and (recipe or {}).get('preservationContract', 0) < 84):
+            raise ImportFailure('unsupported_score', 'Zero-valued muted slide destinations require preservation contract 84.')
         if source_path is None or (recipe or {}).get('preservationContract', 0) < 54:
             raise ImportFailure('unsupported_score', 'Undefined slide omissions require original source and preservation contract 54.')
         if (any(r['used']['rule'] == 'omit-slide-skipped-ending-rest' for r in performance['undefinedSlideEvidence'])
@@ -562,6 +565,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         if source_path is None or (recipe or {}).get('preservationContract', 0) < 62:
             raise ImportFailure('unsupported_score', 'Timed finger vibrato requires the original tab and preservation contract 62.')
     if performance.get('fingerBendTimingEvidence'):
+        if any(e.get('omittedTerminalSlide') for e in performance['fingerBendTimingEvidence']) and (recipe or {}).get('preservationContract', 0) < 84:
+            raise ImportFailure('unsupported_score', 'Bends with an omitted terminal slide require preservation contract 84.')
         if any(e.get('barCurve') and e.get('terminalSlideOut') for e in performance['fingerBendTimingEvidence']) and (recipe or {}).get('preservationContract', 0) < 81:
             raise ImportFailure('unsupported_score', 'Finger bends with explicit bar curves and terminal slides require preservation contract 81.')
         if any(e.get('terminalSlideOut', {}).get('continuedSemiHarmonic') for e in performance['fingerBendTimingEvidence']) and (recipe or {}).get('preservationContract', 0) < 83:

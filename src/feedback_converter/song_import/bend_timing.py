@@ -275,6 +275,40 @@ def _outgoing_legato(output, articulation, following, at):
             'policy': 'independent-outgoing-link'}
 
 
+def _omitted_terminal_slide(output, articulation, overlaps, track_id, at):
+    """Only a resolved, per-occurrence omission can remove the slide guard."""
+    links = articulation.get('omitted_slide_links', ())
+    segments = articulation['bend_segments']
+    first = segments[0][0]
+    last, left, right, visit = segments[-1]
+    if (len(links) != 1 or overlaps or not 0 < first.fret <= 24
+            or last.slide not in {'shift', 'legato'}
+            or segments[0][1] != articulation['start'] or right != articulation['end']
+            or any(k in output for k in ('sl', 'ln', 'slide_interval'))):
+        return None
+    for i, (n, start, _, _) in enumerate(segments):
+        if ((n.fret, n.string, n.voice_id) != (first.fret, first.string, first.voice_id)
+                or (i and (not n.tie or start != segments[i-1][2]))
+                or (n.slide and i != len(segments)-1)
+                or n.slide_in or n.whammy or n.attack_offset or n.staccato
+                or n.hopo or n.trill or n.pick_scrape or n.effects.get('__beat_vibrato')
+                or any(n.effects.get(k) for k in ('hm', 'hp', 'hn', 'harmonic_target',
+                                                  'mt', 'lr', 'pm', 'tr', 'vb', '__hopo_origin'))):
+            return None
+    row = links[0]
+    target = row['target']
+    if (row['trackId'] != track_id or row['sourceId'] != last.source_id
+            or row['occurrence'] != visit + 1 or row['string'] != first.string
+            or row['fret'] != first.fret or row['muted'] is not False
+            or row['attack'] != at(articulation['start']) or row['start'] != at(left)
+            or row['authored'] != {'slide': last.slide}
+            or row['used'] != {'rule': 'omit-undefined-slide-keep-authored-mute'}
+            or target['muted'] is not True or target['fret'] not in (None, 0)
+            or target['time'] != at(right)):
+        return None
+    return deepcopy(row)
+
+
 def finish(output, articulation, track_id, at, tempo_positions, terminal_context=(), *, following_hopo=None):
     segments = articulation['bend_segments']
     if not any(n.bends for n, *_ in segments):
@@ -312,6 +346,10 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
         previous_end = min(right, stop)
         intervals.append((note, start, right))
     first = segments[0][0]
+    omitted = _omitted_terminal_slide(output, articulation, overlaps, track_id, at)
+    if omitted is not None:
+        reason = None
+        evidence['omittedTerminalSlide'] = omitted
     # Qualitative bar vibrato is a separate modulation control, not an
     # authored pitch curve. Qualify only non-overlapping finger bends with
     # no displaced attack or slide. Explicit curves qualify separately below.
@@ -536,7 +574,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
 
 def archive_evidence(performance, source_path):
     gestures = performance['fingerBendTimingEvidence']
-    version = (22 if any(e.get('terminalSlideOut', {}).get('continuedSemiHarmonic') for e in gestures)
+    version = (23 if any(e.get('omittedTerminalSlide') for e in gestures)
+               else 22 if any(e.get('terminalSlideOut', {}).get('continuedSemiHarmonic') for e in gestures)
                else 21 if any(e.get('terminalSlideOut', {}).get('continuedArtificialHarmonic') for e in gestures)
                else 20 if any(e.get('barCurve') and e.get('terminalSlideOut') for e in gestures)
                else 19 if any(e.get('targetedSlide') for e in gestures)

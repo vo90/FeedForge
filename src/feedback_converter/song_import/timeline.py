@@ -328,14 +328,14 @@ def _render(score: Score) -> dict:
                     output["bn"] = max((p["v"] for p in output["bnv"]), key=abs)
                 if link_key in pending_muted_shifts and not note.tie:
                     articulation['linked'] = True
-                    omit = score.source.get('format') == 'songsterr' and note.fret == 127 and effects.get('mt') is True
+                    omit = score.source.get('format') == 'songsterr' and note.fret in (0, 127) and effects.get('mt') is True
                     if (note.fret == 127 or effects.get('mt')) and not omit:
                         raise link_diagnostics.error(
                             'A muted shift needs an explicit pitched destination; no fret was invented.',
                             'muted_destination', family='muted_shift', key=link_key,
                             destination=(note, occurrence, output['t']))
                     for row, source_origin in pending_muted_shifts.pop(link_key):
-                        row['target'] = {'sourceId': note.source_id, 'time': output['t'], 'fret': None if omit else note.fret}
+                        row['target'] = {'sourceId': note.source_id, 'time': output['t'], 'fret': None if note.fret == 127 else note.fret}
                         if omit:
                             from .slide_omissions import retain
                             undefined_slides.append(retain(source_origin, note, occurrence, output['t']))
@@ -350,7 +350,7 @@ def _render(score: Score) -> dict:
                         pending_muted_shifts.setdefault(link_key, []).append((row, origin(note, track, occurrence, output['t'], at(position))))
                         link_diagnostics.remember('muted_shift', link_key, note, occurrence, at(position))
                 if link_key in pending_slide and not note.tie:
-                    omit = score.source.get('format') == 'songsterr' and note.fret == 127 and effects.get('mt') is True
+                    omit = score.source.get('format') == 'songsterr' and note.fret in (0, 127) and effects.get('mt') is True
                     if note.fret == 127 and not omit:
                         raise link_diagnostics.error(
                             "A slide reaches an unpitched mute; no destination fret was invented.",
@@ -362,7 +362,9 @@ def _render(score: Score) -> dict:
                     articulations[id(sliding)]['linked'] = True
                     if omit:
                         from .slide_omissions import retain
-                        undefined_slides.append(retain(source_origin, note, occurrence, output['t']))
+                        receipt = retain(source_origin, note, occurrence, output['t'])
+                        undefined_slides.append(receipt)
+                        articulations[id(sliding)].setdefault('omitted_slide_links', []).append(receipt)
                     else:
                         sliding['sl'] = note.fret
                         if kind == 'legato':

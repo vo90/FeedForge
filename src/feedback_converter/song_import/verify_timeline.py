@@ -266,7 +266,8 @@ def _expected(source, alignment):
                     'string': written.string, 'fret': None if written.fret == 127 else written.fret,
                     'muted': written.effects.get('mt') is True, 'authored': {'slide': written.slide},
                     'target': {'sourceId': 'songsterr:' + ':'.join(target_path[i] for i in (1,3,5,7,9)),
-                               'occurrence': visit + 1, 'time': float(clock.at(target_time)), 'fret': None, 'muted': True},
+                               'occurrence': visit + 1, 'time': float(clock.at(target_time)),
+                               'fret': None if destination.fret == 127 else destination.fret, 'muted': True},
                     'used': {'rule': 'omit-undefined-slide-keep-authored-mute'}}
 
         from .verify_skipped_slides import omissions as skipped_omissions, receipt as skipped_receipt
@@ -414,24 +415,26 @@ def _expected(source, alignment):
                         hopo_links.append((previous, event))
                     if key in muted_pending:
                         event['linked'] = True
-                        omit = source.format == 'songsterr' and atom.fret == 127 and atom.effects.get('mt') is True
+                        omit = source.format == 'songsterr' and atom.fret in (0, 127) and atom.effects.get('mt') is True
                         if (atom.fret == 127 or atom.effects.get('mt')) and not omit:
                             unsupported(atom.location, 'A muted shift lacks a pitched destination.')
                         path = atom.location.split('/')
                         for record, provenance in muted_pending.pop(key):
                             record['target'] = {'sourceId': 'songsterr:' + ':'.join(path[i] for i in (1,3,5,7,9)),
-                                                'time': float(clock.at(event['start'])), 'fret': None if omit else atom.fret}
+                                                'time': float(clock.at(event['start'])), 'fret': None if atom.fret == 127 else atom.fret}
                             if omit:
                                 record['used']['rule'] = 'omitted-shift-to-unpitched-mute'
                                 result['undefined_slides'].append(slide_omission(provenance, atom, occurrence, event['start']))
                     if key in pending_slides:
-                        omit = source.format == 'songsterr' and atom.fret == 127 and atom.effects.get('mt') is True
+                        omit = source.format == 'songsterr' and atom.fret in (0, 127) and atom.effects.get('mt') is True
                         if atom.fret == 127 and not omit:
                             unsupported(atom.location, "A pitched slide has an unpitched destination.")
                         target, slide, provenance = pending_slides.pop(key)
                         event['linked'] = target['linked'] = True
                         if omit:
-                            result['undefined_slides'].append(slide_omission(provenance, atom, occurrence, event['start']))
+                            receipt = slide_omission(provenance, atom, occurrence, event['start'])
+                            result['undefined_slides'].append(receipt)
+                            target.setdefault('omitted_slide_links', []).append(receipt)
                         else:
                             target['effects']['sl'] = atom.fret
                             if slide == 'legato':
