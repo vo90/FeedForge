@@ -199,6 +199,22 @@ def _songsterr_swing_lengths(bar, feel, location):
     return output
 
 
+def _songsterr_dots(beat, location):
+    """Independent interpretation of Songsterr's legacy/modern dot precedence."""
+    flag, count = beat.get('dotted'), beat.get('dots')
+    if flag is not None and type(flag) is not bool:
+        raise ValueError(location + ': invalid dotted flag')
+    if count is not None:
+        if type(count) not in (int, float):
+            raise ValueError(location + ': invalid dots count')
+        count = integer(count, location + '/dots')
+        if not 0 <= count <= 4:
+            raise ValueError(location + ': unsupported dots count')
+        if count > 0:
+            return count
+    return 1 if flag is True else 0
+
+
 def _songsterr_beat_clock(beats, measure_length, location, performed_lengths=None, *, preceding=None, initial=False):
     written = [4 * fraction(b["duration"], location) for b in beats]
     lengths = performed_lengths if performed_lengths is not None else written
@@ -220,7 +236,7 @@ def _songsterr_beat_clock(beats, measure_length, location, performed_lengths=Non
                 unsupported(location, "No preceding grace budget.")
             # Derive the leading group's duration directly, independently of
             # the production parser's prefixed-beat calculation.
-            dotted = max(integer(b.get('dots', 0), location) for b in beats[:leading])
+            dotted = max(_songsterr_dots(b, location) for b in beats[:leading])
             if not 0 <= dotted <= 4:
                 raise ValueError(location + ': invalid grace dots')
             reserve = F(7, 8) if dotted >= 2 else F(3, 4) if dotted == 1 else F(1, 2)
@@ -239,7 +255,7 @@ def _songsterr_beat_clock(beats, measure_length, location, performed_lengths=Non
     # producer's helper or accept ordinary overflowing rhythm.
     if len(beats) == 1:
         rest = beats[0]
-        dots = rest.get('dots')
+        dots = _songsterr_dots(rest, location)
         if (rest.get('rest') is True and rest.get('type') == 1
                 and type(dots) is int and 1 <= dots <= 4
                 and not any(rest.get(k) for k in ('tuplet', 'graceNote'))
@@ -248,7 +264,8 @@ def _songsterr_beat_clock(beats, measure_length, location, performed_lengths=Non
                 and written[0] == 8 - F(4, 2**dots) and written[0] > measure_length):
             return [[F(0), measure_length, F(0)]]
     if (len(beats) == 1 and beats[0].get("rest") is True and beats[0].get("type") == 1
-            and lengths == [F(4)] and not any(beats[0].get(k) for k in ("dots", "tuplet", "graceNote"))
+            and lengths == [F(4)] and not _songsterr_dots(beats[0], location)
+            and not any(beats[0].get(k) for k in ("tuplet", "graceNote"))
             and isinstance(beats[0].get("notes"), list)
             and all(n.get("rest") is True for n in beats[0]["notes"])):
         return [[F(0), measure_length, F(0)]]
@@ -285,7 +302,7 @@ def _songsterr_beat_clock(beats, measure_length, location, performed_lengths=Non
             principal = index
             if principal >= len(beats):
                 unsupported(location, "A grace note has no independently resolvable principal note.")
-        dots = max(integer(beats[i].get("dots", 0), location) for i in pending)
+        dots = max(_songsterr_dots(beats[i], location) for i in pending)
         principal_available = (lengths[principal] if before else
                                measure_length - starts[principal] if principal + 1 == len(beats) else lengths[principal])
         fraction_available = F(7, 8) if dots >= 2 else F(3, 4) if dots == 1 else F(1, 2)
@@ -473,7 +490,8 @@ def songsterr(document, *, track_indices=None):
                 if (len(beats) == 1 and isinstance(beats[0], dict)
                         and beats[0].get('type') == 1 and beats[0].get('rest') is True
                         and fraction(beats[0].get('duration'), loc) == 1
-                        and not any(beats[0].get(k) for k in ('dots', 'tuplet', 'graceNote'))
+                        and not _songsterr_dots(beats[0], loc)
+                        and not any(beats[0].get(k) for k in ('tuplet', 'graceNote'))
                         and isinstance(beats[0].get('notes'), list)
                         and all(n.get('rest') is True for n in beats[0]['notes'])):
                     extent = max(extent, bars[0].length)
@@ -565,7 +583,7 @@ def songsterr(document, *, track_indices=None):
     parts, excluded = [], []
     note_keys = {"string", "fret", "tie", "rest", "dead", "vibrato", "wideVibrato", "ghost", "accentuated",
                  "trill", "tap", "tapping", "hp", "harmonic", "harmonicFret", "slide", "bend", "leftHandVibrato", "staccato", "pickScrape", "leftFingering", "tremolo"}
-    beat_keys = {"tremoloBar", "vibratoWithTremoloBar", "duration", "notes", "rest", "type", "dots", "tuplet", "tupletStart", "tupletStop", "graceNote",
+    beat_keys = {"tremoloBar", "vibratoWithTremoloBar", "duration", "notes", "rest", "type", "dots", "dotted", "tuplet", "tupletStart", "tupletStop", "graceNote",
                  "palmMute", "letRing", "tremolo", "tap", "tapping", "slap", "pop", "slapping", "popping", "vibrato", "wideVibrato", "text", "velocity", "gradualVelocity", "chord", "pickStroke", "wahwah", "brushStroke", "arpeggio", "upStroke", "downStroke", "upArpeggio", "downArpeggio"}
     for pi, (meta, raw) in enumerate(zip(metadata, raw_parts)):
         tid = str(meta.get("id", pi))
@@ -622,7 +640,7 @@ def songsterr(document, *, track_indices=None):
                     written_duration = fraction(beat["duration"], loc) * 4
                     q, duration, written_q = times[bti]
                     offsets, direction = _songsterr_strum(beat, loc)
-                    dots = integer(beat.get("dots", 0), loc)
+                    dots = _songsterr_dots(beat, loc)
                     denominator = beat.get("type")
                     if denominator is None:
                         denominator = next((d for d in (1, 2, 4, 8, 16, 32, 64, 128, 256)
