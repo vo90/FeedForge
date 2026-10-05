@@ -10,7 +10,7 @@ from fractions import Fraction
 from .inventory import FeatureInventory
 from .model import Measure, Note, Score, ScoreImportError, Track, WrittenBeat, WrittenVoice, integer, rational
 from .songsterr_timing import part_timing, strum_offsets, FEELS
-from .songsterr_fields import bend_points, validate_sustain_pedal, effective_dots
+from .songsterr_fields import bend_points, validate_sustain_pedal, effective_dots, validate_bend_point_vibrato
 from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
 from .songsterr_whammy import source_whammy
@@ -439,7 +439,8 @@ def parse(document: dict, *, track_indices=None) -> Score:
                         if isinstance(note.get("bend"), dict):
                             inventory.inspect(note["bend"], "Songsterr bend", source_id + ".bend", playable={"points", "tone"}, strict=True)
                             for point_index, point in enumerate(note["bend"].get("points", [])):
-                                inventory.inspect(point, "Songsterr bend point", f"{source_id}.bend.points[{point_index}]", playable={"position", "precisePosition", "tone"}, strict=True)
+                                inventory.inspect(point, "Songsterr bend point", f"{source_id}.bend.points[{point_index}]", playable={"position", "precisePosition", "tone"}, retained={"vibrato"}, strict=True)
+                                validate_bend_point_vibrato(point.get("vibrato"))
                         if not note.get("rest"):
                             offset = offsets.get(note_index, Fraction(0))
                             boundary_grace = position < 0 and grace == "beforeBeat" and bi > 0

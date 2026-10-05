@@ -9,10 +9,10 @@ import math
 from .songsterr_harmonics import exact_natural, natural_alias, source_target
 from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
-from .songsterr_fields import validate_sustain_pedal, effective_dots
+from .songsterr_fields import validate_sustain_pedal, effective_dots, validate_bend_point_vibrato
 from .model import ScoreImportError, integer, rational
 
-VERSION = 85
+VERSION = 86
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -29,6 +29,7 @@ KNOWN["measure"].add("clef")
 KNOWN["beat"].update({"slapping", "popping", "upArpeggio", "downArpeggio"})
 KNOWN["tempo"].add("dotted")
 KNOWN["bend_point"].add("precisePosition")
+KNOWN["bend_point"].add("vibrato")
 KNOWN["tempo"].add("text")
 KNOWN["tempo"].add("visible")
 KNOWN["beat"].update({"chord", "upStroke", "downStroke", "pickStroke", "wahwah", "brushStroke", "arpeggio", "vibratoWithTremoloBar"})
@@ -129,6 +130,16 @@ def inspect_songsterr(document, *, track_indices=None):
                 add_finding(report, feature=f"beat.{field}", category="source_structure", impact="blocking",
                             message=str(exc), location=path + "/" + field, value=value, **coordinates)
         for key, value in obj.items():
+            if scope == "bend_point" and key == "vibrato":
+                try:
+                    validate_bend_point_vibrato(value)
+                except ScoreImportError as exc:
+                    # Nonfinite input is invalid JSON, but diagnostics must
+                    # still be serializable when inspecting an in-memory score.
+                    diagnostic = str(value) if isinstance(value, float) and not math.isfinite(value) else value
+                    add_finding(report, feature="bend_point.vibrato", category="unknown_semantics" if str(exc).startswith("Unsupported") else "source_structure", impact="blocking",
+                                message=str(exc), location=path + "/" + key, value=diagnostic, **coordinates)
+                continue
             if scope == "beat" and key == "sustainPedal":
                 try:
                     validate_sustain_pedal(value)

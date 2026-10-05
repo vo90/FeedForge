@@ -1,7 +1,25 @@
 """Explicit Songsterr fields, without altering the retained source document."""
 from fractions import Fraction as F
+import math
 
 from .model import ScoreImportError, integer, rational
+
+
+def validate_bend_point_vibrato(value):
+    """Legacy point-local zero is inactive, not note-level timed vibrato.
+
+    Keep this exception local: zero can be meaningful in other source fields.
+    Active values have no verified mapping and must not silently disappear.
+    """
+    if value is None or value is False:
+        return
+    if type(value) is int or type(value) is float and math.isfinite(value):
+        if value == 0:
+            return
+        raise ScoreImportError("Unsupported active bend-point vibrato.")
+    if value is True:
+        raise ScoreImportError("Unsupported active bend-point vibrato.")
+    raise ScoreImportError("Invalid bend-point vibrato; expected null, false or numeric zero.")
 
 
 def effective_dots(beat):
