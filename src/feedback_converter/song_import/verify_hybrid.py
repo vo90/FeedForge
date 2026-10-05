@@ -150,6 +150,10 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
     first_quarter = min([0.0, *(float(atom.q + atom.attack_offset)
                         for part in parts.values() for atom in part['source'].bars[order[0]]
                         if atom.strum_direction and atom.q >= 0 and atom.attack_offset < 0)])
+    if recording.collapsed_count:
+        # A flat opening has no unique inverse. The recording player enters
+        # at the last shared boundary, never at the omitted first bar.
+        first_quarter = float(clock.measure_starts[recording.collapsed_count])
     @lru_cache(maxsize=100000)
     def quarter_at(seconds):
         low, high = first_quarter, float(clock.quarters)
