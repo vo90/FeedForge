@@ -54,14 +54,50 @@ def _boundary_slides(segments, overlaps, attack, stop, context):
                     for i, (n, *_) in enumerate(segments)))
 
 
-def _terminal_beat_vibrato(segments, overlaps, attack, stop, at):
-    """Written beat vibrato does not set this independent finger-bend clock.
+def _terminal_artificial(segments, intervals, overlaps, attack, stop, output):
+    """Prove a fixed artificial target plus a final direction cue as a whole.
 
-    Only this continuous, ordinary held note is qualified. The original
-    vibrato marks and their separate compatibility finding remain untouched.
+    An omitted target on a tie continues the initial harmonic. A different
+    target, delayed contact or still-changing controller cannot qualify here.
     """
     first = segments[0][0]
-    if (overlaps or len(segments) < 2 or not 0 < first.fret < 127
+    target = first.effects.get('harmonic_target')
+    if (not isinstance(target, dict) or target.get('kind') != 'artificial'
+            or target.get('policy') != 'harmonic' or output.get('harmonic_target') != target
+            or output.get('harmonic_changes') or len(segments) < 2
+            or not 0 < first.fret < 127 or segments[0][1] != attack
+            or segments[-1][2] != stop or segments[-1][0].slide not in {'out_up', 'out_down'}):
+        return None
+    for i, (n, begin, _, _) in enumerate(segments):
+        if ((n.fret, n.string, n.voice_id) != (first.fret, first.string, first.voice_id)
+                or (i and (not n.tie or begin != segments[i-1][2]))
+                or n.effects.get('harmonic_target') not in (None, target)
+                or n.slide_in or (n.slide and i != len(segments)-1)
+                or n.whammy or n.attack_offset or n.staccato or n.hopo or n.trill or n.pick_scrape
+                or any(n.effects.get(k) for k in ('hm', 'hp', 'hn', 'mt', 'lr', 'pm', 'tr', '__hopo_origin'))
+                or ((n.effects.get('vb') or n.effects.get('__beat_vibrato'))
+                    and n.effects.get('__finger_vibrato') not in {'slight', 'wide'})):
+            return None
+    for index, handoff in overlaps:
+        old, left, right = intervals[index]
+        controls = [(left + (right-left)*p, v) for p, v in old.bends]
+        last_change = controls[0][0]
+        for a, b in zip(controls, controls[1:]):
+            if a[1] != b[1]:
+                last_change = b[0]
+        if last_change > handoff or right != stop:
+            return None
+    return target
+
+
+def _terminal_beat_vibrato(segments, overlaps, attack, stop, at, *, artificial=None):
+    """Written beat vibrato does not set this independent finger-bend clock.
+
+    Qualify a continuous ordinary note or the separately proved artificial
+    harmonic composition. Preserve vibrato marks and their separate finding.
+    """
+    first = segments[0][0]
+    if ((overlaps and not artificial) or len(segments) < 2 or not 0 < first.fret < 127
             or segments[0][1] != attack or segments[-1][2] != stop
             or segments[-1][0].slide not in {'out_up', 'out_down'}):
         return None
@@ -71,7 +107,8 @@ def _terminal_beat_vibrato(segments, overlaps, attack, stop, at):
                 or (i and (not n.tie or start != segments[i-1][2]))
                 or n.slide_in or (n.slide and i != len(segments)-1)
                 or n.whammy or n.attack_offset or n.staccato or n.hopo or n.trill or n.pick_scrape
-                or any(n.effects.get(k) for k in ('hm', 'hp', 'hn', 'harmonic_target',
+                or (n.effects.get('harmonic_target') and not artificial)
+                or any(n.effects.get(k) for k in ('hm', 'hp', 'hn',
                                                  'mt', 'lr', 'pm', 'tr', '__hopo_origin'))
                 or ((n.effects.get('vb') or n.effects.get('__beat_vibrato'))
                     and n.effects.get('__finger_vibrato') not in {'slight', 'wide'})):
@@ -118,7 +155,7 @@ def _independent_bar_curve(segments, overlaps, attack, stop, output, at, *, term
     return {'policy': 'independent-explicit-control', 'segments': controls}
 
 
-def _terminal_slide_out(segments, intervals, attack, stop, at, context, *, boundary_slides=False, continued_pinch=None, beat_vibrato=None, bar_curve=None):
+def _terminal_slide_out(segments, intervals, attack, stop, at, context, *, boundary_slides=False, continued_pinch=None, beat_vibrato=None, bar_curve=None, artificial=None):
     """Independent bend clock with one terminal tied, direction-only flourish.
 
     Keep the source bend clock. Never shorten a changing bend to make it fit,
@@ -137,7 +174,7 @@ def _terminal_slide_out(segments, intervals, attack, stop, at, context, *, bound
                 or n.hopo or n.trill or n.pick_scrape or (n.effects.get('__beat_vibrato') and not beat_vibrato)
                 or ((last.bends or continued_pinch) and n.effects.get('vb')
                     and n.effects.get('__finger_vibrato') not in {'slight', 'wide'})
-                or (not continued_pinch and (n.effects.get('hp') or n.effects.get('harmonic_target')))
+                or (not (continued_pinch or artificial) and (n.effects.get('hp') or n.effects.get('harmonic_target')))
                 or any(n.effects.get(k) for k in ('hm', 'hn', 'mt', 'lr', 'pm', 'tr', '__hopo_origin'))):
             return None
     bend, left, right = intervals[-1]
@@ -154,6 +191,8 @@ def _terminal_slide_out(segments, intervals, attack, stop, at, context, *, bound
             **({'beatVibrato': beat_vibrato} if beat_vibrato else {}),
             **({'continuedPinchHarmonic': {'initialTarget': deepcopy(continued_pinch),
                                          'policy': 'initial-target-continued'}} if continued_pinch else {}),
+            **({'continuedArtificialHarmonic': {'initialTarget': deepcopy(artificial),
+                                              'policy': 'fixed-or-omitted-tied-target'}} if artificial else {}),
             **({'bendTiming': 'authored-segment'} if last.bends else {}),
             **({'bendPhase': 'changing', 'pitchPolicy': 'independent-source-bend'} if changing else {}),
             **({'attackTiming': 'authored-chord'} if changing and 'simultaneous-attack' in context else {}),
@@ -327,11 +366,14 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
                            and (not i or (n.tie and start == segments[i-1][2]))
                            for i, (n, start, _, _) in enumerate(segments)))
     terminal_bar = _independent_bar_curve(segments, overlaps, attack, stop, output, at, terminal_slide=True)
+    artificial_slide = _terminal_artificial(segments, intervals, overlaps, attack, stop, output)
     terminal_candidate = _terminal_slide_out(segments, intervals, attack, stop, at, terminal_context,
                                              boundary_slides=boundary_slides,
                                              continued_pinch=harmonic if pinch_slide else None,
-                                             beat_vibrato=_terminal_beat_vibrato(segments, overlaps, attack, stop, at),
-                                             bar_curve=terminal_bar)
+                                             beat_vibrato=_terminal_beat_vibrato(segments, overlaps, attack, stop, at, artificial=artificial_slide),
+                                             bar_curve=terminal_bar, artificial=artificial_slide)
+    if artificial_slide and terminal_candidate:
+        reason = None  # The complete composition, including every handoff, qualified.
     terminal_handoff = False
     if overlaps:
         # The native worker can keep the initial controller alive across ties.
@@ -365,17 +407,17 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
         # A fixed artificial target or established pinch continuation does
         # not change the source bend clock. Qualify the whole tie; conflicting
         # controllers and other harmonic interpretations stay guarded.
-        qualified_harmonic = ((steady_harmonic or continued_pinch) and settled_handoffs and not reason
+        qualified_harmonic = ((steady_harmonic or continued_pinch or artificial_slide) and settled_handoffs and not reason
                              and not other_expression and 0 < first.fret < 127
                              and all(n.fret == first.fret and n.string == first.string
-                                     and not n.effects.get('__beat_vibrato')
+                                     and (not n.effects.get('__beat_vibrato') or artificial_slide)
                                      and (not n.effects.get('vb') or n.effects.get('__finger_vibrato') in {'slight', 'wide'})
                                      for n, *_ in segments))
         other_expression = other_expression or (any(n.effects.get('harmonic_target') for n, *_ in segments)
                                                 and not qualified_harmonic)
         has_vibrato = any(n.effects.get('vb') for n, *_ in segments)
         terminal_handoff = (terminal_candidate is not None and settled_handoffs and not other_expression
-                            and all(not n.effects.get('__beat_vibrato')
+                            and all((not n.effects.get('__beat_vibrato') or artificial_slide)
                                     and (not n.effects.get('vb') or n.effects.get('__finger_vibrato') in {'slight', 'wide'})
                                     for n, *_ in segments))
         if terminal_handoff:
@@ -383,7 +425,7 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
         # Explicit note vibrato has its own verified control timeline. It does
         # not displace the source bend clock or create another finger bend.
         qualified_vibrato = (has_vibrato and settled_handoffs and not reason and not other_expression
-                            and all(not n.effects.get('__beat_vibrato')
+                            and all((not n.effects.get('__beat_vibrato') or artificial_slide)
                                     and (not n.effects.get('vb') or n.effects.get('__finger_vibrato') in {'slight', 'wide'})
                                     for n, *_ in segments))
         other_expression = other_expression or (has_vibrato and not qualified_vibrato)
@@ -393,7 +435,10 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
         if outgoing is not None and evidence['overlap']['classification'] == 'clear-handoff':
             evidence['overlap']['outgoingLegato'] = outgoing
         if qualified_harmonic:
-            if continued_pinch:
+            if artificial_slide:
+                evidence['overlap']['continuedArtificialHarmonic'] = {
+                    'initialTarget': deepcopy(harmonic), 'policy': 'fixed-or-omitted-tied-target'}
+            elif continued_pinch:
                 evidence['overlap']['continuedPinchHarmonic'] = {
                     'initialTarget': deepcopy(harmonic), 'policy': 'initial-target-continued'}
             else:
@@ -458,7 +503,8 @@ def finish(output, articulation, track_id, at, tempo_positions, terminal_context
 
 def archive_evidence(performance, source_path):
     gestures = performance['fingerBendTimingEvidence']
-    version = (20 if any(e.get('barCurve') and e.get('terminalSlideOut') for e in gestures)
+    version = (21 if any(e.get('terminalSlideOut', {}).get('continuedArtificialHarmonic') for e in gestures)
+               else 20 if any(e.get('barCurve') and e.get('terminalSlideOut') for e in gestures)
                else 19 if any(e.get('targetedSlide') for e in gestures)
                else 18 if any(e.get('barCurve') for e in gestures)
                else 17 if any(e.get('terminalSlideOut', {}).get('beatVibrato') for e in gestures)

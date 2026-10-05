@@ -65,11 +65,11 @@ def test_general_source_clock_contexts(variant):
         assert p['tracks'][0]['notes'][0]['bnv'] == [{'t':0.,'v':0.},{'t':.25,'v':2/3},{'t':1.25,'v':2.},{'t':2.75,'v':2.}]
 
 
-@pytest.mark.parametrize('fault', ['pinch','natural','artificial','whammy','bar-vibrato','targeted-slide',
+@pytest.mark.parametrize('fault', ['pinch','natural','whammy','bar-vibrato','targeted-slide',
                                   'initial-slide','earlier-out','hopo','palm-mute','let-ring','overlap','strum'])
 def test_other_compositions_remain_guarded(fault,tmp_path):
     d = document(); bs = d['parts'][0]['measures'][0]['voices'][0]['beats']; first = bs[0]['notes'][0]; tail = bs[2]['notes'][0]
-    if fault in ('pinch','natural','artificial'): first.update(harmonic=fault,harmonicFret=7 if fault == 'natural' else 12)
+    if fault in ('pinch','natural'): first.update(harmonic=fault,harmonicFret=7 if fault == 'natural' else 12)
     elif fault == 'whammy': bs[0]['tremoloBar'] = {'points':[{'position':0,'tone':0},{'position':60,'tone':-50}]}
     elif fault == 'bar-vibrato': bs[0]['vibratoWithTremoloBar'] = 'wide'
     elif fault == 'targeted-slide': tail['slide'] = 'shift'

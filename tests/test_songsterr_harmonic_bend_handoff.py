@@ -77,7 +77,7 @@ def test_authored_clock_is_general(variant):
     else:assert p['tracks'][0]['notes'][0]['sus']==2
 
 
-@pytest.mark.parametrize('fault',['changing','missing','mixed-pinch','semi','conflicting','nearly-settled','beat-only','palm-mute','let-ring','hopo','slide-in','slide-out','whammy'])
+@pytest.mark.parametrize('fault',['changing','missing','mixed-pinch','semi','conflicting','nearly-settled','beat-only','palm-mute','let-ring','hopo','slide-in','whammy'])
 def test_unqualified_combinations_keep_warning(fault,tmp_path):
     d=document(vibrato=True);bs=d['parts'][0]['measures'][0]['voices'][0]['beats']
     if fault=='changing':bs[-1]['notes'][0]['harmonicFret']=7
@@ -92,7 +92,6 @@ def test_unqualified_combinations_keep_warning(fault,tmp_path):
     elif fault=='let-ring':bs[0]['letRing']=True
     elif fault=='hopo':bs[-1]['notes'][0]['hp']=True;d['parts'][0]['measures'].append(measure(beat(fret=5)))
     elif fault=='slide-in':bs[0]['notes'][0]['slide']='above'
-    elif fault=='slide-out':bs[-1]['notes'][0]['slide']='downwards'
     elif fault=='whammy':bs[0]['tremoloBar']={'points':[{'position':0,'tone':0},{'position':60,'tone':-50}]}
     e=checked(d)['fingerBendTimingEvidence'][0]
     assert e['status']=='deferred' and 'fixedHarmonic' not in e['overlap']

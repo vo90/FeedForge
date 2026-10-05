@@ -196,9 +196,34 @@ def reconstruct(event, part, clock, sound_end, terminal_context=(), *, following
                                      'start': float(clock.at(origin)), 'attackTiming': 'authored-note',
                                      'bendTiming': 'authored-tie'}
     terminal_candidate = None
-    # Source-only qualification of one held pinch target. Changed or omitted
-    # pinch markings on ties retain their separate harmonic interpretation.
     initial_target = harmonic_targets[0]
+    # Source-only proof of the complete artificial-harmonic/slide composition.
+    # Empty tied markings continue the first target; explicit changes do not.
+    artificial_slide = (bool(initial_target) and initial_target.get('kind') == 'artificial'
+                        and initial_target.get('policy') == 'harmonic'
+                        and event['effects'].get('harmonic_target') == initial_target
+                        and not event.get('contact') and len(entries) > 1
+                        and 0 < first.fret < 127 and entries[0][1] == origin
+                        and tail_end == sound_end and tail.slide in ('up', 'down'))
+    prior_end = None
+    for i, (a, begin, end, _) in enumerate(entries):
+        if ((a.fret, a.string, a.voice) != (first.fret, first.string, first.voice)
+                or (i and (not a.tie or begin != prior_end))
+                or harmonic_targets[i] not in (None, initial_target)
+                or a.slide_in or (a.slide and i != len(entries)-1)
+                or a.whammy or a.attack_offset or a.staccato or a.hopo_origin or a.hopo_destination
+                or a.trill or a.pick_scrape
+                or any(a.effects.get(k) for k in ('hm', 'hp', 'hn', 'mt', 'lr', 'pm', 'tr'))
+                or ((a.effects.get('vb') or a.beat_vibrato) and a.finger_vibrato not in ('slight', 'wide'))):
+            artificial_slide = False
+        prior_end = end
+    for index, q in crossings:
+        a, begin, end = gestures[index]
+        points = [(begin+(end-begin)*p, v) for p, v in a.bends]
+        if (end != sound_end or points[0][0] > q
+                or any(x[1] != y[1] for x, y in zip(points, points[1:]) if y[0] > q)):
+            artificial_slide = False
+    # Changed or omitted pinch markings retain their separate interpretation.
     terminal_pinch = (bool(initial_target) and initial_target.get('kind') == 'pinch'
                       and initial_target.get('policy') == 'harmonic' and not overlap
                       and event['effects'].get('harmonic_target') == initial_target
@@ -218,7 +243,7 @@ def reconstruct(event, part, clock, sound_end, terminal_context=(), *, following
     # Independently qualify the written beat instruction from source atoms.
     # It stays a separate playback limitation, not a new pitch controller.
     beat_entries = []
-    independent_beat = (not overlap and len(entries) > 1 and 0 < first.fret < 127
+    independent_beat = ((not overlap or artificial_slide) and len(entries) > 1 and 0 < first.fret < 127
                         and entries[0][1] == origin and tail_end == sound_end
                         and tail.slide in ('up', 'down'))
     previous_stop = None
@@ -228,7 +253,8 @@ def reconstruct(event, part, clock, sound_end, terminal_context=(), *, following
                 or a.slide_in or (a.slide and i != len(entries)-1)
                 or a.whammy or a.attack_offset or a.staccato or a.hopo_origin or a.hopo_destination
                 or a.trill or a.pick_scrape
-                or any(a.effects.get(k) for k in ('hm', 'hp', 'hn', 'harmonic_target', 'mt', 'lr', 'pm', 'tr'))
+                or (a.effects.get('harmonic_target') and not artificial_slide)
+                or any(a.effects.get(k) for k in ('hm', 'hp', 'hn', 'mt', 'lr', 'pm', 'tr'))
                 or ((a.effects.get('vb') or a.beat_vibrato) and a.finger_vibrato not in ('slight', 'wide'))):
             independent_beat = False
         if a.beat_vibrato:
@@ -244,7 +270,7 @@ def reconstruct(event, part, clock, sound_end, terminal_context=(), *, following
                      or (a.whammy and not bar_slide) or a.attack_offset or a.hopo_origin or a.hopo_destination
                      or a.trill or a.pick_scrape or (a.beat_vibrato and not beat_control) or (i < len(entries)-1 and a.slide)
                      or ((tail.bends or terminal_pinch) and a.effects.get('vb') and a.finger_vibrato not in ('slight', 'wide'))
-                     or (not terminal_pinch and (a.effects.get('hp') or a.effects.get('harmonic_target')))
+                     or (not (terminal_pinch or artificial_slide) and (a.effects.get('hp') or a.effects.get('harmonic_target')))
                      or any(a.effects.get(k) for k in ('hm', 'hn', 'mt', 'lr', 'pm', 'tr'))
                      for i,(a,*_) in enumerate(entries))
         bend, begin, finish = gestures[-1]
@@ -262,10 +288,14 @@ def reconstruct(event, part, clock, sound_end, terminal_context=(), *, following
                         **({'beatVibrato': beat_control} if beat_control else {}),
                         **({'continuedPinchHarmonic': {'initialTarget': dict(initial_target),
                                                      'policy': 'initial-target-continued'}} if terminal_pinch else {}),
+                        **({'continuedArtificialHarmonic': {'initialTarget': dict(initial_target),
+                                                          'policy': 'fixed-or-omitted-tied-target'}} if artificial_slide else {}),
                         **({'bendTiming': 'authored-segment'} if tail.bends else {}),
                         **({'bendPhase': 'changing', 'pitchPolicy': 'independent-source-bend'} if not settled else {}),
                         **({'attackTiming': 'authored-chord'} if not settled and 'simultaneous-attack' in terminal_context else {}),
                         **({'endTiming': 'authored-tie'} if not settled and 'following-slide-in' in terminal_context else {})}
+    if artificial_slide and terminal_candidate:
+        mixed = False
     terminal_handoff = False
     overlap_reason = None
     if overlap:
@@ -339,19 +369,19 @@ def reconstruct(event, part, clock, sound_end, terminal_context=(), *, following
         vibrato_atoms = [a for a, *_ in entries if a.effects.get('vb')]
         # Reconstruct eligibility from independently parsed source atoms. A
         # constant or continued target is separate from the settled handoff.
-        harmonic_handoff = ((fixed_artificial or pinch_continuation) and flat_handoffs and not mixed and not compound
+        harmonic_handoff = ((fixed_artificial or pinch_continuation or artificial_slide) and flat_handoffs and not mixed and not compound
                             and 0 < first.fret < 127
                             and all(a.fret == first.fret and a.string == first.string
-                                    and not a.beat_vibrato for a, *_ in entries)
+                                    and (not a.beat_vibrato or artificial_slide) for a, *_ in entries)
                             and all(a.finger_vibrato in ('slight', 'wide') for a in vibrato_atoms))
         compound = compound or (any(harmonic_targets) and not harmonic_handoff)
         terminal_handoff = (terminal_candidate is not None and flat_handoffs and not compound
-                            and not any(a.beat_vibrato for a, *_ in entries)
+                            and (artificial_slide or not any(a.beat_vibrato for a, *_ in entries))
                             and all(a.finger_vibrato in ('slight', 'wide') for a in vibrato_atoms))
         if terminal_handoff:
             mixed = False
         separate_vibrato = (bool(vibrato_atoms) and flat_handoffs and not mixed and not compound
-                            and not any(a.beat_vibrato for a, *_ in entries)
+                            and (artificial_slide or not any(a.beat_vibrato for a, *_ in entries))
                             and all(a.finger_vibrato in ('slight', 'wide') for a in vibrato_atoms))
         compound = compound or (bool(vibrato_atoms) and not separate_vibrato)
         label = ('other-expression' if mixed or compound else
@@ -361,7 +391,10 @@ def reconstruct(event, part, clock, sound_end, terminal_context=(), *, following
         if outgoing is not None and label == 'clear-handoff':
             evidence['overlap']['outgoingLegato'] = outgoing
         if harmonic_handoff:
-            if pinch_continuation:
+            if artificial_slide:
+                evidence['overlap']['continuedArtificialHarmonic'] = {
+                    'initialTarget': dict(initial_target), 'policy': 'fixed-or-omitted-tied-target'}
+            elif pinch_continuation:
                 evidence['overlap']['continuedPinchHarmonic'] = {
                     'initialTarget': dict(initial_pinch), 'policy': 'initial-target-continued'}
             else:
