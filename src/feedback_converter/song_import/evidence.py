@@ -71,7 +71,7 @@ def save_evidence(root: Path, *, score: Path, metadata: dict, performance: dict 
             members = {name: hashlib.sha256(package.read(name)).hexdigest()
                        for name in sorted(package.namelist()) if not name.endswith("/")}
     record = {"version": CONTRACT_VERSION, "sourceFormat": score.suffix.lower().lstrip("."),
-              "sourceMetadata": {k: metadata[k] for k in ("songId", "revisionId", "approval", "title", "artist", "album", "year") if k in metadata},
+              "sourceMetadata": {k: metadata[k] for k in ("songId", "revisionId", "approval", "revisionEvidence", "title", "artist", "album", "year") if k in metadata},
               "objects": refs, "outputHash": output_hash, "members": members,
               "artwork": {k: v for k, v in (artwork or {}).items() if k != "path"}}
     encoded = _json(record)

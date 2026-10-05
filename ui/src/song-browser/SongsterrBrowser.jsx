@@ -123,7 +123,7 @@ export function SongsterrJob({ job, api, action, busy }) {
     {job.state === 'awaiting_main_choice' ? <HybridChoice key={job.hybridChoice?.sourceSha256} job={job} api={api} action={action} busy={busy} /> : null}
     {job.state === 'completed' ? <HybridResult result={job.verification?.hybridLead} /> : null}
     {job.originalsOnlyFrom ? <p>This is a separately requested originals-only import.</p> : null}
-    {job.revisionId ? <small>Approved revision {job.revisionId}</small> : null}
+    {job.revisionId ? <small>{job.revisionLabel || 'Selected revision'} · {job.revisionId}</small> : null}
     {job.state === 'completed' ? <p>{job.verification?.status === 'passed' ? job.verification?.adjustments?.omittedEndingNotes ? 'Conversion checked against the source tab and recorded ending adjustments.' : job.verification?.adjustments?.terminalSustains ? 'Conversion checked against the source tab and recorded sustain adjustments.' : 'Conversion checked against the source tab.' : job.verification?.status === 'modified' ? 'This file has changed since conversion. The report describes the original import.' : 'Source verification is unavailable for this file.'}</p> : null}
     {job.state === 'completed' && job.verification?.status === 'passed' && job.verification?.adjustments?.omittedEndingNotes ? <p>{job.verification.adjustments.omittedEndingNotes} ending {job.verification.adjustments.omittedEndingNotes === 1 ? 'note omitted' : 'notes omitted'} at or after the audio ending. {timingWarning ? 'Source timing was retained with the warning above.' : 'Earlier timing passed the audio check.'} The original tab and omission details are saved in the FeedPak.</p> : null}
     {job.state === 'completed' && job.verification?.adjustments?.terminalSustains ? <p>{job.verification.adjustments.terminalSustains} final {job.verification.adjustments.terminalSustains === 1 ? 'sustain' : 'sustains'} shortened to the audio ending. Original durations are saved with the tab.</p> : null}
@@ -165,6 +165,47 @@ export function SongsterrJob({ job, api, action, busy }) {
     <CompatibilityDetails report={compatibility} />
     {job.warnings?.length ? <details><summary>Import notes</summary><ul>{job.warnings.map((warning, index) => <li key={index}>{typeof warning === 'string' ? warning : `${warning.location ? warning.location + ': ' : ''}${warning.message}`}</li>)}</ul></details> : null}
   </li>;
+}
+
+export function SongsterrResult({ song, jobs, api, action, busy, outputDir, hybridEnabled, reviewSources }) {
+  const [catalogue, setCatalogue] = useState(null), [selected, setSelected] = useState('');
+  const [loading, setLoading] = useState(false), [error, setError] = useState('');
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const job = [...jobs].reverse().find(entry => entry.songId === String(song.id)
+    && (entry.requestedRevisionId || '') === selected && Boolean(entry.hybridLead?.enabled) === hybridEnabled
+    && !['cancelled', 'failed'].includes(entry.state));
+  const pending = job && job.state !== 'completed';
+  const choice = catalogue?.revisions.find(row => row.revisionId === selected);
+  async function load() {
+    setLoading(true); setError('');
+    try {
+      const found = await api.revisions({ id: String(song.id) });
+      if (found?.ok === false) throw new Error(errorText(found));
+      if (mounted.current) { setCatalogue(found); if (selected && !found.revisions.some(row => row.revisionId === selected && row.eligible)) setSelected(''); }
+    } catch (err) { if (mounted.current) setError(errorText(err)); }
+    finally { if (mounted.current) setLoading(false); }
+  }
+  return <article className="sb-result"><div className="sb-result-info"><h3>{song.title}</h3><p className="sb-artist">{song.artist}</p><small>Songsterr · All playable guitar and bass tracks</small>
+    {api?.revisions ? <details className="st-revision-choice"><summary onClick={() => { if (!catalogue && !loading) void load(); }}>Choose revision</summary>
+      <p>Automatic prefers an approved or current moderator revision. Otherwise it chooses the newest eligible unreviewed revision.</p>
+      {loading ? <p role="status">Loading revision history…</p> : null}
+      {error ? <p role="alert">{error}</p> : null}
+      {catalogue ? <><label>Tab revision <select aria-label={`Tab revision for ${song.title}`} value={selected} disabled={loading || busy} onChange={event => setSelected(event.target.value)}>
+        <option value="">Automatic{catalogue.recommendedRevisionId ? ` · ${catalogue.recommendedRevisionId}` : ''}</option>
+        {catalogue.revisions.map(row => <option key={row.revisionId} value={row.revisionId} disabled={!row.eligible}>
+          {row.createdAt ? new Date(row.createdAt).toLocaleDateString() + ' · ' : ''}{row.label} · {row.revisionId}{!row.eligible ? ' · Unavailable' : ''}
+        </option>)}
+      </select></label>
+      {choice?.reason ? <p>{choice.reason}</p> : null}
+      {catalogue.revisions.some(row => !row.eligible) ? <details><summary>Unavailable revisions</summary><ul>{catalogue.revisions.filter(row => !row.eligible).map(row => <li key={row.revisionId}>{row.revisionId}: {row.reason}</li>)}</ul></details> : null}</> : null}
+      <button className="sb-text-button" disabled={loading || busy} onClick={() => void load()}>Refresh revisions</button>
+    </details> : null}
+  </div><div className="sb-result-actions"><button className="sb-button sb-primary" disabled={!api || busy || loading || !outputDir || Boolean(pending) || Boolean(selected && !choice?.eligible)}
+    onClick={() => action(() => api.enqueue({ id: String(song.id), ...(selected ? { requestedRevisionId: selected } : {}),
+      hybridLead: hybridEnabled ? { enabled: true, ...(reviewSources ? { reviewSources: true } : {}) } : { enabled: false } }))}>
+    <Download size={16} />{pending ? LABELS[job.state] : 'Download & convert'}</button>
+    {job?.state === 'completed' && job.outputAvailable ? <button className="sb-text-button" onClick={() => action(() => api.showOutput({ id: job.id }))}>Show saved FeedPak</button> : null}</div></article>;
 }
 
 export default function SongsterrBrowser({ api: providedApi, outputApi: providedOutputApi, outputSettings, onOpenOutputSettings }) {
@@ -242,7 +283,7 @@ export default function SongsterrBrowser({ api: providedApi, outputApi: provided
     <header className="sb-header"><div><p className="sb-eyebrow">SONGSTERR SONG LIBRARY</p><h1>Find songs</h1><p>Choose a tab. Get a FeedPak with guitar, bass and original audio.</p></div>
       <div className="sb-job-controls"><button className="sb-button" disabled={!api || busy} onClick={() => action(() => api.showBrowser())}>Open Songsterr</button><button className="sb-button" disabled={!api || busy} onClick={() => action(() => api.signIn())}>Songsterr sign in</button></div></header>
     <div className="sb-output"><FolderOpen size={20} /><div><strong>FeedForge output folder</strong><p>{outputDir || 'Choose an output folder in Settings.'}</p><small>Uses the filename and folder layout from Settings.</small></div><button className="sb-button" onClick={onOpenOutputSettings}>Open Settings</button></div>
-    <p className="st-experimental">Songsterr import is experimental. The latest approved revision and audio timing are checked before saving.</p>
+    <p className="st-experimental">Songsterr import is experimental. Unreviewed tabs are supported. Revision eligibility and audio timing are checked before saving.</p>
     <div className="st-hybrid-options"><label><input type="checkbox" checked={hybridEnabled} onChange={event => setHybridEnabled(event.target.checked)} /> Create Hybrid Lead</label>
       <p>Add one guitar arrangement that follows the featured guitarist through the song and fills suitable gaps. It stays in the base tuning; all originals are retained.</p>
       {hybridEnabled ? <details><summary>Source choices</summary><label><input type="checkbox" checked={reviewSources} onChange={event => setReviewSources(event.target.checked)} /> Let me choose the base and supplementary guitars after downloading the tab</label><p>Otherwise FeedForge chooses automatically and reports any uncertain choices or incompatible sources.</p></details> : null}
@@ -256,10 +297,8 @@ export default function SongsterrBrowser({ api: providedApi, outputApi: provided
     <form className="st-search" onSubmit={search}><label htmlFor="songsterr-query">Search by artist or song title</label><div className="st-search-row"><input id="songsterr-query" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Artist or song title" minLength={2} maxLength={160} /><button className="sb-button sb-primary" disabled={!api || searching || !query.trim()}>{searching ? <LoaderCircle size={18} className="sb-spin" /> : <Search size={18} />}Search</button>{searching ? <button type="button" className="sb-button" onClick={() => { searchGeneration.current++; api.cancelSearch(); setSearching(false); }}>Cancel</button> : null}</div></form>
     <div className="st-results-layout"><section aria-label="Songsterr search results"><div className="st-results-heading"><h2>{searched ? `${results.length} search results` : 'Discover your next song'}</h2><label>Sort these results <select value={sort} onChange={(e) => setSort(e.target.value)}><option value="relevance">Relevance</option><option value="title">Song title</option><option value="artist">Artist</option></select></label></div>
       {searchNotice ? <p>{searchNotice}</p> : null}
-      {!results.length ? <p className="st-empty">{searched ? 'No matching songs. Try another artist or title.' : 'Search Songsterr to get started.'}</p> : ordered.map((song) => {
-        const job = [...jobs].reverse().find((entry) => entry.songId === String(song.id) && Boolean(entry.hybridLead?.enabled) === hybridEnabled && entry.state !== 'cancelled' && entry.state !== 'failed');
-        const pending = job && job.state !== 'completed';
-        return <article className="sb-result" key={song.id}><div className="sb-result-info"><h3>{song.title}</h3><p className="sb-artist">{song.artist}</p><small>Songsterr · All playable guitar and bass tracks</small></div><div className="sb-result-actions"><button className="sb-button sb-primary" disabled={!api || busy || !outputDir || Boolean(pending)} onClick={() => action(() => api.enqueue({ id: String(song.id), hybridLead: hybridEnabled ? { enabled: true, ...(reviewSources ? { reviewSources: true } : {}) } : { enabled: false } }))}><Download size={16} />{pending ? LABELS[job.state] : 'Download & convert'}</button>{job?.state === 'completed' && job.outputAvailable ? <button className="sb-text-button" onClick={() => action(() => api.showOutput({ id: job.id }))}>Show saved FeedPak</button> : null}</div></article>;
-      })}</section><aside><h2>Song activity</h2><p>Songs are processed one at a time.</p><ul className="st-jobs">{[...jobs].reverse().map((job) => <SongsterrJob key={job.id} job={job} api={api} action={action} busy={busy} />)}</ul></aside></div>
+      {!results.length ? <p className="st-empty">{searched ? 'No matching songs. Try another artist or title.' : 'Search Songsterr to get started.'}</p>
+        : ordered.map(song => <SongsterrResult key={song.id} {...{ song, jobs, api, action, busy, outputDir, hybridEnabled, reviewSources }} />)}
+      </section><aside><h2>Song activity</h2><p>Songs are processed one at a time.</p><ul className="st-jobs">{[...jobs].reverse().map((job) => <SongsterrJob key={job.id} job={job} api={api} action={action} busy={busy} />)}</ul></aside></div>
   </section>;
 }

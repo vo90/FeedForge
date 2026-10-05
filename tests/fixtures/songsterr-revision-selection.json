@@ -1,0 +1,39 @@
+{
+  "base": {
+    "songId": "123", "revisionId": "456", "approval": "unreviewed",
+    "revisionEvidence": {
+      "version": 2, "policy": "reviewed-first-with-unreviewed-fallback", "songId": "123", "revisionId": "456",
+      "basis": "unreviewed", "selection": "automatic", "authorId": "33", "defaultRevisionId": "456",
+      "createdAt": "2026-08-13T12:00:00.000Z", "checkedAt": "2026-10-03T12:00:00.000Z",
+      "moderationType": "no", "reviewConclusion": null, "isDeleted": false, "isBlocked": false, "isOnModeration": false
+    }
+  },
+  "cases": [
+    { "name": "unreviewed", "valid": true },
+    { "name": "pending moderation", "evidence": { "basis": "awaiting_moderation", "moderationType": "pre", "isOnModeration": true }, "valid": true },
+    { "name": "pending review", "evidence": { "basis": "awaiting_review", "moderationType": "post", "isOnModeration": true }, "valid": true },
+    { "name": "legacy history without mode", "evidence": { "moderationType": null }, "valid": true },
+    { "name": "approved", "metadata": { "approval": "approved" }, "evidence": { "basis": "reviewed", "reviewConclusion": "good", "moderationType": "pre" }, "valid": true },
+    { "name": "current moderator", "metadata": { "approval": "approved" }, "evidence": { "basis": "moderator_default", "moderatorVerified": true }, "valid": true },
+    { "name": "positive explicit alternative", "metadata": { "approval": "alternative" }, "evidence": { "basis": "alternative", "selection": "explicit", "isBlocked": true, "reviewConclusion": "fair" }, "valid": true },
+    { "name": "old approved job", "metadata": { "approval": "approved", "revisionEvidence": null }, "valid": true },
+    { "name": "unknown receipt", "evidence": { "version": 3 }, "valid": false },
+    { "name": "wrong policy", "evidence": { "policy": "trust-anything" }, "valid": false },
+    { "name": "pending faked as approved", "metadata": { "approval": "approved" }, "valid": false },
+    { "name": "unreviewed without receipt", "metadata": { "revisionEvidence": null }, "valid": false },
+    { "name": "wrong revision", "metadata": { "revisionId": "457" }, "valid": false },
+    { "name": "wrong song", "metadata": { "songId": "124" }, "valid": false },
+    { "name": "deleted", "evidence": { "isDeleted": true }, "valid": false },
+    { "name": "rejected", "evidence": { "reviewConclusion": "rejected" }, "valid": false },
+    { "name": "unexplained alternative", "evidence": { "basis": "alternative", "isBlocked": true, "selection": "explicit" }, "valid": false },
+    { "name": "automatic alternative", "metadata": { "approval": "alternative" }, "evidence": { "basis": "alternative", "isBlocked": true, "reviewConclusion": "good" }, "valid": false },
+    { "name": "future moderation", "evidence": { "moderationType": "future" }, "valid": false },
+    { "name": "future conclusion", "evidence": { "reviewConclusion": "future" }, "valid": false },
+    { "name": "unknown moderation state", "evidence": { "isOnModeration": null }, "valid": false },
+    { "name": "string flag", "evidence": { "isDeleted": "false" }, "valid": false },
+    { "name": "conflicting pending approval", "metadata": { "approval": "approved" }, "evidence": { "basis": "reviewed", "moderationType": "post", "reviewConclusion": "good", "isOnModeration": true }, "valid": false },
+    { "name": "invalid date", "evidence": { "createdAt": "yesterday" }, "valid": false },
+    { "name": "missing author", "evidence": { "authorId": null }, "valid": false },
+    { "name": "noncurrent moderator", "metadata": { "approval": "approved" }, "evidence": { "basis": "moderator_default", "moderatorVerified": true, "defaultRevisionId": "12345" }, "valid": false }
+  ]
+}

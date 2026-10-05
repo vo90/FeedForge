@@ -42,6 +42,18 @@ function page(children, url = 'https://www.songsterr.com/?pattern=green+lung') {
 }
 function run(fn, document, request) { return JSON.parse(JSON.stringify(vm.runInNewContext(`(${fn.toString()})(request)`, { document, location: { href: document.URL }, request, URL, Event }))); }
 
+test('rendered pending labels stay distinct and revision pagination uses the visible history control', () => {
+  const song = '/a/wsa/green-lung-black-magick-radio-tab-s6472417', more = el('button', {}, [], 'Show more');
+  const rows = ['On review', 'On moderation', 'Deleted', 'Alternative', ''].map((label, i) =>
+    el('li', { id: 'r' + (8451622 + i) }, [span(label), el('a', { href: song + '/r' + (8451622 + i) }, [], 'Show full tab')]));
+  const doc = page([el('section', {}, [el('ul', { id: 'revisions-list' }, rows), more])], 'https://www.songsterr.com' + song);
+  const observed = run(readSongsterrPage, doc);
+  assert.deepEqual(observed.revisionRows.map(row => row.status), ['awaiting_review', 'awaiting_moderation', 'deleted', 'alternative', 'unreviewed']);
+  assert.equal(observed.historyHasMore, true); assert.equal(run(actOnSongsterrPage, doc, { action: 'moreHistory' }).ok, true);
+  assert.equal(more.clicked, 1); more.hidden = true;
+  assert.equal(run(readSongsterrPage, doc).historyHasMore, false);
+});
+
 test('rendered public search extracts separate titles/artists, deduplicates IDs and ignores unrelated links', () => {
   const href = '/a/wsa/green-lung-woodland-rites-tab-s564073';
   const doc = page([el('main', { id: 'panel-search' }, [
@@ -143,7 +155,7 @@ test('initial-revision history retains the song and approved full-tab identity',
   assert.equal(state.songId, '5197918');
   assert.equal(state.revisionId, '6797098');
   assert.equal(state.historyReady, true);
-  assert.deepEqual(state.revisionRows, [{ revisionId: '6797098', approved: true, excluded: false, moderator: false }]);
+  assert.deepEqual(state.revisionRows, [{ revisionId: '6797098', approved: true, excluded: false, moderator: false, status: 'reviewed', ambiguous: false }]);
 });
 
 test('initial comparison links identify older rows without supplying approval by themselves', () => {
@@ -160,10 +172,10 @@ test('initial comparison links identify older rows without supplying approval by
   ])], 'https://www.songsterr.com' + song + '/r101...r104'));
   assert.deepEqual(state.approvedRevisions, [{ revisionId: '101', approval: 'approved', date: '1/1/2026' }]);
   assert.deepEqual(state.revisionRows, [
-    { revisionId: '101', approved: true, excluded: false, moderator: false },
-    { revisionId: '102', approved: false, excluded: true, moderator: false },
-    { revisionId: '103', approved: false, excluded: true, moderator: false },
-    { revisionId: '104', approved: false, excluded: false, moderator: false },
+    { revisionId: '101', approved: true, excluded: false, moderator: false, status: 'reviewed', ambiguous: false },
+    { revisionId: '102', approved: false, excluded: true, moderator: false, status: 'unknown', ambiguous: false },
+    { revisionId: '103', approved: false, excluded: true, moderator: false, status: 'alternative', ambiguous: false },
+    { revisionId: '104', approved: false, excluded: false, moderator: false, status: 'unreviewed', ambiguous: false },
   ]);
 });
 
@@ -198,11 +210,11 @@ test('history reader distinguishes a moderator icon from a badge, pending label 
     row('7509117', [span('Alternative'), span('Approved')]),
   ])], 'https://www.songsterr.com' + song);
   assert.deepEqual(run(readSongsterrPage, doc).revisionRows, [
-    { revisionId: '7509113', approved: false, excluded: false, moderator: true },
-    { revisionId: '7509114', approved: false, excluded: false, moderator: false },
-    { revisionId: '7509115', approved: false, excluded: true, moderator: true },
-    { revisionId: '7509116', approved: false, excluded: false, moderator: false },
-    { revisionId: '7509117', approved: true, excluded: true, moderator: false },
+    { revisionId: '7509113', approved: false, excluded: false, moderator: true, status: 'unreviewed', ambiguous: false },
+    { revisionId: '7509114', approved: false, excluded: false, moderator: false, status: 'unreviewed', ambiguous: false },
+    { revisionId: '7509115', approved: false, excluded: true, moderator: true, status: 'awaiting_review', ambiguous: false },
+    { revisionId: '7509116', approved: false, excluded: false, moderator: false, status: 'unreviewed', ambiguous: false },
+    { revisionId: '7509117', approved: true, excluded: true, moderator: false, status: 'unknown', ambiguous: true },
   ]);
 });
 

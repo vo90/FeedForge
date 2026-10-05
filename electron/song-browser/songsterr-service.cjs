@@ -9,6 +9,7 @@ function registerSongsterr({ app, BrowserWindow, session, ipcMain, dialog, shell
   let provider, jobs, searching;
   let closing = false, closePromise;
   const results = new Map();
+  const revisionChoices = new Map();
   const state = () => ({ jobs: jobs.snapshot(), connection: provider.connection, outputDir: getSettings().outputDir });
   const emit = () => { const win = getMainWindow(); if (jobs && win && !win.isDestroyed()) win.webContents.send('songsterr:state', state()); };
   function initialize() {
@@ -63,12 +64,20 @@ function registerSongsterr({ app, BrowserWindow, session, ipcMain, dialog, shell
     } finally { if (searching === controller) searching = null; }
   });
   handler('cancelSearch', () => { searching?.abort(); return { ok: true }; });
-  handler('enqueue', ({ id, hybridLead }) => {
+  handler('revisions', async ({ id }) => {
+    const song = results.get(String(id)); if (!song) throw new Error('Search for this song before choosing a revision.');
+    const catalogue = await provider.listRevisions(song);
+    revisionChoices.set(String(id), new Set(catalogue.revisions.filter(row => row.eligible).map(row => row.revisionId)));
+    while (revisionChoices.size > 2000) revisionChoices.delete(revisionChoices.keys().next().value);
+    return catalogue;
+  });
+  handler('enqueue', ({ id, hybridLead, requestedRevisionId }) => {
     const song = results.get(String(id)); if (!song) throw new Error('Search for this song again before importing it.');
+    if (requestedRevisionId != null && !revisionChoices.get(String(id))?.has(String(requestedRevisionId))) throw new Error('Choose an available revision from this song’s revision list.');
     const settings = getSettings();
     if (!settings.outputDir) throw new Error('Choose an output folder in FeedForge Settings.');
     validateOutput(settings.outputDir);
-    return jobs.enqueue(song, { ...settings, hybridLead });
+    return jobs.enqueue(song, { ...settings, hybridLead, requestedRevisionId });
   });
   handler('retry', ({ id, allowAccount, hybridLead, originalsOnly, rediscoverAudio }) => jobs.retry(String(id), { allowAccount: allowAccount === true, hybridLead, originalsOnly: originalsOnly === true, rediscoverAudio: rediscoverAudio === true }));
   handler('cancel', async ({ id }) => { await jobs.cancel(String(id)); return { ok: true }; });

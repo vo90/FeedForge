@@ -13,6 +13,8 @@ const { transport, retryPlan } = require('./songsterr-retry.cjs');
 const { reportZip } = require('./songsterr-retry-report.cjs');
 const { normalizeHybridLead, matchesHybridRequest } = require('./hybrid-lead-options.cjs');
 const { selectSiteAudio, isSiteAudio, validRecovery, startRecovery, verifiedRecoveryMap } = require('./songsterr-recording.cjs');
+const { validRevisionSelection, revisionLabel } = require('./providers/songsterr/revision-policy.cjs');
+const { numeric } = require('./providers/songsterr/policy.cjs');
 const WAITING = new Set(['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed', 'awaiting_main_choice']);
 const ACTIVE = new Set(['queued', 'resolving', 'downloading', 'converting', 'audio', 'aligning', 'validating', 'saving']);
 const PENDING = (job) => ACTIVE.has(job.state) || WAITING.has(job.state) || job.state === 'retry_wait';
@@ -196,7 +198,9 @@ class SongsterrJobs {
   public(job) {
     return { id: job.id, source: 'songsterr', sourceKey: job.sourceKey, songId: job.chart.id, title: job.chart.title, artist: job.chart.artist,
       state: job.state, message: clean(job.message), error: clean(job.error), createdAt: job.createdAt,
-      revisionId: job.metadata?.revisionId, outputDir: job.outputDir, outputSettings: job.outputSettings,
+      revisionId: job.metadata?.revisionId || job.pinnedDescriptor?.revisionId,
+      revisionLabel: revisionLabel(job.metadata || job.pinnedDescriptor), requestedRevisionId: job.requestedRevisionId,
+      outputDir: job.outputDir, outputSettings: job.outputSettings,
       hybridLead: job.hybridLead, hybridChoice: job.state === 'awaiting_main_choice' ? job.hybridChoice : undefined,
       originalsOnlyFrom: job.originalsOnlyFrom,
       outputPath: job.state === 'completed' ? job.outputPath : undefined,
@@ -214,17 +218,20 @@ class SongsterrJobs {
       canCancel: PENDING(job) };
   }
   snapshot() { return this.jobs.map((job) => this.public(job)); }
-  enqueue(chart, { outputDir, outputSettings, hybridLead, originalsOnlyFrom, retainedFrom }) {
+  enqueue(chart, { outputDir, outputSettings, hybridLead, originalsOnlyFrom, retainedFrom, requestedRevisionId }) {
     if (this.disposed || this.persistenceFailed) throw new Error('Reopen Songsterr before adding imports.');
     if (!path.isAbsolute(outputDir || '')) throw new Error('Choose an output folder in FeedForge Settings.');
     const options = normalizeHybridLead(hybridLead);
+    if (requestedRevisionId != null && !numeric(requestedRevisionId)) throw new Error('Choose a valid revision.');
+    requestedRevisionId = requestedRevisionId == null ? undefined : numeric(requestedRevisionId);
     const existing = this.jobs.find((job) => job.chart.id === String(chart.id) && PENDING(job)
+      && job.requestedRevisionId === requestedRevisionId
       && JSON.stringify(normalizeHybridLead(job.hybridLead)) === JSON.stringify(options) && job.originalsOnlyFrom === originalsOnlyFrom);
     if (existing) return this.public(existing);
     if (this.jobs.filter(PENDING).length >= 30) throw new Error('Finish or cancel some imports before adding more songs.');
     const job = { id: crypto.randomUUID(), source: 'songsterr', sourceKey: `songsterr:${chart.id}`, chart: { ...chart, id: String(chart.id) },
       state: 'queued', createdAt: this.clock.now(), retry: retryCycle(), outputDir: path.resolve(outputDir), outputSettings: normalizeOutputSettings(outputSettings),
-      hybridLead: options, ...(originalsOnlyFrom ? { originalsOnlyFrom } : {}), controller: new AbortController() };
+      requestedRevisionId, hybridLead: options, ...(originalsOnlyFrom ? { originalsOnlyFrom } : {}), controller: new AbortController() };
     if (retainedFrom?.scorePath) {
       const oldRoot = path.join(this.root, retainedFrom.id), source = containedFile(oldRoot, retainedFrom.scorePath);
       if (!source.path || fs.statSync(source.path).size > 80 * 1024 ** 2) throw new Error('The retained original tab is unavailable.');
@@ -266,7 +273,7 @@ class SongsterrJobs {
     }
     if (originalsOnly === true) {
       if (!job.hybridLead?.enabled) throw new Error('This import already uses original arrangements only.');
-      return this.enqueue(job.chart, { outputDir: job.outputDir, outputSettings: job.outputSettings, hybridLead: { enabled: false }, originalsOnlyFrom: job.id, retainedFrom: job });
+      return this.enqueue(job.chart, { outputDir: job.outputDir, outputSettings: job.outputSettings, requestedRevisionId: job.requestedRevisionId, hybridLead: { enabled: false }, originalsOnlyFrom: job.id, retainedFrom: job });
     }
     if (hybridLead !== undefined) {
       if (job.state !== 'awaiting_main_choice') throw new Error('The source choices are not awaiting a selection.');
@@ -442,34 +449,38 @@ class SongsterrJobs {
     const stat = fs.lstatSync(directory); if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('The import working folder is invalid.');
     check(job); job.converterRecipe = await waitForSharedOperation(this.getConverterRecipe(), job.controller.signal); check(job);
     if ((!job.scorePath || (!fs.existsSync(job.scorePath) && job.retry.used === 0)) && !retryAudioDetection) {
-      this._set(job, 'resolving', { message: 'Finding the latest approved revision…', error: '' });
+      this._set(job, 'resolving', { message: 'Checking importable revisions…', error: '' });
       // A cancelled provider may have finished writing before its promise rejects.
       // A fresh acquisition folder makes retry safe without overwriting that file.
       const acquisition = fs.mkdtempSync(path.join(directory, 'source-'));
       const acquired = await this.provider.acquire(job.chart, { directory: acquisition, signal: job.controller.signal, allowAccount: job.allowAccount === true,
-        pinnedDescriptor: job.pinnedDescriptor, onPinned: (descriptor) => {
+        requestedRevisionId: job.requestedRevisionId, pinnedDescriptor: job.pinnedDescriptor, onPinned: (descriptor) => {
           check(job);
-          if (job.pinnedDescriptor && descriptor.revisionId !== job.pinnedDescriptor.revisionId) throw new Error('The approved revision changed.');
+          if (!validRevisionSelection(descriptor) || (job.requestedRevisionId && descriptor.revisionId !== job.requestedRevisionId)) throw new Error('The revision selection is invalid.');
+          if (job.pinnedDescriptor && descriptor.revisionId !== job.pinnedDescriptor.revisionId) throw new Error('The selected revision changed.');
           job.pinnedDescriptor = descriptor; if (!job.audio && descriptor.audio) selectSiteAudio(job, descriptor.audio, descriptor.revisionId);
           this._save();
         },
-        onProgress: (p) => this._set(job, 'downloading', { message: clean(p?.message || 'Retrieving the approved tab…') }) });
+        onProgress: (p) => this._set(job, 'downloading', { message: clean(p?.message || 'Retrieving the selected tab…') }) });
       check(job);
       const source = containedFile(acquisition, acquired?.path);
       if (!source.path) throw fileLocationError('The source returned an invalid tab file', 'acquired_score', source.reason);
-      if (String(acquired.metadata?.songId) !== job.chart.id || !/^\d+$/.test(String(acquired.metadata?.revisionId)) || acquired.metadata?.approval !== 'approved') throw new Error('The source did not identify an approved revision.');
-      if (job.pinnedDescriptor && String(acquired.metadata.revisionId) !== job.pinnedDescriptor.revisionId) throw new Error('The acquired tab differs from the pinned approved revision.');
+      if (String(acquired.metadata?.songId) !== job.chart.id || !validRevisionSelection(acquired.metadata)) throw new Error('The source did not identify an eligible revision.');
+      if (job.pinnedDescriptor && (String(acquired.metadata.revisionId) !== job.pinnedDescriptor.revisionId
+          || JSON.stringify(acquired.metadata.revisionEvidence) !== JSON.stringify(job.pinnedDescriptor.revisionEvidence))) throw new Error('The acquired tab differs from the pinned revision.');
       job.scorePath = acquired.path; job.metadata = acquired.metadata;
       job.cachedScoreHash = await hashFile(job.scorePath, job.controller.signal);
       job.sourceKey = `songsterr:${job.chart.id}:${job.metadata.revisionId}`;
       if (!job.audio && acquired.audio) selectSiteAudio(job, acquired.audio);
       this._save();
     }
-    if (String(job.metadata?.songId) !== job.chart.id || !/^\d+$/.test(String(job.metadata?.revisionId)) || job.metadata?.approval !== 'approved'
+    if (String(job.metadata?.songId) !== job.chart.id || !validRevisionSelection(job.metadata)
+        || (job.requestedRevisionId && String(job.metadata.revisionId) !== job.requestedRevisionId)
         || job.sourceKey !== `songsterr:${job.chart.id}:${job.metadata.revisionId}`) throw new Error('The saved tab revision is invalid. Search for the song again to create a new import.');
     const score = containedFile(directory, job.scorePath);
     if (!score.path) throw fileLocationError('The saved tab changed. Search for the song again to create a new import', 'cached_score', score.reason);
     if (await hashFile(score.path, job.controller.signal) !== job.cachedScoreHash) throw new Error('The saved tab changed. Search for the song again to create a new import.');
+    await this._recheckRevision(job);
     check(job);
     if (job.recordingRecovery?.pending) {
       if (!validRecovery(job.recordingRecovery)) throw Object.assign(new Error('Recording recovery is invalid.'), { code: 'needs_attention' });
@@ -573,6 +584,7 @@ class SongsterrJobs {
           && verifiedChartGuidance(checkedPrior.verification.chartGuidance, result.coverage?.arrangements);
       } catch { /* A missing historical report does not invalidate this fresh conversion. */ }
     }
+    await this._recheckRevision(job);
     if (canReuse) {
       job.outputPath = prior.outputPath; job.outputHash = prior.outputHash; job.committed = true;
       job.evidence = prior.evidence; job.verification = prior.verification;
@@ -584,5 +596,14 @@ class SongsterrJobs {
     await Promise.resolve(this.onCompleted(this.public(job))).catch(() => {});
   }
   async dispose() { this.disposed = true; this.clock.clearTimeout(this.retryTimer); for (const job of this.jobs) if (ACTIVE.has(job.state)) { job.controller.abort(); terminate(job.child); } await this.draining; }
+  async _recheckRevision(job) {
+    if (job.metadata?.revisionEvidence?.version !== 2) return;
+    if (typeof this.provider.revalidate !== 'function') throw new Error('The selected revision cannot be rechecked. Update FeedForge and retry.');
+    check(job);
+    const recheck = await this.provider.revalidate(job.chart, { metadata: job.metadata, signal: job.controller.signal });
+    check(job);
+    if (recheck?.revisionId !== String(job.metadata.revisionId)) throw new Error('The revision recheck returned a different tab.');
+    job.revisionRecheck = recheck; this._save();
+  }
 }
 module.exports = { SongsterrJobs, hashFile, atomicJson };

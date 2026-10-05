@@ -110,6 +110,10 @@ def run_import(request: dict, progress=None) -> dict:
     try:
         if not isinstance(request, dict):
             raise ImportFailure("unsupported_score", "The import request must be an object.")
+        metadata = request.get("metadata") or {}
+        from .revision_policy import valid_revision_selection
+        if ("approval" in metadata or "revisionEvidence" in metadata) and not valid_revision_selection(metadata):
+            raise ImportFailure("revision_ineligible", "The selected tab revision could not be verified.")
         score = Path(str(request.get("scorePath") or ""))
         if not score.is_file():
             raise ImportFailure("unsupported_score", "The exported Guitar Pro file does not exist.")

@@ -10,7 +10,7 @@ from .timeline import render
 def load_performance(path: Path | str, metadata: dict | None = None, *, composition_context: bool = False) -> dict:
     """Read a GP7/8 score or Songsterr JSON and render its performed timeline.
 
-    ``metadata`` comes from the original approved Songsterr revision and takes
+    ``metadata`` comes from the original selected Songsterr revision and takes
     precedence over editor-copy metadata (which can rename artist/title).
     No network requests or game runtime imports are made.
     """
@@ -48,7 +48,7 @@ def load_performance(path: Path | str, metadata: dict | None = None, *, composit
             if field in metadata and metadata[field] is not None:
                 setattr(score, field, str(metadata[field]).strip())
         score.source.update({key: metadata[key] for key in
-                             ("songId", "revisionId", "url", "approved", "approval", "provider") if key in metadata})
+                             ("songId", "revisionId", "url", "approved", "approval", "provider", "revisionEvidence") if key in metadata})
     try:
         performance = render(score)
     except ScoreImportError as exc:

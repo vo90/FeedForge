@@ -13,6 +13,7 @@ import math
 import re
 
 from .audio import ImportFailure
+from .revision_policy import valid_revision_selection
 from .terminal_sustains import policy_for, trim_held_note
 
 VERSION = "songsterr-video-points-v1"
@@ -188,7 +189,7 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
     if synchronization.get("feature") not in (None, "alternative"):
         _unavailable("not_full_mix")
     song_id, revision_id = _identifier(metadata.get("songId")), _identifier(metadata.get("revisionId"))
-    if not song_id or not revision_id or metadata.get("approval") != "approved":
+    if not song_id or not revision_id or not valid_revision_selection(metadata):
         _unavailable("unapproved_revision")
     source = performance.get("source") or {}
     if (_identifier(synchronization.get("songId")) != song_id

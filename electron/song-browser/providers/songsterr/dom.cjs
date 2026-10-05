@@ -99,10 +99,15 @@ function readSongsterrPage() {
     if (foreignRevisionLink || ids.size !== 1 || !ids.has(rowId)) continue;
     const badges = all(row, '*').filter((node) => visible(node) && /^approved$/i.test(text(node))
       && !Array.from(node.children || []).some((child) => visible(child) && /^approved$/i.test(text(child))));
-    const excluded = all(row, '*').some((node) => visible(node)
-      && /^(?:alternative|deleted|on moderation|on review|pending|rejected)$/i.test(text(node)));
+    const statusNames = { approved: 'reviewed', alternative: 'alternative', deleted: 'deleted',
+      'on moderation': 'awaiting_moderation', 'on review': 'awaiting_review', pending: 'unknown', rejected: 'rejected' };
+    const statusNodes = all(row, '*').filter(node => visible(node) && Object.hasOwn(statusNames, text(node).toLowerCase())
+      && !Array.from(node.children || []).some(child => visible(child) && text(child) === text(node)));
+    const statuses = statusNodes.map(node => statusNames[text(node).toLowerCase()]);
+    const status = statuses.length === 1 ? statuses[0] : statuses.length ? 'unknown' : 'unreviewed';
+    const excluded = statuses.some(value => !['reviewed', 'unreviewed'].includes(value));
     const moderator = all(row, '[alt="Moderator"], [aria-label="Moderator"], [title="Moderator"]').some(visible);
-    revisionRows.push({ revisionId: rowId, approved: badges.length === 1, excluded, moderator });
+    revisionRows.push({ revisionId: rowId, approved: badges.length === 1, excluded, moderator, status, ambiguous: statuses.length > 1 });
     if (badges.length !== 1 || revisionSeen.has(rowId)) continue;
     revisionSeen.add(rowId); approved.push({ revisionId: rowId, approval: 'approved', date });
   }
@@ -142,6 +147,8 @@ function readSongsterrPage() {
     revisionId: currentRevision, signedOut, searchReady, searchQuery, searchInput,
     canSearch: searchPage && searchInputs.length === 1, searchHome, results, noResults, canOpenHistory, tabReady,
     historyVisible, historyReady: historyVisible && readableHistoryRows > 0, approvedRevisions: approved, revisionRows,
+    historyHasMore: Boolean(historyRoot?.parentElement && all(historyRoot.parentElement, 'button, a')
+      .some(node => enabled(node) && /^(?:show more|load more)$/i.test(label(node)))),
     copyForm, unpublished: /\bnot published\b/i.test(body), editor: Boolean(enabledControl('#control-export-gp')),
     canExport: Boolean(enabledControl('#control-export-gp')),
     audio, originalAvailable: Boolean(originalInput), originalSelected: originalInput?.checked === true,
@@ -218,6 +225,12 @@ function actOnSongsterrPage(request = {}) {
     const byId = enabledControl('#revisions-toggle-tab, #control-revisions, #control-revision-history');
     const candidates = controls.filter((node) => /^(?:show revisions|revisions|revision history|\d{1,2}\/\d{1,2}\/\d{4})$/i.test(text(node)));
     return click(byId || (candidates.length === 1 ? candidates[0] : null));
+  }
+  if (request.action === 'moreHistory') {
+    const root = Array.from(document.querySelectorAll('#revisions-list, [data-testid="revisions-list"], [class*="revisions-list"]')).find(visible);
+    const candidates = root?.parentElement ? Array.from(root.parentElement.querySelectorAll('button, a'))
+      .filter(node => enabled(node) && /^(?:show more|load more)$/i.test(text(node))) : [];
+    return click(candidates.length === 1 ? candidates[0] : null);
   }
   if (request.action === 'editor') return click(enabledControl('#control-editor') || controls.find((node) => /^editor$/i.test(text(node))));
   if (request.action === 'copy') return click(controls.find((node) => /^make a copy$/i.test(text(node))));

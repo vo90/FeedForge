@@ -4,9 +4,10 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const zlib = require('node:zlib');
 const { httpTransport, networkTransport } = require('../../songsterr-retry.cjs');
+const { validRevisionSelection, APPROVED } = require('./revision-policy.cjs');
 const { ORIGIN, MAX_SCORE_BYTES, MAX_TOTAL_BYTES, MAX_TRACKS, MAX_MEASURES, failure, check, clean, numeric, sourceFilename, publicAudio, bounded } = require('./policy.cjs');
 
-// Metadata and parts must use the same approved revision. Tests inject a
+// Metadata and parts must use the same selected revision. Tests inject a
 // transport; do not fall back to latest metadata or rotate hosts on failure.
 function partUrl(songId, revisionId, image, index) {
   if (!numeric(songId) || !numeric(revisionId) || !Number.isInteger(index) || index < 0 || index >= MAX_TRACKS) throw failure('invalid_score', 'The score identity is invalid.');
@@ -68,8 +69,16 @@ async function readJson(fetch, url, signal, budget, { array = false } = {}) {
 }
 function validateMeta(meta, descriptor) {
   if (String(meta.revisionId) !== descriptor.revisionId) throw failure('revision_unavailable',
-    `Songsterr returned revision ${numeric(meta.revisionId) || 'unknown'} instead of approved revision ${descriptor.revisionId}. Retry the import; signing in is not required by this response.`);
+    `Songsterr returned revision ${numeric(meta.revisionId) || 'unknown'} instead of selected revision ${descriptor.revisionId}. Retry the import; signing in is not required by this response.`);
   if (meta.songId != null && String(meta.songId) !== descriptor.id) throw failure('invalid_score', 'The score belongs to a different song.');
+  if (descriptor.revisionEvidence?.version === 2 && (meta.isPublished !== true || numeric(meta.songId) !== descriptor.id
+      || meta.isDeleted === true || meta.isSongDeleted === true
+      || (meta.isBlocked === true && descriptor.revisionEvidence.basis !== 'alternative')
+      || ['isDeleted', 'isSongDeleted', 'isBlocked', 'isOnModeration'].some(key => meta[key] != null && typeof meta[key] !== 'boolean')
+      || (meta.moderationType != null && !['no', 'pre', 'post'].includes(meta.moderationType))
+      || (meta.reviewed != null && !APPROVED.has(meta.reviewed?.conclusion)))) {
+    throw failure('revision_ineligible', 'The selected revision is no longer publicly importable.');
+  }
   if (!Array.isArray(meta.tracks) || !meta.tracks.length || meta.tracks.length > MAX_TRACKS || meta.tracks.some((track) => !track || typeof track !== 'object' || Array.isArray(track))) throw failure('invalid_score', 'Songsterr did not provide a complete track inventory.');
   for (const key of ['title', 'artist']) {
     if (meta[key] != null && clean(meta[key]).normalize('NFKC').toLowerCase() !== descriptor[key].normalize('NFKC').toLowerCase()) throw failure('invalid_score', 'The score metadata does not match the selected song.');
@@ -83,7 +92,7 @@ function validatePart(part, track, expectedMeasures) {
 }
 async function acquireAnonymous(descriptor, { fetch, directory, signal, onProgress = () => {} } = {}) {
   if (typeof fetch !== 'function') throw failure('unavailable', 'Anonymous score retrieval is unavailable.');
-  if (!numeric(descriptor?.id) || !numeric(descriptor?.revisionId) || descriptor.approval !== 'approved') throw failure('unapproved_revision', 'A verified approved revision is required.');
+  if (!numeric(descriptor?.id) || !validRevisionSelection(descriptor)) throw failure('revision_ineligible', 'A verified revision selection is required.');
   const budget = { remaining: MAX_TOTAL_BYTES };
   const meta = await readJson(fetch, `${ORIGIN}/api/meta/${descriptor.id}/${descriptor.revisionId}`, signal, budget);
   validateMeta(meta, descriptor);
@@ -114,7 +123,7 @@ async function acquireAnonymous(descriptor, { fetch, directory, signal, onProgre
   await fs.writeFile(destination, JSON.stringify(payload), { flag: 'wx', mode: 0o600 });
   const audio = descriptor.audio || publicAudio(meta.youtubeUrl) || publicAudio(meta.videoUrl);
   return { path: destination, format: 'songsterr', metadata: { songId: descriptor.id, revisionId: descriptor.revisionId,
-    title: descriptor.title, artist: descriptor.artist, approval: 'approved', tracks: meta.tracks.length, measures,
+    title: descriptor.title, artist: descriptor.artist, approval: descriptor.approval, tracks: meta.tracks.length, measures,
     ...(descriptor.revisionEvidence ? { revisionEvidence: descriptor.revisionEvidence } : {}) },
     ...(audio ? { audio } : {}), sourceFilename: sourceFilename(descriptor.artist, descriptor.title) };
 }

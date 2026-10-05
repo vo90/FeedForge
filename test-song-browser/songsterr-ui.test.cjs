@@ -252,11 +252,19 @@ test('active acquisition/alignment shows progress and cancellation, never premat
 });
 
 test('history uses original metadata, approved revision and actual saved-file availability', () => {
-  const available = job({ state: 'completed', canCancel: false, outputAvailable: true, revisionId: '2585330', message: 'FeedPak ready.' });
-  assert.match(available, /Woodland Rites/); assert.match(available, /Green Lung/); assert.match(available, /Approved revision 2585330/);
+  const available = job({ state: 'completed', canCancel: false, outputAvailable: true, revisionId: '2585330', revisionLabel: 'Approved', message: 'FeedPak ready.' });
+  assert.match(available, /Woodland Rites/); assert.match(available, /Green Lung/); assert.match(available, /Approved · 2585330/);
   assert.match(available, /Show file/); assert.doesNotMatch(available, /Misc Covers|>Cancel<|Retry import/);
   const missing = job({ state: 'completed', canCancel: false, outputAvailable: false });
   assert.match(missing, /saved file has been moved or removed/); assert.doesNotMatch(missing, /Show file/);
+});
+
+test('pending imports keep their review status in activity without claiming approval', () => {
+  const html = job({ revisionId: '8451622', revisionLabel: 'Awaiting moderation', state: 'completed' });
+  assert.match(html, /Awaiting moderation · 8451622/); assert.doesNotMatch(html, /Approved/);
+  const result = render(compiled.exports.SongsterrResult, { song: { id: '1', title: 'Black Magick Radio', artist: 'Green Lung' },
+    jobs: [], api: { revisions() {} }, action() {}, outputDir: 'fixture' });
+  assert.match(result, /Choose revision/); assert.match(result, /newest eligible unreviewed revision/);
 });
 
 test('source panel uses shared Settings and offers only source-supported sorting with no manual conversion wizard', () => {

@@ -14,6 +14,19 @@ const realRequire = createRequire(sourcePath);
 const SONG = { id: '564073', source: 'songsterr', title: 'Woodland Rites', artist: 'Green Lung', url: 'https://www.songsterr.com/a/wsa/green-lung-woodland-rites-tab-s564073', supported: true };
 const pause = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms));
 
+test('revision choices are scoped to a searched song, eligible rows and the main renderer', async t => {
+  const f = await fixture(t);
+  assert.equal((await f.call('revisions', { id: SONG.id })).ok, false);
+  await f.call('search', { query: 'green lung' });
+  assert.equal((await f.call('enqueue', { id: SONG.id, requestedRevisionId: '2585330' })).ok, false);
+  await assert.rejects(f.call('revisions', { id: SONG.id }, { sender: {}, senderFrame: {} }), /must come from FeedForge/);
+  const catalogue = await f.call('revisions', { id: SONG.id }); assert.equal(catalogue.songId, SONG.id);
+  for (const id of ['999', '123456', '../2585330']) assert.equal((await f.call('enqueue', { id: SONG.id, requestedRevisionId: id })).ok, false);
+  const queued = await f.call('enqueue', { id: SONG.id, requestedRevisionId: '2585330' });
+  await f.waitState(queued.id, 'needs_audio');
+  assert.equal(f.acquisitions[0].requestedRevisionId, '2585330');
+});
+
 async function fixture(t, options = {}) {
   const tempParent = fs.realpathSync.native(os.tmpdir());
   const root = await fsp.mkdtemp(path.join(tempParent, 'feedforge-songsterr-service-'));
@@ -24,9 +37,10 @@ async function fixture(t, options = {}) {
   class FakeProvider {
     constructor(config) { this.config = config; this.connection = { status: 'anonymous' }; this.restored = []; this.disposed = false; providers.push(this); }
     async search(request, context) { this.searchRequest = request; this.searchSignal = context.signal; return { status: 'ready', results: [SONG] }; }
+    async listRevisions(chart) { return { songId: chart.id, revisions: [{ revisionId: '2585330', eligible: true }, { revisionId: '999', eligible: false }] }; }
     restoreTrustedResult(chart) { this.restored.push(chart); }
     async acquire(chart, context) {
-      acquisitions.push({ chart: structuredClone(chart), allowAccount: context.allowAccount, directory: context.directory });
+      acquisitions.push({ chart: structuredClone(chart), allowAccount: context.allowAccount, requestedRevisionId: context.requestedRevisionId, directory: context.directory });
       if (options.acquire) return options.acquire(chart, context);
       if (options.accountOnly && !context.allowAccount) throw Object.assign(new Error('Anonymous fixture access was denied.'), { code: 'access_denied', canUseAccount: true });
       const destination = path.join(context.directory, 'fixture.songsterr.json');
