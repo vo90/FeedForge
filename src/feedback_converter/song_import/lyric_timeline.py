@@ -44,6 +44,11 @@ def export(timeline, alignment, duration):
         for row in timeline['events']:
             lo = map_time(alignment, row['time'], allow_negative=True)
             hi = map_time(alignment, row['end'], allow_negative=True)
+            from .collapsed_opening import omitted, score_end
+            if omitted(alignment, row['time']) and row['end'] <= score_end(alignment) + 1e-8:
+                report['omittedEvents'] += 1
+                report['events'].append({**row, 'audioStart': lo, 'audioEnd': hi, 'disposition': 'collapsed_opening'})
+                continue
             if not all(math.isfinite(v) for v in (lo, hi)) or hi <= lo:
                 raise ValueError('Invalid lyric timing interval.')
             start, end = max(0., lo), min(duration, hi)

@@ -43,7 +43,10 @@ def mapped_tracks(performance, alignment):
         notes = list(track.get("notes", [])) + [{**n, "t": n.get("t", c["t"])}
                   for c in track.get("chords", []) for n in c.get("notes", [])]
         events = []
+        from .collapsed_opening import omitted
         for n in notes:
+            if omitted(alignment, n["t"]):
+                continue
             events.append({"t": map_time(alignment, n["t"]), "end": map_time(alignment, n["t"] + n.get("sus", 0)),
                            "midi": track["tuning"][n["s"]] + track.get("capo", 0) + n["f"] if n["f"] != 127 else None,
                            "effects": {k: v for k, v in n.items() if k not in {"t", "sus", "s", "f", "source_ids"}}})

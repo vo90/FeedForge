@@ -15,6 +15,7 @@ import re
 from .audio import ImportFailure
 from .revision_policy import valid_revision_selection
 from .terminal_sustains import policy_for, trim_held_note
+from . import collapsed_opening
 
 VERSION = "songsterr-video-points-v1"
 MAX_MEASURES = 20_000
@@ -91,7 +92,10 @@ def _segment(alignment: dict, time: float):
         index = min(len(anchors) - 2, max(0, bisect_right(anchors, position, key=lambda point: point["score"]) - 1))
         left, right = anchors[index], anchors[index + 1]
         s0, s1, a0, a1 = (float(left["score"]), float(right["score"]), float(left["audio"]), float(right["audio"]))
-        if not all(math.isfinite(value) for value in (s0, s1, a0, a1)) or s1 <= s0 or a1 <= a0:
+        if not all(math.isfinite(value) for value in (s0, s1, a0, a1)) or s1 <= s0 or a1 < a0:
+            raise ValueError()
+        if a1 == a0 and not (alignment.get("collapsedOpening", {}).get("policy") == collapsed_opening.POLICY
+                            and index < alignment["collapsedOpening"]["measureCount"]):
             raise ValueError()
         return position, s0, s1, a0, a1
     except ImportFailure:
@@ -223,7 +227,11 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
     if not isinstance(points, list) or not all(_number(value) for value in points):
         _unavailable("invalid_points")
     supplied_points = list(points)
-    if any(right <= left for left, right in zip(points, points[1:])):
+    if len(points) < 2:
+        _unavailable("point_count_mismatch", sourceSyncPointCount=len(points), sourceSyncMeasureCount=len(measures))
+    try:
+        collapsed_count = collapsed_opening.prefix(points)
+    except ValueError:
         _unavailable("non_increasing_points")
     # The public player's score/video interpolation uses the shorter boundary
     # array (gk), in both directions. Only an unused suffix can be omitted;
@@ -242,7 +250,7 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
         points = [*points, *(points[-1] + interval * i for i in range(1, inferred_count + 1))]
     if len(points) != len(measures) + 1:
         _unavailable("point_count_mismatch", sourceSyncPointCount=len(points), sourceSyncMeasureCount=len(measures))
-    if any(right <= left for left, right in zip(points, points[1:])):
+    if collapsed_count >= len(measures):
         _unavailable("non_increasing_points")
     silent_terminal = points[-1] > duration + 0.05
     # Supplied or source-rule trailing boundaries can include written silence
@@ -275,6 +283,10 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
     opening_strum = _opening_strum_policy(performance)
     result = {"status": "validated", "method": VERSION, "mapping": "piecewise-linear", "experimental": True,
               "anchors": anchors}
+    if collapsed_count:
+        if opening_strum is not None:
+            _unavailable("collapsed_opening_crossing")
+        result["collapsedOpening"] = collapsed_opening.plan(performance, anchors, collapsed_count)
     # The official player interpolates in tempo-integrated score seconds.
     # Preserve within-bar tempo events and introduce effective tempo changes
     # at recording-map boundaries, rather than replacing each bar by one BPM.
@@ -284,6 +296,8 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
     change_times = sorted({point["score"] for point in anchors[:-1]} | set(tempo_times))
     tempos = []
     for time in change_times:
+        if collapsed_opening.omitted(result, time):
+            continue
         bpm = tempo_points[bisect_right(tempo_times, time) - 1]["bpm"] / source_time_scale(result, time)
         tempos.append({"time": map_source_time(result, time, allow_negative=True), "bpm": bpm})
     # Keep a tempo at the recording origin when source anchors describe silent
@@ -332,6 +346,8 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
             sustain = note.get("sus", 0)
             if not _number(start) or not _number(sustain) or sustain < 0:
                 _unavailable("invalid_note_timing")
+            if collapsed_opening.omitted(result, start):
+                continue
             try:
                 mapped_start = _mapped_value(result, start)
                 mapped_end = _mapped_value(result, start + sustain)

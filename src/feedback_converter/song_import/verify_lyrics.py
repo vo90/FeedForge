@@ -55,6 +55,9 @@ def expected(document, source, alignment, duration):
     try:
         for span in spans:
             lo, hi = recording.at(span['time']), recording.at(span['end'])
+            if recording.collapsed_count and span['time'] < recording.opening_end - 1e-8 and span['end'] <= recording.opening_end + 1e-8:
+                ledger.append({**span, 'audioStart': lo, 'audioEnd': hi, 'disposition': 'collapsed_opening'})
+                continue
             if hi <= lo:
                 raise ValueError('Invalid duration')
             start, stop = max(0., lo), min(duration, hi)
@@ -97,7 +100,7 @@ def verify(archive, recipe, manifest, source_path, source, alignment, duration, 
             for key in ('text', 'measure', 'beat', 'occurrence', 'disposition'):
                 check.equal('lyrics_source', f'import/lyrics.json/events/{i}/{key}', a[key], b.get(key))
         for key, disposition in [('clippedEvents', 'clipped'), ('omittedEvents', 'outside_recording')]:
-            check.equal('lyrics_bounds', key, sum(r['disposition'] == disposition for r in ledger), proof.get(key))
+            check.equal('lyrics_bounds', key, sum(r['disposition'] == disposition or key == 'omittedEvents' and r['disposition'] == 'collapsed_opening' for r in ledger), proof.get(key))
     if not wanted:
         check.equal('lyrics_absent', 'manifest/lyrics', None, manifest.get('lyrics'))
         check.equal('lyrics_absent', 'manifest/lyric_tracks', None, manifest.get('lyric_tracks'))

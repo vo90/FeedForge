@@ -9,6 +9,18 @@ const ENTRY = { ...ID, id: 'entry-one', revisionToVideoId: 'binding-one', status
   problematic: null, tracks: null, points: [1.25, 3.25, 5.5] };
 const response = (value, status = 200, headers = {}) => new Response(typeof value === 'string' ? value : JSON.stringify(value), { status, headers });
 
+test('collapsed opening preserves every boundary, requires a later positive interval and exact identity', () => {
+  for (const points of [[.53, .53, 2.62, 4.76], [.53, .53, .53, 4.76], [0, 0, .000001, 2]]) {
+    const result = selectSynchronization([{ ...ENTRY, points }], ID);
+    assert.equal(result.status, 'done');
+    assert.deepEqual(result.points, points);
+    assert.equal(selectSynchronization([{ ...ENTRY, points, revisionId: '999' }], ID).status, 'unavailable');
+  }
+  for (const points of [[0, 0, 0], [0, 0, 1, 1], [1, 1, 0, 2], [0, 1, 0, 2]]) {
+    assert.equal(selectSynchronization([{ ...ENTRY, points }], ID).reasonCode, 'invalid_points');
+  }
+});
+
 test('timing request uses one anonymous fixed-origin read for the exact revision and video', async () => {
   const requests = [];
   const result = await retrieveSynchronization(ID, { fetch: async (url, options) => {

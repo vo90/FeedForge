@@ -22,6 +22,7 @@ from .audio import ImportFailure
 from .synchronization import source_time_scale
 from .terminal_sustains import allowed as terminal_sustains_allowed, trim_held_note, slides_allowed
 from .ending_cutoff import allowed as ending_cutoff_allowed, omitted_note
+from . import collapsed_opening
 
 
 def _tuning_offsets(track: dict) -> list[int]:
@@ -187,6 +188,8 @@ def _retime_notation(value, alignment: dict):
         return [_retime_notation(item, alignment) for item in value]
     if not isinstance(value, dict):
         return value
+    if "measures" in value and alignment.get("collapsedOpening"):
+        value = {**value, "measures": [m for m in value["measures"] if not collapsed_opening.omitted(alignment, m["t"])]}
     result = {key: _retime_notation(item, alignment) for key, item in value.items()
               if key not in {"source_ids", "end_time"}}
     if "t" in value:
@@ -205,6 +208,8 @@ def _timeline_items(items: list, alignment: dict, duration: float, *, kind: str 
     result = []
     active_meter = None
     for item in items:
+        if kind in {"beats", "tempos"} and collapsed_opening.omitted(alignment, item["time"]):
+            continue
         time = map_time(alignment, item["time"], allow_negative=alignment.get("mapping") == "piecewise-linear")
         if kind == "time_signatures" and time < 0:
             active_meter = {**item, "time": 0.0}
@@ -213,7 +218,10 @@ def _timeline_items(items: list, alignment: dict, duration: float, *, kind: str 
             if "bpm" in entry:
                 scale = source_time_scale(alignment, item["time"]) if alignment.get("mapping") == "piecewise-linear" else float(alignment["scale"])
                 entry["bpm"] = float(entry["bpm"]) / scale
-            result.append(entry)
+            if alignment.get("collapsedOpening") and kind in {"sections", "time_signatures"} and result and result[-1]["time"] == time:
+                result[-1] = entry
+            else:
+                result.append(entry)
     if active_meter is not None and (not result or result[0]["time"] > 0):
         result.insert(0, active_meter)
     if kind == "beats":
@@ -264,6 +272,10 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     if alignment.get("terminalSlides") is not None and (not slides_allowed(alignment, audio["duration"])
             or source_path is None or (recipe or {}).get("preservationContract", 0) < 33):
         raise ImportFailure("alignment_failed", "A final slide-out cutoff requires verified recording timing, the original tab and contract 33.")
+    if alignment.get("collapsedOpening") and (source_path is None or (recipe or {}).get("preservationContract", 0) < 87):
+        raise ImportFailure("alignment_failed", "Skipped opening bars require retained source and preservation contract 87.")
+    opening_receipt = (collapsed_opening.receipt(performance, alignment, recipe["scoreHash"])
+                       if alignment.get("collapsedOpening") else None)
     settings = output_settings or {}
     original_tracks = performance.get("tracks", [])
     from .high_frets import project, archive_receipt, summary as omission_summary
@@ -310,6 +322,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         used.add(ident.lower())
         tuning = _tuning_offsets(track)
         def keep(note, start):
+            if collapsed_opening.omitted(alignment, start):
+                return False
             if cut_ending and map_time(alignment, start) >= duration:
                 return False
             return True
@@ -414,7 +428,16 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             affected = {n["trackId"] for n in (omissions or {}).get("notes", [])}
             planning["hybridOmittedTracks"] = sorted(affected)
             planning["hybridRawTracks"] = original_tracks
+            if opening_receipt is not None:
+                planning["hybridRawTracks"] = deepcopy(original_tracks)
+                for raw_track in planning["hybridRawTracks"]:
+                    for kind in ("notes", "chords"):
+                        raw_track[kind] = [event for event in raw_track.get(kind, [])
+                                           if not collapsed_opening.omitted(alignment, event["t"])]
             planning["hybridSourceOmissions"] = [*(omissions or {}).get("notes", []), *(omissions or {}).get("links", [])]
+            planning["hybridSourceOmissions"].extend(
+                {**row, "scoreDuration": row["scoreEnd"] - row["scoreStart"]}
+                for row in (opening_receipt or {}).get("notes", []))
             composition = plan(planning, options, main_id, alignment, duration, original_charts)
             composition['selectionRevision'] = SELECTION_REVISION
             chart, notation, derived, receipt = materialize(composition, original_charts, options,
@@ -515,6 +538,10 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         coverage["omissions"] = omission_summary(omissions)
         manifest.setdefault("song_import", {}).update(highFretOmissionsFile="import/high-fret-omissions.json",
                                                        omissions=coverage["omissions"])
+    if opening_receipt is not None:
+        _write_json(package / "import/collapsed-opening.json", opening_receipt)
+        manifest.setdefault("song_import", {}).update(collapsedOpening=alignment["collapsedOpening"],
+                                                       collapsedOpeningFile="import/collapsed-opening.json")
     if alignment.get("sourceTiming") is not None:
         _write_json(package / "import/source-timing.json", alignment["sourceTiming"])
         manifest.setdefault("song_import", {})["sourceTimingFile"] = "import/source-timing.json"
@@ -707,5 +734,5 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             "title": title, "artist": artist, "duration": duration,
             "coverage": coverage,
             **({"hybridLead": hybrid_summary} if hybrid_summary else {}),
-            "warnings": lyric_warnings + list(validation.warnings) + ([f"Completed with omitted notes: {len(omissions['notes'])} unsupported high-fret or connected slide events are not displayed or scored. Original tab retained. Staff notation for affected arrangements is retained in the source only."]
+            "warnings": ([collapsed_opening.notice(alignment["collapsedOpening"])] if opening_receipt else []) + lyric_warnings + list(validation.warnings) + ([f"Completed with omitted notes: {len(omissions['notes'])} unsupported high-fret or connected slide events are not displayed or scored. Original tab retained. Staff notation for affected arrangements is retained in the source only."]
                                                        if omissions and omissions["notes"] else [])}

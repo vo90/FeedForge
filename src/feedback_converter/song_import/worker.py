@@ -178,7 +178,7 @@ def run_import(request: dict, progress=None) -> dict:
                 duration=alignment['endingPadding']['originalDuration']
             alignment['timingAssessment']=assess(tracks,path,duration,alignment['provenance']['mapHash'])
         alignment_recipe = {key: alignment[key] for key in
-                            ("method", "offset", "scale", "mapping", "provenance", "terminalSustains", "terminalSlides", "recordingEnd", "endingPadding") if key in alignment}
+                            ("method", "offset", "scale", "mapping", "provenance", "terminalSustains", "terminalSlides", "recordingEnd", "endingPadding", "collapsedOpening") if key in alignment}
         alignment_recipe.setdefault("method", VERSION)
         recipe = {"version": 8, "preservationContract": CONTRACT_VERSION, "source": "songsterr", "songId": metadata.get("songId"),
                   "revisionId": metadata.get("revisionId"), "scoreHash": score_hash, "audioHash": audio["hash"],

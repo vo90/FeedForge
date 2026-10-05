@@ -1,0 +1,1239 @@
+{
+  "version": 1,
+  "reference": [
+    {
+      "id": "vendor",
+      "sha256": "1d2186332ee71014decea7e97c96bb4c98b9a46d9be32b89e2711c07e1b867d2"
+    },
+    {
+      "id": "common",
+      "sha256": "8b9267cd39f7f3b0511bade44de01cf3fe7c8025d5a7d534f8a6de448c940e17"
+    }
+  ],
+  "cases": [
+    {
+      "id": "1-bars-90-bpm",
+      "count": 1,
+      "input": {
+        "instrumentId": 29,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 90,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "boundaries": [
+        0,
+        2.6666666666666665,
+        5.333333333333333,
+        8,
+        10.666666666666666
+      ],
+      "points": [
+        0.53,
+        0.53,
+        2.62,
+        4.71,
+        6.8
+      ],
+      "samples": [
+        {
+          "score": 0,
+          "audio": 0.53
+        },
+        {
+          "score": 0.6666666666666666,
+          "audio": 0.53
+        },
+        {
+          "score": 1.3333333333333333,
+          "audio": 0.53
+        },
+        {
+          "score": 2,
+          "audio": 0.53
+        },
+        {
+          "score": 2.6666666666666665,
+          "audio": 0.53
+        },
+        {
+          "score": 3.333333333333333,
+          "audio": 1.0524999999999998
+        },
+        {
+          "score": 4,
+          "audio": 1.5750000000000002
+        },
+        {
+          "score": 4.666666666666666,
+          "audio": 2.0974999999999997
+        },
+        {
+          "score": 5.333333333333333,
+          "audio": 2.62
+        },
+        {
+          "score": 6,
+          "audio": 3.1425
+        },
+        {
+          "score": 6.666666666666666,
+          "audio": 3.6649999999999996
+        },
+        {
+          "score": 7.333333333333333,
+          "audio": 4.1875
+        },
+        {
+          "score": 8,
+          "audio": 4.71
+        },
+        {
+          "score": 8.666666666666666,
+          "audio": 5.2325
+        },
+        {
+          "score": 9.333333333333332,
+          "audio": 5.754999999999999
+        },
+        {
+          "score": 10,
+          "audio": 6.2775
+        }
+      ],
+      "inverseAtOpening": 2.6666666666666665
+    },
+    {
+      "id": "1-bars-120-bpm",
+      "count": 1,
+      "input": {
+        "instrumentId": 29,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "boundaries": [
+        0,
+        2,
+        4,
+        6,
+        8
+      ],
+      "points": [
+        0.53,
+        0.53,
+        2.62,
+        4.71,
+        6.8
+      ],
+      "samples": [
+        {
+          "score": 0,
+          "audio": 0.53
+        },
+        {
+          "score": 0.5,
+          "audio": 0.53
+        },
+        {
+          "score": 1,
+          "audio": 0.53
+        },
+        {
+          "score": 1.5,
+          "audio": 0.53
+        },
+        {
+          "score": 2,
+          "audio": 0.53
+        },
+        {
+          "score": 2.5,
+          "audio": 1.0525
+        },
+        {
+          "score": 3,
+          "audio": 1.575
+        },
+        {
+          "score": 3.5,
+          "audio": 2.0975
+        },
+        {
+          "score": 4,
+          "audio": 2.62
+        },
+        {
+          "score": 4.5,
+          "audio": 3.1425
+        },
+        {
+          "score": 5,
+          "audio": 3.665
+        },
+        {
+          "score": 5.5,
+          "audio": 4.1875
+        },
+        {
+          "score": 6,
+          "audio": 4.71
+        },
+        {
+          "score": 6.5,
+          "audio": 5.2325
+        },
+        {
+          "score": 7,
+          "audio": 5.755
+        },
+        {
+          "score": 7.5,
+          "audio": 6.2775
+        }
+      ],
+      "inverseAtOpening": 2
+    },
+    {
+      "id": "1-bars-157-bpm",
+      "count": 1,
+      "input": {
+        "instrumentId": 29,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 157,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "boundaries": [
+        0,
+        1.5286624203821657,
+        3.0573248407643314,
+        4.585987261146497,
+        6.114649681528663
+      ],
+      "points": [
+        0.53,
+        0.53,
+        2.62,
+        4.71,
+        6.8
+      ],
+      "samples": [
+        {
+          "score": 0,
+          "audio": 0.53
+        },
+        {
+          "score": 0.3821656050955414,
+          "audio": 0.53
+        },
+        {
+          "score": 0.7643312101910829,
+          "audio": 0.53
+        },
+        {
+          "score": 1.1464968152866244,
+          "audio": 0.53
+        },
+        {
+          "score": 1.5286624203821657,
+          "audio": 0.53
+        },
+        {
+          "score": 1.910828025477707,
+          "audio": 1.0524999999999998
+        },
+        {
+          "score": 2.292993630573249,
+          "audio": 1.5750000000000004
+        },
+        {
+          "score": 2.67515923566879,
+          "audio": 2.0975
+        },
+        {
+          "score": 3.0573248407643314,
+          "audio": 2.62
+        },
+        {
+          "score": 3.4394904458598727,
+          "audio": 3.1425
+        },
+        {
+          "score": 3.821656050955414,
+          "audio": 3.665
+        },
+        {
+          "score": 4.203821656050955,
+          "audio": 4.1875
+        },
+        {
+          "score": 4.585987261146497,
+          "audio": 4.71
+        },
+        {
+          "score": 4.968152866242038,
+          "audio": 5.2325
+        },
+        {
+          "score": 5.35031847133758,
+          "audio": 5.755000000000001
+        },
+        {
+          "score": 5.7324840764331215,
+          "audio": 6.2775
+        }
+      ],
+      "inverseAtOpening": 1.5286624203821657
+    },
+    {
+      "id": "2-bars-90-bpm",
+      "count": 2,
+      "input": {
+        "instrumentId": 29,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 90,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "boundaries": [
+        0,
+        2.6666666666666665,
+        5.333333333333333,
+        8,
+        10.666666666666666
+      ],
+      "points": [
+        0.53,
+        0.53,
+        0.53,
+        2.62,
+        4.71
+      ],
+      "samples": [
+        {
+          "score": 0,
+          "audio": 0.53
+        },
+        {
+          "score": 0.6666666666666666,
+          "audio": 0.53
+        },
+        {
+          "score": 1.3333333333333333,
+          "audio": 0.53
+        },
+        {
+          "score": 2,
+          "audio": 0.53
+        },
+        {
+          "score": 2.6666666666666665,
+          "audio": 0.53
+        },
+        {
+          "score": 3.333333333333333,
+          "audio": 0.53
+        },
+        {
+          "score": 4,
+          "audio": 0.53
+        },
+        {
+          "score": 4.666666666666666,
+          "audio": 0.53
+        },
+        {
+          "score": 5.333333333333333,
+          "audio": 0.53
+        },
+        {
+          "score": 6,
+          "audio": 1.0525000000000002
+        },
+        {
+          "score": 6.666666666666666,
+          "audio": 1.5749999999999995
+        },
+        {
+          "score": 7.333333333333333,
+          "audio": 2.0974999999999997
+        },
+        {
+          "score": 8,
+          "audio": 2.62
+        },
+        {
+          "score": 8.666666666666666,
+          "audio": 3.1424999999999996
+        },
+        {
+          "score": 9.333333333333332,
+          "audio": 3.664999999999999
+        },
+        {
+          "score": 10,
+          "audio": 4.1875
+        }
+      ],
+      "inverseAtOpening": 5.333333333333333
+    },
+    {
+      "id": "2-bars-120-bpm",
+      "count": 2,
+      "input": {
+        "instrumentId": 29,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 120,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "boundaries": [
+        0,
+        2,
+        4,
+        6,
+        8
+      ],
+      "points": [
+        0.53,
+        0.53,
+        0.53,
+        2.62,
+        4.71
+      ],
+      "samples": [
+        {
+          "score": 0,
+          "audio": 0.53
+        },
+        {
+          "score": 0.5,
+          "audio": 0.53
+        },
+        {
+          "score": 1,
+          "audio": 0.53
+        },
+        {
+          "score": 1.5,
+          "audio": 0.53
+        },
+        {
+          "score": 2,
+          "audio": 0.53
+        },
+        {
+          "score": 2.5,
+          "audio": 0.53
+        },
+        {
+          "score": 3,
+          "audio": 0.53
+        },
+        {
+          "score": 3.5,
+          "audio": 0.53
+        },
+        {
+          "score": 4,
+          "audio": 0.53
+        },
+        {
+          "score": 4.5,
+          "audio": 1.0525
+        },
+        {
+          "score": 5,
+          "audio": 1.575
+        },
+        {
+          "score": 5.5,
+          "audio": 2.0975
+        },
+        {
+          "score": 6,
+          "audio": 2.62
+        },
+        {
+          "score": 6.5,
+          "audio": 3.1425
+        },
+        {
+          "score": 7,
+          "audio": 3.665
+        },
+        {
+          "score": 7.5,
+          "audio": 4.1875
+        }
+      ],
+      "inverseAtOpening": 4
+    },
+    {
+      "id": "2-bars-157-bpm",
+      "count": 2,
+      "input": {
+        "instrumentId": 29,
+        "tuning": [
+          64,
+          59,
+          55,
+          50,
+          45,
+          40
+        ],
+        "measures": [
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "signature": [
+              4,
+              4
+            ],
+            "voices": [
+              {
+                "beats": [
+                  {
+                    "duration": [
+                      1,
+                      1
+                    ],
+                    "notes": [
+                      {
+                        "string": 0,
+                        "fret": 3
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "automations": {
+          "tempo": [
+            {
+              "measure": 0,
+              "position": 0,
+              "bpm": 157,
+              "type": 4
+            }
+          ]
+        }
+      },
+      "boundaries": [
+        0,
+        1.5286624203821657,
+        3.0573248407643314,
+        4.585987261146497,
+        6.114649681528663
+      ],
+      "points": [
+        0.53,
+        0.53,
+        0.53,
+        2.62,
+        4.71
+      ],
+      "samples": [
+        {
+          "score": 0,
+          "audio": 0.53
+        },
+        {
+          "score": 0.3821656050955414,
+          "audio": 0.53
+        },
+        {
+          "score": 0.7643312101910829,
+          "audio": 0.53
+        },
+        {
+          "score": 1.1464968152866244,
+          "audio": 0.53
+        },
+        {
+          "score": 1.5286624203821657,
+          "audio": 0.53
+        },
+        {
+          "score": 1.910828025477707,
+          "audio": 0.53
+        },
+        {
+          "score": 2.292993630573249,
+          "audio": 0.53
+        },
+        {
+          "score": 2.67515923566879,
+          "audio": 0.53
+        },
+        {
+          "score": 3.0573248407643314,
+          "audio": 0.53
+        },
+        {
+          "score": 3.4394904458598727,
+          "audio": 1.0525
+        },
+        {
+          "score": 3.821656050955414,
+          "audio": 1.575
+        },
+        {
+          "score": 4.203821656050955,
+          "audio": 2.0975
+        },
+        {
+          "score": 4.585987261146497,
+          "audio": 2.62
+        },
+        {
+          "score": 4.968152866242038,
+          "audio": 3.1425
+        },
+        {
+          "score": 5.35031847133758,
+          "audio": 3.665000000000001
+        },
+        {
+          "score": 5.7324840764331215,
+          "audio": 4.1875
+        }
+      ],
+      "inverseAtOpening": 3.0573248407643314
+    }
+  ]
+}

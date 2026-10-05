@@ -12,7 +12,7 @@ from .songsterr_tremolo import tremolo_mark
 from .songsterr_fields import validate_sustain_pedal, effective_dots, validate_bend_point_vibrato
 from .model import ScoreImportError, integer, rational
 
-VERSION = 86
+VERSION = 87
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {

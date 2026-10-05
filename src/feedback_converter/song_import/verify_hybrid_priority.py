@@ -256,7 +256,7 @@ def _audit_v2(charts, receipt, facts, options, quarter_at, recording_at, duratio
     selected = {(main_id,*k) for k in kept} | {(p['trackId'],r['kind'],r['index']) for p in receipt['passages'] for r in p['events']}
     ledger = {}
     for row in receipt.get('coverage',{}).get('events',[]):
-        if row.get('index') is None and row.get('reason') == 'recording_end':
+        if row.get('index') is None and row.get('reason') in {'recording_end', 'recording_opening'}:
             continue
         key = row['trackId'],row['kind'],row['index']
         if key in ledger:
@@ -1037,7 +1037,7 @@ def _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, d
 
     ledger = {}
     for row in receipt.get('coverage', {}).get('events', []):
-        if row.get('index') is None and row.get('reason') == 'recording_end':
+        if row.get('index') is None and row.get('reason') in {'recording_end', 'recording_opening'}:
             continue
         key = row['trackId'], row['kind'], row['index']
         if key in ledger:

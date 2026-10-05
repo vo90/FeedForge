@@ -21,8 +21,14 @@ def verify_source_timing(source, alignment, recipe, timing, check, *, strums=Non
     points = timing.get('points')
     if (not isinstance(points, list) or len(points) < 2 or len(points) > 100_000
             or any(type(v) not in (float, int) or not math.isfinite(v) for v in points)
-            or any(a >= b for a, b in zip(points, points[1:]))):
+            or any(a > b for a, b in zip(points, points[1:]))):
         fail('Retained recording points must be finite and strictly increasing.'); return
+    collapsed_count = 0
+    while collapsed_count+1 < len(points) and points[collapsed_count+1] == points[0]:
+        collapsed_count += 1
+    if (collapsed_count == len(points)-1 or any(a >= b for a,b in zip(points[collapsed_count:], points[collapsed_count+1:]))
+            or collapsed_count and recipe.get('preservationContract',0) < 87):
+        fail('Only an exact collapsed opening prefix is supported.'); return
     provenance = alignment.get('provenance', {})
     for key, value in source.identity.items():
         check.equal('source_timing_identity', 'import/source-timing/' + key, value, timing.get(key))
@@ -63,6 +69,19 @@ def verify_source_timing(source, alignment, recipe, timing, check, *, strums=Non
                 expected_repeat_policy, provenance.get('repeatTempoPolicy'))
     clock = Clock(source, order)
     boundaries = [*clock.measure_starts, clock.quarters]
+    if collapsed_count >= len(order):
+        fail('Skipped opening covers the complete score.'); return
+    skipped = alignment.get('collapsedOpening')
+    if collapsed_count:
+        if (not isinstance(skipped,dict) or set(skipped) != {'version','policy','measureCount','scoreEnd','recordingTime','noteCount'}
+                or alignment.get('openingRepair') or provenance.get('openingStrum')):
+            fail('Invalid skipped-opening policy.'); return
+        for key,value in {'version':1,'policy':'songsterr-collapsed-opening-v1','measureCount':collapsed_count,'recordingTime':points[0]}.items():
+            check.equal('collapsed_opening_policy','alignment/collapsedOpening/'+key,value,skipped.get(key))
+        check.near('collapsed_opening_policy','alignment/collapsedOpening/scoreEnd',
+                   float(clock.at(boundaries[collapsed_count])),skipped.get('scoreEnd'),1e-8)
+    elif skipped is not None:
+        fail('A strictly increasing map cannot skip opening bars.')
     required = len(boundaries)
     retained = points[:required]
     while len(retained) < required:
