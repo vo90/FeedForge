@@ -1,17 +1,74 @@
 """Explicit tempo automation interpreted without inventing a performance."""
 from bisect import bisect_right
+from copy import deepcopy
 from fractions import Fraction as F
 from math import floor
+import re
 
 from .model import ScoreImportError, integer, rational
+
+
+def effective_tempo_entries(automations, *, qualify_clock=False):
+    """Return the player's relative tempo coordinates, leaving source intact.
+
+    The first raw entry establishes the origin before duplicate selection.
+    For newly admitted shifted lists, restrict positions and effective rates
+    to clocks demonstrated equivalent in synth and browser playback. Other
+    default/rounding/quantization contexts require separate qualification.
+    """
+    raw = automations.get("tempo", [])
+    if not isinstance(raw, list) or any(not isinstance(t, dict) for t in raw):
+        raise ScoreImportError("Invalid Songsterr tempo list.")
+    if not raw:
+        if qualify_clock:
+            raise ScoreImportError("Shifted-origin tracks require matching explicit opening tempo clocks.")
+        return [], 0
+    bars = [integer(t.get("measure"), "tempo measure") for t in raw]
+    if any(bar < 0 for bar in bars):
+        raise ScoreImportError("Tempo references a negative measure.")
+    origin = bars[0]
+    if origin or qualify_clock:
+        first = raw[0].get("position")
+        if isinstance(first, bool) or first not in (0, "0"):
+            raise ScoreImportError("A shifted tempo origin requires an explicit scalar zero opening position.")
+        for tempo, bar in zip(raw, bars):
+            measure = tempo.get("measure")
+            scalar_measure = (type(measure) in (int, float)
+                              or isinstance(measure, str) and re.fullmatch(
+                                  r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", measure))
+            if not scalar_measure:
+                raise ScoreImportError("Shifted tempo measures require scalar numeric source coordinates.")
+            if bar < origin:
+                raise ScoreImportError("Tempo references a negative effective measure.")
+            position = tempo.get("position")
+            scalar = (type(position) in (int, float)
+                      or isinstance(position, str) and re.fullmatch(
+                          r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", position))
+            if not scalar or (rational(position, "tempo position") / 960).denominator != 1:
+                raise ScoreImportError("Shifted tempo positions require qualified scalar whole-quarter ticks.")
+            if (type(tempo.get("bpm")) not in (int, float)
+                    or type(tempo.get("type", 4)) not in (int, float)):
+                raise ScoreImportError("Shifted tempo rates and note values require numeric source values.")
+            unit = integer(tempo.get("type", 4), "tempo note value")
+            rate = rational(tempo.get("bpm"), "tempo") * F(4, unit) if unit in (2, 4, 8) else None
+            if rate is None or rate <= 0:
+                raise ScoreImportError("The shifted tempo note value or rate needs additional clock qualification.")
+            if tempo.get("dotted") is True:
+                rate *= F(3, 2)
+            if rate.denominator != 1:
+                raise ScoreImportError("The shifted tempo rate needs additional browser-rounding qualification.")
+    entries = deepcopy(raw)
+    for entry, bar in zip(entries, bars):
+        entry["measure"] = bar - origin
+    return entries, origin
 
 
 def inactive_tempo_context(automations):
     """Qualify unused outside-bar marks, never a missing initial/ramp clock.
 
     The player attaches step instructions only to existing written measures.
-    Its initial-measure normalization and ramp coordinate fallback can instead
-    activate outside marks, so those contexts are deliberately excluded.
+    Call this only after initial-measure normalization. Ramp coordinate
+    fallback can activate outside marks, so active ramps remain excluded.
     Individual entries must still pass ordinary source validation.
     """
     raw = automations.get("tempo", [])

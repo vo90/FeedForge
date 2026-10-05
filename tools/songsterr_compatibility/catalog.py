@@ -15,6 +15,7 @@ RULES = {
     "timing.repeats": {"files": ["repeat_regions.py", "timeline.py"], "policy": "source_interpretation"},
     "timing.ties": {"files": ["timeline.py", "muted_ties.py", "tied_harmonics.py"], "policy": "source_interpretation"},
     "timing.tempo": {"files": ["songsterr_automation.py"], "policy": "source_interpretation"},
+    "source.legacy_metadata": {"files": ["songsterr_legacy.py"], "policy": "validated_source_retention"},
     "timing.pickup": {"files": ["songsterr_pickup.py"], "policy": "source_interpretation"},
     "timing.whole_rest": {"files": ["songsterr_fields.py", "songsterr_timing.py"], "policy": "silent_measure_boundary"},
     "notation.voices": {"files": ["voices.py"], "policy": "approved_game_projection"},
@@ -38,6 +39,7 @@ FIELDS = {
     "timing.repeats": "measure.repeat measure.repeatStart measure.alternateEnding",
     "timing.ties": "note.tie",
     "timing.tempo": "automations.tempo automations.fermata automations.gradualTempo tempo.measure tempo.position tempo.bpm tempo.type tempo.dotted tempo.linear",
+    "source.legacy_metadata": "measure.index beat.tempo note.grace",
     "timing.whole_rest": "beat.rest beat.type beat.dots beat.duration note.rest",
     "notation.voices": "measure.voices voice.beats",
     "notation.picking_hand": "note.rightFingering",
@@ -59,7 +61,8 @@ FAMILIES = {
 }
 BEHAVIOR = {
     "technique.linked_targets": "Retain guards and located evidence. Approved omissions cover fretless X targets, and a skipped alternate-ending destination followed by an explicit same-voice rest before another same-string event. Preserve notes, timing and valid passes; never borrow a distant synthesis target or invent a direction.",
-    "timing.tempo": "Validate every entry; use the last complete instruction at an exact coordinate before hold/ramp expansion. Retain and report earlier entries and qualified inactive marks beyond the score. Missing initial clocks, outside marks with active ramps, and cross-track clock conflicts remain blocking.",
+    "timing.tempo": "Validate every entry and subtract the first raw tempo measure coordinate before exact-coordinate replacement and hold/ramp expansion. Retain raw origins and entries, and account for inactive marks using effective coordinates. Shifted scores require all source parts to have explicit scalar-zero opening clocks, scalar whole-quarter positions, native-equivalent integral rates and nonnegative effective measures. Missing initial clocks, outside marks with active ramps, and cross-track clock conflicts remain blocking.",
+    "source.legacy_metadata": "Validate nullable nonnegative integral measure.index, nullable boolean note.grace and nullable exact {type,bpm} beat.tempo before inactive-field handling or rest skips. Retain all present values, including null/false/zero. Array order, explicit modern beat.graceNote and authoritative tempo automations determine the music; obsolete metadata never supplies or repairs them.",
     "expression.sustain_pedal": "Retain validated pedal flags and disclose absent synthesis/engraving/scoring support. Preserve written/tied note timing; do not turn MIDI pedal control into longer game trails.",
     "notation.picking_hand": "Validate P/I/M/A/C; retain the picking-hand annotation and disclose absent engraving without changing fret-hand hints, pitches, attacks or scoring.",
     "timing.basic": "Preserve exact authored fractions until mapping the performed clock.",
@@ -119,7 +122,12 @@ def inventory():
             value['testFixture'] = 'tests/fixtures/songsterr_tempo_precedence_reference.json'
             value['tests'] = 'tests/test_songsterr_tempo_precedence.py'
             value['additionalFixtures'] = ['tests/fixtures/songsterr_inactive_tempo_reference.json']
-            value['additionalTests'] = ['tests/test_songsterr_inactive_tempos.py']
+            value['additionalTests'] = ['tests/test_songsterr_inactive_tempos.py', 'tests/test_songsterr_tempo_origin.py']
+            value['reference']['scope'] += ' First-raw-entry origin checked against pinned synth preparation and browser boundary clocks; shifted positions/rates are restricted to the qualified scope. Default-clock and fractional-rate cases are not newly admitted.'
+        if key == 'source.legacy_metadata':
+            value['reference']['status'] = 'qualified_examples'
+            value['reference']['scope'] = 'Retained old metadata removed independently from two retained score documents without changing pinned authored or player-default preparation, note scheduling or clock outputs. Static notation consumers use modern beat.graceNote. No claim of all historical payload shapes or visual engraving equivalence.'
+            value['tests'] = 'tests/test_songsterr_legacy_metadata.py'
         if key == 'timing.whole_rest':
             value['reference']['status'] = 'qualified_examples'
             value['testFixture'] = 'tests/fixtures/songsterr_rest_reference.json'

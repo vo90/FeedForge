@@ -196,6 +196,55 @@ test('arrangement diagnostics do not imply a completed or partial import', () =>
   assert.doesNotMatch(html, /FeedPak ready|Download usable parts/);
 });
 
+test('retained old metadata and tempo origins are neutral details rather than missing support', () => {
+  const report = { findingCount: 2, findings: [
+    { feature: 'note.grace', category: 'source_metadata', impact: 'source_retained', workStatus: 'source_retained',
+      message: 'The original flag is retained.', value: false },
+    { feature: 'tempo.origin', category: 'source_interpretation', impact: 'source_retained', workStatus: 'source_retained',
+      message: 'The first raw tempo measure is the origin.', value: { authoredOrigin: 3, effectiveOrigin: 0 } },
+  ] };
+  const html = render(compiled.exports.CompatibilityDetails, { report });
+  assert.match(html, /Retained source metadata/);
+  assert.match(html, /Source interpretation/);
+  assert.match(html, /Preserved source information/);
+  assert.match(html, /Source value: false/);
+  assert.match(html, /authoredOrigin.*3.*effectiveOrigin.*0/);
+  assert.doesNotMatch(html, /Needs interpretation|Conversion work needed|source_metadata|source_retained/);
+  const blocking = render(compiled.exports.CompatibilityDetails, { report: { findingCount: 1, findings: [
+    { feature: 'unresolved.clock', category: 'source_interpretation', impact: 'blocking', workStatus: 'technical_work' },
+  ] } });
+  assert.match(blocking, /Needs interpretation/);
+  assert.match(blocking, /Conversion work needed/);
+});
+
+test('informational metadata does not enter the active gap list or mutate complete export data', () => {
+  const retained = { feature: 'measure.index', category: 'source_metadata', impact: 'source_retained',
+    workStatus: 'source_retained', affectedSongs: 2, occurrences: 20, examples: [] };
+  const origin = { ...retained, feature: 'tempo.origin', category: 'source_interpretation' };
+  const limitation = { feature: 'note.rightFingering', category: 'game_limitation', impact: 'display_or_expression',
+    workStatus: 'display_limitation', affectedSongs: 1, occurrences: 1, message: 'Picking-hand annotation retained.', examples: [] };
+  const resolved = [{ feature: 'beat.tempo', artist: 'Artist', title: 'Song', workStatus: 'fixed_verified' }];
+  const report = { groups: [retained, origin, limitation], resolved };
+  const original = JSON.stringify(report);
+  const html = render(compiled.exports.CompatibilityList, { report });
+  assert.match(html, /note.rightFingering/);
+  assert.match(html, /Display limitation/);
+  assert.match(html, /1 previously recorded gaps resolved and verified/);
+  assert.match(html, /beat.tempo/);
+  assert.doesNotMatch(html, /measure.index|tempo.origin|Preserved source information/);
+  assert.equal(JSON.stringify(report), original);
+  const informationalOnly = render(compiled.exports.CompatibilityList, { report: { groups: [retained, origin], resolved: [] } });
+  assert.match(informationalOnly, /No recorded compatibility gaps/);
+  assert.doesNotMatch(informationalOnly, /affected song revisions|Conversion work needed|Needs interpretation/);
+});
+
+test('a completed import with retained metadata only keeps the ordinary ready status', () => {
+  const html = job({ state: 'completed', compatibility: { status: 'compatible', findingCount: 100 } });
+  assert.match(html, /FeedPak ready/);
+  assert.doesNotMatch(html, /Ready with limitations|Conversion work needed|Imported with timing warnings/);
+  assert.match(job({ state: 'completed', compatibility: { status: 'limitations' } }), /Ready with limitations/);
+});
+
 test('missing or mismatched audio offers exactly the supported link/file replacement flow', () => {
   for (const state of ['needs_audio', 'alignment_failed']) {
     const html = job({ state, canCancel: false, canRetry: true, error: 'Provide a matching recording.' });

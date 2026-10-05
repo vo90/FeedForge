@@ -71,6 +71,40 @@ Only downbeats have a positive, one-based measure number; other beats use `-1`.
 The song time-signature map preserves signature changes. Source sections and
 repeat visits share the same performed timeline as notes.
 
+## Older metadata and tempo origins
+
+Contract 88 validates and retains the obsolete `measure.index`, `beat.tempo`
+and `note.grace` fields without deriving notes, grace timing or tempo changes
+from them. A measure index must be null or a finite nonnegative integral JSON
+number. A legacy note grace flag must be null or a boolean. A legacy beat tempo
+must be null or exactly `{type,bpm}`, with a supported integral note value and
+finite positive numeric rate. These checks also apply to null/false/zero values
+and rests; malformed empty containers cannot bypass validation. Every present
+field is accounted for as retained source metadata. Modern `beat.graceNote`
+remains an active musical instruction, independently of `note.grace`.
+These informational records remain in compatibility details and complete
+exports; they do not appear as active support gaps or change an otherwise ready
+import into a warning state.
+
+Songsterr preparation and video playback subtract the first **raw** tempo
+entry's measure coordinate from every tempo entry. The importer and independent
+verifier perform that normalization separately, before coordinate replacement,
+ramps and fermatas. Only tempo measure coordinates move: notes, written array
+indices, fermata locations and navigation stay unchanged. Raw source values are
+preserved, and a nonzero origin is recorded as a source interpretation in the
+compatibility report. Outside-score and superseded-entry accounting likewise
+retain the raw entries while checking their effective destinations.
+
+Newly admitted nonzero origins require every source part to have an explicit
+scalar-zero opening position, scalar whole-quarter tick coordinates,
+nonnegative effective measures and native-equivalent integral tempo rates.
+Position bounds use the effective destination's meter, and all parts must agree
+on the resulting clock. Missing clocks, initial mid-bar marks, fractional-rate
+rounding and unsupported shifted position shapes remain guarded. Legacy beat
+tempo cannot rescue those clocks. Pure zero-origin inputs keep their existing
+scope. Timing, synchronization and archive-verification checks use the same
+effective interpretation through independently derived source clocks.
+
 ## Explicit limits
 
 The importer does not claim support for every source feature. Active unfamiliar

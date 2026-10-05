@@ -73,8 +73,10 @@ function RetryStatus({ job }) {
   return null;
 }
 
-const CATEGORY = { unknown_semantics: 'Needs interpretation', source_interpretation: 'Needs interpretation', converter_gap: 'Converter support', game_representation: 'Game representation', game_limitation: 'Game limitation', source_structure: 'Source structure', conversion_check: 'Conversion check', audio_alignment: 'Audio alignment' };
-const WORK = { decision_required: 'Design decision needed', technical_work: 'Conversion work needed', display_limitation: 'Display limitation', gameplay_omission: 'Omitted from gameplay and scoring', fixed_verified: 'Resolved and verified' };
+const CATEGORY = { unknown_semantics: 'Needs interpretation', source_interpretation: 'Needs interpretation', source_metadata: 'Retained source metadata', converter_gap: 'Converter support', game_representation: 'Game representation', game_limitation: 'Game limitation', source_structure: 'Source structure', conversion_check: 'Conversion check', audio_alignment: 'Audio alignment' };
+const WORK = { decision_required: 'Design decision needed', technical_work: 'Conversion work needed', source_retained: 'Preserved source information', display_limitation: 'Display limitation', gameplay_omission: 'Omitted from gameplay and scoring', fixed_verified: 'Resolved and verified' };
+const categoryLabel = item => item.impact === 'source_retained' && item.category === 'source_interpretation'
+  ? 'Source interpretation' : CATEGORY[item.category] || item.category;
 export function CompatibilityDetails({ report }) {
   if (!report) return null;
   return <div className="st-compatibility"><p>{report.findingCount || 0} compatibility findings. Original information is retained; retention does not mean the game displays or scores it.</p>
@@ -83,7 +85,7 @@ export function CompatibilityDetails({ report }) {
       <ul>{report.arrangements.map(item => <li key={item.trackIndex}><strong>{item.name}</strong> · {item.status === 'score_ready' ? 'Score check passed' : 'Needs attention'}
         {item.message ? <p>{item.message}</p> : item.blockingFeatures?.length ? <p>{item.blockingFeatures.join(', ')}</p> : null}</li>)}</ul>
     </details> : null}
-    <ul>{report.findings.map((item, i) => <li key={i}><strong>{item.feature}</strong> · {CATEGORY[item.category] || item.category}
+    <ul>{report.findings.map((item, i) => <li key={i}><strong>{item.feature}</strong> · {categoryLabel(item)}
       <p>{[item.arrangement, item.measure && `Measure ${item.measure}`, item.beat && `beat ${item.beat}`, item.note && `note ${item.note}`].filter(Boolean).join(' · ')}</p>
       <p>{item.message}</p>{item.workStatus ? <p>{WORK[item.workStatus] || item.workStatus}</p> : null}<small>Source value: {JSON.stringify(item.value)}{item.valueTruncated ? '… (full value in saved source)' : ''}</small></li>)}</ul>
     {report.findingCount > report.findings.length ? <p>Showing the first {report.findings.length} findings. Save the conversion report for the complete recorded list.</p> : null}
@@ -91,10 +93,13 @@ export function CompatibilityDetails({ report }) {
 }
 
 export function CompatibilityList({ report }) {
+  // Retained metadata stays in the complete report and export. It is not work
+  // awaiting converter or game support, so it does not enter the gap list.
+  const groups = report.groups.filter(group => group.impact !== 'source_retained');
   return <div className="st-compatibility"><p>Latest assessment per song revision. Repeated attempts are counted once.</p>
     {report.unreadable ? <p role="alert">{report.unreadable} saved reports could not be read.</p> : null}
-    {!report.groups.length ? <p>No recorded compatibility gaps.</p> : <ul>{report.groups.map((group, i) => <li key={i}>
-      <strong>{group.feature}</strong> · {CATEGORY[group.category] || group.category}<p>{WORK[group.workStatus] || group.workStatus}</p><p>{group.affectedSongs} affected song revisions · {group.occurrences} occurrences</p>
+    {!groups.length ? <p>No recorded compatibility gaps.</p> : <ul>{groups.map((group, i) => <li key={i}>
+      <strong>{group.feature}</strong> · {categoryLabel(group)}<p>{WORK[group.workStatus] || group.workStatus}</p><p>{group.affectedSongs} affected song revisions · {group.occurrences} occurrences</p>
       <p>{group.message}</p><details><summary>Examples</summary><ul>{group.examples.map((row, j) => <li key={j}>{row.artist} — {row.title}, {row.arrangement}{row.measure ? `, measure ${row.measure}` : ''}</li>)}</ul></details>
     </li>)}</ul>}
     {report.resolved?.length ? <details><summary>{report.resolved.length} previously recorded gaps resolved and verified</summary><ul>{report.resolved.map((item, i) => <li key={i}>{item.artist} — {item.title}: {item.feature}</li>)}</ul></details> : null}

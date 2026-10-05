@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 87
+VERSION = 88
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -339,7 +339,7 @@ def _chords(wanted, chart, check, part):
 
 def _compatibility_report(report, score_path, source, check, harmonic_ties=(), tied_mutes=(), projected_parts=None, muted_slides=(), preservation_contract=0, consumed_strums=(), scrape_entries=(), undefined_slides=(), finger_bends=()):
     """Verify retained limitations from source facts, not the producer's inventory."""
-    from .verify_source import _program_instrument, fraction, inactive, integer
+    from .verify_source import _program_instrument, effective_tempo_entries, fraction, inactive, integer
     rows = report.get("findings")
     if not isinstance(rows, list) or report.get("truncated") is not False:
         check.fail("compatibility", "import/compatibility", "The compatibility report is incomplete.")
@@ -347,7 +347,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     reports_precedence = type(report.get('version')) is int and report['version'] >= 46
     if preservation_contract >= 46 and not reports_precedence:
@@ -355,7 +355,11 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     reports_outside = type(report.get('version')) is int and report['version'] >= 48
     if preservation_contract >= 48 and not reports_outside:
         check.fail('compatibility_version', 'import/compatibility', 'This preservation contract requires outside-score tempo accounting.')
-    check.equal("compatibility_status", "import/compatibility", "limitations" if rows else "compatible", report.get("status"))
+    reports_metadata = type(report.get('version')) is int and report['version'] >= 88
+    if preservation_contract >= 88 and not reports_metadata:
+        check.fail('compatibility_version', 'import/compatibility', 'This preservation contract requires retained legacy metadata and tempo-origin accounting.')
+    check.equal("compatibility_status", "import/compatibility", "limitations" if any(
+        row.get('impact') != 'source_retained' for row in rows) else "compatible", report.get("status"))
     target = report.get("target", {})
     check.equal("compatibility_target", "import/compatibility", "1.16.0", target.get("feedpak"))
     check.equal("compatibility_target", "import/compatibility/notation", 1, target.get("notation"))
@@ -389,8 +393,23 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
                 if key in obj and not inactive(obj[key]):
                     expected[(scope + "." + key, path + "/" + key)] = obj[key]
 
+        def retained_metadata(obj, key, scope, path):
+            if key not in obj:
+                return
+            if not reports_metadata or preservation_contract < 88:
+                check.fail('compatibility_version', path + '/' + key,
+                           'Retained legacy metadata needs preservation contract and inventory version 88.')
+            expected[(scope + '.' + key, path + '/' + key)] = obj[key]
+
         for pi, (meta, part) in enumerate(zip(document["tracks"], document["parts"])):
             raw_tempos = part.get('automations', {}).get('tempo', [])
+            prepared_tempos, origin = effective_tempo_entries(part.get('automations', {}), f'parts/{pi}/automations')
+            if origin:
+                if not reports_metadata or preservation_contract < 88:
+                    check.fail('compatibility_version', f'parts/{pi}/automations/tempo/0/measure',
+                               'Tempo-origin normalization needs preservation contract and inventory version 88.')
+                expected[('tempo.origin', f'parts/{pi}/automations/tempo/0/measure')] = {
+                    'authoredOrigin': origin, 'effectiveOrigin': 0}
             final_positions = {}
             # Older packages allowed identical duplicate entries without this
             # diagnostic. Their musical clock is still independently checked.
@@ -403,8 +422,8 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
                         'authored': tempo, 'used': raw_tempos[winner], 'selectedIndex': winner}
                 else:
                     final_positions[key] = ti
-            for ti, tempo in enumerate(part.get("automations", {}).get("tempo", [])):
-                if integer(tempo['measure']) >= len(part['measures']):
+            for ti, tempo in enumerate(raw_tempos):
+                if prepared_tempos[ti]['measure'] >= len(part['measures']):
                     if not reports_outside:
                         check.fail('compatibility_version', 'import/compatibility', 'Outside-score tempo needs explicit retention accounting.')
                     expected[('tempo.outside_score', f'parts/{pi}/automations/tempo/{ti}')] = tempo
@@ -415,16 +434,19 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
                     expected[("tempo.visible", f"parts/{pi}/automations/tempo/{ti}/visible")] = tempo["visible"]
             for bi, bar in enumerate(part["measures"]):
                 path = f"parts/{pi}/measures/{bi}"
+                retained_metadata(bar, 'index', 'measure', path)
                 remember(bar, ("doubleBarline", "keySignature"), "measure", path)
                 if not _program_instrument(meta):
                     continue
                 for vi, voice in enumerate(bar["voices"]):
                     for bti, beat in enumerate(voice["beats"]):
                         where = path + f"/voices/{vi}/beats/{bti}"
+                        retained_metadata(beat, 'tempo', 'beat', where)
                         # Account for retained legacy beat vibrato limitations
                         # even when their playback timing is unconfirmed.
                         remember(beat, ("chord", "wahwah", "letRing", "tremolo", "tremoloBar", "vibratoWithTremoloBar", "vibrato", "wideVibrato", "hasRasgueado", "sustainPedal"), "beat", where)
                         for ni, note in enumerate(beat["notes"]):
+                            retained_metadata(note, 'grace', 'note', where + f'/notes/{ni}')
                             if (not note.get("rest") and type(note.get("fret")) is int and 24 < note["fret"] <= 48
                                     and not (note.get("dead") is True and note.get("pickScrape") in ("up", "down"))):
                                 expected[("note.fret_range", where + f"/notes/{ni}/fret")] = note["fret"]
@@ -449,14 +471,30 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
         if key not in actual:
             continue
         row = actual[key]
+        retained = key[0] in ('measure.index', 'beat.tempo', 'note.grace', 'tempo.origin')
         encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
         check.equal("compatibility_value", key[1], value if len(encoded) <= 2048 else encoded[:2048], row.get("value"))
+        if retained:
+            check.equal('compatibility_value_presence', key[1], True, 'value' in row)
+            # Python equality treats false as zero and integral floats as ints.
+            # Retention accounting must preserve the actual JSON value types.
+            if len(encoded) <= 2048:
+                try:
+                    actual_value = json.dumps(row.get('value'), ensure_ascii=False, sort_keys=True, allow_nan=False)
+                except (TypeError, ValueError):
+                    actual_value = None
+                check.equal('compatibility_value_encoding', key[1],
+                            json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False), actual_value)
         if key[0] == "beat.hasRasgueado":
             check.equal("compatibility_value", key[1] + "/boolean", True, row.get("value") is True)
         check.equal("compatibility_value", key[1] + "/truncated", len(encoded) > 2048, row.get("valueTruncated"))
         check.equal("compatibility_retention", key[1], "original_source", row.get("retained"))
-        check.equal("compatibility_impact", key[1], "gameplay_omission" if key[0] in ("note.fret_range", "note.consumed_strum_grace") else "display_or_expression", row.get("impact"))
-        category = ("conversion_check" if key[0] == "note.bend_timing" else
+        check.equal("compatibility_impact", key[1], "source_retained" if retained else "gameplay_omission" if key[0] in ("note.fret_range", "note.consumed_strum_grace") else "display_or_expression", row.get("impact"))
+        if retained:
+            check.equal('compatibility_work_status', key[1], 'source_retained', row.get('workStatus'))
+        category = ("source_metadata" if key[0] in ('measure.index', 'beat.tempo', 'note.grace') else
+                    "source_interpretation" if key[0] == 'tempo.origin' else
+                    "conversion_check" if key[0] == "note.bend_timing" else
                     "source_interpretation" if key[0] in ("tempo.superseded", "tempo.outside_score", "note.consumed_strum_grace") else "game_limitation")
         check.equal("compatibility_category", key[1], category, row.get("category"))
 

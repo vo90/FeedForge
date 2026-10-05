@@ -6,6 +6,8 @@ from .verify_source import fraction, integer, unsupported
 
 
 def expand(auto, bars, events, loc):
+    # The independent reader supplies effective tempo measures. Holds retain
+    # authored score coordinates; applying the origin to them again is wrong.
     enabled = auto.get("gradualTempo", False)
     if not isinstance(enabled, bool):
         raise ValueError(loc + ": invalid gradual-tempo flag")
