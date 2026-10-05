@@ -788,8 +788,15 @@ def songsterr(document, *, track_indices=None):
                         bends = []
                         if note.get("bend"):
                             _active_unknown(note["bend"], {"points", "tone"}, set(), nloc + "/bend", ignored)
-                            for point in note["bend"]["points"]:
-                                _active_unknown(point, {"position", "precisePosition", "tone"}, set(), nloc + "/bend/points", ignored)
+                            for point_index, point in enumerate(note["bend"]["points"]):
+                                point_loc = f"{nloc}/bend/points/{point_index}"
+                                _active_unknown(point, {"position", "precisePosition", "tone", "vibrato"}, set(), point_loc, ignored)
+                                # Independent validation; do not use the parser's
+                                # helper or generic inactive-value exception.
+                                v = point.get("vibrato")
+                                if v is not None and v is not False:
+                                    if type(v) not in (int, float) or v != 0:
+                                        unsupported(point_loc + "/vibrato", "Bend-point vibrato must be inactive (null, false or numeric zero).")
                             points = note["bend"]["points"]
                             coarse = [fraction(p["position"], nloc) for p in points]
                             if any("precisePosition" in p for p in points):
