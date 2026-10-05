@@ -118,10 +118,11 @@ def test_other_expressions_and_independent_beat_vibrato_are_distinguished(tmp_pa
         bs[1]['duration']=[1,4]
         bs.insert(1,beat(fret=14,string=2,duration=(1,8),tie=True,bend=bend))
     p=checked(doc)
-    resolved=extra in ('beat-vibrato','targeted-slide')
+    resolved=extra in ('beat-vibrato','targeted-slide','whammy')
     assert all(e['status']==('resolved' if resolved else 'deferred') for e in p['fingerBendTimingEvidence'])
     if extra=='beat-vibrato':assert all(e['terminalSlideOut']['beatVibrato'] for e in p['fingerBendTimingEvidence'])
     if extra=='targeted-slide':assert all(e['targetedSlide'] for e in p['fingerBendTimingEvidence'])
+    if extra=='whammy':assert all(e['barCurve'] and e['terminalSlideOut'] for e in p['fingerBendTimingEvidence'])
     loaded=import_json(tmp_path,doc)
     findings=loaded['compatibilityReport']['findings']
     assert any(f['feature']=='note.bend_timing' for f in findings)==(not resolved)

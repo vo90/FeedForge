@@ -54,7 +54,7 @@ def test_bend_hold_slide_out_retains_single_attack_pitch_and_source_interval(tmp
     assert not any(f['feature']=='note.bend_timing' for f in loaded['compatibilityReport']['findings'])
 
 
-@pytest.mark.parametrize('fault', ['overlapping_bend','early_slide','later_slide_in','whammy',
+@pytest.mark.parametrize('fault', ['overlapping_bend','early_slide','later_slide_in',
                                   'harmonic','mute','palm_mute','let_ring','hopo','open','strum'])
 def test_unqualified_combinations_stay_explicitly_deferred(fault):
     doc=source();beats=doc['parts'][0]['measures'][0]['voices'][0]['beats']
@@ -64,7 +64,6 @@ def test_unqualified_combinations_stay_explicitly_deferred(fault):
     elif fault=='early_slide':
         beats[1]['notes'][0]['slide']=beats[2]['notes'][0].pop('slide')
     elif fault=='later_slide_in':beats[1]['notes'][0]['slide']='below'
-    elif fault=='whammy':beats[1]['tremoloBar']=deepcopy(RISE)
     elif fault=='harmonic':beats[0]['notes'][0]['harmonic']='pinch'
     elif fault=='mute':beats[0]['notes'][0]['dead']=True
     elif fault=='palm_mute':beats[0]['palmMute']=True
@@ -82,6 +81,14 @@ def test_unqualified_combinations_stay_explicitly_deferred(fault):
     e=checked(doc)['fingerBendTimingEvidence'][0]
     assert e['status']=='deferred' and e['reason']=='mixed-pitch-or-displaced-attack'
     assert 'terminalSlideOut' not in e
+
+
+def test_explicit_bar_curve_keeps_the_qualified_bend_and_slide_independent():
+    doc=source();original=checked(doc)['tracks'][0]['notes'][0]
+    doc['parts'][0]['measures'][0]['voices'][0]['beats'][1]['tremoloBar']=deepcopy(RISE)
+    p=checked(doc);e=p['fingerBendTimingEvidence'][0];n=p['tracks'][0]['notes'][0]
+    assert e['status']=='resolved' and e['barCurve'] and e['terminalSlideOut']
+    assert {k:v for k,v in n.items() if k!='whammy'}==original
 
 
 def test_written_beat_vibrato_no_longer_blocks_independent_bend_clock(tmp_path):

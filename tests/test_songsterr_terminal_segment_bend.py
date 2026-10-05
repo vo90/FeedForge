@@ -94,9 +94,10 @@ def test_compositions_keep_their_independent_findings(extra,tmp_path):
     else:
         bs[1]['duration']=[1,2];bs.insert(1,beat(fret=7,tie=True,duration=(1,4)))
     p=checked(doc);e=p['fingerBendTimingEvidence'][0]
-    resolved=extra in ('beat-vibrato','targeted')
+    resolved=extra in ('beat-vibrato','targeted','whammy')
     assert e['status']==('resolved' if resolved else 'deferred')
     if extra=='beat-vibrato':assert e['terminalSlideOut']['beatVibrato']
+    elif extra=='whammy':assert e['terminalSlideOut'] and e['barCurve']
     else:assert 'terminalSlideOut' not in e
     loaded=import_json(tmp_path,doc)
     findings=loaded['compatibilityReport']['findings']

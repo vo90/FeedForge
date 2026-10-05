@@ -53,14 +53,13 @@ def test_explicit_bar_does_not_change_finger_clock(case):
             assert value == pytest.approx(sample['value'], abs=.06)
 
 
-@pytest.mark.parametrize('fault', ['targeted-slide','initial-slide','later-slide','terminal-slide',
+@pytest.mark.parametrize('fault', ['targeted-slide','initial-slide','later-slide',
                                   'changing-overlap','settled-overlap','strum','harmonic','mute','palm-mute','beat-vibrato'])
 def test_unqualified_compositions_stay_guarded(fault):
     d = document(); bs = d['parts'][0]['measures'][0]['voices'][0]['beats']
     if fault == 'targeted-slide': bs[2]['notes'][0]['slide'] = 'legato'
     elif fault == 'initial-slide': bs[0]['notes'][0]['slide'] = 'below'
     elif fault == 'later-slide': bs[1]['notes'][0]['slide'] = 'above'
-    elif fault == 'terminal-slide': bs[2]['notes'][0]['slide'] = 'downwards'
     elif fault in ('changing-overlap','settled-overlap'):
         if fault == 'changing-overlap': bs[0]['notes'][0]['bend']['points'].pop(1)
         bs[2]['notes'][0]['bend'] = {'points':[{'position':0,'tone':100},{'position':60,'tone':0}]}
