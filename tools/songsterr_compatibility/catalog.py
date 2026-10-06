@@ -16,6 +16,7 @@ RULES = {
     "timing.ties": {"files": ["timeline.py", "muted_ties.py", "tied_harmonics.py", "plain_ties.py"], "policy": "source_interpretation"},
     "timing.tempo": {"files": ["songsterr_automation.py"], "policy": "source_interpretation"},
     "source.legacy_metadata": {"files": ["songsterr_legacy.py"], "policy": "validated_source_retention"},
+    "source.legacy_beat_effects": {"files": ["songsterr_legacy_effects.py"], "policy": "validated_source_retention_and_display_limitation"},
     "timing.pickup": {"files": ["songsterr_pickup.py"], "policy": "source_interpretation"},
     "timing.whole_rest": {"files": ["songsterr_fields.py", "songsterr_timing.py"], "policy": "silent_measure_boundary"},
     "notation.voices": {"files": ["voices.py"], "policy": "approved_game_projection"},
@@ -40,6 +41,7 @@ FIELDS = {
     "timing.ties": "note.tie",
     "timing.tempo": "automations.tempo automations.fermata automations.gradualTempo tempo.measure tempo.position tempo.bpm tempo.type tempo.dotted tempo.linear",
     "source.legacy_metadata": "measure.index beat.tempo note.grace",
+    "source.legacy_beat_effects": "beat.harmonic beat.fadeIn",
     "timing.whole_rest": "beat.rest beat.type beat.dots beat.duration note.rest",
     "notation.voices": "measure.voices voice.beats",
     "notation.picking_hand": "note.rightFingering",
@@ -63,6 +65,7 @@ BEHAVIOR = {
     "technique.linked_targets": "Retain guards and located evidence. Approved omissions cover fretless X targets, and a skipped alternate-ending destination followed by an explicit same-voice rest before another same-string event. Preserve notes, timing and valid passes; never borrow a distant synthesis target or invent a direction.",
     "timing.tempo": "Validate every entry and subtract the first raw tempo measure coordinate before exact-coordinate replacement and hold/ramp expansion. Retain raw origins and entries, and account for inactive marks using effective coordinates. Shifted scores require all source parts to have explicit scalar-zero opening clocks, scalar whole-quarter positions, native-equivalent integral rates and nonnegative effective measures. Missing initial clocks, outside marks with active ramps, and cross-track clock conflicts remain blocking.",
     "source.legacy_metadata": "Validate nullable nonnegative integral measure.index, nullable boolean note.grace and nullable exact {type,bpm} beat.tempo before inactive-field handling or rest skips. Retain all present values, including null/false/zero. Array order, explicit modern beat.graceNote and authoritative tempo automations determine the music; obsolete metadata never supplies or repairs them.",
+    "source.legacy_beat_effects": "Validate exact boolean/null beat.harmonic and beat.fadeIn, including inactive and rest shapes. Retain raw flags. A selected active harmonic summary requires a non-rest beat with at least one sounding note and an independently qualified explicit natural harmonic on every sounding note; it never supplies note instructions. An active selected fade-in marking is a disclosed display/expression limitation without a new envelope, attack, duration or scoring change. Excluded arrangements receive structural flag validation without new pitch qualification.",
     "expression.sustain_pedal": "Retain validated pedal flags and disclose absent synthesis/engraving/scoring support. Preserve written/tied note timing; do not turn MIDI pedal control into longer game trails.",
     "notation.picking_hand": "Validate P/I/M/A/C; retain the picking-hand annotation and disclose absent engraving without changing fret-hand hints, pitches, attacks or scoring.",
     "timing.basic": "Preserve exact authored fractions until mapping the performed clock.",
@@ -138,6 +141,14 @@ def inventory():
             value['reference']['status'] = 'qualified_examples'
             value['reference']['scope'] = 'Retained old metadata removed independently from two retained score documents without changing pinned authored or player-default preparation, note scheduling or clock outputs. Static notation consumers use modern beat.graceNote. No claim of all historical payload shapes or visual engraving equivalence.'
             value['tests'] = 'tests/test_songsterr_legacy_metadata.py'
+        if key == 'source.legacy_beat_effects':
+            value['reference']['status'] = 'qualified_examples'
+            value['reference']['scope'] = '97 synthetic inputs across authored, legacy-brush-authored-v1 and player-defaults profiles; 708 complete captured-worker/extracted/existing-runner comparisons and 291 metadata-removal equivalences. Natural-note controls have distinct pitches/events at frets 4/5/7/9/16; fret12 has equal plain pitch with an active native harmonic instruction, while fret19 has equal pitch and no applied native harmonic lookup. Capo, chord/rest-slot, voice and repeat examples are included. The 29 guard-only inputs observe wider native behavior without granting import support. Retention of fadeIn discloses its absent game expression; no acoustic, engraving, full-song or FeedPak equivalence is claimed.'
+            value['reference']['legacyBeatEffectsPolicy'] = 'songsterr-legacy-beat-effects-v1'
+            value['testFixture'] = 'tests/fixtures/songsterr_legacy_beat_effects_native.json'
+            value['tests'] = 'tests/test_songsterr_legacy_beat_effects_native.py'
+            value['referenceTools'] = ['tools/songsterr_compatibility/legacy-beat-effects-cases.cjs',
+                                       'tools/songsterr_compatibility/legacy-beat-effects-reference.cjs']
         if key == 'timing.whole_rest':
             value['reference']['status'] = 'qualified_examples'
             value['testFixture'] = 'tests/fixtures/songsterr_rest_reference.json'

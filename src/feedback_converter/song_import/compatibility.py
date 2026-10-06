@@ -11,9 +11,11 @@ from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
 from .songsterr_fields import validate_sustain_pedal, effective_dots, validate_bend_point_vibrato
 from .songsterr_legacy import LEGACY_METADATA, validate_legacy_field
+from .songsterr_legacy_effects import (FIELDS as LEGACY_BEAT_EFFECTS, beat_effects, validate_legacy_beat_effect,
+                                     retention as legacy_beat_effect_retention)
 from .model import ScoreImportError, integer, rational
 
-VERSION = 90
+VERSION = 91
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -43,6 +45,7 @@ KNOWN["beat"].add("hasRasgueado")
 KNOWN["beat"].add("sustainPedal")
 KNOWN["beat"].add("dotted")
 KNOWN["beat"].add("tempo")
+KNOWN['beat'].update(LEGACY_BEAT_EFFECTS)
 LIMITATIONS = {
     ("beat", "vibrato"): "Beat-level vibrato is retained as a written instruction; its playback timing is not confirmed by the source player.",
     ("beat", "wideVibrato"): "Beat-level wide vibrato is retained as a written instruction; its playback timing is not confirmed by the source player.",
@@ -117,6 +120,24 @@ def inspect_songsterr(document, *, track_indices=None):
     identity = {k: document[k] for k in ("songId", "revisionId", "title", "artist") if k in document}
     report = new_report(identity)
 
+    def inspect_beat_effect(obj, key, value, path, coordinates, *, selected=True):
+        try:
+            validate_legacy_beat_effect('beat', key, value, beat=obj, qualify_harmonics=selected)
+        except ScoreImportError as exc:
+            try:
+                json.dumps(value, allow_nan=False)
+                diagnostic = value
+            except (TypeError, ValueError):
+                diagnostic = str(value)
+            add_finding(report, feature=f'beat.{key}',
+                        category='source_structure' if str(exc).startswith('Invalid') else 'unknown_semantics',
+                        impact='blocking', message=str(exc), location=path + '/' + key,
+                        value=diagnostic, **coordinates)
+        else:
+            category, impact, message = legacy_beat_effect_retention(key, value, selected=selected)
+            add_finding(report, feature=f'beat.{key}', category=category, impact=impact,
+                        message=message, location=path + '/' + key, value=value, **coordinates)
+
     def inspect(obj, scope, path, coordinates):
         if not isinstance(obj, dict):
             add_finding(report, feature=scope, category="source_structure", impact="blocking",
@@ -133,6 +154,9 @@ def inspect_songsterr(document, *, track_indices=None):
                 add_finding(report, feature=f"beat.{field}", category="source_structure", impact="blocking",
                             message=str(exc), location=path + "/" + field, value=value, **coordinates)
         for key, value in obj.items():
+            if scope == 'beat' and key in LEGACY_BEAT_EFFECTS:
+                inspect_beat_effect(obj, key, value, path, coordinates)
+                continue
             if (scope, key) in LEGACY_METADATA:
                 try:
                     validate_legacy_field(scope, key, value)
@@ -266,6 +290,12 @@ def inspect_songsterr(document, *, track_indices=None):
         playable = playable and meta.get("isVocalTrack") is not True and (track_indices is None or pi in track_indices)
         coordinates = {"arrangement": str(meta.get("name") or meta.get("title") or f"Track {pi + 1}"),
                        "trackIndex": pi, "trackId": str(meta.get("id", pi))}
+        if not playable:
+            for _, mi, vi, bi, beat in beat_effects([part]):
+                for field in LEGACY_BEAT_EFFECTS.intersection(beat):
+                    inspect_beat_effect(beat, field, beat[field],
+                        f'parts/{pi}/measures/{mi}/voices/{vi}/beats/{bi}',
+                        {**coordinates, 'measure': mi + 1, 'voice': vi + 1, 'beat': bi + 1}, selected=False)
         auto = part.get("automations", {})
         inspect(auto, "automations", f"parts/{pi}/automations", coordinates)
         if isinstance(auto, dict):

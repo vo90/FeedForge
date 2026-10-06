@@ -225,7 +225,7 @@ def test_source_bound_receipt_and_notation_reject_corruption(tmp_path, fault):
     if fault == 'missing': files.pop('import/plain-tie-identity.json')
     if fault == 'reference': manifest['song_import'].pop('plainTieIdentityFile')
     if fault == 'policy': manifest['song_import']['plainTieIdentityPolicy'] = 'wrong'
-    if fault == 'contract': manifest['song_import']['preservationContract'] = CONTRACT_VERSION - 1
+    if fault == 'contract': manifest['song_import']['preservationContract'] = 89
     chart_path = manifest['arrangements'][0]['file']
     chart = json.loads(files[chart_path])
     if fault == 'attack': chart['notes'].append(dict(deepcopy(chart['notes'][0]), t=1.))
@@ -277,9 +277,26 @@ def test_prior_brush_contract_remains_accepted_without_plain_identity_evidence(t
     path, archive, alignment = make_package(tmp_path, source(7, 7))
     with ZipFile(archive) as stream: files = {name: stream.read(name) for name in stream.namelist()}
     manifest = yaml.safe_load(files['manifest.yaml'])
-    manifest['song_import']['preservationContract'] = CONTRACT_VERSION - 1
+    manifest['song_import']['preservationContract'] = 89
     files['manifest.yaml'] = yaml.safe_dump(manifest, sort_keys=False).encode()
     changed = tmp_path / 'historical.feedpak'
+    with ZipFile(changed, 'w') as stream:
+        for name, data in files.items(): stream.writestr(name, data)
+    result = verify_import(path, changed, alignment)
+    assert result['status'] == 'passed', result
+
+
+def test_prior_plain_tie_contract_and_inventory_remain_accepted(tmp_path):
+    path, archive, alignment = make_package(tmp_path, source())
+    with ZipFile(archive) as stream: files = {name: stream.read(name) for name in stream.namelist()}
+    manifest = yaml.safe_load(files['manifest.yaml'])
+    manifest['song_import']['preservationContract'] = 90
+    files['manifest.yaml'] = yaml.safe_dump(manifest, sort_keys=False).encode()
+    report_path = manifest['song_import']['compatibilityFile']
+    report = json.loads(files[report_path])
+    report['version'] = 90
+    files[report_path] = json.dumps(report).encode()
+    changed = tmp_path / 'historical-plain-tie.feedpak'
     with ZipFile(changed, 'w') as stream:
         for name, data in files.items(): stream.writestr(name, data)
     result = verify_import(path, changed, alignment)

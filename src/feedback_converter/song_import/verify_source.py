@@ -130,6 +130,62 @@ def _legacy_beat_tempo(beat, location):
         raise ValueError(location + "/tempo: invalid retained beat tempo value")
 
 
+def _legacy_beat_effects(beat, location, *, qualify_harmonics=True):
+    """Validate retained flags independently; never derive note effects.
+
+    Return the present field keys, including false/null values, for independent
+    source accounting. Active beat harmonics only restate already qualified
+    explicit natural note targets. Fade-in remains a retained expression mark.
+    """
+    present = {key for key in ("harmonic", "fadeIn") if key in beat}
+    for key in present:
+        if beat[key] is not None and type(beat[key]) is not bool:
+            raise ValueError(location + "/" + key + ": expected a retained boolean or null")
+    if not qualify_harmonics or beat.get("harmonic") is not True:
+        return present
+    notes = beat.get("notes")
+    if beat.get("rest") or not isinstance(notes, list) or any(not isinstance(n, dict) for n in notes):
+        unsupported(location + "/harmonic", "A legacy beat harmonic needs explicit natural sounding notes.")
+    sounding = [n for n in notes if not n.get("rest")]
+    if not sounding:
+        unsupported(location + "/harmonic", "A legacy beat harmonic cannot apply to an empty or silent beat.")
+    nodes = (2.4, 2.7, 3.2, 4, 5, 5.8, 7, 8.2, 9, 9.6, 12, 14.7, 16, 17, 19, 21.7, 24)
+    for note in sounding:
+        fret = note.get("fret")
+        touch = note.get("harmonicFret")
+        if touch is None:
+            touch = fret
+        valid = (note.get("harmonic") == "natural" and note.get("harmonicData") is None
+                 and not note.get("dead") and not note.get("pickScrape")
+                 and _finite_number(fret) and _finite_number(touch))
+        if valid:
+            alias = fret == 15 and touch == 15 and note.get("harmonicFret") is not None
+            node = next((n for n in nodes if abs(fraction(touch, location) - F(str(n))) <= F(1, 10**9)), None)
+            valid = alias or node is not None and fret == round(node)
+        if not valid:
+            unsupported(location + "/harmonic", "Every sounding note needs an independently valid explicit natural harmonic.")
+    return present
+
+
+def _legacy_beat_effect_beats(parts):
+    """Locate only retained beat flags without qualifying excluded structure."""
+    for pi, part in enumerate(parts):
+        measures = part.get("measures") if isinstance(part, dict) else None
+        if not isinstance(measures, list):
+            continue
+        for bi, bar in enumerate(measures):
+            voices = bar.get("voices") if isinstance(bar, dict) else None
+            if not isinstance(voices, list):
+                continue
+            for vi, voice in enumerate(voices):
+                beats = voice.get("beats") if isinstance(voice, dict) else None
+                if not isinstance(beats, list):
+                    continue
+                for bti, beat in enumerate(beats):
+                    if isinstance(beat, dict) and any(key in beat for key in ("harmonic", "fadeIn")):
+                        yield pi, bi, vi, bti, beat
+
+
 def _legacy_note_grace(note, location):
     value = note.get("grace")
     if value is not None and type(value) is not bool:
@@ -545,6 +601,11 @@ def songsterr(document, *, track_indices=None):
     if not 0 < count <= 20_000 or any(len(p["measures"]) != count for p in raw_parts):
         raise ValueError("source: inconsistent measure counts")
     ignored, bars, signature = set(), [], (4, 4)
+    # Check the full retained envelope before instrument/diagnostic selection or
+    # rest handling. Inactive and excluded source fields still need valid shapes.
+    for pi, bi, vi, bti, beat in _legacy_beat_effect_beats(raw_parts):
+        loc = f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}"
+        ignored.update(_legacy_beat_effects(beat, loc, qualify_harmonics=False))
     section_labels = []
     legacy_brush_timing = False
     eligible = {_index for _index, meta in enumerate(metadata) if _program_instrument(meta)}
@@ -764,7 +825,8 @@ def songsterr(document, *, track_indices=None):
                 for bti, beat in enumerate(voice["beats"]):
                     loc = f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}"
                     _legacy_beat_tempo(beat, loc)
-                    _active_unknown(beat, beat_keys, {"beamStart", "beamStop", "id", "hasRasgueado", "sustainPedal", "tempo"}, loc, ignored)
+                    _legacy_beat_effects(beat, loc)
+                    _active_unknown(beat, beat_keys, {"beamStart", "beamStop", "id", "hasRasgueado", "sustainPedal", "tempo", "harmonic", "fadeIn"}, loc, ignored)
                     # Independent validation; MIDI pedal control cannot become
                     # longer game trails, more attacks or a let-ring instruction.
                     if beat.get("sustainPedal") is not None and type(beat["sustainPedal"]) is not bool:

@@ -18,6 +18,7 @@ from .songsterr_whammy import source_whammy
 from .songsterr_harmonics import exact_natural, natural_target, natural_alias, source_target
 from .songsterr_automation import performed_tempos, effective_tempo_entries
 from .songsterr_legacy import validate_legacy_metadata
+from .songsterr_legacy_effects import beat_effects, validate_legacy_beat_effects
 from .songsterr_sections import section_label
 
 
@@ -233,6 +234,20 @@ def parse(document: dict, *, track_indices=None) -> Score:
         raise ScoreImportError("A Songsterr track is truncated.")
     measures, section_labels = [], []
     eligible = {i for i, meta in enumerate(metadata) if _instrument(meta)}
+    # Validate these two scoped flags even when a part is excluded. Musical
+    # harmonic qualification belongs only to selected pitched arrangements.
+    for pi, mi, vi, bi, beat in beat_effects(parts):
+        selected = pi in eligible and (track_indices is None or pi in track_indices)
+        try:
+            present = validate_legacy_beat_effects(beat, qualify_harmonics=selected)
+        except ScoreImportError as exc:
+            exc.source_location = {'measure': mi + 1, 'voice': vi + 1, 'beat': bi + 1,
+                                   'location': f'parts/{pi}/measures/{mi}/voices/{vi}/beats/{bi}'}
+            raise
+        if not selected:
+            for field in present:
+                inventory.record('Songsterr beat', field, 'source',
+                                 f'songsterr:{pi}:{mi}:{vi}:{bi}.{field}', ['source'])
     signature = (4, 4)
     for bi in range(count):
         candidates = [p["measures"][bi] for p in parts]
