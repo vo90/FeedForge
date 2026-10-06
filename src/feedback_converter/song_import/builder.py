@@ -671,7 +671,14 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         _write_json(package / 'import/muted-tie-identity.json', muted_tie_archive(performance, source_path))
         manifest.setdefault('song_import', {})['mutedTieIdentityFile'] = 'import/muted-tie-identity.json'
     if performance.get('plainTieIdentityEvidence'):
-        from .plain_ties import POLICY as PLAIN_TIE_POLICY, archive_evidence as plain_tie_archive
+        from .plain_ties import BEND_RULE, POLICY as PLAIN_TIE_POLICY, archive_evidence as plain_tie_archive
+        if any(row.get('rule') == BEND_RULE for row in performance['plainTieIdentityEvidence']):
+            contract = (recipe or {}).get('preservationContract')
+            inventory = (compatibility or {}).get('version')
+            if (source_path is None or type(contract) is not int or contract < 93
+                    or type(inventory) is not int or inventory < 93):
+                raise ImportFailure('unsupported_score',
+                                    'Bent-origin tie identity requires the original tab, preservation contract 93 and compatibility inventory 93.')
         if (source_path is None or (recipe or {}).get('preservationContract', 0) < 90
                 or (recipe or {}).get('plainTieIdentityPolicy', PLAIN_TIE_POLICY) != PLAIN_TIE_POLICY):
             raise ImportFailure('unsupported_score', 'Plain tie identity requires the original tab and preservation contract 90.')

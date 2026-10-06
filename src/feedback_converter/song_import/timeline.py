@@ -9,7 +9,7 @@ from .songsterr_whammy import append_segment
 from .repeat_regions import repeat_regions
 from .fingering import template_fingers
 from .link_diagnostics import LinkDiagnostics
-from .plain_ties import admitted as plain_tie_admitted, record as record_plain_tie
+from .plain_ties import BEND_RULE, admitted as plain_tie_admitted, record as record_plain_tie
 
 
 def playback_order(measures: list[Measure]) -> list[int]:
@@ -185,6 +185,7 @@ def _render(score: Score) -> dict:
                     rest_index = bisect_left(starts, start) - 1
                     return plain_tie_admitted(prior[0], entrances[key][0], articulation,
                         score.source_document['document'],
+                        continuous=prior[1] == start,
                         uninterrupted=rest_index < 0 or ends[rest_index] <= articulation['start'])
                 previous_note = {
                     key: prior for key, prior in previous_note.items()
@@ -232,6 +233,15 @@ def _render(score: Score) -> dict:
                     prior_articulation = articulations[id(output)]
                     if prior_articulation.get('muted_identity') and not plain_segment(note):
                         raise ScoreImportError('A normalized muted tie cannot introduce a pitch gesture.')
+                    if prior_articulation.get('bent_identity'):
+                        starts, ends = rest_limits.get(note.voice_id, ([], []))
+                        rest_index = bisect_left(starts, position) - 1
+                        if not plain_tie_admitted(output, note, prior_articulation, score.source_document['document'],
+                                linked=link_key in pending_slide or link_key in pending_hopo or link_key in pending_muted_shifts,
+                                unique=source_counts[(note.position, note.voice_id, note.string)] == 1,
+                                continuous=prior[1] == position,
+                                uninterrupted=rest_index < 0 or ends[rest_index] <= prior_articulation['start']):
+                            raise ScoreImportError('A normalized bent-origin tie cannot introduce an unqualified continuation.')
                     if output['f'] != note.fret:
                         starts, ends = rest_limits.get(note.voice_id, ([], []))
                         rest_index = bisect_left(starts, position) - 1
@@ -240,9 +250,13 @@ def _render(score: Score) -> dict:
                             output, note, prior_articulation, score.source_document['document'],
                             linked=link_key in pending_slide or link_key in pending_hopo or link_key in pending_muted_shifts,
                             unique=source_counts[(note.position, note.voice_id, note.string)] == 1,
+                            continuous=prior[1] == position,
                             uninterrupted=uninterrupted)
                         if plain:
-                            plain_tie_identities.append(record_plain_tie(output, note, track, occurrence, position, end, at))
+                            identity = record_plain_tie(output, note, track, occurrence, position, end, at, prior_articulation)
+                            plain_tie_identities.append(identity)
+                            if identity['rule'] == BEND_RULE:
+                                prior_articulation['bent_identity'] = True
                             notation_targets[(occurrence + 1, note.source_id)] = output['f']
                         else:
                             if (not songsterr_tie or prior[1] != position or not uninterrupted
@@ -466,6 +480,8 @@ def _render(score: Score) -> dict:
                 evidence = finish_finger_bend(output, articulations[id(output)], track.id, at, points,
                                              bend_contexts.get(id(output), ()),
                                              following_hopo=links[0] if len(links) == 1 else None)
+                if articulations[id(output)].get('bent_identity') and (not evidence or evidence.get('status') != 'resolved'):
+                    raise ScoreImportError('A normalized bent-origin tie needs resolved finger-bend timing.')
                 if evidence:
                     finger_bends.append(evidence)
         from .songsterr_trills import expand

@@ -11,7 +11,34 @@ from .verify_source import Source, fraction, unsupported
 MAX_EVENTS = 500_000
 
 
-def _plain_tie_target(atom, origin, *, unique=True, pending=False):
+def _plain_bend_segment(atom):
+    """A finger-bend segment carries no independent pitch controller."""
+    onset = {'pkd', 'fg', 'ac', 'ghost'}
+    return not (atom.hopo_origin or atom.hopo_destination or atom.slide or atom.slide_in
+                or atom.pick_scrape or atom.whammy or atom.trill or atom.staccato
+                or atom.attack_offset or atom.pitch_offset or atom.finger_vibrato
+                or atom.wide_vibrato or atom.beat_vibrato
+                or any(value and key not in onset for key, value in atom.effects.items()))
+
+
+def _bent_tie_origin(origin):
+    """Independently establish one initial bend and a plain held history."""
+    entries = origin.get('bend_atoms', ())
+    if (not entries or origin.get('trill') or origin.get('linked')
+            or any(value and key not in {'pkd', 'fg', 'ac', 'ghost'}
+                   for key, value in origin['effects'].items())):
+        return False
+    first = entries[0][0]
+    if first.tie or not first.bends or not _plain_bend_segment(first):
+        return False
+    for i, (atom, start, end, _visit) in enumerate(entries):
+        if (not _plain_bend_segment(atom) or (atom.voice, atom.string) != (first.voice, first.string)
+                or i and (not atom.explicit_tie or atom.bends or start != entries[i - 1][2])):
+            return False
+    return True
+
+
+def _plain_tie_target(atom, origin, *, unique=True, pending=False, continuous=False):
     """Independently qualify an incidental fret on a held pitched target."""
     if (not atom.explicit_tie or not unique or pending or origin is None
             or not origin.get('unique_origin', True) or atom.fret == 127 or origin['f'] == 127
@@ -25,9 +52,15 @@ def _plain_tie_target(atom, origin, *, unique=True, pending=False):
             or atom.beat_vibrato or atom.pitch_offset
             or any(atom.effects.get(k) for k in (*harmonic, 'vb'))
             or any(origin['effects'].get(k) for k in harmonic)
-            or origin.get('curve') or origin.get('whammy') or origin.get('trill')
+            or origin.get('whammy') or origin.get('trill')
             or origin.get('scrapes') or origin.get('slide_marks') or origin.get('targeted_slide')
             or origin.get('contact') or origin.get('harmonic_conflict')):
+        return False
+    if any(a.bends for a, *_ in origin.get('bend_atoms', ())):
+        first = origin['bend_atoms'][0][0]
+        return (continuous and _bent_tie_origin(origin) and _plain_bend_segment(atom)
+                and (atom.voice, atom.string) == (first.voice, first.string))
+    if origin.get('curve'):
         return False
     return True
 
@@ -345,7 +378,8 @@ def _expected(source, alignment):
                         if (entrance.tie and entrance.q == 0 and sounding is not None
                                 and sounding['end'] <= origin and (sounding['f'] == entrance.fret
                                     or not interrupted and _plain_tie_target(entrance, sounding,
-                                                        unique=source_slots[(entrance.q, entrance.voice, entrance.string)] == 1))):
+                                                        unique=source_slots[(entrance.q, entrance.voice, entrance.string)] == 1,
+                                                        continuous=sounding['end'] == origin))):
                             # The ordinary tie check below independently rejects
                             # any explicit rest in the unfilled interval.
                             continued[identity] = sounding
@@ -382,6 +416,15 @@ def _expected(source, alignment):
                             or previous["end"] != start and not gap_allowed):
                         unsupported(atom.location, "Source tie does not identify a continuous prior note; it has not been repaired.")
                     event = previous
+                    if event.get('bent_identity'):
+                        rest_starts, rest_ends = rest_indices.get(atom.voice, ([], []))
+                        ri = bisect_left(rest_starts, start) - 1
+                        if (ri >= 0 and rest_ends[ri] > event['start']
+                                or not _plain_tie_target(atom, event,
+                                    unique=source_slots[(atom.q, atom.voice, atom.string)] == 1,
+                                    pending=key in pending_slides or key in pending_hopos or key in muted_pending,
+                                    continuous=event['end'] == start)):
+                            unsupported(atom.location, 'A normalized bent continuation has an unqualified controller or discontinuity.')
                     # Reconstruct independently of the producer's normalization.
                     expressive = (atom.bends or atom.slide or atom.slide_in or atom.whammy
                                   or atom.trill or atom.pick_scrape or atom.hopo_origin or atom.hopo_destination
@@ -395,7 +438,8 @@ def _expected(source, alignment):
                         plain_target = (source.format == 'songsterr' and not interrupted
                                         and _plain_tie_target(atom, event,
                                             unique=source_slots[(atom.q, atom.voice, atom.string)] == 1,
-                                            pending=key in pending_slides or key in pending_hopos or key in muted_pending))
+                                            pending=key in pending_slides or key in pending_hopos or key in muted_pending,
+                                            continuous=event['end'] == start))
                         if plain_target:
                             p = atom.location.split('/')
                             first = event['locations'][0].split('/')
@@ -405,7 +449,10 @@ def _expected(source, alignment):
                                 'location': atom.location, 'occurrence': occurrence + 1, 'voice': int(atom.voice),
                                 'attack': float(clock.at(event['start'])), 'start': float(clock.at(start)), 'end': float(clock.at(end)),
                                 'string': atom.string, 'authored': {'fret': atom.fret}, 'used': {'fret': event['f']},
-                                'rule': 'plain-tie-keeps-attack-target'})
+                                'rule': 'plain-tie-keeps-bent-attack-target' if _bent_tie_origin(event)
+                                        else 'plain-tie-keeps-attack-target'})
+                            if _bent_tie_origin(event):
+                                event['bent_identity'] = True
                             notation_fret = event['f']
                         elif (source.format != 'songsterr' or event['end'] != start or interrupted
                                 or event['effects'].get('mt') is not True or atom.effects.get('mt') is not True
@@ -670,6 +717,8 @@ def _expected(source, alignment):
                 successors = legato_successors.get(id(n), ())
                 evidence = reconstruct_finger_bend(n, part, clock, sound_end, bend_contexts.get(id(n), ()),
                                                   following_hopo=successors[0] if len(successors) == 1 else None)
+                if n.get('bent_identity') and (not evidence or evidence.get('status') != 'resolved'):
+                    unsupported(n['locations'][0], 'A normalized bent tie requires independently resolved finger-bend timing.')
                 if evidence:
                     result['finger_bends'].append(evidence)
             if (n["start"] < 0 and not n.get('opening_strum')) or sound_end <= n["start"]:

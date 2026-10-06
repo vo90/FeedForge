@@ -51,7 +51,12 @@ def native_source_clock(row):
 @pytest.mark.parametrize('row', ROWS, ids=lambda r: r['id'])
 def test_plain_tie_held_identity_matches_reviewed_native_source_clock(row):
     source = deepcopy(row['source']); before = deepcopy(source)
-    if row['expectedDisposition'] == 'blocked':
+    # The pinned contract90 fixture retains its original guarded disposition.
+    # Contract93 separately qualifies this ordinary initial bend's plain tie.
+    newly_qualified_bend = row['id'] == 'plain-tie/guard/ancestor-bend'
+    if newly_qualified_bend:
+        assert row['expectedDisposition'] == 'blocked'
+    if row['expectedDisposition'] == 'blocked' and not newly_qualified_bend:
         for reader in (lambda: render(parse(source)),
                        lambda: expected(songsterr(source), {'offset': 0, 'scale': 1})):
             with pytest.raises(ValueError):
@@ -64,6 +69,12 @@ def test_plain_tie_held_identity_matches_reviewed_native_source_clock(row):
     independent_model = songsterr(source)
     original_atoms = [(n.location, n.fret) for p in independent_model.parts for b in p.bars for n in b]
     independent = expected(independent_model, {'offset': 0, 'scale': 1})
+    if newly_qualified_bend:
+        for rows in (actual['plainTieIdentityEvidence'],independent['plain_tie_identities']):
+            identity, = rows
+            assert identity['rule'] == 'plain-tie-keeps-bent-attack-target'
+            assert identity['authored'] == {'fret':0} and identity['used'] == {'fret':7}
+        assert actual['fingerBendTimingEvidence'][0]['status'] == 'resolved'
     candidates = [producer_notes(actual),
                   sorted((n['note'] for n in independent['parts'][0]['notes']), key=lambda n: (n['t'], n['s']))]
     wanted = native_source_clock(row)

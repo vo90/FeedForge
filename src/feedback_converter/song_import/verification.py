@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 92
+VERSION = 93
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -347,7 +347,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, 89, 90, 91, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, 89, 90, 91, 92, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     reports_precedence = type(report.get('version')) is int and report['version'] >= 46
     if preservation_contract >= 46 and not reports_precedence:
@@ -895,6 +895,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             manifest = yaml.safe_load(z.read("manifest.yaml"))
             _finite(manifest, "manifest", check)
             recipe = manifest.get("song_import", {})
+            compatibility = {}
             if source.negative_fret_mutes or 'negativeFretMutePolicy' in recipe:
                 if not source.negative_fret_mutes:
                     check.fail('negative_mute_extra', 'manifest/song_import/negativeFretMutePolicy',
@@ -1180,6 +1181,17 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                                'Source has no qualifying plain tied-target identities.')
                 if recipe.get('preservationContract', 0) < 90:
                     check.fail('plain_tie_contract', 'manifest/song_import', 'Plain tie identity requires preservation contract 90.')
+                bent_identity = any(row['rule'] == 'plain-tie-keeps-bent-attack-target'
+                                    for row in wanted['plain_tie_identities'])
+                if bent_identity:
+                    contract = recipe.get('preservationContract')
+                    if type(contract) is not int or contract < 93:
+                        check.fail('bent_tie_contract', 'manifest/song_import',
+                                   'Bent-origin tied-target identity requires preservation contract 93.')
+                    if type(compatibility.get('version')) is not int or compatibility['version'] < 93:
+                        check.fail('bent_tie_inventory', 'import/compatibility/version',
+                                   'Bent-origin tied-target identity requires compatibility inventory 93.')
+                    report['scope'].append('bent_origin_tie_identity')
                 check.equal('plain_tie_policy', 'manifest/song_import/plainTieIdentityPolicy',
                             'songsterr-plain-tie-identity-v1', recipe.get('plainTieIdentityPolicy'))
                 check.equal('plain_tie_file', 'manifest/song_import/plainTieIdentityFile',

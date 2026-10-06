@@ -21,6 +21,12 @@ same-fret expression policies and the separate dead-note identity policy remain
 in place. Native player recovery across voices, rests or orphans is deliberately
 excluded.
 
+Contract 93 separately qualifies an ordinary first-origin finger bend followed
+by exactly adjacent plain continuations. Its stricter whole-group boundary and
+distinct evidence row rule are described in
+[plain continuations of bent attacks](songsterr-bent-origin-ties.md). Ordinary
+non-bent gap and expression behavior described here remains unchanged.
+
 For each differing pitched continuation, `import/plain-tie-identity.json` records
 the exact source hash, authored and effective frets, source/origin identities,
 voice/string, performed occurrence and score-clock times. The manifest references

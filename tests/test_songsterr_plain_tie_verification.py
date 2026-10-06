@@ -121,7 +121,7 @@ def test_origin_expression_and_completed_entry_survive(tmp_path, expression):
 @pytest.mark.parametrize('fault', ['missing', 'voice', 'string', 'rest', 'duplicate_origin', 'duplicate_tie',
                                    'not_boolean_int', 'not_boolean_string', 'continuation_bend', 'continuation_slide',
                                    'continuation_hopo', 'continuation_harmonic', 'continuation_dead', 'continuation_vibrato',
-                                   'continuation_bar', 'continuation_trill', 'origin_bend', 'origin_bar', 'origin_trill',
+                                   'continuation_bar', 'continuation_trill', 'origin_bar', 'origin_trill',
                                    'origin_harmonic', 'origin_dead', 'origin_terminal_slide', 'origin_pending_slide', 'origin_pending_hopo'])
 def test_new_interpretation_retains_unqualified_continuity_and_expression_guards(tmp_path, fault):
     raw = source()
