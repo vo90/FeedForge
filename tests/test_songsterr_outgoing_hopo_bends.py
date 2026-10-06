@@ -14,6 +14,7 @@ from test_songsterr_overlapping_bends import sample
 from feedback_converter.song_import.audio import ImportFailure
 from feedback_converter.song_import.builder import build_feedpak
 from feedback_converter.song_import.hybrid_lead import normalize_options, choose_main
+from feedback_converter.song_import.model import ScoreImportError
 from feedback_converter.song_import.score import load_performance
 from feedback_converter.song_import.verification import verify_import
 
@@ -75,6 +76,11 @@ def test_unqualified_interactions_remain_guarded(fault,tmp_path):
     elif fault=='destination-slide':bs[-1]['notes'][0]['slide']='above'
     elif fault=='destination-mute':bs[-1]['palmMute']=True
     elif fault=='destination-staccato':bs[-1]['notes'][0]['staccato']=True
+    if fault == 'intermediate-origin':
+        # The marker reaches a tied bend controller, rather than a fresh H/P destination.
+        with pytest.raises(ScoreImportError,match='pending hammer-on/pull-off.*unqualified tied continuation'):
+            checked(d)
+        return
     p=checked(d);e=p['fingerBendTimingEvidence'][0]
     if fault == 'beat-vibrato':
         control = deepcopy(d); control['parts'][0]['measures'][0]['voices'][0]['beats'][1].pop('vibrato')

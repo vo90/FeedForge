@@ -5,7 +5,7 @@ import zipfile
 
 import pytest
 
-from feedback_converter.song_import.evidence import save_evidence
+from feedback_converter.song_import.evidence import CONTRACT_VERSION, save_evidence
 
 
 def test_evidence_is_durable_content_addressed_and_exportable(tmp_path):
@@ -27,7 +27,7 @@ def test_evidence_is_durable_content_addressed_and_exportable(tmp_path):
     record_file = root / "records" / (first["id"] + ".json")
     assert hashlib.sha256(record_file.read_bytes()).hexdigest() == first["id"]
     record = json.loads(record_file.read_text())
-    assert record["version"] == first["version"] == 94
+    assert record["version"] == first["version"] == CONTRACT_VERSION
     assert record["sourceMetadata"] == {"title": "Original", "songId": 12}
     assert record["members"]["manifest.yaml"] == hashlib.sha256(b"title: Original").hexdigest()
     shutil.rmtree(cache)

@@ -12,6 +12,8 @@ from feedback_converter.feedpak_validator import validate_feedpak
 from feedback_converter.song_import import worker
 from feedback_converter.song_import import audio as audio_module
 from feedback_converter.song_import.audio import ImportFailure
+from feedback_converter.song_import.evidence import CONTRACT_VERSION
+from feedback_converter.song_import.verification import VERSION as VERIFICATION_VERSION
 
 
 def test_source_timing_does_not_run_pitch_matching(monkeypatch):
@@ -136,7 +138,8 @@ def test_source_sync_builds_a_real_feedpak_with_matching_timeline_and_settings(t
         assert result['verification']['hybridLead']['policy'] == 'hybrid-lead-v3'
         assert result['verification']['hybridLead']['primaryCoverage'] == 'checked'
         assert result['verification']['hybridLead']['status'] == 'no_additions'
-    assert result["recipe"]["preservationContract"] == result["verification"]["version"] == result["evidence"]["version"] == 94
+    assert result["recipe"]["preservationContract"] == result["evidence"]["version"] == CONTRACT_VERSION
+    assert result["verification"]["version"] == VERIFICATION_VERSION
     extensions = ["slide_in_marks", "slide_out", "slide_out_marks"]
     if precise_harmonic:
         extensions = ['hn', 'hps', *extensions]

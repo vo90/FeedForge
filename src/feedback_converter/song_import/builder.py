@@ -722,6 +722,20 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         from .tied_mutes import archive_evidence as mute_archive
         _write_json(package / 'import/tied-mutes.json', mute_archive(performance, source_path))
         manifest.setdefault('song_import', {})['tiedMutesFile'] = 'import/tied-mutes.json'
+    if performance.get('pendingHopoTieEvidence'):
+        from .pending_hopo_ties import POLICY as PENDING_HOPO_POLICY, archive_evidence as pending_hopo_archive
+        contract = (recipe or {}).get('preservationContract')
+        inventory = (compatibility or {}).get('version')
+        if (source_path is None or type(contract) is not int or contract < 95
+                or type(inventory) is not int or inventory < 95
+                or (recipe or {}).get('pendingHopoTiePolicy', PENDING_HOPO_POLICY) != PENDING_HOPO_POLICY):
+            raise ImportFailure('unsupported_score',
+                                'Consumed HO/PO ties require the original tab, preservation contract 95 and matching source accounting.')
+        _write_json(package / 'import/pending-hopo-ties.json', pending_hopo_archive(performance, source_path))
+        manifest.setdefault('song_import', {}).update(
+            pendingHopoTieFile='import/pending-hopo-ties.json', pendingHopoTiePolicy=PENDING_HOPO_POLICY)
+    elif 'pendingHopoTiePolicy' in (recipe or {}) or 'pendingHopoTieFile' in (recipe or {}):
+        raise ImportFailure('unsupported_score', 'Consumed HO/PO policy has no supporting source instruction.')
     if performance.get('voiceProjection'):
         if source_path is None:
             raise ImportFailure('unsupported_score', 'Voice arrangements require the retained original tab.')

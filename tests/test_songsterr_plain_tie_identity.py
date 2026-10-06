@@ -190,7 +190,7 @@ def test_explicit_continuation_pitch_or_mute_gestures_stay_guarded(gesture):
 
 
 @pytest.mark.parametrize('gesture', [{**g, **({'vibrato': True} if 'bend' in g else {})}
-                                    for g in GESTURES if 'vibrato' not in g and g.get('slide') != 'below'])
+                                    for g in GESTURES if 'vibrato' not in g and 'hp' not in g and g.get('slide') != 'below'])
 def test_unqualified_origin_pitch_or_mute_gestures_stay_guarded(gesture):
     document = source()
     document['parts'][0]['measures'][0]['voices'][0]['beats'][0]['notes'][0].update(gesture)

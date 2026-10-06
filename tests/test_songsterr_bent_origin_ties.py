@@ -263,8 +263,9 @@ def test_prior_rest_interrupting_held_origin_cannot_be_recovered():
 
 
 def test_origin_hopo_link_is_distinct_from_bend_admission():
-    document = raw_score([measure(beat(2,duration=(1,4),hp=True),beat(0,duration=(3,4),tie=True))])
-    with pytest.raises(ScoreImportError,match='Unresolved tie'):
+    document = raw_score([measure(beat(2,duration=(1,4),hp=True,bend=deepcopy(RISE)),
+                                 beat(0,duration=(3,4),tie=True))])
+    with pytest.raises(ScoreImportError,match='pending hammer-on/pull-off.*unqualified tied continuation'):
         produced(document)
 
 

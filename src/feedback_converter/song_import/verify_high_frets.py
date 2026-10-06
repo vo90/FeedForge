@@ -99,7 +99,8 @@ def verify(source, wanted, source_path, recipe, archive, check, read_json, align
     from .verify_timeline import expected
     if recipe.get('preservationContract',0)<27 and not recipe.get('voicesFile'):
         from .verify_timeline import _expected as expected
-    reference = expected(source, {"offset": 0, "scale": 1})
+    reference = expected(source, {"offset": 0, "scale": 1},
+                         pending_hopo_ties=recipe.get('preservationContract', 0) >= 95)
     receipt = reconstruct(reference, mapped)
     if mapped is not wanted:
         from .verify_collapsed_opening import project

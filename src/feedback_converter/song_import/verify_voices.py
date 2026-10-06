@@ -9,6 +9,7 @@ from collections import defaultdict
 EVIDENCE={'undefined_slides','harmonic_ties','tied_mutes','muted_tie_identities','staccato_bends','muted_slides','consumed_strums','scrape_entries','trills','strums'}
 EVIDENCE.add('finger_bends')
 EVIDENCE.add('plain_tie_identities')
+EVIDENCE.add('pending_hopo_ties')
 
 
 def source_ids(item):

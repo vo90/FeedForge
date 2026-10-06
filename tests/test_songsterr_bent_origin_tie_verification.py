@@ -213,7 +213,7 @@ def test_bent_archive_independently_binds_identity_curve_clock_notation_and_cont
     assert 'finger_bend_timing' in result['scope']
     with ZipFile(archive) as stream: files = {name: stream.read(name) for name in stream.namelist()}
     manifest = yaml.safe_load(files['manifest.yaml'])
-    assert manifest['song_import']['preservationContract'] == 94 == CONTRACT_VERSION
+    assert manifest['song_import']['preservationContract'] == CONTRACT_VERSION
     if fault is None: return
     ledger = json.loads(files['import/plain-tie-identity.json'])
     row = ledger['continuations'][0]

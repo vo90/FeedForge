@@ -120,6 +120,7 @@ def _render(score: Score) -> dict:
     tied_mutes = []
     muted_tie_identities = []
     plain_tie_identities = []
+    pending_hopo_ties = []
     staccato_bends = []
     finger_bends = []
     muted_slides = []
@@ -231,6 +232,28 @@ def _render(score: Score) -> dict:
                     songsterr_tie = score.source.get('format') == 'songsterr'
                     from .muted_ties import equivalent, plain_segment, record
                     prior_articulation = articulations[id(output)]
+                    if songsterr_tie and link_key in pending_hopo:
+                        from .pending_hopo_ties import admitted as consume_hopo, record as record_consumption
+                        starts, ends = rest_limits.get(note.voice_id, ([], []))
+                        rest_index = bisect_left(starts, position) - 1
+                        if not consume_hopo(output, note, prior_articulation, score.source_document['document'],
+                                pending=pending_hopo[link_key],
+                                competing=link_key in pending_slide or link_key in pending_muted_shifts,
+                                unique=source_counts[(note.position, note.voice_id, note.string)] == 1,
+                                continuous=prior[1] == position,
+                                uninterrupted=rest_index < 0 or ends[rest_index] <= prior_articulation['start']):
+                            raise link_diagnostics.error(
+                                'A pending hammer-on/pull-off reaches an unqualified tied continuation.',
+                                'unqualified_hopo_tie', family='hopo', key=link_key,
+                                destination=(note, occurrence, at(position)))
+                        pending_hopo_ties.append(record_consumption(
+                            output, note, track, occurrence, position, end, at, prior_articulation))
+                        pending_hopo.pop(link_key)
+                        link_diagnostics.resolve('hopo', link_key)
+                        # This provisional flag belonged to the consumed outgoing
+                        # instruction. Genuine incoming HO/PO and earlier links stay.
+                        if not prior_articulation.get('resolved_outgoing_hopo'):
+                            output.pop('ln', None)
                     if prior_articulation.get('muted_identity') and not plain_segment(note):
                         raise ScoreImportError('A normalized muted tie cannot introduce a pitch gesture.')
                     if prior_articulation.get('bent_identity'):
@@ -276,6 +299,7 @@ def _render(score: Score) -> dict:
                         raise ScoreImportError("A harmonic type or pitch change inside a tie needs a separate gesture representation.")
                     articulation = articulations[id(output)]
                     articulation["segments"] += 1
+                    articulation['pending_hopo_history_unique'] &= source_counts[(note.position, note.voice_id, note.string)] == 1
                     # A continuation is not an attack. Its finger instruction
                     # must not overwrite the finger displayed at the onset.
                     output.update({k: v for k, v in effects.items() if k not in {"pkd", "fg"} and not (late_mute and k == 'mt') and (not songsterr_tie or k not in FIELDS)})
@@ -305,11 +329,13 @@ def _render(score: Score) -> dict:
                         pending_hopo.pop(link_key, None)
                         link_diagnostics.resolve('hopo', link_key)
                         hopo_links.append((prior[0], output))
+                        articulations[id(prior[0])]['resolved_outgoing_hopo'] = True
                     rendered.append(output)
                     articulation = {"start": attack, "origin_staccato": note.staccato,
                                     "staccato": False, "pitch_gesture": False, "segments": 1,
                                     "trill": note.trill, "occurrence": occurrence + 1,
                                     "source_unique": source_counts[(note.position, note.voice_id, note.string)] == 1,
+                                    "pending_hopo_history_unique": source_counts[(note.position, note.voice_id, note.string)] == 1,
                                     "other_pitch_gesture": False, "bend_segments": []}
                     articulations[id(output)] = articulation
                     if note.beat_id:
@@ -616,6 +642,7 @@ def _render(score: Score) -> dict:
             **({'tiedMuteEvidence': sorted(tied_mutes, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if tied_mutes else {}),
             **({'mutedTieIdentityEvidence': sorted(muted_tie_identities, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if muted_tie_identities else {}),
             **({'plainTieIdentityEvidence': sorted(plain_tie_identities, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if plain_tie_identities else {}),
+            **({'pendingHopoTieEvidence': sorted(pending_hopo_ties, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if pending_hopo_ties else {}),
             **({'staccatoBendEvidence': sorted(staccato_bends, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if staccato_bends else {}),
             **({'fingerBendTimingEvidence': sorted(finger_bends, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if finger_bends else {}),
             'strumEvidence': sorted(strums,key=lambda r:(r['trackId'],r['occurrence'],r['time'],r['sourceId'])),

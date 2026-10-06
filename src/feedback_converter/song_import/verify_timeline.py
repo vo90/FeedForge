@@ -65,6 +65,70 @@ def _plain_tie_target(atom, origin, *, unique=True, pending=False, continuous=Fa
     return True
 
 
+def _pending_hopo_tie(atom, event, marker, start, *, unique, interrupted, competing):
+    """Independently establish the literal immediately consumed source marker.
+
+    This deliberately does not call the producer's tie/consumption helpers or
+    weaken the ordinary plain-target gate's pending-technique exclusion.
+    """
+    if (marker is None or event is None or marker['event'] is not event
+            or not atom.explicit_tie or not unique or not marker['unique']
+            or not event.get('unique_origin') or not event.get('history_unique') or interrupted or competing
+            or event['end'] != start or marker['end'] != start
+            or not marker['atom'].explicit_hopo_origin
+            or (atom.voice, atom.string) != (marker['atom'].voice, marker['atom'].string)
+            or not 0 <= atom.fret <= 48 or not 0 <= event['f'] <= 48):
+        return False
+    history = event.get('bend_atoms', ())
+    if (not history or history[-1][0] is not marker['atom']
+            or history[-1][1:3] != (marker['start'], marker['end'])
+            or history[0][0].tie or event['start'] != history[0][1]
+            or any(event.get(k) for k in ('linked', 'curve', 'whammy', 'trill', 'scrapes',
+                                          'slide_marks', 'incoming_marks', 'targeted_slide',
+                                          'contact', 'harmonic_conflict'))
+            or any(value and key not in {'pkd', 'fg', 'ac', 'ghost', 'vb', 'ho', 'po', 'ln'}
+                   for key, value in event['effects'].items())):
+        return False
+
+    def plain(segment, initial=False, outgoing=False):
+        return not (segment.bends or segment.slide or segment.slide_in or segment.whammy
+                    or segment.trill or segment.pick_scrape or segment.staccato
+                    or segment.attack_offset or segment.pitch_offset
+                    or segment.hopo_destination and (not initial or not any(event['effects'].get(k) for k in ('ho', 'po')))
+                    or segment.hopo_origin and not outgoing
+                    or not initial and (segment.finger_vibrato or segment.wide_vibrato or segment.beat_vibrato)
+                    or segment.beat_vibrato
+                    or any(value and key not in ({'pkd', 'fg', 'ac', 'ghost', 'vb'} if initial
+                                                else {'pkd', 'fg', 'ac', 'ghost'})
+                           for key, value in segment.effects.items()))
+
+    for i, (segment, left, _right, _visit) in enumerate(history):
+        if (not plain(segment, initial=i == 0, outgoing=segment is marker['atom'])
+                or not 0 <= segment.fret <= 48
+                or (segment.voice, segment.string) != (atom.voice, atom.string)
+                or i and (not segment.explicit_tie or left != history[i - 1][2])):
+            return False
+    return plain(atom)
+
+
+def _pending_hopo_record(part, atom, event, marker, occurrence, start, end, clock):
+    def source_id(location):
+        p = location.split('/')
+        return 'songsterr:' + ':'.join(p[i] for i in (1, 3, 5, 7, 9))
+    return {'trackId': part.id, 'sourceId': source_id(atom.location),
+            'originSourceId': source_id(event['locations'][0]),
+            'markerSourceId': source_id(marker['atom'].location),
+            'location': atom.location, 'markerLocation': marker['atom'].location,
+            'occurrence': occurrence + 1, 'markerOccurrence': marker['occurrence'] + 1,
+            'voice': int(atom.voice), 'string': atom.string,
+            'attack': float(clock.at(event['start'])),
+            'markerStart': float(clock.at(marker['start'])), 'markerEnd': float(clock.at(marker['end'])),
+            'start': float(clock.at(start)), 'end': float(clock.at(end)),
+            'authored': {'hp': True, 'tie': True, 'fret': atom.fret},
+            'used': {'fret': event['f'], 'outgoingHopo': False},
+            'rule': 'pending-hopo-consumed-by-immediate-plain-tie'}
+
+
 def visits(source: Source):
     """Expand repeat intervals recursively, independently of the import walker.
 
@@ -249,19 +313,21 @@ class RecordingMap:
         return (a1 - a0) / (s1 - s0)
 
 
-def expected(source, alignment):
+def expected(source, alignment, *, pending_hopo_ties=True):
     from .verify_voices import project
-    result = _expected(source, alignment)
-    result = project(source, alignment, result, _expected) if source.format == 'songsterr' else result
+    def reconstruct(selected, mapping):
+        return _expected(selected, mapping, pending_hopo_ties=pending_hopo_ties)
+    result = reconstruct(source, alignment)
+    result = project(source, alignment, result, reconstruct) if source.format == 'songsterr' else result
     from .verify_collapsed_opening import project as project_opening
     return project_opening(result, alignment)
 
 
-def _expected(source, alignment):
+def _expected(source, alignment, *, pending_hopo_ties=True):
     order = visits(source)
     clock, recording = Clock(source, order), RecordingMap(alignment)
     result = {"parts": [], "beats": [], "sections": [], "time_signatures": [], "tempos": [], "order": order,
-              'harmonic_ties': [], 'tied_mutes': [], 'muted_tie_identities': [], 'plain_tie_identities': [], 'staccato_bends': [], 'finger_bends': [], 'muted_slides': [], 'undefined_slides': [], 'trills': [], 'strums': [], 'consumed_strums': [], 'scrape_entries': [],
+              'harmonic_ties': [], 'tied_mutes': [], 'muted_tie_identities': [], 'plain_tie_identities': [], 'pending_hopo_ties': [], 'staccato_bends': [], 'finger_bends': [], 'muted_slides': [], 'undefined_slides': [], 'trills': [], 'strums': [], 'consumed_strums': [], 'scrape_entries': [],
               "raw_notes": sum(len(bar) for p in source.parts for bar in p.bars), "tie_segments": 0}
     measure_facts = []
     inherited_tempos, inherited = [], F(120)
@@ -416,6 +482,22 @@ def _expected(source, alignment):
                             or previous["end"] != start and not gap_allowed):
                         unsupported(atom.location, "Source tie does not identify a continuous prior note; it has not been repaired.")
                     event = previous
+                    rest_starts, rest_ends = rest_indices.get(atom.voice, ([], []))
+                    ri = bisect_left(rest_starts, start) - 1
+                    interrupted = ri >= 0 and rest_ends[ri] > event['start']
+                    consumes_hopo = (pending_hopo_ties and source.format == 'songsterr'
+                                     and _pending_hopo_tie(atom, event, pending_hopos.get(key), start,
+                                         unique=source_slots[(atom.q, atom.voice, atom.string)] == 1,
+                                         interrupted=interrupted,
+                                         competing=key in pending_slides or key in muted_pending))
+                    if consumes_hopo:
+                        marker = pending_hopos.pop(key)
+                        result['pending_hopo_ties'].append(
+                            _pending_hopo_record(part, atom, event, marker, occurrence, start, end, clock))
+                        if not event.get('resolved_outgoing_hopo'):
+                            event['effects'].pop('ln', None)
+                    elif pending_hopo_ties and source.format == 'songsterr' and key in pending_hopos:
+                        unsupported(atom.location, 'Pending outgoing HP has no independently qualified immediate plain tied destination.')
                     if event.get('bent_identity'):
                         rest_starts, rest_ends = rest_indices.get(atom.voice, ([], []))
                         ri = bisect_left(rest_starts, start) - 1
@@ -529,7 +611,8 @@ def _expected(source, alignment):
                              "curve": [], "slide_marks": [], "incoming_marks": [], "scrapes": [], "scrape_direction": None, "locations": [atom.location], "occurrence": occurrence + 1, "beat": atom.beat,
                              "staccato": atom.staccato, "any_staccato": False, "pitch_gesture": False, "trill": atom.trill,
                              "other_pitch_gesture": False, "bend_atoms": [],
-                             "unique_origin": source_slots[(atom.q, atom.voice, atom.string)] == 1}
+                             "unique_origin": source_slots[(atom.q, atom.voice, atom.string)] == 1,
+                             "history_unique": source_slots[(atom.q, atom.voice, atom.string)] == 1}
                     event['opening_strum'] = (source.format == 'songsterr' and occurrence == 0
                                               and start >= 0 and atom.attack_offset < 0
                                               and atom.strum_direction is not None)
@@ -541,6 +624,7 @@ def _expected(source, alignment):
                         event["effects"]["ho" if atom.fret > previous["f"] else "po"] = True
                         pending_hopos.pop(key, None)
                         hopo_links.append((previous, event))
+                        previous['resolved_outgoing_hopo'] = True
                     if key in muted_pending:
                         event['linked'] = True
                         omit = source.format == 'songsterr' and atom.fret in (0, 127) and atom.effects.get('mt') is True
@@ -591,6 +675,7 @@ def _expected(source, alignment):
                 event["pitch_gesture"] |= bool(atom.bends or atom.slide or pitched_entry or atom.whammy)
                 event['other_pitch_gesture'] |= bool(atom.slide or pitched_entry or atom.whammy)
                 event['bend_atoms'].append((atom, start, end, occurrence))
+                event['history_unique'] &= source_slots[(atom.q, atom.voice, atom.string)] == 1
                 if (len(event["locations"]) > 1 and event["any_staccato"] and event["pitch_gesture"]
                         and (source.format != 'songsterr' or event['other_pitch_gesture'])):
                     unsupported(atom.location, "Staccato ties with pitch gestures are not independently verified.")
@@ -655,7 +740,9 @@ def _expected(source, alignment):
                 elif atom.slide_in:
                     event["incoming_marks"].append((atom.slide_in, start))
                 if atom.hopo_origin:
-                    pending_hopos[key] = event
+                    pending_hopos[key] = {'event': event, 'atom': atom, 'start': start, 'end': end,
+                                          'occurrence': occurrence,
+                                          'unique': source_slots[(atom.q, atom.voice, atom.string)] == 1}
                     event["effects"]["ln"] = True
                 state[key] = event
                 written_note = {"str": atom.string, "fret": notation_fret, "tied": atom.tie}
@@ -817,6 +904,7 @@ def _expected(source, alignment):
     result['tied_mutes'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['muted_tie_identities'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['plain_tie_identities'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
+    result['pending_hopo_ties'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['staccato_bends'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['finger_bends'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['undefined_slides'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
