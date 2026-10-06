@@ -76,11 +76,18 @@ def test_unqualified_interactions_remain_guarded(fault,tmp_path):
     elif fault=='destination-mute':bs[-1]['palmMute']=True
     elif fault=='destination-staccato':bs[-1]['notes'][0]['staccato']=True
     p=checked(d);e=p['fingerBendTimingEvidence'][0]
-    assert e['status']=='deferred' and 'outgoingLegato' not in e['overlap']
+    if fault == 'beat-vibrato':
+        control = deepcopy(d); control['parts'][0]['measures'][0]['voices'][0]['beats'][1].pop('vibrato')
+        assert e == checked(control)['fingerBendTimingEvidence'][0]
+        assert e['status'] == 'resolved' and e['overlap']['outgoingLegato']
+    else:
+        assert e['status']=='deferred' and 'outgoingLegato' not in e['overlap']
     if fault in ('changing','nearly-settled'):
         assert e['reason']=='overlap-with-other-expression'
         assert e['overlap']['classification']=='other-expression'
-    assert any(f['feature']=='note.bend_timing' for f in import_json(tmp_path,d)['compatibilityReport']['findings'])
+    findings = import_json(tmp_path,d)['compatibilityReport']['findings']
+    assert any(f['feature']=='note.bend_timing' for f in findings) == (fault != 'beat-vibrato')
+    if fault == 'beat-vibrato': assert any(f['feature'] == 'beat.vibrato' for f in findings)
 
 
 def test_plain_bend_does_not_claim_legato_and_renaming_is_irrelevant():

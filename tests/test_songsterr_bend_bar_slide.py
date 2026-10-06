@@ -77,8 +77,13 @@ def test_unqualified_mixtures_stay_guarded(fault):
         bs[0]['brushStroke']={'direction':'down','duration':30,'shift':100}
         bs[0]['notes'].append({'string':1,'fret':5})
     e=checked(d)['fingerBendTimingEvidence'][0]
-    assert e['status']=='deferred'
-    assert 'barCurve' not in e and 'terminalSlideOut' not in e
+    if fault == 'beat-vibrato':
+        control = deepcopy(d); control['parts'][0]['measures'][0]['voices'][0]['beats'][0].pop('vibrato')
+        assert e == checked(control)['fingerBendTimingEvidence'][0]
+        assert e['status'] == 'resolved' and e['barCurve'] and e['terminalSlideOut']
+    else:
+        assert e['status']=='deferred'
+        assert 'barCurve' not in e and 'terminalSlideOut' not in e
 
 @pytest.mark.parametrize('piecewise',[False,True])
 @pytest.mark.parametrize('hybrid',[False,True])

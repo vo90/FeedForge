@@ -93,9 +93,20 @@ def test_unqualified_combinations_keep_warning(fault,tmp_path):
     elif fault=='hopo':bs[-1]['notes'][0]['hp']=True;d['parts'][0]['measures'].append(measure(beat(fret=5)))
     elif fault=='slide-in':bs[0]['notes'][0]['slide']='above'
     elif fault=='whammy':bs[0]['tremoloBar']={'points':[{'position':0,'tone':0},{'position':60,'tone':-50}]}
-    e=checked(d)['fingerBendTimingEvidence'][0]
-    assert e['status']=='deferred' and 'fixedHarmonic' not in e['overlap']
-    assert any(f['feature']=='note.bend_timing' for f in import_json(tmp_path,d)['compatibilityReport']['findings'])
+    p=checked(d);e=p['fingerBendTimingEvidence'][0]
+    findings=import_json(tmp_path,d)['compatibilityReport']['findings']
+    if fault=='beat-only':
+        control=deepcopy(d);del control['parts'][0]['measures'][0]['voices'][0]['beats'][1]['vibrato']
+        baseline=checked(control)
+        assert p['tracks'][0]['notes']==baseline['tracks'][0]['notes']
+        assert e==baseline['fingerBendTimingEvidence'][0]
+        assert e['status']=='resolved' and e['overlap']['fixedHarmonic']
+        assert p['tracks'][0]['notes'][0]['vibrato_marks']==[{'start':1.,'end':2.,'intensity':'wide'}]
+        assert any(f['feature']=='beat.vibrato' for f in findings)
+        assert not any(f['feature']=='note.bend_timing' for f in findings)
+    else:
+        assert e['status']=='deferred' and 'fixedHarmonic' not in e['overlap']
+        assert any(f['feature']=='note.bend_timing' for f in findings)
 
 
 @pytest.mark.parametrize('piecewise',[False,True])

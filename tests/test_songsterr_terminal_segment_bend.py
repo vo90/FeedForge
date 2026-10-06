@@ -96,7 +96,9 @@ def test_compositions_keep_their_independent_findings(extra,tmp_path):
     p=checked(doc);e=p['fingerBendTimingEvidence'][0]
     resolved=extra in ('beat-vibrato','targeted','whammy')
     assert e['status']==('resolved' if resolved else 'deferred')
-    if extra=='beat-vibrato':assert e['terminalSlideOut']['beatVibrato']
+    if extra=='beat-vibrato':
+        assert 'beatVibrato' not in e['terminalSlideOut']
+        assert notes(p) == notes(checked(document()))  # Preserve the explicit wide note controller.
     elif extra=='whammy':assert e['terminalSlideOut'] and e['barCurve']
     else:assert 'terminalSlideOut' not in e
     loaded=import_json(tmp_path,doc)

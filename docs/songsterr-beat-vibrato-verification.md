@@ -1,5 +1,11 @@
 # Beat-level vibrato warning verification
 
+Contract 94 retains these source-bound warnings and written beat annotations
+without creating note controllers. The earlier warning-only correction below
+preserved the historical fallback; see
+[note-owned vibrato](songsterr-note-vibrato-ownership.md) for its explicit policy
+transition and historical archive verification.
+
 The compatibility inventory retains active Songsterr beat `vibrato` and
 `wideVibrato` markings as `display_or_expression` limitations. Their precise
 playback interpretation is not established by the reference player. Existing

@@ -96,6 +96,21 @@ def test_bent_identity_does_not_qualify_extra_controllers(tmp_path, stage, effec
     elif effect == 'palm_mute': target['palmMute'] = True
     elif effect == 'tremolo': target['tremolo'] = True
     else: note[effect] = True
+    if effect == 'beat_vibrato':
+        control = deepcopy(raw)
+        control['parts'][0]['measures'][0]['voices'][0]['beats'][
+            {'origin': 0, 'prior': 1, 'current': 2, 'later_equal': 3}[stage]].pop('vibrato')
+        current = expected(songsterr(raw), {'offset': 0, 'scale': 1})
+        baseline = expected(songsterr(control), {'offset': 0, 'scale': 1})
+        assert current['parts'][0]['notes'] == baseline['parts'][0]['notes']
+        assert current['finger_bends'] == baseline['finger_bends']
+        path = tmp_path / 'source.json'
+        path.write_text(json.dumps(raw), encoding='utf-8')
+        produced = load_performance(path)
+        assert [{k: v for k, v in n.items() if k != 'source_ids'}
+                for n in produced['tracks'][0]['notes']] == [r['note'] for r in current['parts'][0]['notes']]
+        assert any(f['feature'] == 'beat.vibrato' for f in produced['compatibilityReport']['findings'])
+        return
     with pytest.raises(ValueError):
         expected(songsterr(raw), {'offset': 0, 'scale': 1})
     path = tmp_path / 'source.json'
@@ -198,7 +213,7 @@ def test_bent_archive_independently_binds_identity_curve_clock_notation_and_cont
     assert 'finger_bend_timing' in result['scope']
     with ZipFile(archive) as stream: files = {name: stream.read(name) for name in stream.namelist()}
     manifest = yaml.safe_load(files['manifest.yaml'])
-    assert manifest['song_import']['preservationContract'] == 93 == CONTRACT_VERSION
+    assert manifest['song_import']['preservationContract'] == 94 == CONTRACT_VERSION
     if fault is None: return
     ledger = json.loads(files['import/plain-tie-identity.json'])
     row = ledger['continuations'][0]
@@ -244,7 +259,8 @@ def test_bent_archive_independently_binds_identity_curve_clock_notation_and_cont
     files['manifest.yaml'] = yaml.safe_dump(manifest).encode()
     result = verify_import(path, archived(tmp_path, files), alignment)
     assert result['status'] == 'failed', result
-    if fault.startswith('contract'): assert 'bent_tie_contract' in {e['code'] for e in result['errors']}
+    if fault == 'contract_float': assert 'verification_input' in {e['code'] for e in result['errors']}
+    elif fault.startswith('contract'): assert 'bent_tie_contract' in {e['code'] for e in result['errors']}
     if fault == 'inventory92': assert 'bent_tie_inventory' in {e['code'] for e in result['errors']}
 
 
@@ -253,6 +269,8 @@ def test_prior92_without_new_bent_identity_remains_accepted(tmp_path):
     with ZipFile(archive) as stream: files = {name: stream.read(name) for name in stream.namelist()}
     manifest = yaml.safe_load(files['manifest.yaml'])
     manifest['song_import']['preservationContract'] = 92
+    # Reconstruct the historical manifest rather than relabel a policy-94 one.
+    manifest['song_import'].pop('fingerVibratoPolicy')
     report_path = manifest['song_import']['compatibilityFile']
     report = json.loads(files[report_path])
     report['version'] = 92
@@ -281,7 +299,9 @@ def test_builder_new_rule_has_typed93_gate_and_preserves_ordinary90(tmp_path, co
     arguments = dict(output_dir=tmp_path / 'out', source_path=path if retained else None,
         compatibility=compatibility, recipe={'preservationContract': contract})
     if not allowed:
-        with pytest.raises(ImportFailure, match='Bent-origin tie identity' if retained else 'original'):
+        reason = 'Invalid preservation contract' if type(contract) is not int else (
+            'Bent-origin tie identity' if retained else 'original')
+        with pytest.raises(ImportFailure, match=reason):
             build_feedpak(performance, audio, alignment, job, **arguments)
         return
     built = build_feedpak(performance, audio, alignment, job, **arguments)

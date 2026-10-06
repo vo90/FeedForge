@@ -73,7 +73,12 @@ def test_unqualified_compositions_stay_guarded(fault):
     elif fault == 'palm-mute': bs[0]['palmMute'] = True
     else: bs[0]['vibrato'] = 'wide'
     e = checked(d)['fingerBendTimingEvidence'][0]
-    assert e['status'] == 'deferred' and 'barCurve' not in e
+    if fault == 'beat-vibrato':
+        control = deepcopy(d); control['parts'][0]['measures'][0]['voices'][0]['beats'][0].pop('vibrato')
+        assert e == checked(control)['fingerBendTimingEvidence'][0]
+        assert e['status'] == 'resolved' and e['barCurve']
+    else:
+        assert e['status'] == 'deferred' and 'barCurve' not in e
 
 
 def test_source_identity_is_not_a_qualification_and_ghost_is_preserved():

@@ -21,6 +21,9 @@ from .songsterr_legacy import validate_legacy_metadata
 from .songsterr_legacy_effects import beat_effects, validate_legacy_beat_effects
 from .songsterr_sections import section_label
 
+NOTE_VIBRATO_POLICY = 'songsterr-note-vibrato-v1'
+WRITTEN_BEAT_VIBRATO_POLICY = 'songsterr-written-beat-vibrato-v1'
+
 
 def _instrument(meta):
     if meta.get("isVocalTrack") is True:
@@ -54,7 +57,7 @@ def _endings(value):
     return frozenset(i + 1 for i in range(16) if mask & (1 << i))
 
 
-def _note(raw, beat, position, duration, strings, tpqn=16384):
+def _note(raw, beat, position, duration, strings, tpqn=16384, *, written_beat_vibrato=False):
     scrape = raw.get("pickScrape")
     if scrape is not None and (not isinstance(scrape, str) or scrape not in ("up", "down") or raw.get("dead") is not True):
         raise ScoreImportError("A pick scrape requires an up/down direction and a dead note.")
@@ -106,9 +109,10 @@ def _note(raw, beat, position, duration, strings, tpqn=16384):
                            "tapping": "tp", "hp": "__hopo_origin"}.items():
         if raw.get(source):
             effects[target] = True
-    # Modern note instruction takes precedence over legacy note and beat flags.
+    # Note-owned modern instructions take precedence over legacy note flags.
+    # Historical archives alone retain the warned written beat fallback.
     kind = vibrato or ('wide' if raw.get('wideVibrato') else 'slight' if raw.get('vibrato') else None)
-    if kind is None and (beat.get('vibrato') or beat.get('wideVibrato')):
+    if written_beat_vibrato and kind is None and (beat.get('vibrato') or beat.get('wideVibrato')):
         kind = 'wide' if beat.get('wideVibrato') else 'slight'
         effects['__beat_vibrato'] = True
     if kind:
@@ -119,9 +123,12 @@ def _note(raw, beat, position, duration, strings, tpqn=16384):
     beat_tremolo, note_tremolo = tremolo_mark(beat.get("tremolo")), tremolo_mark(raw.get("tremolo"))
     if beat_tremolo or note_tremolo:
         effects["tr"] = True
-    for source, target in {"palmMute": "pm", "letRing": "lr",
+    beat_flags = {"palmMute": "pm", "letRing": "lr",
                            "tap": "tp", "tapping": "tp", "slap": "slp", "pop": "plk", "slapping": "slp", "popping": "plk",
-                           "vibrato": "vb", "wideVibrato": "vb"}.items():
+                 }
+    if written_beat_vibrato:
+        beat_flags.update(vibrato='vb', wideVibrato='vb')
+    for source, target in beat_flags.items():
         if beat.get(source):
             effects[target] = True
     if raw.get("staccato"):
@@ -223,7 +230,11 @@ def _chord_label(beat):
     return chord["text"]
 
 
-def parse(document: dict, *, track_indices=None) -> Score:
+def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POLICY) -> Score:
+    """Read explicit note vibrato; retain the named historical beat policy only on request."""
+    if vibrato_policy not in (NOTE_VIBRATO_POLICY, WRITTEN_BEAT_VIBRATO_POLICY):
+        raise ScoreImportError('Unsupported Songsterr finger-vibrato policy.')
+    written_beat_vibrato = vibrato_policy == WRITTEN_BEAT_VIBRATO_POLICY
     if not isinstance(document, dict) or document.get("format") != "songsterr":
         raise ScoreImportError("Expected a complete Songsterr score envelope.")
     metadata, parts = document.get("tracks"), document.get("parts")
@@ -433,7 +444,8 @@ def parse(document: dict, *, track_indices=None) -> Score:
                     beat_id = f"{voice_id}:{beat_index}"
                     validate_legacy_metadata(beat, "beat")
                     inventory.inspect(beat, "Songsterr beat", beat_id,
-                                      playable={"duration", "notes", "rest", "palmMute", "tremolo", "tap", "tapping", "slap", "pop", "slapping", "popping", "vibrato", "wideVibrato", "vibratoWithTremoloBar", "letRing", "graceNote", "grace", "graceNotes", "tremoloBar", "stroke", "whammy", "pickStroke", "brushStroke", "arpeggio", "upStroke", "downStroke", "upArpeggio", "downArpeggio"},
+                                      playable={"duration", "notes", "rest", "palmMute", "tremolo", "tap", "tapping", "slap", "pop", "slapping", "popping", "vibratoWithTremoloBar", "letRing", "graceNote", "grace", "graceNotes", "tremoloBar", "stroke", "whammy", "pickStroke", "brushStroke", "arpeggio", "upStroke", "downStroke", "upArpeggio", "downArpeggio"}
+                                               | ({'vibrato', 'wideVibrato'} if written_beat_vibrato else set()),
                                       notation={"duration", "notes", "rest", "type", "dots", "dotted", "tuplet", "text", "velocity", "gradualVelocity", "letRing", "palmMute", "tap", "tapping", "slap", "pop", "vibrato", "wideVibrato", "graceNote"},
                                       retained={"chord", "wahwah", "hasRasgueado", "sustainPedal", "tempo"},
                                       # Attack offsets are kept in the playable chart.
@@ -488,7 +500,8 @@ def parse(document: dict, *, track_indices=None) -> Score:
                                     position >= 0 and offset < 0 and strum_direction and not grace):
                                 raise ScoreImportError("The opening note has no verified authored strum timing.")
                             try:
-                                parsed = _note(note, beat, position, duration, len(tuning), trill_clock)
+                                parsed = _note(note, beat, position, duration, len(tuning), trill_clock,
+                                               written_beat_vibrato=written_beat_vibrato)
                             except ScoreImportError as exc:
                                 exc.source_location = {"measure": bi + 1, "voice": vi + 1, "beat": beat_index + 1,
                                     "note": note_index + 1, "location": f"parts/{index}/measures/{bi}/voices/{vi}/beats/{beat_index}/notes/{note_index}"}
@@ -520,6 +533,8 @@ def parse(document: dict, *, track_indices=None) -> Score:
             tracks[-1].clefs.append(clef)
     source = {key: document[key] for key in ("songId", "revisionId", "approved", "url") if key in document}
     source["format"] = "songsterr"
+    if not written_beat_vibrato:
+        source['fingerVibratoPolicy'] = NOTE_VIBRATO_POLICY
     if legacy_brush_timing:
         source["legacyBrushTimingPolicy"] = LEGACY_BRUSH_POLICY
     if any(note.authored_fret == -1 for track in tracks for bar in track.bars for note in bar):

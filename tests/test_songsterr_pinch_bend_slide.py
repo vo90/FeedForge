@@ -91,8 +91,15 @@ def test_unqualified_gestures_keep_their_warning(fault, tmp_path):
         bs[0]['brushStroke'] = {'direction':'down','duration':30,'shift':100}
         bs[0]['notes'].append({'string':1,'fret':5})
     e = checked(d)['fingerBendTimingEvidence'][0]
-    assert e['status'] == 'deferred' and 'terminalSlideOut' not in e
-    assert any(f['feature'] == 'note.bend_timing' for f in import_json(tmp_path,d)['compatibilityReport']['findings'])
+    if fault == 'beat-vibrato':
+        control = deepcopy(d); control['parts'][0]['measures'][0]['voices'][0]['beats'][0].pop('wideVibrato')
+        assert e == checked(control)['fingerBendTimingEvidence'][0]
+        assert e['status'] == 'resolved' and e['terminalSlideOut']['continuedPinchHarmonic']
+    else:
+        assert e['status'] == 'deferred' and 'terminalSlideOut' not in e
+    findings = import_json(tmp_path,d)['compatibilityReport']['findings']
+    assert any(f['feature'] == 'note.bend_timing' for f in findings) == (fault != 'beat-vibrato')
+    if fault == 'beat-vibrato': assert any(f['feature'] == 'beat.wideVibrato' for f in findings)
 
 
 def test_changed_tied_pinch_retains_separate_ambiguity_finding(tmp_path):

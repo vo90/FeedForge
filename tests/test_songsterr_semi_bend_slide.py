@@ -100,9 +100,15 @@ def test_other_expressions_remain_guarded(fault, tmp_path):
         bs[0]['brushStroke'] = {'direction':'down','duration':30,'shift':100}
         bs[0]['notes'].append({'string':1,'fret':5})
     p = checked(d); e = p['fingerBendTimingEvidence'][0]
-    assert e['status'] == 'deferred' and 'continuedSemiHarmonic' not in e.get('terminalSlideOut', {})
+    if fault == 'beat-vibrato':
+        control = deepcopy(d); control['parts'][0]['measures'][0]['voices'][0]['beats'][0].pop('vibrato')
+        assert e == checked(control)['fingerBendTimingEvidence'][0]
+        assert e['status'] == 'resolved' and e['terminalSlideOut']['continuedSemiHarmonic']
+    else:
+        assert e['status'] == 'deferred' and 'continuedSemiHarmonic' not in e.get('terminalSlideOut', {})
     p = import_json(tmp_path, d)
-    assert any(f['feature'] == 'note.bend_timing' for f in p['compatibilityReport']['findings'])
+    assert any(f['feature'] == 'note.bend_timing' for f in p['compatibilityReport']['findings']) == (fault != 'beat-vibrato')
+    if fault == 'beat-vibrato': assert any(f['feature'] == 'beat.vibrato' for f in p['compatibilityReport']['findings'])
 
 
 @pytest.mark.parametrize('piecewise', [False, True])

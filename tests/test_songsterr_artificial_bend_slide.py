@@ -13,6 +13,8 @@ from feedback_converter.song_import.audio import ImportFailure
 from feedback_converter.song_import.hybrid_lead import choose_main, normalize_options
 from feedback_converter.song_import.score import load_performance
 from feedback_converter.song_import.verification import verify_import
+from feedback_converter.song_import.songsterr import parse, WRITTEN_BEAT_VIBRATO_POLICY
+from feedback_converter.song_import.timeline import render
 
 REFERENCE = json.loads((Path(__file__).parent/'fixtures/songsterr_artificial_bend_slide_reference.json').read_text())
 
@@ -44,7 +46,8 @@ def test_previously_separate_rules_now_compose(constituent):
         d['parts'][0]['measures'][0]['voices'][0]['beats'][-1]['notes'][0]['slide'] = 'downwards'
     p = checked(d); n = p['tracks'][0]['notes'][0]
     assert p['fingerBendTimingEvidence'][0]['terminalSlideOut']['continuedArtificialHarmonic']
-    assert n['bnv'] == before['bnv'] and n['vibrato_marks'] == before['vibrato_marks']
+    assert n['bnv'] == before['bnv'] and n.get('vibrato_marks') == before.get('vibrato_marks')
+    if constituent == 'beat-vibrato': assert not n.get('vb') and 'vibrato_marks' not in n
     assert n['harmonic_target']['kind'] == 'artificial' and n['slide_out_marks']
 
 
@@ -85,7 +88,9 @@ def test_general_clock_and_contexts(variant):
     p = checked(d)
     assert all(e['status'] == 'resolved' and e['terminalSlideOut']['continuedArtificialHarmonic'] for e in p['fingerBendTimingEvidence'])
     if variant == 'repeat': assert len(p['fingerBendTimingEvidence']) == 2
-    if variant == 'beat-only-vibrato': assert p['fingerBendTimingEvidence'][0]['terminalSlideOut']['beatVibrato']
+    if variant == 'beat-only-vibrato':
+        assert 'beatVibrato' not in p['fingerBendTimingEvidence'][0]['terminalSlideOut']
+        assert not p['tracks'][0]['notes'][0].get('vb') and 'vibrato_marks' not in p['tracks'][0]['notes'][0]
 
 
 @pytest.mark.parametrize('position,status', [(29, 'resolved'), (30, 'resolved'), (31, 'deferred'), (60, 'deferred')])
@@ -133,10 +138,11 @@ def test_archive_and_independent_tamper_detection(tmp_path, piecewise, hybrid):
     if piecewise: alignment.update(mapping='piecewise-linear', anchors=[{'score':0,'audio':.25},{'score':.75,'audio':1.},{'score':4,'audio':4.9}], tempos=[{'time':.25,'bpm':120},{'time':1.,'bpm':100}])
     sha = hashlib.sha256(source.read_bytes()).hexdigest(); options = normalize_options({'enabled':hybrid})
     if hybrid: options.update(mainTrackId=choose_main(p, options, sha), sourceSha256=sha)
-    recipe = {'preservationContract':82,'scoreHash':sha,'audioHash':audio['hash'], **({'hybridLead':options} if hybrid else {})}
+    recipe = {'preservationContract':94,'scoreHash':sha,'audioHash':audio['hash'], **({'hybridLead':options} if hybrid else {})}
     old = tmp_path/'old'; old.mkdir()
+    historical = render(parse(document(), vibrato_policy=WRITTEN_BEAT_VIBRATO_POLICY))
     with pytest.raises(ImportFailure, match='contract 82'):
-        build_feedpak(p, audio, alignment, old, output_dir=tmp_path/'old-out', source_path=source, compatibility=p['compatibilityReport'], recipe={'preservationContract':81})
+        build_feedpak(historical, audio, alignment, old, output_dir=tmp_path/'old-out', source_path=source, compatibility=p['compatibilityReport'], recipe={'preservationContract':81})
     built = build_feedpak(p, audio, alignment, job, output_dir=tmp_path/'out', source_path=source, compatibility=p['compatibilityReport'], recipe=recipe,
                          hybrid_lead={'enabled':hybrid,'mainTrackId':options.get('mainTrackId'),'options':options})
     verify = lambda path: verify_import(source, path, alignment, hybrid_options=options if hybrid else None)

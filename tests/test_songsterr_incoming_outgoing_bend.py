@@ -16,6 +16,8 @@ from feedback_converter.song_import.audio import ImportFailure
 from feedback_converter.song_import.builder import build_feedpak
 from feedback_converter.song_import.hybrid_lead import choose_main, normalize_options
 from feedback_converter.song_import.score import load_performance
+from feedback_converter.song_import.songsterr import parse, WRITTEN_BEAT_VIBRATO_POLICY
+from feedback_converter.song_import.timeline import render
 from feedback_converter.song_import.verification import verify_import
 
 REFERENCE=json.loads((Path(__file__).parent/'fixtures/songsterr_incoming_outgoing_bend_reference.json').read_text())
@@ -36,6 +38,23 @@ def test_native_reference_and_independent_verifier(case):
     doc=deepcopy(case['source']);p=checked(doc);assert doc==case['source']
     e=next(e for e in p['fingerBendTimingEvidence'] if all(e[k]==v for k,v in case['target'].items()))
     if not case['candidate']:
+        if case['id']=='guard-beat-vibrato':
+            # The pinned guard records the historical written-beat policy.
+            historical=render(parse(doc,vibrato_policy=WRITTEN_BEAT_VIBRATO_POLICY))
+            old=next(row for row in historical['fingerBendTimingEvidence'] if all(row[k]==v for k,v in case['target'].items()))
+            assert old==case['previousEvidence'] and old['status']=='deferred'
+            control=deepcopy(doc)
+            for part in control['parts']:
+                for bar in part['measures']:
+                    for voice in bar['voices']:
+                        for beat in voice['beats']:
+                            beat.pop('vibrato',None);beat.pop('wideVibrato',None)
+            baseline=checked(control)
+            expected=next(row for row in baseline['fingerBendTimingEvidence'] if all(row[k]==v for k,v in case['target'].items()))
+            assert notes(p)==notes(baseline) and e==expected
+            assert e['status']=='resolved' and e['initialSlideIn'] and e['terminalSlideOut']
+            assert doc==case['source']
+            return
         assert e==case['previousEvidence'] and e['status']=='deferred'
         assert not (e.get('initialSlideIn') and e.get('terminalSlideOut'))
         return

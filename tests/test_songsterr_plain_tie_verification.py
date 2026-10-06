@@ -278,6 +278,7 @@ def test_prior_brush_contract_remains_accepted_without_plain_identity_evidence(t
     with ZipFile(archive) as stream: files = {name: stream.read(name) for name in stream.namelist()}
     manifest = yaml.safe_load(files['manifest.yaml'])
     manifest['song_import']['preservationContract'] = 89
+    manifest['song_import'].pop('fingerVibratoPolicy')
     files['manifest.yaml'] = yaml.safe_dump(manifest, sort_keys=False).encode()
     changed = tmp_path / 'historical.feedpak'
     with ZipFile(changed, 'w') as stream:
@@ -291,6 +292,7 @@ def test_prior_plain_tie_contract_and_inventory_remain_accepted(tmp_path):
     with ZipFile(archive) as stream: files = {name: stream.read(name) for name in stream.namelist()}
     manifest = yaml.safe_load(files['manifest.yaml'])
     manifest['song_import']['preservationContract'] = 90
+    manifest['song_import'].pop('fingerVibratoPolicy')
     files['manifest.yaml'] = yaml.safe_dump(manifest, sort_keys=False).encode()
     report_path = manifest['song_import']['compatibilityFile']
     report = json.loads(files[report_path])

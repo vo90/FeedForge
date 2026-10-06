@@ -27,8 +27,8 @@ def test_qualified_native_controls_match_activation_and_strength_before_syntheti
             assert not controls
             e=p['fingerBendTimingEvidence'][0]
             assert e['status']=='resolved'
-            assert e['terminalSlideOut']['beatVibrato']['policy']=='independent-written-instruction'
-            assert n['vibrato_marks']  # Still a written instruction, not synth-confirmed modulation.
+            assert 'beatVibrato' not in e['terminalSlideOut']
+            assert not n.get('vb') and 'vibrato_marks' not in n
             continue
         # Probe inside intervals, away from sub-tick synth resets. At the
         # terminal slide, its arbitrary synth duration is deliberately excluded.
@@ -76,6 +76,7 @@ def test_modern_intensity_precedes_legacy_flags_and_beat_only_stays_diagnosed(tm
     beats[1]['wideVibrato']=True
     p=import_json(tmp_path,doc)
     assert p['fingerBendTimingEvidence'][0]['status']=='resolved'
+    assert not p['tracks'][0]['notes'][0].get('vb') and 'vibrato_marks' not in p['tracks'][0]['notes'][0]
     assert any(f['feature']=='beat.wideVibrato' for f in p['compatibilityReport']['findings'])
     assert not any(f['feature']=='note.bend_timing' for f in p['compatibilityReport']['findings'])
 
