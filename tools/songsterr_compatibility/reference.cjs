@@ -7,6 +7,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 const MANIFEST = require('./reference-manifest.json');
 const eventTrace = require('./event-trace.cjs');
+const profiles = require('./reference-profiles.cjs');
 const digest = b => crypto.createHash('sha256').update(b).digest('hex');
 
 function prepare(worker) {
@@ -46,10 +47,10 @@ function snapshot(model) {
   return rows;
 }
 function runPart(code, part, allMeasures, {trace = false, profile = 'authored', annotateIds = true, eventDetails = false, soundDetails = false} = {}) {
-  if (!['authored', 'player-defaults'].includes(profile)) throw Error('Unknown reference profile');
+  const profileOptions = profiles.options(profile, undefined);
   const input = annotateIds ? annotate(part) : structuredClone(part);
   const warnings = [], stages = {}, generatedStages = {}, scheduled = eventTrace.collector();
-  const ctx = vm.createContext({input, allMeasures, stages, profile,
+  const ctx = vm.createContext({input, allMeasures, stages, profile, profileOptions,
     console: {warn: (...x) => warnings.push(String(x)), error: (...x) => warnings.push(String(x)), log(){}},
     captureScheduled: scheduled.record,
     capture: (name, model) => {
@@ -63,12 +64,13 @@ function runPart(code, part, allMeasures, {trace = false, profile = 'authored', 
   // Wrap captured native stages for observation only; mc still determines the complete order.
   vm.runInContext([...new Set([...(trace ? MANIFEST.traceStages : ['Ts']),...(eventDetails?['Is','uo']:[])])].map(name =>
     '{const original=' + name + ';' + name + '=function(model){original(model);capture("' + name + '",model);};}').join('\n'), ctx, {timeout: 1000});
-  vm.runInContext('globalThis.model=mc(input,xc(profile==="authored"?{synth:"fluidsynth",useRSE:false,autoFixJson:false,humanize:false,tpqn}:{tpqn}));', ctx, {timeout: 5000});
+  vm.runInContext('globalThis.model=mc(input,xc({...profileOptions,tpqn}));', ctx, {timeout: 5000});
   const prepared = ctx.prepared;
   const beats = prepared.measures.flatMap((m, mi) => m.voices.flatMap((v, vi) => (v.beats || []).map((b, bi) =>
     ({id: mi + ':' + vi + ':' + bi, quarter: b.startTick / ctx.tpqn,
       duration: b.durationInTicks / ctx.tpqn}))));
   return {status: 'executed', referenceSha256: MANIFEST.sha256, profile,
+    ...(profiles.evidence(profile) ? {normalization:profiles.evidence(profile)} : {}),
     tpqn: ctx.tpqn, beats, traversal: prepared.progression,
     authoredEvents: stages.Ts, events: snapshot(ctx.model), stages: trace ? stages : {}, warnings,
     ...(eventDetails ? {generatedEventTrace:{version:1,stages:generatedStages,
@@ -100,5 +102,5 @@ function main() {
   }
   fs.writeFileSync(outputFile, JSON.stringify(output));
 }
-module.exports={prepare,runPart,snapshot,digest,manifest:MANIFEST};
+module.exports={prepare,runPart,snapshot,digest,manifest:MANIFEST,profiles};
 if(require.main===module)try{main();}catch(e){console.error(e.message);process.exitCode=2;}

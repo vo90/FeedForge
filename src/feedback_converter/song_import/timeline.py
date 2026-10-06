@@ -275,10 +275,10 @@ def _render(score: Score) -> dict:
                         if score.source.get('format') == 'songsterr':
                             _, pi, bi, vi, ei = note.beat_id.split(':')
                             raw = score.source_document['document']['parts'][int(pi)]['measures'][int(bi)]['voices'][int(vi)]['beats'][int(ei)]
-                            from .songsterr_timing import strum_offsets
-                            _, direction = strum_offsets(raw)
+                            from .songsterr_timing import strum_offsets, strum_kind
+                            _, direction = strum_offsets(raw, string_count=len(track.tuning))
                             if direction:
-                                kind = 'arpeggio' if any(raw.get(k) is not None for k in ('arpeggio', 'upArpeggio', 'downArpeggio')) else 'brush'
+                                kind = strum_kind(raw)
                                 strum_origins[(occurrence, note.beat_id)] = (at(position), direction, kind)
                     performed_notes += 1
                     if performed_notes > 500_000:

@@ -212,6 +212,7 @@ class Source:
     identity: dict = field(default_factory=dict)
     ignored: set = field(default_factory=set)
     section_labels: list = field(default_factory=list)
+    legacy_brush_timing: bool = False
 
 
 def inactive(value):
@@ -416,9 +417,37 @@ def _songsterr_beat_clock(beats, measure_length, location, performed_lengths=Non
     return times
 
 
-def _songsterr_strum(beat, location):
+def _songsterr_legacy_brushes(beat, location):
+    """Qualify the retained scalar without native truthiness/coercion repairs."""
+    values = []
+    for key in ("upStroke", "downStroke"):
+        value = beat.get(key)
+        if value is None or value is False:
+            continue
+        if type(value) not in (int, float) or type(value) is float and not math.isfinite(value):
+            raise ValueError(location + ": invalid legacy strum subdivision")
+        if value == 0:
+            continue
+        subdivision = integer(value, location)
+        if not 1 <= subdivision <= 8:
+            unsupported(location, "Unverified legacy strum subdivision.")
+        values.append((key, subdivision))
+    return values
+
+
+def _songsterr_strum_kind(beat):
+    # Select the same source representation that supplies the timing. Retained
+    # old markings cannot change an explicit modern brush into an arpeggio.
+    if beat.get("arpeggio") is not None:
+        return "arpeggio"
+    if beat.get("brushStroke") is not None:
+        return "brush"
+    return "arpeggio" if any(beat.get(k) for k in ("upArpeggio", "downArpeggio")) else "brush"
+
+
+def _songsterr_strum(beat, location, *, string_count=None):
     options = [beat[k] for k in ("brushStroke", "arpeggio") if beat.get(k) is not None]
-    legacy = [k for k in ("upStroke", "downStroke") if beat.get(k)]
+    legacy = _songsterr_legacy_brushes(beat, location)
     old = [k for k in ("upArpeggio", "downArpeggio") if beat.get(k)]
     legacy_interval = None
     if old and not options:
@@ -440,21 +469,34 @@ def _songsterr_strum(beat, location):
         direction = stroke["direction"]
         amount, shift = fraction(stroke["duration"], location), fraction(stroke["shift"], location)
     elif legacy_interval is None:
-        direction, amount, shift = ("down" if legacy[0] == "upStroke" else "up"), F(30), 100
+        key, subdivision = legacy[0]
+        # Independently reconstructed from the native ro/no field swap and
+        # subdivision clock: quarter delay = 4 / (13 * 2 ** (8 - value)).
+        direction = "down" if key == "upStroke" else "up"
+        legacy_interval = F(4, 13 * 2 ** (8 - subdivision))
+        amount, shift = F(0), 100
     else:
         amount, shift = F(0), 100
-    if legacy and (integer(beat[legacy[0]], location) != 1 or direction != ("down" if legacy[0] == "upStroke" else "up")):
-        unsupported(location, "Unverified legacy strum value.")
     if direction not in ("up", "down") or amount < 0 or amount > 960 or not 0 <= shift <= 100:
         raise ValueError(location + ": invalid strum parameters")
-    notes = [(i, n) for i, n in enumerate(beat["notes"]) if not n.get("rest")]
+    bare_brush = bool(legacy and not options and not old)
+    if bare_brush:
+        for i, note in enumerate(beat["notes"]):
+            if note.get("rest"):
+                nloc = location + f"/notes/{i}"
+                if note.get("string") is None:
+                    unsupported(nloc, "A legacy strum rest needs an explicit string slot.")
+                slot = integer(note["string"], nloc)
+                if slot < 0 or string_count is not None and slot >= string_count:
+                    raise ValueError(nloc + ": invalid legacy strum rest string")
+    notes = [(i, n) for i, n in enumerate(beat["notes"]) if bare_brush or not n.get("rest")]
     strings = [integer(n["string"], location) for _, n in notes]
     if len(set(strings)) != len(strings):
         raise ValueError(location + ": duplicate string in strum")
-    if any(any(n.get(k) for k in ("bend", "hp", "slide", "leftSlide", "rightSlide")) for _, n in notes) or len(notes) < 2:
+    if any(any(n.get(k) for k in ("bend", "hp", "slide", "leftSlide", "rightSlide")) for n in beat["notes"]) or len(notes) < 2:
         return {}, direction
     capped = min(amount, 960, (fraction(beat["duration"], location) * 1920).__floor__())
-    ordered = sorted(notes, key=lambda item: item[1]["string"], reverse=direction == "down")
+    ordered = sorted(notes, key=lambda item: integer(item[1]["string"], location), reverse=direction == "down")
     interval = legacy_interval if legacy_interval is not None else F(capped) / (len(notes) * 480)
     first = -interval * (len(notes) - 1) * F(100 - shift, 100)
     return {index: first + rank * interval for rank, (index, _) in enumerate(ordered)}, direction
@@ -503,6 +545,7 @@ def songsterr(document, *, track_indices=None):
         raise ValueError("source: inconsistent measure counts")
     ignored, bars, signature = set(), [], (4, 4)
     section_labels = []
+    legacy_brush_timing = False
     eligible = {_index for _index, meta in enumerate(metadata) if _program_instrument(meta)}
     for bi in range(count):
         loc = f"measures/{bi}"
@@ -739,7 +782,10 @@ def songsterr(document, *, track_indices=None):
                         unsupported(loc + "/wahwah", "Unverified wah pedal marking.")
                     written_duration = fraction(beat["duration"], loc) * 4
                     q, duration, written_q = times[bti]
-                    offsets, direction = _songsterr_strum(beat, loc)
+                    offsets, direction = _songsterr_strum(beat, loc, string_count=len(tuning))
+                    if (direction and not any(beat.get(k) is not None for k in ("brushStroke", "arpeggio"))
+                            and not any(beat.get(k) for k in ("upArpeggio", "downArpeggio"))):
+                        legacy_brush_timing = True
                     dots = _songsterr_dots(beat, loc)
                     denominator = beat.get("type")
                     if denominator is None:
@@ -937,7 +983,7 @@ def songsterr(document, *, track_indices=None):
                                           bool(note.get("hp"))))
                         fact["notes"].append(atoms[-1])
                         atoms[-1].strum_direction = direction
-                        atoms[-1].strum_kind = ('arpeggio' if any(beat.get(k) is not None for k in ('arpeggio', 'upArpeggio', 'downArpeggio')) else 'brush') if direction else None
+                        atoms[-1].strum_kind = _songsterr_strum_kind(beat) if direction else None
                         from .verify_trills import read as read_trill
                         atoms[-1].trill = read_trill(note, beat, raw["measures"], nloc)
                         atoms[-1].staccato = note.get("staccato") is True
@@ -965,7 +1011,8 @@ def songsterr(document, *, track_indices=None):
                                       [m for p in raw_parts for m in p['measures']])
         parts.append(track)
     return Source("songsterr", str(document.get("title", "")), str(document.get("artist", "")), bars, parts,
-                  excluded, len(metadata), {k: str(document[k]) for k in ("songId", "revisionId") if k in document}, ignored, section_labels)
+                  excluded, len(metadata), {k: str(document[k]) for k in ("songId", "revisionId") if k in document}, ignored, section_labels,
+                  legacy_brush_timing=legacy_brush_timing)
 
 
 def _txt(node, path, default=""):

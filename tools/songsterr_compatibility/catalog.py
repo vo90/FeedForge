@@ -33,7 +33,7 @@ RULES = {
 # This metadata does not share producer/verifier calculations or grant support.
 FIELDS = {
     "timing.basic": "measure.signature beat.duration beat.type beat.dots beat.tuplet note.string note.fret",
-    "timing.strum_grace": "beat.arpeggio beat.brushStroke beat.upArpeggio beat.downArpeggio",
+    "timing.strum_grace": "beat.arpeggio beat.brushStroke beat.upArpeggio beat.downArpeggio beat.upStroke beat.downStroke",
     "timing.grace": "beat.graceNote",
     "timing.swing": "measure.tripletFeel",
     "timing.repeats": "measure.repeat measure.repeatStart measure.alternateEnding",
@@ -53,7 +53,7 @@ FIELDS = {
 }
 FAMILIES = {
     "timing.basic": {"timing.basic"},
-    "timing.strum_grace": {"timing.strum_grace", "timing.strum_tie_grace", "timing.strum_legacy"},
+    "timing.strum_grace": {"timing.strum_grace", "timing.strum_tie_grace", "timing.strum_legacy", "timing.strum_legacy_brush"},
     "timing.grace": {"timing.grace", "timing.strum_grace", "timing.strum_tie_grace"},
     "timing.swing": {"timing.swing", "timing.swing_tuplet_repeat"},
     "timing.repeats": {"timing.repeats", "timing.swing_tuplet_repeat"},
@@ -67,7 +67,7 @@ BEHAVIOR = {
     "notation.picking_hand": "Validate P/I/M/A/C; retain the picking-hand annotation and disclose absent engraving without changing fret-hand hints, pitches, attacks or scoring.",
     "timing.basic": "Preserve exact authored fractions until mapping the performed clock.",
     "technique.tremolo_picking": "Map active beat/per-string tremolo to tr; retain exact subdivision and within-tie timing in source and disclose the whole-sustain display/rate limitation. No expanded scored attacks.",
-    "timing.strum_grace": "Apply explicit stroke timing after grace allocation. Omit only non-sounding attacks on grace-shortened beats under the approved consumed-strum policy, preserving the source and independently verified per-occurrence receipts. Tied or linked gestures remain protected.",
+    "timing.strum_grace": "Apply explicit stroke timing after grace allocation. Bare legacy brushes validate numeric integral 1–8 and use count-independent subdivision spacing; normalize old upStroke to down and downStroke to up. Count rests and ties as source slots, retain guarded nonpositive outcomes, and prefer one valid modern effect. Omit only non-sounding attacks on grace-shortened beats under the approved consumed-strum policy, preserving the source and independently verified per-occurrence receipts. Tied or linked gestures remain protected.",
     "timing.grace": "Allocate source grace groups with bar and opening context; do not invent minimum note lengths.",
     "timing.swing": "Apply the authored rhythmic feel to eligible groups while retaining written rhythm.",
     "timing.repeats": "Expand authored traversal and preserve source identity plus occurrence.",
@@ -91,7 +91,7 @@ def inventory():
                              "guard": ast.unparse(n.exc) if n.exc else "rethrow",
                              "candidateRules": owners, "classification": "file_family" if owners else "unclassified"})
     rules = deepcopy(RULES)
-    generated = list(cases())
+    generated = list(cases(include_legacy_brush=True))
     reference_hash = json.loads(Path(__file__).with_name('reference-manifest.json').read_text())["sha256"]
     for key, value in rules.items():
         value["sourceFields"] = FIELDS.get(key, "").split()
@@ -112,6 +112,11 @@ def inventory():
             value['reference']['scope'] += ' Consumed attacks additionally checked against captured explicit-source and default-player playback suppression.'
             value['testFixture'] = 'tests/fixtures/songsterr_consumed_strum_playback.json'
             value['tests'] = 'tests/test_songsterr_consumed_strums.py'
+            value['additionalFixtures'] = ['tests/fixtures/songsterr_legacy_brush_reference.json']
+            value['additionalTests'] = ['tests/test_songsterr_legacy_brush_native.py']
+            value['reference']['additionalProfile'] = 'legacy-brush-authored-v1'
+            value['reference']['normalizationPolicy'] = 'songsterr-legacy-brush-direction-swap-v1'
+            value['reference']['scope'] += ' Legacy brushes additionally use explicitly normalized deterministic direction and a separately calculated native subdivision floor; raw-authored direction remains separate.'
         if key == 'timing.ties':
             value['reference']['scope'] += ' Exact-boundary repeat entrance ties additionally checked against native ks merging; no pitch/gap repair qualification.'
             value['testFixture'] = 'tests/fixtures/songsterr_repeat_tie_reference.json'

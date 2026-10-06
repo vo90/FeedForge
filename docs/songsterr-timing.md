@@ -61,9 +61,27 @@ failures. Supported tied strums and grace interactions are covered by
 Authored simultaneous chords stay chords; staggered attacks
 are separate playable notes with their original chord notation preserved.
 
-Legacy `upStroke: 1` means a downward brush, and `downStroke: 1` an upward
-brush, with duration 30 and shift 100. Other legacy values are not guessed.
-The independent `pickStroke` field describes ordinary picking direction.
+Legacy brush fields use their original speed, not the editor's optional
+migration to modern duration 30. For an integral scalar value v (1–8), adjacent
+source note slots are spaced by 4 / (13 × 2^(8−v)) quarters. This interval is
+independent of note count and has no modern beat-duration cap. Rests and tied
+continuations occupy their original slots without inventing attacks. Original
+endpoints and written rhythm remain unchanged; invalid strings, ambiguous
+directions and nonpositive sounding outcomes retain their explicit guards.
+
+The ordinary public player normalizes the old brush direction names before
+scheduling: `upStroke` means a downward brush and `downStroke` an upward brush.
+This normalization does not change the encoded speed. The compatibility lab's
+named `legacy-brush-authored-v1` profile isolates that direction normalization
+with RSE and humanization disabled; the existing raw `authored` profile remains
+unchanged. Modern data keeps its own timing and direction. The separate
+`pickStroke` field describes ordinary picking direction.
+
+Fresh packages using bare legacy brushes require preservation contract 89,
+the retained original tab, and `legacyBrushTimingPolicy: native-legacy-brush-v1`.
+Contract 89 corrects the previous value-1 duration-30 interpretation as well as
+admitting the other qualified speeds. Older timing receipts cannot verify this
+new rule merely by changing their version. No imported source is rewritten.
 
 Legacy arpeggios without modern strum data follow the public audio worker's
 `ws` / `ao` path: `upArpeggio` spreads from the high string and

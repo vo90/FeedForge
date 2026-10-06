@@ -146,8 +146,11 @@ def test_unqualified_combinations_are_explicitly_reported_without_new_guess(tmp_
     _,audio,_,job=inputs(tmp_path)
     alignment={'status':'validated','offset':1,'scale':1}
     path=tmp_path/'score.json'
+    from feedback_converter.song_import.evidence import CONTRACT_VERSION
+    # A suppressed legacy brush still retains the qualified source policy.
+    contract = CONTRACT_VERSION if kind == 'strum' else 61
     result=build_feedpak(loaded,audio,alignment,job,output_dir=tmp_path/'out',source_path=path,
-                        compatibility=loaded['compatibilityReport'],recipe={'preservationContract':61})
+                        compatibility=loaded['compatibilityReport'],recipe={'preservationContract':contract})
     archive=Path(result['stagingPath'])
     verified=verify_import(path,archive,alignment)
     assert verified['status']=='passed',verified
