@@ -47,14 +47,29 @@ def test_repeat_tie_matches_pinned_native_tie_stage(case):
     assert doc == before
 
 
-@pytest.mark.parametrize('fault', ['rest', 'pitch', 'voice', 'missing', 'delayed', 'slide', 'hopo'])
+def test_repeat_boundary_plain_tie_keeps_the_performed_origin_target():
+    entrance = measure(beat(3, duration=(1, 2), tie=True), beat(4, duration=(1, 2)), repeatStart=True, repeat=2)
+    doc = raw_score([measure(beat(3)), entrance])
+    original = deepcopy(doc)
+    actual, independent = both(doc)
+    assert [(n['t'], n['f'], n['sus']) for n in actual['tracks'][0]['notes']] == [(0, 3, 3), (3, 4, 2), (5, 4, 1)]
+    assert actual['plainTieIdentityEvidence'] == independent['plain_tie_identities']
+    row, = actual['plainTieIdentityEvidence']
+    assert (row['occurrence'], row['attack'], row['start'], row['end']) == (3, 3, 4, 5)
+    assert row['authored'] == {'fret': 3} and row['used'] == {'fret': 4}
+    assert row['originSourceId'] == actual['tracks'][0]['notes'][1]['source_ids'][0]
+    notation = actual['tracks'][0]['notation']['measures'][2]['staves']['staff']['voices'][0]['beats'][0]['notes'][0]
+    assert notation['tied'] and notation['fret'] == 4 and notation['midi'] == 68
+    assert doc == original
+
+
+@pytest.mark.parametrize('fault', ['rest', 'voice', 'missing', 'delayed', 'slide', 'hopo'])
 def test_repeat_boundary_does_not_invent_or_repair_a_continuation(fault):
     # The first visit is valid; the repeat boundary is the counterexample.
     entrance = measure(beat(3, duration=(1, 2), tie=True), beat(3, duration=(1, 2)), repeatStart=True, repeat=2)
     doc = raw_score([measure(beat(3)), entrance])
     tail = entrance['voices'][0]['beats'][1]
     if fault == 'rest': tail['notes'] = [{'rest': True}]
-    elif fault == 'pitch': tail['notes'][0]['fret'] = 4
     elif fault == 'voice':
         tail['notes'] = [{'rest': True}]
         entrance['voices'].append({'beats': [beat(3)]})

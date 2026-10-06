@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 89
+VERSION = 90
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -347,7 +347,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, 89, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     reports_precedence = type(report.get('version')) is int and report['version'] >= 46
     if preservation_contract >= 46 and not reports_precedence:
@@ -1128,6 +1128,24 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 if json.dumps(stable_staccato(evidence), sort_keys=True) != json.dumps(stable_staccato(retained), sort_keys=True):
                     check.fail('staccato_bends', 'import/staccato-bends', 'Tied staccato bend evidence differs from the independently reconstructed source.')
                 report['scope'].append('staccato_bend_timing')
+            if (wanted['plain_tie_identities'] or recipe.get('plainTieIdentityFile')
+                    or recipe.get('plainTieIdentityPolicy') or 'import/plain-tie-identity.json' in names):
+                if not wanted['plain_tie_identities']:
+                    check.fail('plain_tie_extra', 'manifest/song_import/plainTieIdentityFile',
+                               'Source has no qualifying plain tied-target identities.')
+                if recipe.get('preservationContract', 0) < 90:
+                    check.fail('plain_tie_contract', 'manifest/song_import', 'Plain tie identity requires preservation contract 90.')
+                check.equal('plain_tie_policy', 'manifest/song_import/plainTieIdentityPolicy',
+                            'songsterr-plain-tie-identity-v1', recipe.get('plainTieIdentityPolicy'))
+                check.equal('plain_tie_file', 'manifest/song_import/plainTieIdentityFile',
+                            'import/plain-tie-identity.json', recipe.get('plainTieIdentityFile'))
+                retained = _json(z, recipe.get('plainTieIdentityFile', ''), check)
+                evidence = {'version': 1, 'policy': 'songsterr-plain-tie-identity-v1',
+                            'timeDomain': 'score_seconds', 'sourceSha256': report['sourceSha256'],
+                            'continuations': wanted['plain_tie_identities']}
+                from .verify_policy_receipt import compare
+                compare(evidence, retained, check, 'plain_tie_identity')
+                report['scope'].append('plain_tie_identity')
             if wanted['muted_tie_identities'] or recipe.get('mutedTieIdentityFile'):
                 if recipe.get('preservationContract', 0) < 30:
                     check.fail('muted_tie_identity', 'manifest/song_import', 'Muted tie identity requires preservation contract 30.')

@@ -657,6 +657,14 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         from .muted_ties import archive_evidence as muted_tie_archive
         _write_json(package / 'import/muted-tie-identity.json', muted_tie_archive(performance, source_path))
         manifest.setdefault('song_import', {})['mutedTieIdentityFile'] = 'import/muted-tie-identity.json'
+    if performance.get('plainTieIdentityEvidence'):
+        from .plain_ties import POLICY as PLAIN_TIE_POLICY, archive_evidence as plain_tie_archive
+        if (source_path is None or (recipe or {}).get('preservationContract', 0) < 90
+                or (recipe or {}).get('plainTieIdentityPolicy', PLAIN_TIE_POLICY) != PLAIN_TIE_POLICY):
+            raise ImportFailure('unsupported_score', 'Plain tie identity requires the original tab and preservation contract 90.')
+        _write_json(package / 'import/plain-tie-identity.json', plain_tie_archive(performance, source_path))
+        manifest.setdefault('song_import', {}).update(
+            plainTieIdentityFile='import/plain-tie-identity.json', plainTieIdentityPolicy=PLAIN_TIE_POLICY)
     if performance.get('tiedMuteEvidence'):
         if source_path is None or (recipe or {}).get('preservationContract', 0) < 25:
             raise ImportFailure('unsupported_score', 'Tied mute interpretation requires the retained original tab and preservation contract 25.')

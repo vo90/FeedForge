@@ -48,13 +48,29 @@ def test_unfilled_repeat_ties_match_native_and_written_out_repetition(case):
     assert beats[-1]['end_time'] < 4
 
 
-@pytest.mark.parametrize('fault', ['rest', 'other_pitch', 'other_voice', 'missing_origin', 'late_tie', 'slide', 'hopo'])
+def test_unfilled_repeat_plain_tie_keeps_unique_boundary_target():
+    entrance = measure(beat(3, duration=(1, 4), tie=True), beat(4, duration=(1, 4)), repeatStart=True, repeat=2)
+    doc = raw_score([measure(beat(3)), entrance])
+    original = deepcopy(doc)
+    actual, independent = both(doc)
+    notes, verified = flatten(actual, independent)
+    assert notes == verified == [{'t': 0, 's': 5, 'f': 3, 'sus': 2.5},
+                                 {'t': 2.5, 's': 5, 'f': 4, 'sus': 2},
+                                 {'t': 4.5, 's': 5, 'f': 4, 'sus': .5}]
+    assert actual['plainTieIdentityEvidence'] == independent['plain_tie_identities']
+    row, = actual['plainTieIdentityEvidence']
+    assert (row['occurrence'], row['attack'], row['start'], row['end']) == (3, 2.5, 4, 4.5)
+    assert row['authored'] == {'fret': 3} and row['used'] == {'fret': 4}
+    assert row['originSourceId'] == actual['tracks'][0]['notes'][1]['source_ids'][0]
+    assert doc == original
+
+
+@pytest.mark.parametrize('fault', ['rest', 'other_voice', 'missing_origin', 'late_tie', 'slide', 'hopo'])
 def test_unfilled_repeat_keeps_ambiguous_or_interrupted_links_blocked(fault):
     entrance = measure(beat(3, duration=(1, 4), tie=True), beat(3, duration=(1, 4)), repeatStart=True, repeat=2)
     doc = raw_score([measure(beat(3)), entrance])
     tail = entrance['voices'][0]['beats'][1]
     if fault == 'rest': entrance['voices'][0]['beats'].append({'duration': [1, 8], 'notes': [{'rest': True}]})
-    elif fault == 'other_pitch': tail['notes'][0]['fret'] = 4
     elif fault == 'other_voice':
         tail['notes'] = [{'rest': True}]
         entrance['voices'].append({'beats': [beat(3, duration=(1, 2))]})

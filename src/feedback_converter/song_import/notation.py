@@ -13,9 +13,10 @@ def _fraction(value):
     return [value.numerator, value.denominator]
 
 
-def _note(note, track, performed):
-    result = {"midi": track.tuning[note.string] + track.capo + note.fret + note.effects.get("__harmonic_pitch_offset", 0),
-              "str": note.string, "fret": note.fret, "source_id": note.source_id}
+def _note(note, track, performed, effective_fret=None):
+    fret = note.fret if effective_fret is None else effective_fret
+    result = {"midi": track.tuning[note.string] + track.capo + fret + note.effects.get("__harmonic_pitch_offset", 0),
+              "str": note.string, "fret": fret, "source_id": note.source_id}
     if note.tie:
         result["tied"] = True
     effects = {**note.effects, **{key: value for key, value in performed.items() if not note.tie and key in {"ho", "po"}}}
@@ -28,7 +29,7 @@ def _note(note, track, performed):
     return result
 
 
-def render_notation(score, track, visits, at, performed_notes=()):
+def render_notation(score, track, visits, at, performed_notes=(), *, effective_targets=None):
     if not track.written_bars:
         return None, []
     if any(note.pick_scrape or note.fret == 127 and note.effects.get("mt") is True for bar in track.bars for note in bar):
@@ -43,6 +44,7 @@ def render_notation(score, track, visits, at, performed_notes=()):
     staves = [{"id": "staff", "clef": "F4" if track.instrument == "bass" else "G2", "label": track.name}]
     performed_by_source = {(source_id, round(note["t"], 8)): note
                            for note in performed_notes for source_id in note.get("source_ids", [])}
+    effective_targets = effective_targets or {}
     measures = []
     written_tempos = []
     tempo = 120.0
@@ -80,7 +82,8 @@ def render_notation(score, track, visits, at, performed_notes=()):
                     # Technique resolution follows the sounding attack, including
                     # an authored strum offset; the written beat stays unchanged.
                     item["notes"] = [_note(note, track, performed_by_source.get(
-                        (note.source_id, round(at(start + note.position + note.attack_offset), 8)), {})) for note in beat.notes]
+                        (note.source_id, round(at(start + note.position + note.attack_offset), 8)), {}),
+                        effective_targets.get((occurrence + 1, note.source_id))) for note in beat.notes]
                 beats.append(item)
             voice_index = voice.source_index if voice.source_index is not None else vi
             measure["staves"]["staff"]["voices"].append({"v": voice_index, "source_id": voice.source_id, "beats": beats})

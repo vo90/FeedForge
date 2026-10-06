@@ -232,7 +232,9 @@ def test_package_reconstructs_brush_and_rejects_tampering_or_downgrade(tmp_path,
     if fault == "wrong_policy":
         manifest["song_import"]["legacyBrushTimingPolicy"] = "modern-30ms"
     if fault == "contract":
-        manifest["song_import"]["preservationContract"] = CONTRACT_VERSION - 1
+        # Legacy brush interpretation starts at 89 independently of newer
+        # preservation contracts for other source features.
+        manifest["song_import"]["preservationContract"] = 88
     files["manifest.yaml"] = yaml.safe_dump(manifest).encode()
     files[chart_file] = json.dumps(chart).encode()
     files["import/strums.json"] = json.dumps(receipt).encode()
