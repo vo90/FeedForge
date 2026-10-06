@@ -211,12 +211,12 @@ def test_excluded_and_diagnostic_unselected_parts_still_validate_flag_types(fiel
     assert row['category'] == 'source_structure' and row['impact'] == 'blocking'
 
 
-def test_new_flags_do_not_relax_other_negative_dead_frets_or_bend_origin_plain_tie_guards():
+def test_new_flags_do_not_relax_other_negative_dead_frets_or_bend_compound_plain_tie_guards():
     doc = raw_score([measure(beat(-2, dead=True))])
     doc['parts'][0]['measures'][0]['voices'][0]['beats'][0]['fadeIn'] = True
     with pytest.raises(ScoreImportError, match='Invalid authored fret'):
         parse(doc)
-    doc = raw_score([measure(beat(5, duration=(1, 2), bend={'points': [{'position': 0, 'tone': 0}, {'position': 60, 'tone': 100}]}),
+    doc = raw_score([measure(beat(5, duration=(1, 2), vibrato=True, bend={'points': [{'position': 0, 'tone': 0}, {'position': 60, 'tone': 100}]}),
                              beat(0, duration=(1, 2), tie=True))])
     doc['parts'][0]['measures'][0]['voices'][0]['beats'][0]['fadeIn'] = True
     with pytest.raises(ScoreImportError, match='Unresolved tie'):

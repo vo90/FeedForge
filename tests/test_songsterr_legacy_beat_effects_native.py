@@ -1,5 +1,6 @@
 """Qualified retained beat summaries, distinct from active note harmonics."""
 from copy import deepcopy
+from fractions import Fraction as F
 import hashlib
 import json
 from pathlib import Path
@@ -68,7 +69,14 @@ def test_retained_beat_effects_use_the_qualified_native_clock_and_note_effects(r
     before = deepcopy(source)
     assert row['sourceSha256'] == canonical_hash(source)
     actual = evaluate(source)
-    assert actual['converter']['status'] == actual['independent']['status'] == row['expectedDisposition'], actual
+    # Keep the contract91 guard-only fixture as captured. Contract93 now
+    # qualifies this ordinary held bend; its dedicated new fixture covers
+    # current curves and notation independently of historical naturalTargets.
+    newly_qualified_bend = row['id'] == 'legacy-beat-effects/guard/fade/bent-zero-tie'
+    disposition = 'rendered' if newly_qualified_bend else row['expectedDisposition']
+    if newly_qualified_bend:
+        assert row['guardOnly'] is True and row['expectedDisposition'] == 'blocked'
+    assert actual['converter']['status'] == actual['independent']['status'] == disposition, actual
     for profile in PROFILES:
         native = row['reference'][profile]
         assert all(part['status'] == 'executed' and part['profile'] == profile for part in native['parts'])
@@ -76,24 +84,27 @@ def test_retained_beat_effects_use_the_qualified_native_clock_and_note_effects(r
         for part in native['parts']:
             assert part['scheduledSha256'] == canonical_hash(part['scheduled'])
             assert part['generatedFinalSha256'] == canonical_hash(part['generatedFinal'])
-        if row['expectedDisposition'] == 'rendered':
+        if disposition == 'rendered':
             assert compare_preparation(actual, native) == []
             # Player synthesis/humanization is separately observed, without
             # interpreting its final attacks as authored gameplay timing.
-            if profile != 'player-defaults':
+            if profile != 'player-defaults' and not newly_qualified_bend:
                 assert compare_authored_events(actual, native, source) == []
-    if row['expectedDisposition'] == 'rendered':
+    if disposition == 'rendered':
         absent = without_flags(source)
         produced = render(parse(source))['tracks']
         checked = independent_music(source)
         assert produced == render(parse(absent))['tracks']
         assert checked == independent_music(absent)
-        strings = len(source['parts'][0]['tuning'])
-        wanted = {(note['occurrence'], note['bar'], note['voiceIndex'], note['beatIndex'], strings - 1 - note['string']):
-                  note['pitch'] for note in row['reference']['authored']['parts'][0]['naturalTargets']}
-        # Check every written target, including tied notes, rest slots, multiple
-        # voices and repeated occurrences. Final synth envelopes remain scoped.
-        assert produced_pitches(produced[0]) == independent_pitches(checked[0]) == wanted
+        if newly_qualified_bend:
+            assert render(parse(source))['plainTieIdentityEvidence'][0]['rule'] == 'plain-tie-keeps-bent-attack-target'
+        else:
+            strings = len(source['parts'][0]['tuning'])
+            wanted = {(note['occurrence'], note['bar'], note['voiceIndex'], note['beatIndex'], strings - 1 - note['string']):
+                      note['pitch'] for note in row['reference']['authored']['parts'][0]['naturalTargets']}
+            # Check every written target, including tied notes, rest slots, multiple
+            # voices and repeated occurrences. Final synth envelopes remain scoped.
+            assert produced_pitches(produced[0]) == independent_pitches(checked[0]) == wanted
     else:
         assert row['guardOnly'] is True
     assert source == before
@@ -185,13 +196,32 @@ def test_a_beat_summary_does_not_fan_out_a_missing_note_instruction():
         assert row['guardOnly'] is True
 
 
-def test_bent_zero_tie_is_observed_without_new_expressive_tie_support():
+def test_historical_bent_zero_tie_guard_is_now_qualified_as_plain_held_bend():
     row = next(row for row in ROWS if row['id'] == 'legacy-beat-effects/guard/fade/bent-zero-tie')
+    assert row['guardOnly'] is True and row['expectedDisposition'] == 'blocked'
+    source = deepcopy(row['source']); before = deepcopy(source)
+    produced = render(parse(source))
+    checked = expected(songsterr(source), {'offset':0,'scale':1})
+    note, = produced['tracks'][0]['notes']
+    independent_note, = [entry['note'] for entry in checked['parts'][0]['notes']]
     for profile in PROFILES:
         part = row['reference'][profile]['parts'][0]
         assert part['heldEvents'][0]['fret'] == 5
         assert part['heldEvents'][1]['fret'] == 5 and part['heldEvents'][1]['sourceFret'] == 0
         assert part['heldEvents'][1]['hidden'] is True
         assert part['heldEvents'][0]['endTick'] == part['authoredEvents'][1]['endTick']
-    actual = evaluate(row['source'])
-    assert actual['converter']['status'] == actual['independent']['status'] == 'blocked'
+        held, = [event for event in part['heldEvents'] if not event['hidden']]
+        attack = float(F(held['attackTick'],part['tpqn'])*F(5,6))
+        end = float(F(held['endTick']+1,part['tpqn'])*F(5,6))
+        for candidate in (note,independent_note):
+            assert (candidate['s'],candidate['f']) == (len(source['parts'][0]['tuning'])-1-held['string'],held['fret'])
+            assert round(candidate['t'],6) == round(attack,6)
+            assert round(candidate['t']+candidate['sus'],6) == round(end,6)
+    actual = evaluate(source)
+    assert actual['converter']['status'] == actual['independent']['status'] == 'rendered'
+    for rows in (produced['plainTieIdentityEvidence'],checked['plain_tie_identities']):
+        identity, = rows
+        assert identity['rule'] == 'plain-tie-keeps-bent-attack-target'
+        assert identity['authored'] == {'fret':0} and identity['used'] == {'fret':5}
+    assert produced['fingerBendTimingEvidence'][0]['status'] == 'resolved'
+    assert len(note['source_ids']) == 2 and source == before

@@ -229,14 +229,24 @@ def test_retained_fade_keeps_admitted_negative_mute_music_and_authored_source():
     assert document == original
 
 
-def test_retained_fade_does_not_admit_differing_bend_origin_tie():
+def test_retained_fade_preserves_newly_qualified_ordinary_bend_origin_tie():
     origin = beat(fret=5, duration=(1, 2), bend={'points': [{'position': 0, 'tone': 0}, {'position': 60, 'tone': 100}]})
     origin['fadeIn'] = True
     document = raw_score([measure(origin, beat(fret=0, duration=(1, 2), tie=True))])
-    with pytest.raises(ValueError):
-        render(parse(document))
-    with pytest.raises(ValueError):
-        expected(songsterr(document), {'offset': 0, 'scale': 1})
+    before = deepcopy(document)
+    absent = deepcopy(document)
+    first(absent).pop('fadeIn')
+    assert played(document) == played(absent)
+    produced = render(parse(document))
+    checked = expected(songsterr(document), {'offset': 0, 'scale': 1})
+    note, = produced['tracks'][0]['notes']
+    assert note['f'] == 5 and note['sus'] == 2 and len(note['source_ids']) == 2
+    for rows in (produced['plainTieIdentityEvidence'], checked['plain_tie_identities']):
+        row, = rows
+        assert row['rule'] == 'plain-tie-keeps-bent-attack-target'
+        assert row['authored'] == {'fret':0} and row['used'] == {'fret':5}
+    assert produced['fingerBendTimingEvidence'][0]['status'] == 'resolved'
+    assert document == before
 
 
 def test_independent_validation_does_not_call_the_producer_helper(monkeypatch):
