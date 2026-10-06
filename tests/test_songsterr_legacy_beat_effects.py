@@ -211,8 +211,8 @@ def test_excluded_and_diagnostic_unselected_parts_still_validate_flag_types(fiel
     assert row['category'] == 'source_structure' and row['impact'] == 'blocking'
 
 
-def test_new_flags_do_not_relax_dead_minus_one_or_bend_origin_plain_tie_guards():
-    doc = raw_score([measure(beat(-1, dead=True))])
+def test_new_flags_do_not_relax_other_negative_dead_frets_or_bend_origin_plain_tie_guards():
+    doc = raw_score([measure(beat(-2, dead=True))])
     doc['parts'][0]['measures'][0]['voices'][0]['beats'][0]['fadeIn'] = True
     with pytest.raises(ScoreImportError, match='Invalid authored fret'):
         parse(doc)

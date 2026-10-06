@@ -29,7 +29,8 @@ def record(output, note, track, occurrence, position, end, at):
             'location': f'parts/{pi}/measures/{bi}/voices/{vi}/beats/{beat}/notes/{ni}',
             'occurrence': occurrence + 1, 'attack': output['t'],
             'start': at(position), 'end': at(end), 'string': note.string,
-            'authored': {'dead': True, 'fret': None if note.fret == 127 else note.fret},
+            'authored': {'dead': True, 'fret': note.authored_fret if note.authored_fret is not None
+                         else None if note.fret == 127 else note.fret},
             'used': {'dead': True, 'fret': None if output['f'] == 127 else output['f']},
             'rule': 'muted-tie-keeps-attack-target'}
 

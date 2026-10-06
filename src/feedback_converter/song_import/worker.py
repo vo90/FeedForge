@@ -187,6 +187,8 @@ def run_import(request: dict, progress=None) -> dict:
                   "alignment": alignment_recipe, 'preparation':alignment['preparation'], "chartGuidancePolicy": GUIDANCE_POLICY, "positionPolicy": POSITION_POLICY}
         if performance.get('source', {}).get('legacyBrushTimingPolicy'):
             recipe['legacyBrushTimingPolicy'] = performance['source']['legacyBrushTimingPolicy']
+        if performance.get('source', {}).get('negativeFretMutePolicy'):
+            recipe['negativeFretMutePolicy'] = performance['source']['negativeFretMutePolicy']
         if performance.get('plainTieIdentityEvidence'):
             from .plain_ties import POLICY as PLAIN_TIE_POLICY
             recipe['plainTieIdentityPolicy'] = PLAIN_TIE_POLICY

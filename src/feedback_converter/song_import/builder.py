@@ -252,6 +252,17 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     """Only write inside directory. Publishing/collision handling belongs to the app."""
     if alignment.get("status") != "validated":
         raise ImportFailure("alignment_failed", "The recording has not passed synchronization checks.")
+    negative_mute_source = performance.get('source') or {}
+    negative_mute_policy = negative_mute_source.get('negativeFretMutePolicy')
+    if 'negativeFretMutePolicy' in negative_mute_source:
+        contract = (recipe or {}).get('preservationContract')
+        if (negative_mute_policy != 'songsterr-negative-fret-mute-v1' or source_path is None
+                or type(contract) is not int or contract < 92
+                or (recipe or {}).get('negativeFretMutePolicy', negative_mute_policy) != negative_mute_policy):
+            raise ImportFailure('unsupported_score',
+                                'Legacy unpitched mutes require the original tab and preservation contract 92.')
+    elif 'negativeFretMutePolicy' in (recipe or {}):
+        raise ImportFailure('unsupported_score', 'Unpitched-mute policy has no supporting source instruction.')
     legacy_brush_policy = (performance.get('source') or {}).get('legacyBrushTimingPolicy')
     if legacy_brush_policy:
         from .songsterr_timing import LEGACY_BRUSH_POLICY
@@ -500,6 +511,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     manifest.setdefault("song_import", {})["chartGuidancePolicy"] = GUIDANCE_POLICY
     from .strum_groups import POLICY as STRUM_GROUP_POLICY
     manifest['song_import']['strumGroupingPolicy'] = STRUM_GROUP_POLICY
+    if negative_mute_policy:
+        manifest['song_import']['negativeFretMutePolicy'] = negative_mute_policy
     if legacy_brush_policy:
         manifest['song_import']['legacyBrushTimingPolicy'] = legacy_brush_policy
     if hybrid_summary:

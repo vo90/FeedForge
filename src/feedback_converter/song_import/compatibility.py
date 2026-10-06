@@ -15,7 +15,7 @@ from .songsterr_legacy_effects import (FIELDS as LEGACY_BEAT_EFFECTS, beat_effec
                                      retention as legacy_beat_effect_retention)
 from .model import ScoreImportError, integer, rational
 
-VERSION = 91
+VERSION = 92
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -368,11 +368,37 @@ def inspect_songsterr(document, *, track_indices=None):
                         if not isinstance(note, dict):
                             continue
                         visual_scrape = note.get('dead') is True and note.get('pickScrape') in ('up', 'down')
+                        negative_mute = (type(note.get('fret')) is int and note['fret'] == -1
+                                         and note.get('dead') is True)
+                        if negative_mute and not note.get('rest'):
+                            inherited_expression = any(beat.get(k) for k in
+                                ('vibrato', 'wideVibrato', 'tremoloBar', 'vibratoWithTremoloBar'))
+                            if inherited_expression:
+                                add_finding(report, feature='note.unpitched_mute', category='game_representation', impact='blocking',
+                                            message='Inherited pitch expression on this negative-fret mute is outside the qualified unpitched interpretation.',
+                                            location=npath, value=note, **nc)
+                            try:
+                                slot = integer(note.get('string'), 'unpitched mute string')
+                                tuning = part.get('tuning') or meta.get('tuning')
+                                if not isinstance(tuning, list) or not 0 <= slot < len(tuning):
+                                    raise ScoreImportError('Invalid unpitched mute string.')
+                            except ScoreImportError as exc:
+                                add_finding(report, feature='note.string', category='source_structure', impact='blocking',
+                                            message=str(exc), location=npath + '/string', value=note.get('string'), **nc)
+                            add_finding(report, feature='note.negative_fret_mute', category='source_interpretation', impact='source_retained',
+                                        message='The authored -1 with dead:true is retained in the source and interpreted as an attacked unpitched mute (X). No fret position or pitched target is invented. Existing mute display and scoring behavior applies; standard notation is unavailable for an arrangement with this unpitched mute.',
+                                        location=npath + '/fret', value=-1, **nc)
+                        elif (not note.get('rest') and
+                              (type(note.get('fret')) in (int, float) and note['fret'] < 0
+                               or type(note.get('fret')) is str and note['fret'] in ('-1', '-1/1'))):
+                            add_finding(report, feature='note.fret', category='source_structure', impact='blocking',
+                                        message='Only literal integer -1 with literal dead:true can identify this legacy unpitched mute.',
+                                        location=npath + '/fret', value=note['fret'], **nc)
                         if (not visual_scrape and not note.get('rest') and type(note.get('fret')) is int and 24 < note['fret'] <= 48):
                             add_finding(report, feature='note.fret_range', category='game_limitation', impact='gameplay_omission',
                                         message='Notes above fret 24 and slide events leading above fret 24 are omitted from gameplay and scoring. Original pitches and positions remain in the retained source; no substitution was made.',
                                         location=npath + '/fret', value=note['fret'], **nc)
-                        if (note.get("dead") is True and note.get("fret") is None and not note.get("rest")
+                        if (note.get("dead") is True and (note.get("fret") is None or negative_mute) and not note.get("rest")
                                 and (any(note.get(key) for key in ("hp", "bend", "harmonic", "vibrato", "wideVibrato", "leftHandVibrato"))
                                      or note.get("slide") not in (None, "shift", "upwards", "downwards")
                                      and not (visual_scrape and note.get('slide') in ('above', 'below')))):

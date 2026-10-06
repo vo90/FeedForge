@@ -52,6 +52,7 @@ class Note:
     pick_scrape: str | None = None  # Unpitched visual gesture, never a scored pitch.
     whammy: dict | None = None  # Beat-owned signed expression; never a finger bend.
     trill: dict | None = None  # Source instruction; expanded only after ties are folded.
+    authored_fret: int | None = None  # Retain a legacy -1 encoding separately from mute target 127.
 
 
 @dataclass

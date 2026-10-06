@@ -57,8 +57,7 @@ def test_unpitched_strikes_ties_and_mixed_chords_retain_exact_source_identity(tm
 
 @pytest.mark.parametrize('note', [
     {'string': 0}, {'string': 0, 'fret': None, 'dead': False},
-    {'string': 0, 'fret': None, 'dead': 'yes'}, {'string': 0, 'fret': 127, 'dead': True},
-    {'string': 0, 'fret': -1, 'dead': True}])
+    {'string': 0, 'fret': None, 'dead': 'yes'}, {'string': 0, 'fret': 127, 'dead': True}])
 def test_missing_or_invalid_pitched_fret_is_not_reclassified_as_a_mute(tmp_path, note):
     doc = raw_score([measure({'duration': [1, 1], 'notes': [note]})])
     with pytest.raises(ScoreImportError):

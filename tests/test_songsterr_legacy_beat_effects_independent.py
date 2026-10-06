@@ -210,12 +210,23 @@ def test_fade_in_does_not_remove_an_existing_finger_bend():
     assert songsterr(document).parts[0].bars[0][0].bends
 
 
-def test_retained_fade_does_not_admit_negative_dead_fret():
-    document = raw_score([measure(beat(fret=-1, dead=True))])
+def test_retained_fade_does_not_admit_other_negative_dead_frets():
+    document = raw_score([measure(beat(fret=-2, dead=True))])
     first(document)['fadeIn'] = True
     for reader in (songsterr, parse):
         with pytest.raises(ValueError):
             reader(document)
+
+
+def test_retained_fade_keeps_admitted_negative_mute_music_and_authored_source():
+    control = raw_score([measure(beat(fret=-1, dead=True))])
+    document = deepcopy(control)
+    first(document)['fadeIn'] = True
+    original = deepcopy(document)
+    assert played(document) == played(control)
+    assert parse(document).tracks[0].bars[0][0].authored_fret == -1
+    assert songsterr(document).parts[0].bars[0][0].authored_fret == -1
+    assert document == original
 
 
 def test_retained_fade_does_not_admit_differing_bend_origin_tie():
