@@ -8,6 +8,7 @@ POLICY = 'source-voices-v1'
 SIDECARS = ('undefinedSlideEvidence', 'harmonicTieEvidence', 'tiedMuteEvidence', 'mutedTieIdentityEvidence', 'staccatoBendEvidence', 'mutedSlideEvidence', 'consumedStrumEvidence', 'scrapeEntryEvidence', 'trillEvidence', 'strumEvidence')
 SIDECARS += ('fingerBendTimingEvidence',)
 SIDECARS += ('plainTieIdentityEvidence',)
+SIDECARS += ('pendingHopoTieEvidence',)
 
 
 def derived_id(track_id, voice):

@@ -194,6 +194,9 @@ def run_import(request: dict, progress=None) -> dict:
         if performance.get('plainTieIdentityEvidence'):
             from .plain_ties import POLICY as PLAIN_TIE_POLICY
             recipe['plainTieIdentityPolicy'] = PLAIN_TIE_POLICY
+        if performance.get('pendingHopoTieEvidence'):
+            from .pending_hopo_ties import POLICY as PENDING_HOPO_POLICY
+            recipe['pendingHopoTiePolicy'] = PENDING_HOPO_POLICY
         features = set()
         if hybrid_options["enabled"]:
             recipe["hybridLead"] = hybrid_options

@@ -10,6 +10,7 @@ import pytest
 from feedback_converter.song_import.audio import ImportFailure
 from feedback_converter.song_import.builder import _retime_note
 from feedback_converter.song_import.score import load_performance
+from feedback_converter.song_import.verification import VERSION as VERIFICATION_VERSION
 from feedback_converter.song_import.verify_source import read_source
 from feedback_converter.song_import.verify_timeline import expected
 from test_song_import_score import beat, import_json, measure, raw_score, write_gp
@@ -132,7 +133,7 @@ def test_independent_checker_rejects_missing_changed_or_invented_segments(tmp_pa
     elif fault == "outside": marked["slide_out_marks"][0]["end"] = 1
     elif fault == "shape": marked["slide_out_marks"] = None
     report = verify(tmp_path, source, package)
-    assert report["version"] == 94 and report["status"] == "failed", report
+    assert report["version"] == VERIFICATION_VERSION and report["status"] == "failed", report
     assert code in {e["code"] for e in report["errors"]}, report
 
 

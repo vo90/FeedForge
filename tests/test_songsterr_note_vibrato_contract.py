@@ -8,6 +8,7 @@ import yaml
 from feedback_converter.song_import.audio import ImportFailure
 from feedback_converter.song_import.builder import build_feedpak
 from feedback_converter.song_import.compatibility import inspect_songsterr
+from feedback_converter.song_import.evidence import CONTRACT_VERSION
 from feedback_converter.song_import.songsterr import parse, NOTE_VIBRATO_POLICY, WRITTEN_BEAT_VIBRATO_POLICY
 from feedback_converter.song_import.timeline import render
 from feedback_converter.song_import.verification import verify_import
@@ -83,7 +84,7 @@ def test_new_policy_requires_binding_and_rejects_invented_controller(tmp_path, f
     elif fault == 'bool':
         recipe['preservationContract'] = True
     elif fault == 'future':
-        recipe['preservationContract'] = 95
+        recipe['preservationContract'] = CONTRACT_VERSION + 1
     elif fault == 'old_inventory':
         inventory_name = recipe['compatibilityFile']
         inventory = json.loads(files[inventory_name])
@@ -120,7 +121,7 @@ def test_null_policy_cannot_be_attached_to_historical_contract(tmp_path):
         package(tmp_path, contract=93, historical=True, recipe_extra={'fingerVibratoPolicy': None})
 
 
-@pytest.mark.parametrize('contract', [True, 94.0, -1, 95])
+@pytest.mark.parametrize('contract', [True, 94.0, -1, CONTRACT_VERSION + 1])
 def test_builder_rejects_invalid_or_unknown_contract_before_writing(tmp_path, contract):
     with pytest.raises(ImportFailure, match='Invalid preservation contract'):
         package(tmp_path, contract=contract)

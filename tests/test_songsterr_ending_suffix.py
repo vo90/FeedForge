@@ -11,6 +11,7 @@ from test_songsterr_recording_end import recording, META
 from feedback_converter.song_import.audio import ImportFailure
 from feedback_converter.song_import.builder import build_feedpak
 from feedback_converter.song_import.ending_cutoff import authorize, allowed, boundary_policy
+from feedback_converter.song_import.evidence import CONTRACT_VERSION
 from feedback_converter.song_import.preparation import finalize
 from feedback_converter.song_import.score import load_performance
 from feedback_converter.song_import.synchronization import align_from_songsterr
@@ -175,7 +176,7 @@ def test_worker_builds_hybrid_with_cutoff_and_independent_evidence(suffix, tmp_p
     assert result['verification']['adjustments']['omittedEndingNotes'] == 26
     assert result['verification']['hybridLead']['status'] == 'no_additions'
     assert result['recipe']['alignment']['recordingEnd']['version'] == 2
-    assert result['evidence']['version'] == 94
+    assert result['evidence']['version'] == CONTRACT_VERSION
     with zipfile.ZipFile(result['stagingPath']) as z:
         manifest = yaml.safe_load(z.read('manifest.yaml'))
         assert len(manifest['arrangements']) == 2

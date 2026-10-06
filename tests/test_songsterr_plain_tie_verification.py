@@ -122,7 +122,7 @@ def test_origin_expression_and_completed_entry_survive(tmp_path, expression):
                                    'not_boolean_int', 'not_boolean_string', 'continuation_bend', 'continuation_slide',
                                    'continuation_hopo', 'continuation_harmonic', 'continuation_dead', 'continuation_vibrato',
                                    'continuation_bar', 'continuation_trill', 'origin_bar', 'origin_trill',
-                                   'origin_harmonic', 'origin_dead', 'origin_terminal_slide', 'origin_pending_slide', 'origin_pending_hopo'])
+                                   'origin_harmonic', 'origin_dead', 'origin_terminal_slide', 'origin_pending_slide'])
 def test_new_interpretation_retains_unqualified_continuity_and_expression_guards(tmp_path, fault):
     raw = source()
     beats = raw['parts'][0]['measures'][0]['voices'][0]['beats']

@@ -8,6 +8,7 @@ from feedback_converter.song_import.audio import ImportFailure
 from feedback_converter.song_import.builder import _retime_note
 from feedback_converter.song_import.model import ScoreImportError
 from feedback_converter.song_import.score import load_performance
+from feedback_converter.song_import.verification import VERSION as VERIFICATION_VERSION
 from feedback_converter.song_import.verify_source import read_source, UnverifiedFeature
 from feedback_converter.song_import.verify_timeline import expected
 from test_song_import_score import beat, import_json, measure, raw_score, write_gp
@@ -144,7 +145,7 @@ def incoming_example():
 def test_hand_calculated_incoming_and_outgoing_archive_passes(tmp_path):
     source, package = incoming_example()
     report = verify(tmp_path, source, package)
-    assert report["version"] == 94 and report["status"] == "passed", report
+    assert report["version"] == VERIFICATION_VERSION and report["status"] == "passed", report
     assert "slide_in_destination_timing" in report["scope"]
 
 
