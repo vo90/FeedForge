@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 91
+VERSION = 92
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -347,7 +347,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, 89, 90, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, 89, 90, 91, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     reports_precedence = type(report.get('version')) is int and report['version'] >= 46
     if preservation_contract >= 46 and not reports_precedence:
@@ -361,6 +361,9 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     reports_beat_effects = type(report.get('version')) is int and report['version'] >= 91
     if preservation_contract >= 91 and not reports_beat_effects:
         check.fail('compatibility_version', 'import/compatibility', 'This preservation contract requires legacy beat-effect retention accounting.')
+    reports_negative_mutes = type(report.get('version')) is int and report['version'] >= 92
+    if preservation_contract >= 92 and not reports_negative_mutes:
+        check.fail('compatibility_version', 'import/compatibility', 'This preservation contract requires negative-fret mute accounting.')
     check.equal("compatibility_status", "import/compatibility", "limitations" if any(
         row.get('impact') != 'source_retained' for row in rows) else "compatible", report.get("status"))
     target = report.get("target", {})
@@ -406,6 +409,16 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
             expected[(scope + '.' + key, path + '/' + key)] = obj[key]
 
         selected_ids = {part.id for part in source.parts}
+        # Derive alias findings from admitted independent atoms, so rests and
+        # ignored arrangements cannot acquire a claimed playable interpretation.
+        for part in source.parts:
+            for bar in part.bars:
+                for atom in bar:
+                    if atom.authored_fret == -1:
+                        if not reports_negative_mutes or preservation_contract < 92:
+                            check.fail('compatibility_version', atom.location + '/fret',
+                                       'Negative-fret mute interpretation needs preservation contract and inventory version 92.')
+                        expected[('note.negative_fret_mute', atom.location + '/fret')] = -1
         # Locate only these two scoped fields in excluded parts. Do not require
         # their unrelated resting/percussion voices to have pitched beat data.
         for pi, bi, vi, bti, beat in _legacy_beat_effect_beats(document['parts']):
@@ -490,7 +503,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
         if key not in actual:
             continue
         row = actual[key]
-        retained = key[0] in ('measure.index', 'beat.tempo', 'note.grace', 'tempo.origin') or key in legacy_effect_retained
+        retained = key[0] in ('measure.index', 'beat.tempo', 'note.grace', 'tempo.origin', 'note.negative_fret_mute') or key in legacy_effect_retained
         typed_retention = retained or key[0] == 'beat.fadeIn'
         encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
         check.equal("compatibility_value", key[1], value if len(encoded) <= 2048 else encoded[:2048], row.get("value"))
@@ -515,7 +528,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
         elif key[0] == 'beat.fadeIn':
             check.equal('compatibility_work_status', key[1], 'display_limitation', row.get('workStatus'))
         category = ("source_metadata" if key[0] in ('measure.index', 'beat.tempo', 'note.grace') or key in legacy_effect_retained else
-                    "source_interpretation" if key[0] == 'tempo.origin' else
+                    "source_interpretation" if key[0] in ('tempo.origin', 'note.negative_fret_mute') else
                     "conversion_check" if key[0] == "note.bend_timing" else
                     "source_interpretation" if key[0] in ("tempo.superseded", "tempo.outside_score", "note.consumed_strum_grace") else "game_limitation")
         check.equal("compatibility_category", key[1], category, row.get("category"))
@@ -882,6 +895,16 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             manifest = yaml.safe_load(z.read("manifest.yaml"))
             _finite(manifest, "manifest", check)
             recipe = manifest.get("song_import", {})
+            if source.negative_fret_mutes or 'negativeFretMutePolicy' in recipe:
+                if not source.negative_fret_mutes:
+                    check.fail('negative_mute_extra', 'manifest/song_import/negativeFretMutePolicy',
+                               'Negative-fret mute policy is declared without an admitted source alias.')
+                if type(recipe.get('preservationContract')) is not int or recipe['preservationContract'] < 92:
+                    check.fail('negative_mute_contract', 'manifest/song_import',
+                               'Negative-fret mute interpretation requires preservation contract 92.')
+                check.equal('negative_mute_policy', 'manifest/song_import/negativeFretMutePolicy',
+                            'songsterr-negative-fret-mute-v1', recipe.get('negativeFretMutePolicy'))
+                report['scope'].append('negative_fret_unpitched_mute')
             if source.legacy_brush_timing:
                 if recipe.get('preservationContract', 0) < 89:
                     check.fail('legacy_brush_contract', 'manifest/song_import',

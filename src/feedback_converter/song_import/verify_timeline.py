@@ -351,11 +351,17 @@ def _expected(source, alignment):
                             continued[identity] = sounding
                 state = continued
             last_bar = index
+            attacks_in_visit = set()
             for atom in sorted(part.bars[index], key=lambda n: (n.q, n.voice, n.string)):
                 key = (atom.voice, atom.string)
                 start, end = origin + atom.q, origin + atom.q + atom.length
                 if atom.length <= 0 or atom.string < 0 or atom.string >= len(part.tuning):
                     raise ValueError(atom.location + ": invalid duration/string")
+                if not atom.tie:
+                    attack_slot = (atom.q, atom.voice if source.format == 'songsterr' else None, atom.string)
+                    if attack_slot in attacks_in_visit:
+                        unsupported(atom.location, "Simultaneous authored attacks share one voice and string; the playing instructions are ambiguous.")
+                    attacks_in_visit.add(attack_slot)
                 previous = state.get(key)
                 notation_fret = atom.fret
                 if not atom.tie and atom.strum_direction:
@@ -416,7 +422,8 @@ def _expected(source, alignment):
                                 'location': atom.location, 'occurrence': occurrence + 1,
                                 'attack': float(clock.at(event['start'])), 'start': float(clock.at(start)), 'end': float(clock.at(end)),
                                 'string': atom.string,
-                                'authored': {'dead': True, 'fret': None if atom.fret == 127 else atom.fret},
+                                'authored': {'dead': True, 'fret': atom.authored_fret if atom.authored_fret is not None
+                                             else None if atom.fret == 127 else atom.fret},
                                 'used': {'dead': True, 'fret': None if event['f'] == 127 else event['f']},
                                 'rule': 'muted-tie-keeps-attack-target'})
                             event['muted_identity'] = True

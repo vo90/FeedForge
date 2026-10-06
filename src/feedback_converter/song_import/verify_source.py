@@ -220,6 +220,7 @@ class Atom:
     whammy: dict | None = None
     trill: dict | None = None
     explicit_tie: bool = False
+    authored_fret: int | None = None
 
 
 @dataclass
@@ -270,6 +271,7 @@ class Source:
     ignored: set = field(default_factory=set)
     section_labels: list = field(default_factory=list)
     legacy_brush_timing: bool = False
+    negative_fret_mutes: bool = False
 
 
 def inactive(value):
@@ -904,7 +906,12 @@ def songsterr(document, *, track_indices=None):
                         scrape = note.get("pickScrape")
                         if scrape is not None and (type(scrape) is not str or scrape not in ("up", "down") or note.get("dead") is not True):
                             unsupported(nloc + "/pickScrape", "Invalid unpitched scrape instruction.")
-                        unpitched = note.get("dead") is True and note.get("fret") is None
+                        negative_mute = (type(note.get("fret")) is int and note["fret"] == -1
+                                         and note.get("dead") is True)
+                        if negative_mute and any(beat.get(k) for k in
+                                ("vibrato", "wideVibrato", "tremoloBar", "vibratoWithTremoloBar")):
+                            unsupported(nloc, "Inherited pitch expression on a negative-fret mute is not independently representable.")
+                        unpitched = note.get("dead") is True and (note.get("fret") is None or negative_mute)
                         fret = 127 if unpitched else integer(note["fret"], nloc)
                         if not unpitched and not 0 <= fret <= 48:
                             raise ValueError(nloc + ": invalid authored fret")
@@ -916,6 +923,10 @@ def songsterr(document, *, track_indices=None):
                             track.unpitched_mutes.append(nloc)
                         elif scrape:
                             track.unpitched_mutes.append(nloc)
+                        if negative_mute:
+                            slot = integer(note["string"], nloc + "/string")
+                            if not 0 <= slot < len(tuning):
+                                raise ValueError(nloc + "/string: invalid unpitched mute string")
                         if note.get("leftHandVibrato") not in (None, "slight", "wide"):
                             unsupported(nloc + "/leftHandVibrato", "Unverified vibrato width.")
                         if note.get("leftHandVibrato"):
@@ -1046,6 +1057,7 @@ def songsterr(document, *, track_indices=None):
                                           bool(note.get("hp"))))
                         fact["notes"].append(atoms[-1])
                         atoms[-1].explicit_tie = note.get("tie") is True
+                        atoms[-1].authored_fret = -1 if negative_mute else None
                         atoms[-1].strum_direction = direction
                         atoms[-1].strum_kind = _songsterr_strum_kind(beat) if direction else None
                         from .verify_trills import read as read_trill
@@ -1076,7 +1088,8 @@ def songsterr(document, *, track_indices=None):
         parts.append(track)
     return Source("songsterr", str(document.get("title", "")), str(document.get("artist", "")), bars, parts,
                   excluded, len(metadata), {k: str(document[k]) for k in ("songId", "revisionId") if k in document}, ignored, section_labels,
-                  legacy_brush_timing=legacy_brush_timing)
+                  legacy_brush_timing=legacy_brush_timing,
+                  negative_fret_mutes=any(a.authored_fret == -1 for p in parts for b in p.bars for a in b))
 
 
 def _txt(node, path, default=""):

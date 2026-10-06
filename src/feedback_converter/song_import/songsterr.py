@@ -60,8 +60,13 @@ def _note(raw, beat, position, duration, strings, tpqn=16384):
         raise ScoreImportError("A pick scrape requires an up/down direction and a dead note.")
     string = strings - 1 - integer(raw.get("string"), "string index")
     # 127 is FeedBack's existing unpitched-mute sentinel, never a physical
-    # fret or MIDI pitch. Only an explicitly dead note may omit its fret.
-    unpitched = raw.get("dead") is True and raw.get("fret") is None
+    # fret or MIDI pitch. An explicitly dead note may omit its fret or retain
+    # the legacy literal -1 encoding; neither identifies a pitched target.
+    legacy_mute = type(raw.get("fret")) is int and raw["fret"] == -1 and raw.get("dead") is True
+    unpitched = raw.get("dead") is True and (raw.get("fret") is None or legacy_mute)
+    if legacy_mute and any(beat.get(key) for key in
+                           ("vibrato", "wideVibrato", "tremoloBar", "vibratoWithTremoloBar")):
+        raise ScoreImportError("A legacy negative-fret mute with inherited pitch expression needs additional representation support.")
     fret = 127 if unpitched else integer(raw.get("fret"), "fret")
     if not unpitched and not 0 <= fret <= 48:
         raise ScoreImportError("Invalid authored fret.")
@@ -164,7 +169,8 @@ def _note(raw, beat, position, duration, strings, tpqn=16384):
     from .songsterr_trills import read as read_trill
     return Note(position, duration, string, fret, bool(raw.get("tie")), effects,
                 sorted(bends), False, slide_out, slide_in=slide_in, staccato=raw.get("staccato") is True,
-                pick_scrape=scrape, whammy=source_whammy(beat), trill=read_trill(raw, beat, tpqn))
+                pick_scrape=scrape, whammy=source_whammy(beat), trill=read_trill(raw, beat, tpqn),
+                authored_fret=-1 if legacy_mute else None)
 
 
 def _written_rhythm(beat, duration):
@@ -516,6 +522,8 @@ def parse(document: dict, *, track_indices=None) -> Score:
     source["format"] = "songsterr"
     if legacy_brush_timing:
         source["legacyBrushTimingPolicy"] = LEGACY_BRUSH_POLICY
+    if any(note.authored_fret == -1 for track in tracks for bar in track.bars for note in bar):
+        source["negativeFretMutePolicy"] = "songsterr-negative-fret-mute-v1"
     source.update(trackCount=len(metadata), excludedTracks=excluded, sectionLabels=section_labels)
     for decision in section_labels:
         if len({label['text'] for label in decision['labels']}) > 1:
