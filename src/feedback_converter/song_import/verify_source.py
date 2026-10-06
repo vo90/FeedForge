@@ -163,6 +163,7 @@ class Atom:
     pick_scrape: str | None = None
     whammy: dict | None = None
     trill: dict | None = None
+    explicit_tie: bool = False
 
 
 @dataclass
@@ -982,6 +983,7 @@ def songsterr(document, *, track_indices=None):
                                           nloc, str(vi), loc, bool(note.get("tie")), fx, sorted(bends), slide[note.get("slide")],
                                           bool(note.get("hp"))))
                         fact["notes"].append(atoms[-1])
+                        atoms[-1].explicit_tie = note.get("tie") is True
                         atoms[-1].strum_direction = direction
                         atoms[-1].strum_kind = _songsterr_strum_kind(beat) if direction else None
                         from .verify_trills import read as read_trill

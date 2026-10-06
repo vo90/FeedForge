@@ -13,7 +13,7 @@ from .songsterr_fields import validate_sustain_pedal, effective_dots, validate_b
 from .songsterr_legacy import LEGACY_METADATA, validate_legacy_field
 from .model import ScoreImportError, integer, rational
 
-VERSION = 89
+VERSION = 90
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {

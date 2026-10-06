@@ -13,7 +13,7 @@ RULES = {
     "timing.grace": {"files": ["songsterr_timing.py"], "policy": "source_interpretation"},
     "timing.swing": {"files": ["songsterr_timing.py"], "policy": "source_interpretation"},
     "timing.repeats": {"files": ["repeat_regions.py", "timeline.py"], "policy": "source_interpretation"},
-    "timing.ties": {"files": ["timeline.py", "muted_ties.py", "tied_harmonics.py"], "policy": "source_interpretation"},
+    "timing.ties": {"files": ["timeline.py", "muted_ties.py", "tied_harmonics.py", "plain_ties.py"], "policy": "source_interpretation"},
     "timing.tempo": {"files": ["songsterr_automation.py"], "policy": "source_interpretation"},
     "source.legacy_metadata": {"files": ["songsterr_legacy.py"], "policy": "validated_source_retention"},
     "timing.pickup": {"files": ["songsterr_pickup.py"], "policy": "source_interpretation"},
@@ -121,6 +121,11 @@ def inventory():
             value['reference']['scope'] += ' Exact-boundary repeat entrance ties additionally checked against native ks merging; no pitch/gap repair qualification.'
             value['testFixture'] = 'tests/fixtures/songsterr_repeat_tie_reference.json'
             value['tests'] = 'tests/test_songsterr_repeat_ties.py'
+            value['additionalFixtures'] = ['tests/fixtures/songsterr_plain_tie_native.json']
+            value['additionalTests'] = ['tests/test_songsterr_plain_tie_native.py']
+            value['reference']['plainTieIdentityPolicy'] = 'songsterr-plain-tie-identity-v1'
+            value['reference']['plainTieIdentityStages'] = ['fc', 'ks']
+            value['reference']['scope'] += ' Plain differing serialized tie frets additionally checked against native fc target inheritance and ks held endpoints, including per-visit repeat targets. Authored model/source frets remain unchanged; expressive and unsafe native recovery controls do not imply import support.'
         if key == 'timing.tempo':
             value['reference']['scope'] += ' Exact-coordinate instruction precedence additionally checked before holds/ramps and against emitted tempo events.'
             value['reference']['scope'] += ' Outside-score steps qualified with an explicit initial clock and no active ramps; native preparation, emitted tempo and note scheduling match without them.'

@@ -49,9 +49,30 @@ def test_staccato_follows_shifted_attack_after_the_tie_chain_is_folded(tmp_path)
     assert [n['sus'] for n in notes] == [2, 1.96875]
 
 
-def test_strum_does_not_repair_fret_mismatched_ties(tmp_path):
+def test_plain_tied_strum_keeps_origin_target_without_restriking(tmp_path):
     continuation = chord(tie=True)
     continuation['notes'][0]['fret'] = 9
+    source = raw_score([measure(chord()), measure(continuation)])
+    original = deepcopy(source)
+    notes, track = checked(tmp_path, source)
+    assert [n['t'] for n in notes] == [0, .0625]
+    assert [n['f'] for n in notes] == [3, 5]
+    assert [n['t'] + n['sus'] for n in notes] == [4, 4]
+    actual = import_json(tmp_path, source)
+    independent = expected(songsterr(source), {'offset': 0, 'scale': 1})
+    assert actual['plainTieIdentityEvidence'] == independent['plain_tie_identities']
+    row, = actual['plainTieIdentityEvidence']
+    assert (row['attack'], row['start'], row['end']) == (0, 2, 4)
+    assert row['authored'] == {'fret': 9} and row['used'] == {'fret': 3}
+    assert row['originSourceId'] == notes[0]['source_ids'][0]
+    tied = track['notation']['measures'][1]['staves']['staff']['voices'][0]['beats'][0]['notes'][0]
+    assert tied['tied'] and tied['fret'] == 3
+    assert source == original
+
+
+def test_strum_does_not_admit_explicit_pitch_gesture_on_differing_tie(tmp_path):
+    continuation = chord(tie=True)
+    continuation['notes'][0].update(fret=9, slide='upwards')
     source = raw_score([measure(chord()), measure(continuation)])
     with pytest.raises(Exception, match='tie'):
         import_json(tmp_path, source)

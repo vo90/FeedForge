@@ -9,6 +9,7 @@ from .songsterr_whammy import append_segment
 from .repeat_regions import repeat_regions
 from .fingering import template_fingers
 from .link_diagnostics import LinkDiagnostics
+from .plain_ties import admitted as plain_tie_admitted, record as record_plain_tie
 
 
 def playback_order(measures: list[Measure]) -> list[int]:
@@ -118,6 +119,7 @@ def _render(score: Score) -> dict:
     harmonic_ties = []
     tied_mutes = []
     muted_tie_identities = []
+    plain_tie_identities = []
     staccato_bends = []
     finger_bends = []
     muted_slides = []
@@ -160,6 +162,7 @@ def _render(score: Score) -> dict:
         strum_origins = {}
         articulations = {}
         hopo_links = []
+        notation_targets = {}
         last_written = -1
         for occurrence, (index, start) in enumerate(visits):
             if index <= last_written:
@@ -172,15 +175,30 @@ def _render(score: Score) -> dict:
                 # identified by this performed boundary. Unfilled bar space
                 # follows the ordinary tie rule below, including its rest
                 # check. Carry no pitch repair or unrelated linked technique.
-                entrances = {(n.voice_id, n.string): n.fret for n in track.bars[index]
-                             if n.tie and n.position == 0}
+                entrances = {}
+                for n in track.bars[index]:
+                    if n.tie and n.position == 0:
+                        entrances.setdefault((n.voice_id, n.string), []).append(n)
+                def plain_entrance(key, prior):
+                    articulation = articulations[id(prior[0])]
+                    starts, ends = rest_limits.get(key[0], ([], []))
+                    rest_index = bisect_left(starts, start) - 1
+                    return plain_tie_admitted(prior[0], entrances[key][0], articulation,
+                        score.source_document['document'],
+                        uninterrupted=rest_index < 0 or ends[rest_index] <= articulation['start'])
                 previous_note = {
                     key: prior for key, prior in previous_note.items()
                     if score.source.get('format') == 'songsterr' and prior[1] <= start
-                    and entrances.get(key) == prior[0]['f']
+                    and len(entrances.get(key, [])) == 1
+                    and (entrances[key][0].fret == prior[0]['f']
+                         or plain_entrance(key, prior))
                 }
             last_written = index
             seen = {}
+            source_counts = {}
+            for n in track.bars[index]:
+                source_key = (n.position, n.voice_id, n.string)
+                source_counts[source_key] = source_counts.get(source_key, 0) + 1
             for note in sorted(track.bars[index], key=lambda n: (n.position, n.string)):
                 position = start + note.position
                 end = position + note.duration
@@ -218,11 +236,20 @@ def _render(score: Score) -> dict:
                         starts, ends = rest_limits.get(note.voice_id, ([], []))
                         rest_index = bisect_left(starts, position) - 1
                         uninterrupted = rest_index < 0 or ends[rest_index] <= prior_articulation['start']
-                        if (not songsterr_tie or prior[1] != position or not uninterrupted
-                                or not equivalent(output, note, prior_articulation)):
-                            raise ScoreImportError(f"Unresolved tie in {track.name}, measure {index + 1}.")
-                        muted_tie_identities.append(record(output, note, track, occurrence, position, end, at))
-                        prior_articulation['muted_identity'] = True
+                        plain = songsterr_tie and plain_tie_admitted(
+                            output, note, prior_articulation, score.source_document['document'],
+                            linked=link_key in pending_slide or link_key in pending_hopo or link_key in pending_muted_shifts,
+                            unique=source_counts[(note.position, note.voice_id, note.string)] == 1,
+                            uninterrupted=uninterrupted)
+                        if plain:
+                            plain_tie_identities.append(record_plain_tie(output, note, track, occurrence, position, end, at))
+                            notation_targets[(occurrence + 1, note.source_id)] = output['f']
+                        else:
+                            if (not songsterr_tie or prior[1] != position or not uninterrupted
+                                    or not equivalent(output, note, prior_articulation)):
+                                raise ScoreImportError(f"Unresolved tie in {track.name}, measure {index + 1}.")
+                            muted_tie_identities.append(record(output, note, track, occurrence, position, end, at))
+                            prior_articulation['muted_identity'] = True
                     late_mute = False
                     if songsterr_tie:
                         from .tied_mutes import retain as retain_mute
@@ -268,6 +295,7 @@ def _render(score: Score) -> dict:
                     articulation = {"start": attack, "origin_staccato": note.staccato,
                                     "staccato": False, "pitch_gesture": False, "segments": 1,
                                     "trill": note.trill, "occurrence": occurrence + 1,
+                                    "source_unique": source_counts[(note.position, note.voice_id, note.string)] == 1,
                                     "other_pitch_gesture": False, "bend_segments": []}
                     articulations[id(output)] = articulation
                     if note.beat_id:
@@ -488,7 +516,8 @@ def _render(score: Score) -> dict:
                 templates.append({"name": label, "fingers": fingers, "frets": frets})
             chords.append({"t": group[0]["t"], "id": template_ids[shape], "source_ids": [beat_id],
                            "notes": [{key: value for key, value in note.items() if key != "t"} for note in group]})
-        notation, notation_warnings = (None, []) if omissions else render_notation(score, track, visits, at, rendered)
+        notation, notation_warnings = (None, []) if omissions else render_notation(
+            score, track, visits, at, rendered, effective_targets=notation_targets)
         warnings.extend(notation_warnings)
         from .songsterr_tones import perform as perform_tones
         tone_timeline = perform_tones(track.tone_source, visits, at, cursor)
@@ -570,6 +599,7 @@ def _render(score: Score) -> dict:
             **({'harmonicTieEvidence': sorted(harmonic_ties, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if harmonic_ties else {}),
             **({'tiedMuteEvidence': sorted(tied_mutes, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if tied_mutes else {}),
             **({'mutedTieIdentityEvidence': sorted(muted_tie_identities, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if muted_tie_identities else {}),
+            **({'plainTieIdentityEvidence': sorted(plain_tie_identities, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if plain_tie_identities else {}),
             **({'staccatoBendEvidence': sorted(staccato_bends, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if staccato_bends else {}),
             **({'fingerBendTimingEvidence': sorted(finger_bends, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if finger_bends else {}),
             'strumEvidence': sorted(strums,key=lambda r:(r['trackId'],r['occurrence'],r['time'],r['sourceId'])),

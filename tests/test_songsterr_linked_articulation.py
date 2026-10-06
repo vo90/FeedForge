@@ -62,9 +62,26 @@ def test_staccato_tie_chain_crosses_bar_without_adding_an_attack():
     assert actual[0]['sus'] == checked[0]['note']['sus'] == 2
 
 
-@pytest.mark.parametrize('changed', ['fret', 'gap'])
+def test_staccato_plain_tie_keeps_origin_and_existing_sound_duration():
+    source = raw_score([measure(beat(duration=(1, 4), staccato=True), beat(fret=4, duration=(1, 4), tie=True))])
+    original = deepcopy(source)
+    actual = render(parse(source))
+    independent = expected(songsterr(source), {'offset': 0, 'scale': 1})
+    note, = actual['tracks'][0]['notes']
+    assert (note['f'], note['t'], note['sus']) == (3, 0, .5)
+    assert note['sus'] == independent['parts'][0]['notes'][0]['note']['sus']
+    assert actual['plainTieIdentityEvidence'] == independent['plain_tie_identities']
+    row, = actual['plainTieIdentityEvidence']
+    assert (row['attack'], row['start'], row['end']) == (0, .5, 1)
+    assert row['authored'] == {'fret': 4} and row['used'] == {'fret': 3}
+    assert row['originSourceId'] == note['source_ids'][0]
+    assert source == original
+
+
+@pytest.mark.parametrize('changed', ['gesture', 'gap'])
 def test_staccato_does_not_repair_a_broken_tie(changed):
-    following = beat(fret=4 if changed == 'fret' else 3, duration=(1, 4), tie=True)
+    following = beat(fret=4 if changed == 'gesture' else 3, duration=(1, 4), tie=True,
+                     **({'slide': 'upwards'} if changed == 'gesture' else {}))
     beats = [beat(duration=(1, 4), staccato=True)]
     if changed == 'gap': beats.append({'duration': [1, 4], 'notes': [{'rest': True}]})
     source = raw_score([measure(*beats, following)])

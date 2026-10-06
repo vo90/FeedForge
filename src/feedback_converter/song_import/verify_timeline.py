@@ -2,12 +2,34 @@
 from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
+from collections import Counter
 from fractions import Fraction as F
 import math
 
 from .verify_source import Source, fraction, unsupported
 
 MAX_EVENTS = 500_000
+
+
+def _plain_tie_target(atom, origin, *, unique=True, pending=False):
+    """Independently qualify an incidental fret on a held pitched target."""
+    if (not atom.explicit_tie or not unique or pending or origin is None
+            or not origin.get('unique_origin', True) or atom.fret == 127 or origin['f'] == 127
+            or atom.effects.get('mt') or origin['effects'].get('mt')):
+        return False
+    # A source fret difference supplies no slide, bend or harmonic instruction.
+    # Completed incoming slide expression and origin vibrato remain intact.
+    harmonic = ('hm', 'hp', 'hn', 'hps', 'harmonic_target', 'harmonic_alias')
+    if (atom.bends or atom.slide or atom.slide_in or atom.whammy or atom.trill or atom.pick_scrape
+            or atom.hopo_origin or atom.hopo_destination or atom.wide_vibrato or atom.finger_vibrato
+            or atom.beat_vibrato or atom.pitch_offset
+            or any(atom.effects.get(k) for k in (*harmonic, 'vb'))
+            or any(origin['effects'].get(k) for k in harmonic)
+            or origin.get('curve') or origin.get('whammy') or origin.get('trill')
+            or origin.get('scrapes') or origin.get('slide_marks') or origin.get('targeted_slide')
+            or origin.get('contact') or origin.get('harmonic_conflict')):
+        return False
+    return True
 
 
 def visits(source: Source):
@@ -206,7 +228,7 @@ def _expected(source, alignment):
     order = visits(source)
     clock, recording = Clock(source, order), RecordingMap(alignment)
     result = {"parts": [], "beats": [], "sections": [], "time_signatures": [], "tempos": [], "order": order,
-              'harmonic_ties': [], 'tied_mutes': [], 'muted_tie_identities': [], 'staccato_bends': [], 'finger_bends': [], 'muted_slides': [], 'undefined_slides': [], 'trills': [], 'strums': [], 'consumed_strums': [], 'scrape_entries': [],
+              'harmonic_ties': [], 'tied_mutes': [], 'muted_tie_identities': [], 'plain_tie_identities': [], 'staccato_bends': [], 'finger_bends': [], 'muted_slides': [], 'undefined_slides': [], 'trills': [], 'strums': [], 'consumed_strums': [], 'scrape_entries': [],
               "raw_notes": sum(len(bar) for p in source.parts for bar in p.bars), "tie_segments": 0}
     measure_facts = []
     inherited_tempos, inherited = [], F(120)
@@ -308,6 +330,7 @@ def _expected(source, alignment):
         last_bar = -1
         for occurrence, index in enumerate(order):
             origin = clock.measure_starts[occurrence]
+            source_slots = Counter((a.q, a.voice, a.string) for a in part.bars[index])
             if index <= last_bar:
                 if pending_slides or pending_hopos or muted_pending:
                     unsupported(f"tracks/{part.id}/measures/{index}", "A linked technique crosses a repeat jump.")
@@ -316,8 +339,13 @@ def _expected(source, alignment):
                     for entrance in part.bars[index]:
                         identity = (entrance.voice, entrance.string)
                         sounding = state.get(identity)
+                        rest_starts, rest_ends = rest_indices.get(entrance.voice, ([], []))
+                        ri = bisect_left(rest_starts, origin) - 1
+                        interrupted = sounding is not None and ri >= 0 and rest_ends[ri] > sounding['start']
                         if (entrance.tie and entrance.q == 0 and sounding is not None
-                                and sounding['end'] <= origin and sounding['f'] == entrance.fret):
+                                and sounding['end'] <= origin and (sounding['f'] == entrance.fret
+                                    or not interrupted and _plain_tie_target(entrance, sounding,
+                                                        unique=source_slots[(entrance.q, entrance.voice, entrance.string)] == 1))):
                             # The ordinary tie check below independently rejects
                             # any explicit rest in the unfilled interval.
                             continued[identity] = sounding
@@ -329,6 +357,7 @@ def _expected(source, alignment):
                 if atom.length <= 0 or atom.string < 0 or atom.string >= len(part.tuning):
                     raise ValueError(atom.location + ": invalid duration/string")
                 previous = state.get(key)
+                notation_fret = atom.fret
                 if not atom.tie and atom.strum_direction:
                     path = atom.beat.split('/')
                     group_key = (occurrence, atom.beat)
@@ -357,24 +386,40 @@ def _expected(source, alignment):
                         rest_starts, rest_ends = rest_indices.get(atom.voice, ([], []))
                         ri = bisect_left(rest_starts, start) - 1
                         interrupted = ri >= 0 and rest_ends[ri] > event['start']
-                        if (source.format != 'songsterr' or event['end'] != start or interrupted
+                        plain_target = (source.format == 'songsterr' and not interrupted
+                                        and _plain_tie_target(atom, event,
+                                            unique=source_slots[(atom.q, atom.voice, atom.string)] == 1,
+                                            pending=key in pending_slides or key in pending_hopos or key in muted_pending))
+                        if plain_target:
+                            p = atom.location.split('/')
+                            first = event['locations'][0].split('/')
+                            result['plain_tie_identities'].append({
+                                'trackId': part.id, 'sourceId': 'songsterr:' + ':'.join(p[i] for i in (1,3,5,7,9)),
+                                'originSourceId': 'songsterr:' + ':'.join(first[i] for i in (1,3,5,7,9)),
+                                'location': atom.location, 'occurrence': occurrence + 1, 'voice': int(atom.voice),
+                                'attack': float(clock.at(event['start'])), 'start': float(clock.at(start)), 'end': float(clock.at(end)),
+                                'string': atom.string, 'authored': {'fret': atom.fret}, 'used': {'fret': event['f']},
+                                'rule': 'plain-tie-keeps-attack-target'})
+                            notation_fret = event['f']
+                        elif (source.format != 'songsterr' or event['end'] != start or interrupted
                                 or event['effects'].get('mt') is not True or atom.effects.get('mt') is not True
                                 or sorted((event['f'], atom.fret)) != [0, 127]
                                 or expressive or event['pitch_gesture'] or event['trill'] or event['scrapes']
                                 or any(event['effects'].get(k) for k in ('hm','hp','hn','harmonic_target','vb','ho','po','ln'))):
                             unsupported(atom.location, 'Source tie does not identify a continuous prior note; it has not been repaired.')
-                        p = atom.location.split('/')
-                        first = event['locations'][0].split('/')
-                        result['muted_tie_identities'].append({
-                            'trackId': part.id, 'sourceId': 'songsterr:' + ':'.join(p[i] for i in (1,3,5,7,9)),
-                            'originSourceId': 'songsterr:' + ':'.join(first[i] for i in (1,3,5,7,9)),
-                            'location': atom.location, 'occurrence': occurrence + 1,
-                            'attack': float(clock.at(event['start'])), 'start': float(clock.at(start)), 'end': float(clock.at(end)),
-                            'string': atom.string,
-                            'authored': {'dead': True, 'fret': None if atom.fret == 127 else atom.fret},
-                            'used': {'dead': True, 'fret': None if event['f'] == 127 else event['f']},
-                            'rule': 'muted-tie-keeps-attack-target'})
-                        event['muted_identity'] = True
+                        else:
+                            p = atom.location.split('/')
+                            first = event['locations'][0].split('/')
+                            result['muted_tie_identities'].append({
+                                'trackId': part.id, 'sourceId': 'songsterr:' + ':'.join(p[i] for i in (1,3,5,7,9)),
+                                'originSourceId': 'songsterr:' + ':'.join(first[i] for i in (1,3,5,7,9)),
+                                'location': atom.location, 'occurrence': occurrence + 1,
+                                'attack': float(clock.at(event['start'])), 'start': float(clock.at(start)), 'end': float(clock.at(end)),
+                                'string': atom.string,
+                                'authored': {'dead': True, 'fret': None if atom.fret == 127 else atom.fret},
+                                'used': {'dead': True, 'fret': None if event['f'] == 127 else event['f']},
+                                'rule': 'muted-tie-keeps-attack-target'})
+                            event['muted_identity'] = True
                     late_mute = (source.format == 'songsterr' and atom.effects.get('mt') is True
                                  and not event['effects'].get('mt') and atom.fret != 127
                                  and not atom.pick_scrape and not event['scrapes'])
@@ -429,7 +474,8 @@ def _expected(source, alignment):
                     event = {"start": start + atom.attack_offset, "end": end, "s": atom.string, "f": atom.fret, "effects": dict(atom.effects),
                              "curve": [], "slide_marks": [], "incoming_marks": [], "scrapes": [], "scrape_direction": None, "locations": [atom.location], "occurrence": occurrence + 1, "beat": atom.beat,
                              "staccato": atom.staccato, "any_staccato": False, "pitch_gesture": False, "trill": atom.trill,
-                             "other_pitch_gesture": False, "bend_atoms": []}
+                             "other_pitch_gesture": False, "bend_atoms": [],
+                             "unique_origin": source_slots[(atom.q, atom.voice, atom.string)] == 1}
                     event['opening_strum'] = (source.format == 'songsterr' and occurrence == 0
                                               and start >= 0 and atom.attack_offset < 0
                                               and atom.strum_direction is not None)
@@ -558,9 +604,9 @@ def _expected(source, alignment):
                     pending_hopos[key] = event
                     event["effects"]["ln"] = True
                 state[key] = event
-                written_note = {"str": atom.string, "fret": atom.fret, "tied": atom.tie}
-                if atom.fret != 127:
-                    written_note["midi"] = part.tuning[atom.string] + part.capo + atom.fret + atom.pitch_offset
+                written_note = {"str": atom.string, "fret": notation_fret, "tied": atom.tie}
+                if notation_fret != 127:
+                    written_note["midi"] = part.tuning[atom.string] + part.capo + notation_fret + atom.pitch_offset
                 for raw_key, out_key in {"mt": "dead", "ghost": "ghost", "vb": "vib", "ac": "ac", "tp": "tp"}.items():
                     if atom.effects.get(raw_key):
                         written_note[out_key] = atom.effects[raw_key]
@@ -714,6 +760,7 @@ def _expected(source, alignment):
     result['harmonic_ties'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['tied_mutes'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['muted_tie_identities'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
+    result['plain_tie_identities'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['staccato_bends'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['finger_bends'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['undefined_slides'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
