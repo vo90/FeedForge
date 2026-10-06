@@ -252,6 +252,35 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     """Only write inside directory. Publishing/collision handling belongs to the app."""
     if alignment.get("status") != "validated":
         raise ImportFailure("alignment_failed", "The recording has not passed synchronization checks.")
+    source_model = performance.get('source') or {}
+    finger_policy = source_model.get('fingerVibratoPolicy')
+    contract = (recipe or {}).get('preservationContract', 0)
+    declared_finger_policy = (recipe or {}).get('fingerVibratoPolicy')
+    if source_model.get('format') == 'songsterr':
+        from .songsterr import NOTE_VIBRATO_POLICY
+        from .evidence import CONTRACT_VERSION
+        if type(contract) is not int or not 0 <= contract <= CONTRACT_VERSION:
+            raise ImportFailure('unsupported_score', 'Invalid preservation contract.')
+        if contract >= 94:
+            if (finger_policy != NOTE_VIBRATO_POLICY or source_path is None
+                    or declared_finger_policy not in (None, NOTE_VIBRATO_POLICY)):
+                raise ImportFailure('unsupported_score',
+                                    'Note-owned vibrato requires its original tab and matching conversion policy.')
+            if type((compatibility or {}).get('version')) is not int or compatibility['version'] < 94:
+                raise ImportFailure('unsupported_score', 'Note-owned vibrato requires current source accounting.')
+        else:
+            document = (performance.get('sourceScore') or {}).get('document', {})
+            # Without legacy beat flags both interpretations are identical. This
+            # allows unchanged historical fixtures without mislabelling a newly
+            # interpreted beat flag as an older written-note fallback.
+            beat_flags = any(b.get('vibrato') or b.get('wideVibrato')
+                             for p in document.get('parts', []) for m in p.get('measures', [])
+                             for v in m.get('voices', []) for b in v.get('beats', []))
+            if 'fingerVibratoPolicy' in (recipe or {}) or (finger_policy == NOTE_VIBRATO_POLICY and beat_flags):
+                raise ImportFailure('unsupported_score',
+                                    'Note-owned beat-vibrato interpretation requires preservation contract 94.')
+    elif 'fingerVibratoPolicy' in source_model or 'fingerVibratoPolicy' in (recipe or {}):
+        raise ImportFailure('unsupported_score', 'Songsterr vibrato policy has no supporting source.')
     negative_mute_source = performance.get('source') or {}
     negative_mute_policy = negative_mute_source.get('negativeFretMutePolicy')
     if 'negativeFretMutePolicy' in negative_mute_source:
@@ -509,6 +538,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     if recipe:
         manifest["song_import"] = {**deepcopy(recipe), "coverage": coverage}
     manifest.setdefault("song_import", {})["chartGuidancePolicy"] = GUIDANCE_POLICY
+    if source.get('format') == 'songsterr' and contract >= 94:
+        manifest['song_import']['fingerVibratoPolicy'] = finger_policy
     from .strum_groups import POLICY as STRUM_GROUP_POLICY
     manifest['song_import']['strumGroupingPolicy'] = STRUM_GROUP_POLICY
     if negative_mute_policy:

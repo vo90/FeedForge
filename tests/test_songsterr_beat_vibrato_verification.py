@@ -10,7 +10,28 @@ from test_song_import_compatibility_verification import reported_fixture
 from feedback_converter.song_import.verification import Check, _compatibility_report, verify_import
 from feedback_converter.song_import.verify_source import songsterr
 from test_song_import_score import beat, measure, raw_score, import_json
-from test_songsterr_hybrid_lead import build, song, rest
+from test_songsterr_hybrid_lead import prepared, song, rest
+from feedback_converter.song_import.evidence import CONTRACT_VERSION
+
+
+def current_hybrid_build(tmp_path, doc, mapped):
+    from test_song_import_builder import inputs
+    from feedback_converter.song_import.builder import build_feedpak
+    source, performance, options = prepared(tmp_path, doc)
+    _, audio, _, directory = inputs(tmp_path)
+    alignment = {'status': 'validated', 'offset': 0, 'scale': 1}
+    if mapped:
+        alignment.update(mapping='piecewise-linear', anchors=[
+            {'score': 0, 'audio': 0}, {'score': 2, 'audio': 1.5}, {'score': 8, 'audio': 8}],
+            tempos=[{'time': 0, 'bpm': 160}, {'time': 1.5, 'bpm': 120/(6.5/6)}])
+    result = build_feedpak(performance, audio, alignment, directory, output_dir=tmp_path/'out',
+        source_path=source, compatibility=performance['compatibilityReport'],
+        recipe={'preservationContract': CONTRACT_VERSION, 'hybridLead': options,
+                'source': 'songsterr', 'scoreHash': options['sourceSha256'], 'audioHash': audio['hash']},
+        output_settings={'generateDifficulty': True},
+        hybrid_lead={'enabled': True, 'mainTrackId': options['mainTrackId'], 'options': options})
+    archive = result['stagingPath']
+    return source, archive, verify_import(source, archive, alignment, hybrid_options=options)
 
 
 def warning(field, value=True, beat_index=0):
@@ -85,15 +106,13 @@ def test_production_package_keeps_beat_warnings_without_changing_notes(tmp_path,
     follow.update(vibrato=True, wideVibrato=True)
     if context == 'voices': bar['voices'][1]['beats'][0]['vibrato'] = True
     performance = import_json(tmp_path, doc)
-    def without_vibrato_and_notation(value):
+    def without_notation(value):
         if isinstance(value, dict):
-            return {k: without_vibrato_and_notation(v) for k, v in value.items()
-                    if k not in ('notation', 'vb', 'vibrato_marks')}
-        if isinstance(value, list): return [without_vibrato_and_notation(v) for v in value]
+            return {k: without_notation(v) for k, v in value.items() if k != 'notation'}
+        if isinstance(value, list): return [without_notation(v) for v in value]
         return value
-    # Existing legacy vibrato rendering/notation is retained; pitch, attacks,
-    # durations, ties and every unrelated technique must stay identical.
-    assert without_vibrato_and_notation(performance['tracks']) == without_vibrato_and_notation(plain['tracks'])
+    # Beat annotations are retained without adding a note controller or hint.
+    assert without_notation(performance['tracks']) == without_notation(plain['tracks'])
     findings = performance['compatibilityReport']['findings']
     assert len(findings) == (3 if context == 'voices' else 2)
     assert all(f['impact'] == 'display_or_expression' for f in findings)
@@ -101,21 +120,22 @@ def test_production_package_keeps_beat_warnings_without_changing_notes(tmp_path,
     alignment = {'status': 'validated', 'offset': .25, 'scale': 1}
     source = tmp_path/'score.json'
     built = build_feedpak(performance, audio, alignment, job, output_dir=tmp_path/'out',
-        source_path=source, compatibility=performance['compatibilityReport'], recipe={'preservationContract': 63})
+        source_path=source, compatibility=performance['compatibilityReport'], recipe={'preservationContract': CONTRACT_VERSION})
     result = verify_import(source, built['stagingPath'], alignment)
     assert result['status'] == 'passed', result
     if context == 'attack':
         with ZipFile(built['stagingPath']) as z: original = {n: z.read(n) for n in z.namelist()}
         manifest = yaml.safe_load(original['manifest.yaml'])
         chart_path = manifest['arrangements'][0]['file']
-        for fault in ('fret', 'attack', 'sustain', 'missing_vibrato', 'shifted_vibrato', 'missing_warning'):
+        for fault in ('fret', 'attack', 'sustain', 'invented_vibrato', 'missing_warning'):
             files = dict(original)
             chart = json.loads(files[chart_path]); note = chart['notes'][1]
             if fault == 'fret': note['f'] += 1
             elif fault == 'attack': note['t'] += .1
             elif fault == 'sustain': note['sus'] += .1
-            elif fault == 'missing_vibrato': del note['vibrato_marks']
-            elif fault == 'shifted_vibrato': note['vibrato_marks'][0]['start'] += .1
+            elif fault == 'invented_vibrato':
+                note['vb'] = True
+                note['vibrato_marks'] = [{'start': 0, 'end': .25, 'intensity': 'slight'}]
             elif fault == 'missing_warning':
                 report_path = manifest['song_import']['compatibilityFile']
                 report = json.loads(files[report_path])
@@ -136,7 +156,7 @@ def test_hybrid_with_note_vibrato_and_beat_warning_retains_both(tmp_path, mapped
     first.update(vibrato=True, wideVibrato=True)
     first['notes'][0]['leftHandVibrato'] = 'slight'
     doc['parts'][1]['measures'][1]['voices'][0]['beats'][0]['wideVibrato'] = True
-    source, _, _, _, archive, result = build(tmp_path, doc, mapped=mapped, difficulty=True)
+    source, archive, result = current_hybrid_build(tmp_path, doc, mapped)
     assert result['status'] == 'passed', result
     with ZipFile(archive) as z:
         manifest = yaml.safe_load(z.read('manifest.yaml'))

@@ -189,6 +189,8 @@ def run_import(request: dict, progress=None) -> dict:
             recipe['legacyBrushTimingPolicy'] = performance['source']['legacyBrushTimingPolicy']
         if performance.get('source', {}).get('negativeFretMutePolicy'):
             recipe['negativeFretMutePolicy'] = performance['source']['negativeFretMutePolicy']
+        if performance.get('source', {}).get('fingerVibratoPolicy'):
+            recipe['fingerVibratoPolicy'] = performance['source']['fingerVibratoPolicy']
         if performance.get('plainTieIdentityEvidence'):
             from .plain_ties import POLICY as PLAIN_TIE_POLICY
             recipe['plainTieIdentityPolicy'] = PLAIN_TIE_POLICY

@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 93
+VERSION = 94
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -347,7 +347,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, 89, 90, 91, 92, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, 89, 90, 91, 92, 93, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     reports_precedence = type(report.get('version')) is int and report['version'] >= 46
     if preservation_contract >= 46 and not reports_precedence:
@@ -364,6 +364,9 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     reports_negative_mutes = type(report.get('version')) is int and report['version'] >= 92
     if preservation_contract >= 92 and not reports_negative_mutes:
         check.fail('compatibility_version', 'import/compatibility', 'This preservation contract requires negative-fret mute accounting.')
+    if preservation_contract >= 94 and (type(report.get('version')) is not int or report['version'] < 94):
+        check.fail('compatibility_version', 'import/compatibility',
+                   'This preservation contract requires note-owned vibrato accounting.')
     check.equal("compatibility_status", "import/compatibility", "limitations" if any(
         row.get('impact') != 'source_retained' for row in rows) else "compatible", report.get("status"))
     target = report.get("target", {})
@@ -860,26 +863,6 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
               "musicalQualityAssessed": False}
     try:
         score_path, archive = Path(score_path), Path(archive)
-        source = read_source(score_path)
-        report["sourceSha256"] = hashlib.sha256(score_path.read_bytes()).hexdigest()
-        report["format"] = source.format
-        metadata = metadata or {}
-        for key, value in source.identity.items():
-            if metadata.get(key) is not None:
-                check.equal("source_identity", "metadata/" + key, value, str(metadata[key]))
-            provenance = alignment.get("provenance", {})
-            if provenance.get(key) is not None:
-                check.equal("timing_identity", "alignment/" + key, value, str(provenance[key]))
-        wanted = expected(source, alignment)
-        report["counts"].update(sourceTracks=source.track_count, selectedTracks=len(wanted["parts"]),
-                                excludedTracks=len(source.excluded), writtenMeasures=len(source.bars),
-                                performedMeasures=len(wanted["order"]), sourceNotes=wanted["raw_notes"],
-                                tieSegments=wanted["tie_segments"], expectedNotes=sum(len(p["notes"]) for p in wanted["parts"]))
-        report["excludedTracks"] = source.excluded
-        report["uncomparedSourceAnnotations"] = sorted(source.ignored)
-        report["timing"] = {"method": str(alignment.get("method", "unspecified")),
-                            "independentAudioMatchAssessed": False,
-                            "scoreDuration": wanted["score_duration"], "mappedEnd": wanted["mapped_end"]}
         with ZipFile(archive) as z:
             names = z.namelist()
             if len(set(names)) != len(names):
@@ -895,6 +878,43 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             manifest = yaml.safe_load(z.read("manifest.yaml"))
             _finite(manifest, "manifest", check)
             recipe = manifest.get("song_import", {})
+            contract = recipe.get('preservationContract', 0)
+            if type(contract) is not int or not 0 <= contract <= VERSION:
+                raise ValueError('manifest: unsupported preservation contract')
+            # Reconstruct historical packages with their original interpretation.
+            # A manifest policy label alone cannot opt an older contract into the
+            # new note-owned interpretation or silently rewrite its expectations.
+            source = read_source(score_path, note_owned_vibrato=contract >= 94)
+            report["sourceSha256"] = hashlib.sha256(score_path.read_bytes()).hexdigest()
+            report["format"] = source.format
+            if source.format == 'songsterr':
+                if contract >= 94:
+                    check.equal('finger_vibrato_policy', 'manifest/song_import/fingerVibratoPolicy',
+                                'songsterr-note-vibrato-v1', recipe.get('fingerVibratoPolicy'))
+                    report['scope'].append('note_owned_finger_vibrato')
+                elif 'fingerVibratoPolicy' in recipe:
+                    check.fail('finger_vibrato_contract', 'manifest/song_import/fingerVibratoPolicy',
+                               'Note-owned finger vibrato requires preservation contract 94.')
+            elif 'fingerVibratoPolicy' in recipe:
+                check.fail('finger_vibrato_source', 'manifest/song_import/fingerVibratoPolicy',
+                           'Songsterr finger-vibrato policy has no supporting source.')
+            metadata = metadata or {}
+            for key, value in source.identity.items():
+                if metadata.get(key) is not None:
+                    check.equal("source_identity", "metadata/" + key, value, str(metadata[key]))
+                provenance = alignment.get("provenance", {})
+                if provenance.get(key) is not None:
+                    check.equal("timing_identity", "alignment/" + key, value, str(provenance[key]))
+            wanted = expected(source, alignment)
+            report["counts"].update(sourceTracks=source.track_count, selectedTracks=len(wanted["parts"]),
+                                    excludedTracks=len(source.excluded), writtenMeasures=len(source.bars),
+                                    performedMeasures=len(wanted["order"]), sourceNotes=wanted["raw_notes"],
+                                    tieSegments=wanted["tie_segments"], expectedNotes=sum(len(p["notes"]) for p in wanted["parts"]))
+            report["excludedTracks"] = source.excluded
+            report["uncomparedSourceAnnotations"] = sorted(source.ignored)
+            report["timing"] = {"method": str(alignment.get("method", "unspecified")),
+                                "independentAudioMatchAssessed": False,
+                                "scoreDuration": wanted["score_duration"], "mappedEnd": wanted["mapped_end"]}
             compatibility = {}
             if source.negative_fret_mutes or 'negativeFretMutePolicy' in recipe:
                 if not source.negative_fret_mutes:

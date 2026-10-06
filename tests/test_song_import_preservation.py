@@ -60,10 +60,13 @@ def test_beat_techniques_and_direction_only_slide_are_preserved(tmp_path):
     b = {**beat(16, slide="downwards"), "tapping": True, "vibrato": True}
     result = import_json(tmp_path, raw_score([measure(b)]))
     note = result["tracks"][0]["notes"][0]
-    assert note["tp"] and note["vb"] and note["slide_out"] == "down"
+    assert note["tp"] and not note.get("vb") and note["slide_out"] == "down"
+    assert 'vibrato_marks' not in note
     assert "slu" not in note and not any("five-fret" in warning for warning in result["warnings"])
     notation = result["tracks"][0]["notation"]["measures"][0]["staves"]["staff"]["voices"][0]["beats"][0]
     assert notation["tap"] and notation["vib"]
+    assert not notation['notes'][0].get('vib')
+    assert any(row['feature'] == 'beat.vibrato' for row in result['compatibilityReport']['findings'])
 
 
 def test_notation_retains_rests_text_dynamics_tuplets_and_ties(tmp_path):

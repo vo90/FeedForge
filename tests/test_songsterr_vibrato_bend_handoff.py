@@ -91,9 +91,26 @@ def test_unqualified_combinations_keep_existing_warning_and_curve(extra,tmp_path
     elif extra=='palm-mute':bs[0]['palmMute']=True
     elif extra=='let-ring':bs[0]['letRing']=True
     p=checked(doc);e=p['fingerBendTimingEvidence'][0]
-    assert e['status']=='deferred' and 'vibratoTiming' not in e['overlap']
     loaded=import_json(tmp_path,doc)
-    assert any(f['feature']=='note.bend_timing' for f in loaded['compatibilityReport']['findings'])
+    findings=loaded['compatibilityReport']['findings']
+    if extra in ('beat-only','mixed-beat-only'):
+        control=deepcopy(doc)
+        for b in control['parts'][0]['measures'][0]['voices'][0]['beats']:
+            b.pop('vibrato',None);b.pop('wideVibrato',None)
+        baseline=checked(control)
+        assert p['tracks'][0]['notes']==baseline['tracks'][0]['notes']
+        assert e==baseline['fingerBendTimingEvidence'][0] and e['status']=='resolved'
+        n=p['tracks'][0]['notes'][0]
+        if extra=='beat-only':
+            assert 'vibrato_marks' not in n and 'vb' not in n and 'vibratoTiming' not in e['overlap']
+        else:
+            assert n['vibrato_marks']==[{'start':1.,'end':2.,'intensity':'slight'}]
+            assert e['overlap']['vibratoTiming']=='independent-note-controls'
+        assert any(f['feature'] in ('beat.vibrato','beat.wideVibrato') for f in findings)
+        assert not any(f['feature']=='note.bend_timing' for f in findings)
+    else:
+        assert e['status']=='deferred' and 'vibratoTiming' not in e['overlap']
+        assert any(f['feature']=='note.bend_timing' for f in findings)
 
 
 @pytest.mark.parametrize('piecewise',[False,True])

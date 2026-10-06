@@ -15,7 +15,7 @@ from .songsterr_legacy_effects import (FIELDS as LEGACY_BEAT_EFFECTS, beat_effec
                                      retention as legacy_beat_effect_retention)
 from .model import ScoreImportError, integer, rational
 
-VERSION = 93
+VERSION = 94
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -47,8 +47,8 @@ KNOWN["beat"].add("dotted")
 KNOWN["beat"].add("tempo")
 KNOWN['beat'].update(LEGACY_BEAT_EFFECTS)
 LIMITATIONS = {
-    ("beat", "vibrato"): "Beat-level vibrato is retained as a written instruction; its playback timing is not confirmed by the source player.",
-    ("beat", "wideVibrato"): "Beat-level wide vibrato is retained as a written instruction; its playback timing is not confirmed by the source player.",
+    ("beat", "vibrato"): "The beat-level vibrato annotation is retained in the source and written beat. Note vibrato follows explicit note instructions; this beat flag does not add a note controller or scored pitch.",
+    ("beat", "wideVibrato"): "The beat-level wide vibrato annotation is retained in the source and written beat. Note vibrato follows explicit note instructions; this beat flag does not add a note controller or scored pitch.",
     ("beat", "sustainPedal"): "The sustain-pedal marking is retained in the original source. Songsterr uses it for synthesizer pedal control. Written notes, ties and durations are preserved; the game does not display or score the pedal effect, or extend note trails for it.",
     ("note", "rightFingering"): "The authored picking-hand finger is retained in the original source. The game does not display picking-hand fingering; fretting-hand hints, notes, timing and scoring are unchanged.",
     ("note", "tremolo"): "Tremolo picking uses the game's existing tremolo instruction. Exact subdivision and within-tie timing remain in the source. A tied sustain has one marker for the whole sustain; individual repeated picks are not expanded or scored separately, and the written subdivision is not engraved.",
@@ -64,6 +64,10 @@ LIMITATIONS = {
     ("beat", "chord"): "Authored labels name simultaneous chord templates. Labels on rests or single notes, and label engraving, remain in the source.",
     ("beat", "wahwah"): "The wah pedal marking is retained in the source. Notes and timing are converted; pedal expression is not represented in the game chart.",
     ("note", "staccato"): "Performed duration follows the source's staccato rule. The written staccato marking is retained in the original source; the game chart has no dedicated staccato marker.",
+}
+HISTORICAL_BEAT_VIBRATO_LIMITATIONS = {
+    ("beat", "vibrato"): "Beat-level vibrato is retained as a written instruction; its playback timing is not confirmed by the source player.",
+    ("beat", "wideVibrato"): "Beat-level wide vibrato is retained as a written instruction; its playback timing is not confirmed by the source player.",
 }
 # These names are understood but do not yet have a faithful conversion mapping.
 UNIMPLEMENTED = {
@@ -112,7 +116,7 @@ def add_finding(report, *, feature, category, impact, message, location="source"
         report["status"] = "limitations"
 
 
-def inspect_songsterr(document, *, track_indices=None):
+def inspect_songsterr(document, *, track_indices=None, note_owned_vibrato=True):
     if not isinstance(document, dict):
         report = new_report()
         add_finding(report, feature="document", category="source_structure", impact="blocking", message="Expected a Songsterr score object.")
@@ -258,8 +262,10 @@ def inspect_songsterr(document, *, track_indices=None):
             elif scope == "measure" and key == "tripletFeel" and value not in ("off", "8th", "16th", "dotted8th", "dotted16th", "scottish8th", "scottish16th"):
                 category, message = "unknown_semantics", "This swing feel needs additional interpretation."
             elif (scope, key) in LIMITATIONS:
+                limitation = (HISTORICAL_BEAT_VIBRATO_LIMITATIONS.get((scope, key), LIMITATIONS[scope, key])
+                              if not note_owned_vibrato else LIMITATIONS[scope, key])
                 add_finding(report, feature=f"{scope}.{key}", category="game_limitation", impact="display_or_expression",
-                            message=LIMITATIONS[scope, key], location=path + "/" + key, value=value, **coordinates)
+                            message=limitation, location=path + "/" + key, value=value, **coordinates)
             if category:
                 add_finding(report, feature=f"{scope}.{key}", category=category, impact="blocking",
                             message=message, location=path + "/" + key, value=value, **coordinates)

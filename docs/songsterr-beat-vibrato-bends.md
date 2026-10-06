@@ -2,6 +2,13 @@
 
 Preservation contract 77, finger-bend evidence 17.
 
+This describes the historical written-beat fallback retained for older archives.
+Contract 94 uses explicit note controllers only. Beat flags still retain their
+source annotations and warnings, but no longer generate the fallback intervals
+or `terminalSlideOut.beatVibrato` controller receipt; ordinary bend timing remains
+independently qualified. See
+[note-owned vibrato](songsterr-note-vibrato-ownership.md).
+
 The converter qualifies the bend clock separately from uncertain beat-level
 vibrato playback. This applies to continuous same-fret/string/voice fretted
 ties, non-overlapping bend controls and one terminal direction-only slide.

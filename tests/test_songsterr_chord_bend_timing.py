@@ -104,7 +104,9 @@ def test_compound_context_keeps_each_independent_warning(tmp_path,context):
     p=checked(doc)
     resolved=context=='beat-vibrato'
     assert all(e['status']==('resolved' if resolved else 'deferred') for e in p['fingerBendTimingEvidence'])
-    if resolved:assert all(e['terminalSlideOut']['beatVibrato'] for e in p['fingerBendTimingEvidence'])
+    if resolved:
+        assert all('beatVibrato' not in e['terminalSlideOut'] for e in p['fingerBendTimingEvidence'])
+        assert notes(p) == notes(checked(source()))  # Keep explicit tied note-wide vibrato.
     loaded=import_json(tmp_path,doc)
     findings=loaded['compatibilityReport']['findings']
     assert any(f['feature']=='note.bend_timing' for f in findings)==(not resolved)

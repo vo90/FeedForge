@@ -5,6 +5,12 @@ slight/wide instructions in `vibrato_marks`. Times are seconds relative to the
 attack; a present array is authoritative over the compatibility `vb` flag.
 This is qualitative expression, never an exact oscillator or scoring target.
 
+Contract 94 changes controller ownership: only explicit note instructions create
+note vibrato. Beat flags remain source/written-beat annotations and compatibility
+findings. The historical contract 62 fallback described below remains available
+for verifying older archives; see
+[note-owned vibrato](songsterr-note-vibrato-ownership.md).
+
 The completed-tie resolver follows the reviewed Songsterr controller schedule:
 
 - The initial note's instruction extends to its completed tied end.
@@ -13,9 +19,9 @@ The completed-tie resolver follows the reviewed Songsterr controller schedule:
 - At a shared boundary a reset precedes activation. Adjacent equal intervals
   merge; differing strengths remain explicit. Sub-tick synthesizer resets are
   not represented as tiny gaps in a playing instruction.
-- Modern note `leftHandVibrato` takes precedence over legacy note flags. Beat-only
-  legacy flags retain their written intent with a compatibility limitation: the
-  pinned player did not emit them.
+- Modern note `leftHandVibrato` takes precedence over legacy note flags. Historical
+  imports used a warned written fallback for beat-only flags that the pinned
+  player did not emit. New imports retain those flags without note fanout.
 - Direction-only slide-outs keep their existing source interval. Synthesized
   slide destinations, hidden note-ons and shortened synth-control release times
   are not invented as tablature. A settled bend followed by vibrato and a terminal

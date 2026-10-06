@@ -1,4 +1,4 @@
-"""Independent bend clocks retain written beat vibrato and its limitation."""
+"""Note-owned policy preserves bend clocks and retained beat annotations."""
 from copy import deepcopy
 import hashlib
 import json
@@ -15,6 +15,9 @@ from feedback_converter.song_import.builder import build_feedpak
 from feedback_converter.song_import.hybrid_lead import normalize_options, choose_main
 from feedback_converter.song_import.score import load_performance
 from feedback_converter.song_import.verification import verify_import
+from feedback_converter.song_import.songsterr import parse, WRITTEN_BEAT_VIBRATO_POLICY
+from feedback_converter.song_import.timeline import render
+from feedback_converter.song_import.compatibility import inspect_songsterr
 
 REFERENCE = json.loads((Path(__file__).parent/'fixtures/songsterr_beat_vibrato_bends_reference.json').read_text())
 
@@ -24,14 +27,19 @@ def document():
 
 
 @pytest.mark.parametrize('case', REFERENCE['cases'], ids=lambda c:c['id'])
-def test_independent_clock_preserves_written_controls(case, tmp_path):
+def test_independent_clock_preserves_bend_without_beat_controller(case, tmp_path):
     d = deepcopy(case['source']); p = checked(d)
     assert d == case['source']
     e = p['fingerBendTimingEvidence'][0]; n = p['tracks'][0]['notes'][0]
-    assert e['status'] == 'resolved' and n == case['note']
-    control = e['terminalSlideOut']['beatVibrato']
-    assert control['policy'] == 'independent-written-instruction' and control['segments']
-    assert {k:v for k,v in n.items() if k not in ('bn','bnv')} == {k:v for k,v in case['before'].items() if k not in ('bn','bnv')}
+    expected_note = {k:v for k,v in case['note'].items() if k not in ('vb','vibrato_marks')}
+    own_kind = d['parts'][0]['measures'][0]['voices'][0]['beats'][1]['notes'][0].get('leftHandVibrato')
+    if own_kind:
+        # The mixed fixture has a genuine controller on only the middle tie.
+        expected_note.update(vb=True,vibrato_marks=[{'start':.5,'end':1.,'intensity':own_kind}])
+    assert e['status'] == 'resolved' and n == expected_note
+    assert 'beatVibrato' not in e['terminalSlideOut']
+    assert bool(n.get('vb')) == bool(own_kind)
+    assert {k:v for k,v in n.items() if k not in ('bn','bnv','vb','vibrato_marks')} == {k:v for k,v in case['before'].items() if k not in ('bn','bnv','vb','vibrato_marks')}
     assert len(p['tracks'][0]['notes']) == 2 and 'sl' not in n and 'slu' not in n
     assert REFERENCE['referenceSha256'] == '4219f9dbf0952af83be36c8b590f10fea7a0f36d72bd1f92297a3d768f93f5ab'
     assert len(case['profiles']) == 2 and all(v['beatFlagsDoNotAlterBendOrScheduledEvents'] for v in case['profiles'])
@@ -59,7 +67,8 @@ def test_general_source_clock_contexts(variant):
         bs[2]['notes'][0]['bend'] = {'points':[{'position':0,'tone':100},{'position':60,'tone':0}]}
     else: d.update(title='Unrelated song',songId=887766,revisionId=9)
     p = checked(d)
-    assert all(e['status'] == 'resolved' and e['terminalSlideOut']['beatVibrato'] for e in p['fingerBendTimingEvidence'])
+    assert all(e['status'] == 'resolved' and 'beatVibrato' not in e['terminalSlideOut'] for e in p['fingerBendTimingEvidence'])
+    assert not any(n.get('vb') or n.get('vibrato_marks') for n in p['tracks'][0]['notes'])
     if variant == 'repeat': assert len(p['fingerBendTimingEvidence']) == 2
     if variant == 'tempo':
         assert p['tracks'][0]['notes'][0]['bnv'] == [{'t':0.,'v':0.},{'t':.25,'v':2/3},{'t':1.25,'v':2.},{'t':2.75,'v':2.}]
@@ -67,7 +76,7 @@ def test_general_source_clock_contexts(variant):
 
 @pytest.mark.parametrize('fault', ['pinch','natural','whammy','bar-vibrato','targeted-slide',
                                   'initial-slide','earlier-out','hopo','palm-mute','let-ring','overlap','strum'])
-def test_other_compositions_remain_guarded(fault,tmp_path):
+def test_beat_annotation_does_not_change_other_composition_qualification(fault,tmp_path):
     d = document(); bs = d['parts'][0]['measures'][0]['voices'][0]['beats']; first = bs[0]['notes'][0]; tail = bs[2]['notes'][0]
     if fault in ('pinch','natural'): first.update(harmonic=fault,harmonicFret=7 if fault == 'natural' else 12)
     elif fault == 'whammy': bs[0]['tremoloBar'] = {'points':[{'position':0,'tone':0},{'position':60,'tone':-50}]}
@@ -83,9 +92,20 @@ def test_other_compositions_remain_guarded(fault,tmp_path):
         tail['bend'] = first.pop('bend')
         bs[0]['brushStroke'] = {'direction':'down','duration':30,'shift':100}
         bs[0]['notes'].append({'string':1,'fret':5})
-    e = checked(d)['fingerBendTimingEvidence'][0]
-    assert e['status'] == 'deferred' and 'terminalSlideOut' not in e
-    assert any(f['feature'] == 'note.bend_timing' for f in import_json(tmp_path,d)['compatibilityReport']['findings'])
+    # These former beat-controller compounds now follow their existing note-
+    # owned rules. Removing metadata must not change musical qualification.
+    control = deepcopy(d)
+    for b in control['parts'][0]['measures'][0]['voices'][0]['beats']:
+        b.pop('vibrato', None); b.pop('wideVibrato', None)
+    current, plain = checked(d), checked(control)
+    e = current['fingerBendTimingEvidence'][0]
+    assert current['fingerBendTimingEvidence'] == plain['fingerBendTimingEvidence']
+    assert current['tracks'][0]['notes'] == plain['tracks'][0]['notes']
+    resolved = fault in ('pinch', 'whammy', 'targeted-slide', 'initial-slide', 'overlap')
+    assert e['status'] == ('resolved' if resolved else 'deferred')
+    assert any(f['feature'] == 'note.bend_timing' for f in import_json(tmp_path,d)['compatibilityReport']['findings']) == (not resolved)
+    historical = render(parse(d, vibrato_policy=WRITTEN_BEAT_VIBRATO_POLICY))
+    assert historical['fingerBendTimingEvidence'][0]['status'] == 'deferred'
 
 
 @pytest.mark.parametrize('piecewise',[False,True])
@@ -100,17 +120,20 @@ def test_package_keeps_source_warnings_and_rejects_mutations(tmp_path,piecewise,
         alignment.update(mapping='piecewise-linear',anchors=[{'score':0,'audio':.25},{'score':.5,'audio':.75},{'score':4,'audio':4.95}],tempos=[{'time':.25,'bpm':120},{'time':.75,'bpm':100}])
     options = normalize_options({'enabled':hybrid}); sha = hashlib.sha256(source.read_bytes()).hexdigest()
     if hybrid: options.update(mainTrackId=choose_main(p,options,sha),sourceSha256=sha)
-    recipe = {'preservationContract':77,'scoreHash':sha,'audioHash':audio['hash'],**({'hybridLead':options} if hybrid else {})}
+    recipe = {'preservationContract':94,'scoreHash':sha,'audioHash':audio['hash'],**({'hybridLead':options} if hybrid else {})}
     old = tmp_path/'old'; old.mkdir()
+    historical = render(parse(document(), vibrato_policy=WRITTEN_BEAT_VIBRATO_POLICY))
+    historical['compatibilityReport'] = inspect_songsterr(document(), note_owned_vibrato=False)
     with pytest.raises(ImportFailure,match='contract 77'):
-        build_feedpak(p,audio,alignment,old,output_dir=tmp_path/'old-out',source_path=source,compatibility=p['compatibilityReport'],recipe={'preservationContract':76})
+        build_feedpak(historical,audio,alignment,old,output_dir=tmp_path/'old-out',source_path=source,compatibility=historical['compatibilityReport'],recipe={'preservationContract':76})
     result = build_feedpak(p,audio,alignment,job,output_dir=tmp_path/'out',source_path=source,compatibility=p['compatibilityReport'],recipe=recipe,
                           hybrid_lead={'enabled':hybrid,'mainTrackId':options.get('mainTrackId'),'options':options})
     archive = Path(result['stagingPath']); verify = lambda f:verify_import(source,f,alignment,hybrid_options=options if hybrid else None)
     assert verify(archive)['status'] == 'passed'
     with ZipFile(archive) as z: original = {name:z.read(name) for name in z.namelist()}
     m = yaml.safe_load(original['manifest.yaml']); ep = m['song_import']['fingerBendTimingFile']
-    assert json.loads(original[ep])['version'] == 17 and original[m['song_import']['sourceFile']] == source.read_bytes()
+    assert json.loads(original[ep])['version'] == 3 and original[m['song_import']['sourceFile']] == source.read_bytes()
+    assert m['song_import']['fingerVibratoPolicy'] == 'songsterr-note-vibrato-v1'
     if hybrid: assert any(a['name'] == 'Hybrid Lead' for a in m['arrangements'])
     for fault in ('bend','slide-time','slide-direction','vibrato','attack','fret','duration','extra-attack',
                   'evidence-missing','evidence-source','evidence-policy','version','contract','warning'):
@@ -119,16 +142,16 @@ def test_package_keeps_source_warnings_and_rejects_mutations(tmp_path,piecewise,
         if fault == 'bend': n['bnv'][1]['t'] /= 2
         elif fault == 'slide-time': n['slide_out_marks'][0]['start'] += .1
         elif fault == 'slide-direction': n['slide_out_marks'][0]['direction'] = 'down'
-        elif fault == 'vibrato': del n['vibrato_marks']
+        elif fault == 'vibrato': n.update(vb=True,vibrato_marks=[{'start':0.,'end':n['sus'],'intensity':'slight'}])
         elif fault == 'attack': n['t'] += .1
         elif fault == 'fret': n['f'] += 1
         elif fault == 'duration': n['sus'] -= .1
         elif fault == 'extra-attack': chart['notes'].append(deepcopy(n))
-        elif fault == 'evidence-missing': del ev['gestures'][0]['terminalSlideOut']['beatVibrato']
-        elif fault == 'evidence-source': ev['gestures'][0]['terminalSlideOut']['beatVibrato']['segments'][0]['sourceId'] += ':wrong'
-        elif fault == 'evidence-policy': ev['gestures'][0]['terminalSlideOut']['beatVibrato']['policy'] = 'native-playback'
-        elif fault == 'version': ev.update(version=16,policy='songsterr-finger-bend-timing-v16')
-        elif fault == 'contract': manifest['song_import']['preservationContract'] = 76
+        elif fault == 'evidence-missing': del ev['gestures'][0]['terminalSlideOut']
+        elif fault == 'evidence-source': ev['gestures'][0]['terminalSlideOut']['sourceId'] += ':wrong'
+        elif fault == 'evidence-policy': ev['gestures'][0]['terminalSlideOut']['beatVibrato'] = {'policy':'native-playback','segments':[]}
+        elif fault == 'version': ev.update(version=2,policy='songsterr-finger-bend-timing-v2')
+        elif fault == 'contract': manifest['song_import']['preservationContract'] = 93
         else:
             rp = manifest['song_import']['compatibilityFile']; report = json.loads(files[rp])
             report['findings'] = [f for f in report['findings'] if f['feature'] not in ('beat.vibrato','beat.wideVibrato')]

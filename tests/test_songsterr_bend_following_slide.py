@@ -120,7 +120,9 @@ def test_other_expressions_and_independent_beat_vibrato_are_distinguished(tmp_pa
     p=checked(doc)
     resolved=extra in ('beat-vibrato','targeted-slide','whammy')
     assert all(e['status']==('resolved' if resolved else 'deferred') for e in p['fingerBendTimingEvidence'])
-    if extra=='beat-vibrato':assert all(e['terminalSlideOut']['beatVibrato'] for e in p['fingerBendTimingEvidence'])
+    if extra=='beat-vibrato':
+        assert all('beatVibrato' not in e['terminalSlideOut'] for e in p['fingerBendTimingEvidence'])
+        assert notes(p) == notes(checked(source()))  # Genuine tied note-wide vibrato remains.
     if extra=='targeted-slide':assert all(e['targetedSlide'] for e in p['fingerBendTimingEvidence'])
     if extra=='whammy':assert all(e['barCurve'] and e['terminalSlideOut'] for e in p['fingerBendTimingEvidence'])
     loaded=import_json(tmp_path,doc)

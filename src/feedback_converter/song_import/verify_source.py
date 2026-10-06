@@ -591,7 +591,10 @@ def _section_annotation(names, location):
     return ranked[0][2]
 
 
-def songsterr(document, *, track_indices=None):
+def songsterr(document, *, track_indices=None, note_owned_vibrato=True):
+    """Read current note controls, or reproduce a historical archive's fanout."""
+    if type(note_owned_vibrato) is not bool:
+        raise ValueError("source: invalid note vibrato policy selection")
     # Diagnostic selection never changes shared labels, meter, tempo or repeats.
     # Published archives use the default, which checks every eligible track.
     if not isinstance(document, dict) or document.get("format") != "songsterr":
@@ -953,7 +956,7 @@ def songsterr(document, *, track_indices=None):
                             fx["tr"] = True
                         for key, out in {"palmMute": "pm", "letRing": "lr", "tap": "tp", "tapping": "tp",
                                          "slap": "slp", "pop": "plk", "slapping": "slp", "popping": "plk", "vibrato": "vb", "wideVibrato": "vb"}.items():
-                            if beat.get(key):
+                            if beat.get(key) and (not note_owned_vibrato or key not in ("vibrato", "wideVibrato")):
                                 fx[out] = True
                         harmonic = note.get("harmonic")
                         harmonic_shift = 0
@@ -1071,7 +1074,8 @@ def songsterr(document, *, track_indices=None):
                         kind = note.get('leftHandVibrato')
                         if kind is None:
                             kind = 'wide' if note.get('wideVibrato') else 'slight' if note.get('vibrato') else None
-                        atoms[-1].beat_vibrato = kind is None and bool(beat.get('wideVibrato') or beat.get('vibrato'))
+                        atoms[-1].beat_vibrato = (not note_owned_vibrato and kind is None
+                                                 and bool(beat.get('wideVibrato') or beat.get('vibrato')))
                         if atoms[-1].beat_vibrato:
                             kind = 'wide' if beat.get('wideVibrato') else 'slight'
                         atoms[-1].finger_vibrato = kind
@@ -1289,11 +1293,11 @@ def gpif(data):
     return Source("gpif", _txt(root, "Score/Title"), _txt(root, "Score/Artist"), bars, parts, excluded, len(ids))
 
 
-def read_source(path: Path):
+def read_source(path: Path, *, note_owned_vibrato=True):
     if path.stat().st_size > MAX_SOURCE:
         raise ValueError("source: verification size limit exceeded")
     if path.suffix.lower() == ".json":
-        return songsterr(json.loads(path.read_text(encoding="utf-8-sig")))
+        return songsterr(json.loads(path.read_text(encoding="utf-8-sig")), note_owned_vibrato=note_owned_vibrato)
     if path.suffix.lower() in {".gpif", ".xml"}:
         return gpif(path.read_bytes())
     with ZipFile(path) as archive:
