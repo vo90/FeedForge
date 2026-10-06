@@ -3,6 +3,7 @@ from copy import deepcopy
 
 from .model import ScoreImportError
 from .songsterr_legacy import validate_legacy_field
+from .songsterr_legacy_effects import validate_legacy_beat_effect
 
 
 class FeatureInventory:
@@ -25,6 +26,9 @@ class FeatureInventory:
             raise ScoreImportError(f"Malformed {scope} object at {path}.")
         for key, value in obj.items():
             where = f"{path}.{key}"
+            if validate_legacy_beat_effect(scope, key, value, beat=obj):
+                self.record(scope, key, 'source', where, ['source'])
+                continue
             # Metadata must be validated before generic inactive handling,
             # including note fields on rests that never reach the note parser.
             if scope.startswith("Songsterr ") and validate_legacy_field(scope, key, value):
