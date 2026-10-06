@@ -4,6 +4,7 @@ See docs/songsterr-timing.md for the public-source semantics and boundaries.
 All offsets remain rational until the audio clock is applied.
 """
 from fractions import Fraction as F
+import math
 
 from .model import ScoreImportError, integer, rational
 from .songsterr_fields import whole_measure_rest, bounded_dotted_whole_rest, effective_dots
@@ -15,6 +16,7 @@ FEELS = {f"{prefix}{unit}": (F(4, unit), first, second)
                                        ("scottish", F(1, 2), F(3, 2)))
          for unit in (8, 16)}
 FEELS = {key + "th": value for key, value in FEELS.items()}
+LEGACY_BRUSH_POLICY = "native-legacy-brush-v1"
 
 
 def measure_timing(measure, bar_length, feel, previous=None, initial=False):
@@ -151,10 +153,47 @@ def voice_timing(beats, bar_length, performed_lengths=None, *, previous=None, in
     return output
 
 
-def strum_offsets(beat):
+def _legacy_brushes(beat):
+    """Validate old subdivision scalars without adopting native coercion."""
+    active = []
+    for key in ("upStroke", "downStroke"):
+        value = beat.get(key)
+        if value is None or value is False:
+            continue
+        if (type(value) not in (int, float)
+                or type(value) is float and not math.isfinite(value)):
+            raise ScoreImportError("Invalid legacy strum subdivision; expected an integral scalar.")
+        if value == 0:
+            continue
+        value = integer(value, "legacy strum")
+        if not 1 <= value <= 8:
+            raise ScoreImportError("Legacy strum duration needs additional interpretation.")
+        active.append((key, value))
+    return active
+
+
+def strum_kind(beat):
+    """Describe the effective representation after timing has validated it."""
+    if beat.get("arpeggio") is not None:
+        return "arpeggio"
+    if beat.get("brushStroke") is not None:
+        return "brush"
+    if any(beat.get(key) for key in ("upArpeggio", "downArpeggio")):
+        return "arpeggio"
+    return "brush" if _legacy_brushes(beat) else None
+
+
+def uses_legacy_brush_timing(beat):
+    """Select the qualified bare-brush rule without rewriting source fields."""
+    return (not any(beat.get(key) is not None for key in ("brushStroke", "arpeggio"))
+            and not any(beat.get(key) for key in ("upArpeggio", "downArpeggio"))
+            and bool(_legacy_brushes(beat)))
+
+
+def strum_offsets(beat, *, string_count=None):
     """Return source-note-index offsets and explicit direction, never a guessed strum."""
     sources = [key for key in ("brushStroke", "arpeggio") if beat.get(key) is not None]
-    legacy = [key for key in ("upStroke", "downStroke") if beat.get(key)]
+    legacy = _legacy_brushes(beat)
     old_arps = [key for key in ("upArpeggio", "downArpeggio") if beat.get(key)]
     old_step = None
     if old_arps and not sources:
@@ -176,18 +215,30 @@ def strum_offsets(beat):
         direction = stroke["direction"]
         duration, shift = rational(stroke["duration"], "strum duration"), rational(stroke["shift"], "strum shift")
     elif old_step is None:
-        if integer(beat[legacy[0]], "legacy strum") != 1:
-            raise ScoreImportError("Legacy strum duration needs additional interpretation.")
-        direction, duration, shift = ("down" if legacy[0] == "upStroke" else "up"), F(30), 100
+        key, value = legacy[0]
+        # The native ro/no stage swaps bare brush directions before ao. Only
+        # that proven normalization is retained; no general JSON repair runs.
+        direction = "down" if key == "upStroke" else "up"
+        old_step = F(4, 13 * 2 ** (8 - value))
+        duration, shift = F(0), 100
     else:
         duration, shift = F(0), 100
     if direction not in ("up", "down") or not 0 <= duration <= 960 or not 0 <= shift <= 100:
         raise ScoreImportError("Invalid authored strum timing.")
-    if legacy and sources:
-        expected = "down" if legacy[0] == "upStroke" else "up"
-        if expected != direction or integer(beat[legacy[0]], "legacy strum") != 1:
-            raise ScoreImportError("Conflicting legacy and current strum data.")
-    ordered = sorted(((integer(n.get("string"), "strum string"), i) for i, n in enumerate(beat["notes"]) if not n.get("rest")))
+    # A valid explicit modern gesture supplies its complete timing even when
+    # one retained old brush has another direction or subdivision.
+    legacy_brush = bool(legacy and not sources and not old_arps)
+    if legacy_brush and any(n.get("rest") and n.get("string") is None for n in beat["notes"]):
+        raise ScoreImportError("A legacy strum rest needs an explicit string slot.")
+    if legacy_brush:
+        for note in beat["notes"]:
+            if note.get("rest"):
+                slot = integer(note["string"], "legacy strum rest string")
+                if slot < 0 or string_count is not None and slot >= string_count:
+                    raise ScoreImportError("A legacy strum rest has an invalid string slot.")
+    ordered = sorted((integer(n.get("string"), "strum string"), i)
+                     for i, n in enumerate(beat["notes"])
+                     if legacy_brush or not n.get("rest"))
     if len({s for s, _ in ordered}) != len(ordered):
         raise ScoreImportError("A strum has multiple notes on the same string.")
     # Linked pitch gestures disable spreading in Songsterr's performer. Leave
@@ -197,10 +248,14 @@ def strum_offsets(beat):
     count = len(ordered)
     if count < 2:
         return {}, direction
-    # Explicit spreading follows grace allocation. The source cap uses the
-    # written beat duration; callers still reject nonpositive sounding notes.
-    cap = min(960, int(rational(beat["duration"], "strum beat duration") * 1920))
-    step = old_step if old_step is not None else F(min(duration, cap)) / (480 * count)
+    # Legacy subdivisions are per-slot delays, independent of count or beat
+    # length. Modern gestures alone use the written-duration cap after grace.
+    # Callers still reject nonpositive sounding notes without clipping them.
+    if old_step is not None:
+        step = old_step
+    else:
+        cap = min(960, int(rational(beat["duration"], "strum beat duration") * 1920))
+        step = F(min(duration, cap)) / (480 * count)
     span = step * (count - 1)
     advance = span * F(100 - shift, 100)
     offsets = {i: (step * (rank if direction == "up" else count - 1 - rank)) - advance

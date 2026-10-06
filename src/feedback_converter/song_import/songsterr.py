@@ -9,7 +9,8 @@ from fractions import Fraction
 
 from .inventory import FeatureInventory
 from .model import Measure, Note, Score, ScoreImportError, Track, WrittenBeat, WrittenVoice, integer, rational
-from .songsterr_timing import part_timing, strum_offsets, FEELS
+from .songsterr_timing import (part_timing, strum_offsets, uses_legacy_brush_timing,
+                              LEGACY_BRUSH_POLICY, FEELS)
 from .songsterr_fields import bend_points, validate_sustain_pedal, effective_dots, validate_bend_point_vibrato
 from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
@@ -352,6 +353,7 @@ def parse(document: dict, *, track_indices=None) -> Score:
         # source synchronization, notation, or JSON evidence serialization.
         measures[bar].tempos.append((position, float(bpm)))
     tracks = []
+    legacy_brush_timing = False
     warnings = []
     excluded = []
     for index, (meta, part) in enumerate(zip(metadata, parts)):
@@ -432,7 +434,13 @@ def parse(document: dict, *, track_indices=None) -> Score:
                     position, duration, written_position = timings[beat_index]
                     if not isinstance(beat.get("notes"), list):
                         raise ScoreImportError("Missing Songsterr notes (rests must have an explicit empty list).")
-                    offsets, strum_direction = strum_offsets(beat)
+                    try:
+                        offsets, strum_direction = strum_offsets(beat, string_count=len(tuning))
+                    except ScoreImportError as exc:
+                        exc.source_location = {"measure": bi + 1, "voice": vi + 1, "beat": beat_index + 1,
+                            "location": f"parts/{index}/measures/{bi}/voices/{vi}/beats/{beat_index}"}
+                        raise
+                    legacy_brush_timing = legacy_brush_timing or uses_legacy_brush_timing(beat)
                     denominator, dots, tuplet = _written_rhythm(beat, written_duration)
                     written_beat = WrittenBeat(beat_id, position, duration, rest=bool(beat.get("rest")),
                                                denominator=denominator, dots=dots, tuplet=tuplet,
@@ -491,6 +499,8 @@ def parse(document: dict, *, track_indices=None) -> Score:
             tracks[-1].clefs.append(clef)
     source = {key: document[key] for key in ("songId", "revisionId", "approved", "url") if key in document}
     source["format"] = "songsterr"
+    if legacy_brush_timing:
+        source["legacyBrushTimingPolicy"] = LEGACY_BRUSH_POLICY
     source.update(trackCount=len(metadata), excludedTracks=excluded, sectionLabels=section_labels)
     for decision in section_labels:
         if len({label['text'] for label in decision['labels']}) > 1:

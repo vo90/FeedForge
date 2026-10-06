@@ -12,6 +12,12 @@ combinations. Preparation clocks, source membership, string, fret, tie identity,
 occurrence, authored attack and endpoint are checked. Extraction is qualified
 against the complete captured script, including the pre-tie scheduling stage.
 
+The separate `--legacy-brush-matrix` adds 71 old-brush cases under the named
+normalization profile: 67 timing comparisons and four nonpositive-duration
+controls that both readers must block. It covers all eight subdivisions, both
+directions, original rest/tie slots, linked-effect suppression and modern-field
+precedence. The default 184-case authored matrix is unchanged.
+
 Six cases intentionally remain blocked: grace allocation consumes a strum
 member's duration. Matching preparation or a hidden reference note is not
 authorization to omit an attack. That policy still needs a decision.
@@ -123,7 +129,16 @@ and qualification scope are in `tools/songsterr_compatibility/reference-manifest
 No player implementation is bundled or checked into Git. The authored profile
 uses fluidsynth with RSE, JSON autofix and humanization disabled. Player defaults
 can be inspected separately; they are not the deterministic acceptance profile.
-The original-video cursor is a separate reference target.
+Bare legacy brushes have a separate deterministic `legacy-brush-authored-v1`
+profile. It enables only the native old-brush direction normalization while
+keeping RSE and humanization disabled. The ordinary frontend load preserves old
+speed values; its audio generator uses that native normalization by default.
+This profile is qualified against the complete captured worker and its identity
+is recorded separately. It is not equality to the raw `authored` profile, and
+does not enable general source repair or synthesis behavior in conversion.
+Legacy brush timing also has independent tick-floor accounting rather than a
+wider generic comparison tolerance. The original-video cursor is a separate
+reference target.
 
 Explicit maintenance uses `extract-reference.cjs capture.js candidate.json`
 with the Babel versions already present in the repository's locked development

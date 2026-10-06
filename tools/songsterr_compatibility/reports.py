@@ -32,7 +32,11 @@ def reference_identity(manifest):
     data = json.loads(manifest.read_text())
     return {"assetSha256": data["sha256"],
             "manifestSha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
-            "profile": "authored", "qualification": data.get("qualification", {}),
+            "profile": "authored", "defaultProfile": "authored",
+            "additionalProfiles": {"legacy-brush-authored-v1": {
+                "policy": "songsterr-legacy-brush-direction-swap-v1", "version": 1,
+                "synth": "fluidsynth", "useRSE": False, "autoFixJson": True, "humanize": False}},
+            "qualification": data.get("qualification", {}),
             "generatedEventQualification": data.get("generatedEventQualification", {})}
 
 
@@ -41,6 +45,7 @@ def compact_reference(reference):
     return {"id": reference["id"], "parts": [
         {"index": p["index"], "status": p["status"], "error": p.get("error"),
          "tpqn": p.get("tpqn"), "profile": p.get("profile"),
+         **({"normalization": p["normalization"]} if "normalization" in p else {}),
          "events": len(p.get("events", [])),
          "hiddenEvents": sum(n["hidden"] for n in p.get("events", [])),
          **({"generatedEventTraceVersion": p["generatedEventTrace"]["version"],

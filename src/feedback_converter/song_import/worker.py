@@ -185,6 +185,8 @@ def run_import(request: dict, progress=None) -> dict:
                   "sourceMetadata": dict(performance.get("source") or {}),
                   "audioSource": {key: audio["source"][key] for key in ("kind", "videoId", "title", "sha256") if key in audio["source"]},
                   "alignment": alignment_recipe, 'preparation':alignment['preparation'], "chartGuidancePolicy": GUIDANCE_POLICY, "positionPolicy": POSITION_POLICY}
+        if performance.get('source', {}).get('legacyBrushTimingPolicy'):
+            recipe['legacyBrushTimingPolicy'] = performance['source']['legacyBrushTimingPolicy']
         features = set()
         if hybrid_options["enabled"]:
             recipe["hybridLead"] = hybrid_options

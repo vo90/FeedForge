@@ -20,6 +20,8 @@ from .reports import fingerprint, implementation_identity, reference_identity, c
 SCOPE = "Source timing only. Not an acquisition, audio alignment, Hybrid Lead or FeedPak acceptance result."
 REFERENCE = Path(__file__).with_name("reference-manifest.json")
 LIMIT = 80 * 1024 * 1024
+LEGACY_BRUSH_PROFILE = "legacy-brush-authored-v1"
+LEGACY_BRUSH_POLICY = "songsterr-legacy-brush-direction-swap-v1"
 
 
 def canonical_hash(value):
@@ -165,7 +167,7 @@ def classify_preparation_differences(source, differences):
     return approved, unexplained
 
 
-def _strum_tick_adjustment(beat, note_index, resolution):
+def _strum_tick_adjustment(beat, note_index, resolution, profile="authored"):
     """Pinned worker's quantization error relative to the authored rational clock.
 
     This is development comparison policy, never an import timing tolerance.
@@ -174,9 +176,10 @@ def _strum_tick_adjustment(beat, note_index, resolution):
     notes = beat["notes"]
     modern = beat.get("arpeggio") or beat.get("brushStroke")
     old = beat.get("upArpeggio") or beat.get("downArpeggio")
-    if not modern and not old:
+    brush = beat.get("upStroke") or beat.get("downStroke")
+    if not modern and not old and not brush:
         return Fraction(0)
-    if any(n.get(k) for n in notes for k in ("bend", "hp", "slide")):
+    if any(n.get(k) for n in notes for k in ("bend", "hp", "slide", "leftSlide", "rightSlide")):
         return Fraction(0)
     count = len(notes)
     if count < 2:
@@ -187,11 +190,22 @@ def _strum_tick_adjustment(beat, note_index, resolution):
         tick_step = (cap * resolution / 480 // 1) // count
         shift = Fraction(str(modern["shift"]))
         direction = modern["direction"]
-    else:
+    elif old:
         step = Fraction(4 * resolution, 13 * 2**(8-old))
         tick_step = step // 1
-        shift = 100
+        shift = Fraction(100)
         direction = "up" if beat.get("upArpeggio") else "down"
+    else:
+        if isinstance(brush, bool) or not isinstance(brush, (int, float)) or not 1 <= brush <= 8 or int(brush) != brush:
+            raise ValueError("Unqualified legacy brush reference value")
+        # Independent native calculation: the player floors each subdivision
+        # once, then multiplies by the note/rest/tie ordinal. No global epsilon.
+        step = Fraction(4 * resolution, 13 * 2**(8-int(brush)))
+        tick_step = step // 1
+        shift = Fraction(100)
+        direction = "up" if beat.get("upStroke") else "down"
+        if profile == LEGACY_BRUSH_PROFILE:
+            direction = "down" if beat.get("upStroke") else "up"
     rank = sorted(range(count), key=lambda i: notes[i]["string"]).index(note_index)
     rank = rank if direction == "up" else count - 1 - rank
     ideal = step * rank - step * (count - 1) * (100-shift) / 100
@@ -208,6 +222,10 @@ def compare_authored_events(actual, reference, source):
     """
     differences = []
     for part in reference.get("parts", []):
+        if actual.get("referenceProfile") and part.get("profile") != actual["referenceProfile"]:
+            differences.append({"part": part["index"], "code": "reference_profile_mismatch"})
+        if part.get("profile") == LEGACY_BRUSH_PROFILE and part.get("normalization", {}).get("policy") != LEGACY_BRUSH_POLICY:
+            differences.append({"part": part["index"], "code": "reference_normalization_mismatch"})
         own = next((p for p in actual.get("sourceTrace", []) if p["index"] == part["index"]), None)
         if own is None or "authoredEvents" not in part:
             differences.append({"part": part["index"], "code": "authored_events_not_tested"}); continue
@@ -223,7 +241,7 @@ def compare_authored_events(actual, reference, source):
                 differences.append({**where, "code": "unaccounted_reference_event"}); continue
             mi, vi, bi, ni = map(int, e["id"].split(":"))
             beat = source["parts"][part["index"]]["measures"][mi]["voices"][vi]["beats"][bi]
-            adjustment = _strum_tick_adjustment(beat, ni, resolution)
+            adjustment = _strum_tick_adjustment(beat, ni, resolution, part.get("profile", "authored"))
             expected = {"string": e["string"], "fret": e["fret"], "tie": e["tie"],
                         "attackTick": (Fraction(e["baseQuarter"]) + Fraction(e["offsetQuarter"]))*resolution + adjustment,
                         "endTick": Fraction(e["endQuarter"])*resolution - 1}
@@ -236,10 +254,10 @@ def compare_authored_events(actual, reference, source):
     return differences or ([] if reference.get("parts") else [{"code": "authored_events_not_tested"}])
 
 
-def reference_rows(rows, worker, node, trace=False, event_details=False):
+def reference_rows(rows, worker, node, trace=False, event_details=False, profile="authored"):
     with tempfile.TemporaryDirectory(prefix="feedforge-reference-") as directory:
         root = Path(directory)
-        data = {"cases": rows, "trace": trace, "profile": "authored", "eventDetails": event_details}
+        data = {"cases": rows, "trace": trace, "profile": profile, "eventDetails": event_details}
         (root / "input.json").write_text(json.dumps(data), encoding="utf-8")
         try:
             p = subprocess.run([node, "--max-old-space-size=512", str(Path(__file__).with_name("reference.cjs")),
@@ -257,15 +275,26 @@ def reference_rows(rows, worker, node, trace=False, event_details=False):
             raise ValueError("Reference case identity mismatch")
         if any(a.get("sourceSha256") != b.get("sourceSha256") for a, b in zip(value["cases"], rows)):
             raise ValueError("Reference source identity mismatch")
+        for case in value["cases"]:
+            for part in case["parts"]:
+                if part["status"] != "executed":
+                    continue
+                if part.get("profile") != profile:
+                    raise ValueError("Reference profile identity mismatch")
+                if profile == LEGACY_BRUSH_PROFILE and part.get("normalization", {}).get("policy") != LEGACY_BRUSH_POLICY:
+                    raise ValueError("Reference normalization identity mismatch")
         return value
 
 
-def run(rows, *, worker=None, node="node", trace=False, event_details=False):
-    results, node_versions = [], set()
+def run(rows, *, worker=None, node="node", trace=False, event_details=False, reference_profile="authored"):
+    results, node_versions, profiles = [], set(), set()
     for row in rows:
         result = {"id": row["id"], "family": row.get("family", "corpus"), **evaluate(row["source"])}
         if worker:
-            captured = reference_rows([{**row, "sourceSha256": result["sourceSha256"]}], worker, node, trace, event_details)
+            profile = row.get("referenceProfile", reference_profile)
+            profiles.add(profile)
+            result["referenceProfile"] = profile
+            captured = reference_rows([{**row, "sourceSha256": result["sourceSha256"]}], worker, node, trace, event_details, profile)
             node_versions.add(captured.get("node", "unreported"))
             reference = captured["cases"][0]
             result["reference"] = reference
@@ -289,7 +318,7 @@ def run(rows, *, worker=None, node="node", trace=False, event_details=False):
         results.append(result)
     return {"version": 2, "scope": SCOPE, "cases": results,
             "implementation": implementation_identity(),
-            "referenceIdentity": {**reference_identity(REFERENCE), "nodeVersions": sorted(node_versions)} if worker else None,
+            "referenceIdentity": {**reference_identity(REFERENCE), "nodeVersions": sorted(node_versions), "profiles": sorted(profiles)} if worker else None,
             "counts": dict(Counter(r["converter"]["status"] for r in results)),
             "referenceCompared": sum("preparationDifferences" in r for r in results),
             "preparationCounts": dict(Counter(r["preparationStatus"] for r in results)),

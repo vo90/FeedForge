@@ -21,7 +21,7 @@ def bar(*beats, **extra):
     return {"signature": [4, 4], "voices": [{"beats": list(beats)}], **extra}
 
 
-def cases():
+def cases(*, include_legacy_brush=False):
     for direction, shift, placement, count, denominator, grace_count in product(
             ("up", "down"), (0, 50, 100), ("beforeBeat", "onBeat"), (2, 4), (8, 16), (1, 2, 3)):
         params = dict(direction=direction, shift=shift, grace=placement,
@@ -79,3 +79,55 @@ def cases():
              "notes": [{"string": i, "fret": 5} for i in range(3)]}
         if modern: b["arpeggio"] = {"direction": "down", "duration": 100, "shift": 100}
         yield {"id": f"legacy-strum/{modern}", "family": "timing.strum_legacy", "source": envelope([bar(b)])}
+    if include_legacy_brush:
+        yield from legacy_brush_cases()
+
+
+def legacy_brush_cases():
+    """Separate, explicitly normalized examples; do not rewrite the old fixture."""
+    def make(identifier, field, value, notes, duration=(1, 1), **extra):
+        beat = {"duration": list(duration), "type": duration[1], field: value,
+                "notes": deepcopy(notes), **extra}
+        return {"id": "legacy-brush/" + identifier, "family": "timing.strum_legacy_brush",
+                "referenceProfile": "legacy-brush-authored-v1", "source": envelope([bar(beat)])}
+
+    for field, value, count in product(("upStroke", "downStroke"), range(1, 9), (2, 3, 6)):
+        notes = [{"string": i, "fret": 5} for i in range(count)]
+        yield make(f"{field}/{value}/{count}", field, value, notes)
+    for field in ("upStroke", "downStroke"):
+        mixed = [{"string": 0, "fret": 5}, {"string": 2, "rest": True}, {"string": 5, "fret": 5}]
+        yield make(f"rest-slots/{field}", field, 6, mixed)
+        notes = [{"string": i, "fret": 5} for i in (0, 2, 5)]
+        tied = make(f"tie-slots/{field}", field, 6, notes, duration=(1, 2))
+        chord = tied["source"]["parts"][0]["measures"][0]["voices"][0]["beats"][0]
+        continuation = deepcopy(chord)
+        continuation["notes"][1]["tie"] = True
+        chord["duration"] = continuation["duration"] = [1, 2]
+        chord["type"] = continuation["type"] = 2
+        tied["source"]["parts"][0]["measures"][0]["voices"][0]["beats"].append(continuation)
+        yield tied
+        yield make(f"shuffled-slots/{field}", field, 6,
+                   [{"string": i, "fret": 5} for i in (5, 0, 2)])
+        for effect in ("bend", "hp", "slide"):
+            effect_notes = [{"string": i, "fret": 5} for i in (0, 2, 5)]
+            effect_notes[1][effect] = {"points": [{"position": 0, "tone": 0}, {"position": 60, "tone": 100}]} if effect == "bend" else True if effect == "hp" else "shift"
+            linked = make(f"linked/{field}/{effect}", field, 6, effect_notes, duration=(1, 2))
+            linked["source"]["parts"][0]["measures"][0]["voices"][0]["beats"].append(
+                {"duration": [1, 2], "type": 2, "notes": [{"string": i, "fret": 7} for i in (0, 2, 5)]})
+            yield linked
+        for denominator, disposition in ((4, "positive"), (13, "zero"), (16, "negative")):
+            boundary = make(f"boundary/{field}/{disposition}", field, 8,
+                            [{"string": i, "fret": 5} for i in (0, 5)], duration=(1, denominator))
+            boundary["expectedDisposition"] = "rendered" if disposition == "positive" else "blocked"
+            yield boundary
+        for modern in ("brushStroke", "arpeggio"):
+            marked = make(f"modern/{field}/{modern}", field, 6,
+                          [{"string": i, "fret": 5} for i in (0, 2, 5)],
+                          **{modern: {"direction": "up", "duration": 86, "shift": 100}})
+            yield marked
+    provenance = make("modern-brush-old-arpeggio", "upStroke", 6,
+                      [{"string": i, "fret": 5} for i in (0, 2, 5)],
+                      brushStroke={"direction": "up", "duration": 86, "shift": 100})
+    provenance["source"]["parts"][0]["measures"][0]["voices"][0]["beats"][0].pop("upStroke")
+    provenance["source"]["parts"][0]["measures"][0]["voices"][0]["beats"][0]["downArpeggio"] = 6
+    yield provenance

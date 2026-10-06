@@ -252,6 +252,14 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     """Only write inside directory. Publishing/collision handling belongs to the app."""
     if alignment.get("status") != "validated":
         raise ImportFailure("alignment_failed", "The recording has not passed synchronization checks.")
+    legacy_brush_policy = (performance.get('source') or {}).get('legacyBrushTimingPolicy')
+    if legacy_brush_policy:
+        from .songsterr_timing import LEGACY_BRUSH_POLICY
+        if (legacy_brush_policy != LEGACY_BRUSH_POLICY or source_path is None
+                or (recipe or {}).get('preservationContract', 0) < 89
+                or (recipe or {}).get('legacyBrushTimingPolicy', LEGACY_BRUSH_POLICY) != LEGACY_BRUSH_POLICY):
+            raise ImportFailure('unsupported_score',
+                                'Legacy brush timing requires the original tab and preservation contract 89.')
     if alignment.get('endingPadding') and (source_path is None or (recipe or {}).get('preservationContract',0)<36
             or 'recordingSamplesSha256' not in alignment['endingPadding']):
         raise ImportFailure('alignment_failed','Ending silence requires confirmed recording evidence and the original tab.')
@@ -492,6 +500,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     manifest.setdefault("song_import", {})["chartGuidancePolicy"] = GUIDANCE_POLICY
     from .strum_groups import POLICY as STRUM_GROUP_POLICY
     manifest['song_import']['strumGroupingPolicy'] = STRUM_GROUP_POLICY
+    if legacy_brush_policy:
+        manifest['song_import']['legacyBrushTimingPolicy'] = legacy_brush_policy
     if hybrid_summary:
         manifest.setdefault("song_import", {})["hybridLeadResult"] = hybrid_summary
         if hybrid_summary["status"] != "not_applicable":
