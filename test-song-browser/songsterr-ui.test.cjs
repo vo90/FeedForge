@@ -361,3 +361,15 @@ test('remote song metadata is escaped and cannot become markup in job history', 
   assert.match(html, /&lt;script&gt;/); assert.match(html, /&lt;img/); assert.match(html, /&lt;b&gt;message/);
   assert.doesNotMatch(html, /<script|<img|<b>message/);
 });
+
+
+test('interior uncertainty with ending padding shows ranges without falsely blaming the ending', () => {
+  const html = job({ state: 'completed', verification: { status: 'passed', endingSilenceSeconds: .035,
+    endingTiming: { status: 'inconclusive', warning: { version: 2, status: 'accepted_with_warning',
+      uncertainRanges: [{ start: 88, end: 89.01 }, { start: 248, end: 264 }] } } } });
+  assert.match(html, /Imported with timing warnings/);
+  assert.match(html, /1:28\u20131:30, 4:08\u20134:24/);
+  assert.match(html, /Ending silence added/);
+  assert.doesNotMatch(html, /Ending sync not independently confirmed/);
+  assert.doesNotMatch(html, /Recording timing supported through the ending/);
+});

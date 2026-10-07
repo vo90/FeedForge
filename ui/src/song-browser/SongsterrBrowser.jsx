@@ -113,8 +113,9 @@ export function SongsterrJob({ job, api, action, busy }) {
   useEffect(() => { setCompatibility(null); }, [job.id, job.evidence?.id, job.state]);
   const active = ACTIVE.has(job.state);
   const needsAudio = ['needs_audio', 'alignment_failed'].includes(job.state);
+  const warning = job.verification?.timingWarning || (job.verification?.endingTiming?.warning?.version === 2 ? job.verification.endingTiming.warning : null);
   const timingWarning = job.state === 'completed' && job.verification?.status === 'passed'
-    && job.verification?.timingWarning?.status === 'accepted_with_warning' ? job.verification.timingWarning : null;
+    && warning?.status === 'accepted_with_warning' ? warning : null;
   const recordingTime = value => `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
   return <li id={`songsterr-job-${job.id}`} tabIndex={-1} className={`sb-job ${job.state === 'completed' ? 'sb-job-completed' : ''}`}>
     <div className="sb-job-top"><div className="sb-job-heading"><strong>{job.title}</strong><span>{job.artist}</span></div>
@@ -140,7 +141,7 @@ export function SongsterrJob({ job, api, action, busy }) {
     {job.verification?.preparationSeconds > 0 ? <small>Preparation time added: {job.verification.preparationSeconds.toFixed(2)} seconds.</small> : null}
     {job.verification?.endingSilenceSeconds > 0 ? <small>Ending silence added: {job.verification.endingSilenceSeconds.toFixed(2)} seconds to preserve the final note tails. This adds no missing music.</small> : null}
     {job.state === 'completed' && job.verification?.status === 'passed' && job.verification?.endingTiming?.status === 'supported' ? <small>Recording timing supported through the ending. This does not verify every transcribed note.</small> : null}
-    {job.state === 'completed' && job.verification?.status === 'passed' && job.verification?.endingTiming?.status === 'inconclusive' && job.verification?.endingTiming?.warning?.status === 'accepted_with_warning' ? <p role="status"><AlertTriangle size={14} /> Ending sync not independently confirmed. Songsterr timing retained; short ending silence added.</p> : null}
+    {job.state === 'completed' && job.verification?.status === 'passed' && job.verification?.endingTiming?.status === 'inconclusive' && job.verification?.endingTiming?.warning?.status === 'accepted_with_warning' && job.verification.endingTiming.warning.version !== 2 ? <p role="status"><AlertTriangle size={14} /> Ending sync not independently confirmed. Songsterr timing retained; short ending silence added.</p> : null}
     {job.verification?.compatibility?.status === 'requires_consumer_support' ? <p>Ghost-note or directional-slide symbols need a FeedBack version that supports them. Their original meaning is preserved in this file.</p> : null}
     {job.artwork ? <p>{job.artwork.status === 'matched' ? `Album cover: ${job.artwork.album || 'matched album'}.` : job.artwork.albumStatus === 'matched' ? `Album: ${job.artwork.album}. Cover currently unavailable; you can add an image in Edit FeedPaks.` : 'Album cover unavailable or uncertain. You can add an image in Edit FeedPaks.'}</p> : null}
     {job.state === 'completed' ? <div className="sb-job-controls">{job.outputAvailable ? <button className="sb-text-button" disabled={busy} onClick={() => action(() => api.showOutput({ id: job.id }))}><FolderOpen size={14} /> Show file</button> : <span>The saved file has been moved or removed.</span>}</div> : null}
