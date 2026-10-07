@@ -187,12 +187,13 @@ def test_supplied_album_wins_over_earlier_original_and_is_not_overwritten(tmp_pa
     assert result["provenance"]["albumSelection"] == "supplied-album"
 
 
-def test_missing_supplied_album_never_silently_uses_another_album(tmp_path):
+def test_missing_supplied_album_can_use_labeled_artwork_only_fallback(tmp_path):
     network = Network()
     result = network.resolve(tmp_path, album="An unrelated album")
-    assert result["status"] == "unavailable"
-    assert result["reason"] == "album_not_found"
-    assert len(network.calls) == 2
+    assert result["status"] == "matched"
+    assert result["reason"] == "original_song_album_cover"
+    assert "album" not in result and "year" not in result
+    assert result["provenance"]["specificArtwork"]["reason"] == "album_not_found"
 
 
 @pytest.mark.parametrize("candidate", [

@@ -29,7 +29,7 @@ import warnings
 
 from PIL import Image, ImageOps
 
-POLICY_VERSION = 4
+POLICY_VERSION = 5
 COVER_ENCODING = "jpeg-512-q90-v1"
 COVER_MAX_SIZE = 512
 USER_AGENT = "FeedForge/2.0.1 (album artwork; https://github.com/balki97/FeedForge)"
@@ -599,6 +599,8 @@ def resolve_album_art(metadata: dict, directory: Path, cache_dir: Path | None = 
     in the caller-owned directory. Existing PNG caches are compacted locally.
     Different songs reuse a cover only after independently matching the same
     release-group and release IDs; shared covers expire after 30 days.
+    If a specific version has no cover, a verified original-song album can supply
+    artwork only. Its album/year stay in provenance, never metadata enrichment.
     """
     cache, key, enrichment = None, None, {}
     try:
@@ -628,27 +630,17 @@ def resolve_album_art(metadata: dict, directory: Path, cache_dir: Path | None = 
         else:
             client = _Client(transport, cache, clock, sleep, now)
             from .album_match import select_album
-            group = select_album(client, values)
-            records = list(group["records"].values())
-            provenance = {"policyVersion": POLICY_VERSION, "recordingIds": [record["id"] for record in records],
-                          "recordingId": records[0]["id"] if len(records) == 1 else None,
-                          "matchingScope": "album", "audioRecordingVerified": False,
-                          "matchBasis": "recording-id-artist-title-version-album-track" if values.get("musicbrainzRecordingId") else "artist-title-version-album-track",
-                          "releaseGroupId": group["id"], "releaseId": group["release"]["id"],
-                          "albumSelection": "supplied-album" if values["album"] else "original-official-release",
-                          "releaseType": group["releaseType"], "lookupTitle": group["lookupTitle"],
-                          "versions": group["versions"], "trackEvidence": group["trackEvidence"]}
-            if group.get("artistCreditResolution"):
-                provenance["artistCreditResolution"] = group["artistCreditResolution"]
-            enrichment = {"albumStatus": "matched", "album": group["album"], "year": group["interval"][0].year,
-                          "provenance": provenance}
             try:
-                raw, image_provenance = _album_cover(client, group, cache, now)
-                provenance.update(image_provenance)
-                result = _result("matched", "album_cover", **enrichment)
+                group = select_album(client, values)
             except _LookupFailure as exc:
-                result = _result(exc.status, exc.reason, **enrichment)
-                result["message"] = "Album identified. Its cover is currently unavailable; the song can still be converted."
+                group = None
+                result = _result(exc.status, exc.reason)
+            if group is not None:
+                result, raw = _matched_album_cover(client, group, values, cache, now)
+            from .artwork_fallback import original_song_cover
+            if raw is None:
+                result, raw = original_song_cover(client, values, result, cache, now)
+            enrichment = {k: result[k] for k in ('albumStatus', 'album', 'year', 'provenance') if k in result}
             _cache_write(cache, key, result, raw, now)
         if raw is not None:
             destination = Path(directory)
@@ -667,3 +659,28 @@ def resolve_album_art(metadata: dict, directory: Path, cache_dir: Path | None = 
         # Transport, malformed third-party records and local image writes are
         # optional enrichment failures, never a failed musical conversion.
         return _result("unavailable", "lookup_failed", **enrichment)
+
+
+def _matched_album_cover(client, group, values, cache, now):
+    records = list(group["records"].values())
+    provenance = {"policyVersion": POLICY_VERSION, "recordingIds": [record["id"] for record in records],
+                  "recordingId": records[0]["id"] if len(records) == 1 else None,
+                  "matchingScope": "album", "audioRecordingVerified": False,
+                  "matchBasis": "recording-id-artist-title-version-album-track" if values.get("musicbrainzRecordingId") else "artist-title-version-album-track",
+                  "releaseGroupId": group["id"], "releaseId": group["release"]["id"],
+                  "albumSelection": "supplied-album" if values["album"] else "original-official-release",
+                  "releaseType": group["releaseType"], "lookupTitle": group["lookupTitle"],
+                  "versions": group["versions"], "trackEvidence": group["trackEvidence"]}
+    if group.get("artistCreditResolution"):
+        provenance["artistCreditResolution"] = group["artistCreditResolution"]
+    enrichment = {"albumStatus": "matched", "album": group["album"], "year": group["interval"][0].year,
+                  "provenance": provenance}
+    raw = None
+    try:
+        raw, image_provenance = _album_cover(client, group, cache, now)
+        provenance.update(image_provenance)
+        result = _result("matched", "album_cover", **enrichment)
+    except _LookupFailure as exc:
+        result = _result(exc.status, exc.reason, **enrichment)
+        result["message"] = "Album identified. Its cover is currently unavailable; the song can still be converted."
+    return result, raw
