@@ -75,7 +75,7 @@ def test_unknown_title_parts_are_not_removed(tmp_path, title):
     network = Network()
     result = network.resolve(tmp_path, title=title)
     assert result["status"] == "unavailable" and "path" not in result
-    assert len(network.calls) == 1
+    assert not any('coverartarchive.org' in call['url'] for call in network.calls)
 
 
 def test_audio_context_can_trigger_artwork_only_fallback(tmp_path):

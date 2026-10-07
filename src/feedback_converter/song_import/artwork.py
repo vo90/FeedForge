@@ -29,7 +29,7 @@ import warnings
 
 from PIL import Image, ImageOps
 
-POLICY_VERSION = 8
+POLICY_VERSION = 9
 COVER_ENCODING = "jpeg-512-q90-v1"
 COVER_MAX_SIZE = 512
 USER_AGENT = "FeedForge/2.0.1 (album artwork; https://github.com/balki97/FeedForge)"
@@ -648,9 +648,9 @@ def resolve_album_art(metadata: dict, directory: Path, cache_dir: Path | None = 
             enrichment = {k: result[k] for k in ('albumStatus', 'album', 'year', 'provenance') if k in result}
         else:
             client = _Client(transport, cache, clock, sleep, now)
-            from .album_match import select_album
+            from .album_match import select_album_with_label
             try:
-                group = select_album(client, values)
+                group = select_album_with_label(client, values)
             except _LookupFailure as exc:
                 group = None
                 result = _result(exc.status, exc.reason)
@@ -694,6 +694,8 @@ def _matched_album_cover(client, group, values, cache, now):
         provenance["artistCreditResolution"] = group["artistCreditResolution"]
     if group.get("albumCandidateChecks"):
         provenance["albumCandidateChecks"] = group["albumCandidateChecks"]
+    if group.get("albumLabelResolution"):
+        provenance["albumLabelResolution"] = group["albumLabelResolution"]
     enrichment = {"albumStatus": "matched", "album": group["album"], "year": group["interval"][0].year,
                   "provenance": provenance}
     raw = None

@@ -362,11 +362,56 @@ def _confirm_track(client, group, metadata, title, versions):
     raise _LookupFailure('album_track_unconfirmed', 'ambiguous')
 
 
-def select_album(client, metadata):
+def album_label_candidate(metadata):
+    """A trailing label is only a hypothesis until album membership is proven."""
+    if metadata.get('musicbrainzRecordingId'):
+        return None
+    match = re.fullmatch(r'([^\[\]()]+?)\s*(?:\[([^\[\]()]+)\]|\(([^\[\]()]+)\))', metadata['title'])
+    if not match:
+        return None
+    title, label = match[1].strip(), (match[2] or match[3]).strip()
+    if not _norm(title) or not _norm(label):
+        return None
+    # Performance labels already have their own artwork-only fallback. Do not
+    # reinterpret them as album metadata, even for an album called "Live".
+    if any(re.search(pattern, label, re.I) for pattern in _VERSIONS.values()):
+        return None
+    if metadata.get('album') and _norm(metadata['album']) != _norm(label):
+        return None
+    return title, label
+
+
+def select_album_with_label(client, metadata):
+    """Exact lookup first; retry a semantic miss with a verified album label."""
+    try:
+        return select_album(client, metadata)
+    except _LookupFailure as exc:
+        candidate = album_label_candidate(metadata) if exc.reason == 'recording_not_found' else None
+        if candidate is None:
+            raise
+    title, label = candidate
+    # Retain audio/version context and any explicit album. Inferred labels do
+    # not grant the reissue permission that an explicitly supplied album has.
+    group = select_album(client, {**metadata, 'title': title}, album_hint=label)
+    group['albumLabelResolution'] = {
+        'sourceTitle': metadata['title'], 'lookupTitle': title, 'label': label,
+        'basis': 'exact-album-label-and-verified-track',
+        'releaseGroupId': group['id'], 'album': group['album'],
+    }
+    return group
+
+
+def select_album(client, metadata, *, album_hint=None):
     records, title, versions, audio, credit_resolution = _recordings(client, metadata)
     if not records:
         raise _LookupFailure('recording_not_found')
     groups = _group_candidates(client, records, metadata, versions)
+    if album_hint is not None:
+        groups = [g for g in groups if _norm(g['album']) == _norm(album_hint)]
+        # A label cannot choose between multiple independently verified groups
+        # sharing a name. Never use date ordering to resolve that uncertainty.
+        if len(groups) > 1:
+            raise _LookupFailure('album_ambiguous', 'ambiguous')
     group = _choose(groups, metadata, versions, audio)
     try:
         _confirm_track(client, group, metadata, title, versions)
