@@ -15,7 +15,7 @@ from .songsterr_legacy_effects import (FIELDS as LEGACY_BEAT_EFFECTS, beat_effec
                                      retention as legacy_beat_effect_retention)
 from .model import ScoreImportError, integer, rational
 
-VERSION = 96
+VERSION = 97
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {

@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 96
+VERSION = 97
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -896,7 +896,10 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             # Reconstruct historical packages with their original interpretation.
             # A manifest policy label alone cannot opt an older contract into the
             # new note-owned vibrato or pending HP tie interpretations.
-            source = read_source(score_path, note_owned_vibrato=contract >= 94)
+            source = read_source(score_path, note_owned_vibrato=contract >= 94, resolve_instruments=contract >= 97)
+            if source.format == "songsterr" and (contract >= 97 or (recipe.get("instrumentResolution") or {}).get("tracks")):
+                check.equal("instrument_resolution", "manifest/song_import/instrumentResolution",
+                            source.instrument_resolution, recipe.get("instrumentResolution"))
             report["sourceSha256"] = hashlib.sha256(score_path.read_bytes()).hexdigest()
             report["format"] = source.format
             if source.format == 'songsterr':

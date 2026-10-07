@@ -261,6 +261,9 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         from .evidence import CONTRACT_VERSION
         if type(contract) is not int or not 0 <= contract <= CONTRACT_VERSION:
             raise ImportFailure('unsupported_score', 'Invalid preservation contract.')
+        resolution = source_model.get("instrumentResolution") or {}
+        if resolution.get("tracks") and (contract < 97 or source_path is None or (compatibility or {}).get("version", 0) < 97):
+            raise ImportFailure("unsupported_score", "Bass layout resolution requires its original tab and preservation contract 97.")
         if contract >= 94:
             if (finger_policy != NOTE_VIBRATO_POLICY or source_path is None
                     or declared_finger_policy not in (None, NOTE_VIBRATO_POLICY)):
@@ -540,6 +543,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     manifest.setdefault("song_import", {})["chartGuidancePolicy"] = GUIDANCE_POLICY
     if source.get('format') == 'songsterr' and contract >= 94:
         manifest['song_import']['fingerVibratoPolicy'] = finger_policy
+    if source.get("format") == "songsterr" and contract >= 97:
+        manifest["song_import"]["instrumentResolution"] = deepcopy(source["instrumentResolution"])
     from .strum_groups import POLICY as STRUM_GROUP_POLICY
     manifest['song_import']['strumGroupingPolicy'] = STRUM_GROUP_POLICY
     if negative_mute_policy:

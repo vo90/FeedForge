@@ -275,6 +275,7 @@ class Source:
     section_labels: list = field(default_factory=list)
     legacy_brush_timing: bool = False
     negative_fret_mutes: bool = False
+    instrument_resolution: dict | None = None
 
 
 def inactive(value):
@@ -594,8 +595,10 @@ def _section_annotation(names, location):
     return ranked[0][2]
 
 
-def songsterr(document, *, track_indices=None, note_owned_vibrato=True):
+def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_instruments=True):
     """Read current note controls, or reproduce a historical archive's fanout."""
+    if type(resolve_instruments) is not bool:
+        raise ValueError("source: invalid instrument policy selection")
     if type(note_owned_vibrato) is not bool:
         raise ValueError("source: invalid note vibrato policy selection")
     # Diagnostic selection never changes shared labels, meter, tempo or repeats.
@@ -616,7 +619,12 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True):
         ignored.update(_legacy_beat_effects(beat, loc, qualify_harmonics=False))
     section_labels = []
     legacy_brush_timing = False
-    eligible = {_index for _index, meta in enumerate(metadata) if _program_instrument(meta)}
+    instruments = [_program_instrument(meta) for meta in metadata]
+    instrument_resolution = None
+    if resolve_instruments:
+        from .verify_instruments import resolve
+        instruments, instrument_resolution = resolve(metadata, raw_parts, instruments)
+    eligible = {_index for _index, kind in enumerate(instruments) if kind}
     for bi in range(count):
         loc = f"measures/{bi}"
         samples = [part["measures"][bi] for part in raw_parts]
@@ -800,7 +808,7 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True):
     for pi, (meta, raw) in enumerate(zip(metadata, raw_parts)):
         tid = str(meta.get("id", pi))
         name = str(meta.get("name") or meta.get("title") or meta.get("instrument") or f"Track {pi + 1}")
-        kind = _program_instrument(meta)
+        kind = instruments[pi]
         if not kind:
             excluded.append({"id": tid, "name": name, "reason": "non_playable_instrument"})
             continue
@@ -1098,7 +1106,7 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True):
         parts.append(track)
     return Source("songsterr", str(document.get("title", "")), str(document.get("artist", "")), bars, parts,
                   excluded, len(metadata), {k: str(document[k]) for k in ("songId", "revisionId") if k in document}, ignored, section_labels,
-                  legacy_brush_timing=legacy_brush_timing,
+                  instrument_resolution=instrument_resolution, legacy_brush_timing=legacy_brush_timing,
                   negative_fret_mutes=any(a.authored_fret == -1 for p in parts for b in p.bars for a in b))
 
 
@@ -1299,11 +1307,11 @@ def gpif(data):
     return Source("gpif", _txt(root, "Score/Title"), _txt(root, "Score/Artist"), bars, parts, excluded, len(ids))
 
 
-def read_source(path: Path, *, note_owned_vibrato=True):
+def read_source(path: Path, *, note_owned_vibrato=True, resolve_instruments=True):
     if path.stat().st_size > MAX_SOURCE:
         raise ValueError("source: verification size limit exceeded")
     if path.suffix.lower() == ".json":
-        return songsterr(json.loads(path.read_text(encoding="utf-8-sig")), note_owned_vibrato=note_owned_vibrato)
+        return songsterr(json.loads(path.read_text(encoding="utf-8-sig")), note_owned_vibrato=note_owned_vibrato, resolve_instruments=resolve_instruments)
     if path.suffix.lower() in {".gpif", ".xml"}:
         return gpif(path.read_bytes())
     with ZipFile(path) as archive:
