@@ -312,6 +312,20 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         raise ImportFailure('alignment_failed','Ending silence requires confirmed recording evidence and the original tab.')
     if alignment.get('endingPadding',{}).get('version') == 2 and (recipe or {}).get('preservationContract',0)<37:
         raise ImportFailure('alignment_failed','Combined ending handling requires current preservation evidence.')
+    from . import cutoff_padding
+    combined_ending = cutoff_padding.selected(alignment)
+    if combined_ending:
+        from .ending_cutoff import mapped_tracks
+        from .ending_padding import original_tracks as recording_tracks
+        from .cutoff_warning import matches_recording
+        receipt = alignment['endingPadding']
+        spec = cutoff_padding.plan(recording_tracks(mapped_tracks(performance, alignment),
+                                   alignment.get('preparation', {}).get('seconds', 0)), receipt['originalDuration'])
+        if (source_path is None or (recipe or {}).get('preservationContract', 0) < 102
+                or not cutoff_padding.allowed(alignment, audio['duration'])
+                or not matches_recording(alignment, (recipe or {}).get('audioSource', {}))
+                or spec is None or any(receipt.get(k) != v for k, v in spec.items())):
+            raise ImportFailure('alignment_failed', 'Combined ending requires independently confirmed source and recording evidence.')
     if alignment.get('endingPaddingSync',{}).get('version') == 'recording-clock-v4' and (recipe or {}).get('preservationContract',0)<38:
         raise ImportFailure('alignment_failed','Phrase timing evidence requires the current preservation contract.')
     if alignment.get('recordingEnd', {}).get('version') == 2 and (source_path is None
@@ -369,13 +383,14 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     if alignment.get("mapping") == "piecewise-linear" and alignment.get("tempos"):
         timeline["tempos"] = [deepcopy(item) for item in alignment["tempos"] if 0 <= item["time"] <= duration]
     arrangements, sustain_adjustments, ending_omissions = [], [], []
-    cut_ending = ending_cutoff_allowed(alignment, duration)
+    cut_ending = combined_ending or ending_cutoff_allowed(alignment, duration)
+    attack_boundary = cutoff_padding.cutoff(alignment) if combined_ending else duration
     if cut_ending:
         for original_track in original_tracks:
             originals = [(n, n["t"]) for n in original_track.get("notes", [])]
             originals += [(n, n.get("t", c["t"])) for c in original_track.get("chords", []) for n in c.get("notes", [])]
             ending_omissions.extend(omitted_note(original_track["id"], n, alignment, start)
-                                    for n, start in originals if map_time(alignment, start) >= duration)
+                                    for n, start in originals if map_time(alignment, start) >= attack_boundary)
     used = set()
     original_charts = {}
     tone_rows = []
@@ -397,7 +412,7 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         def keep(note, start):
             if collapsed_opening.omitted(alignment, start):
                 return False
-            if cut_ending and map_time(alignment, start) >= duration:
+            if cut_ending and map_time(alignment, start) >= attack_boundary:
                 return False
             return True
         chart = {"name": name, "tuning": tuning, "capo": max(0, int(track.get("capo", 0))),
@@ -820,10 +835,12 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     if cut_ending:
         if source_path is None:
             raise ImportFailure("unsupported_score", "Ending omissions require the retained original tab.")
-        _write_json(package / "import/ending-omissions.json", {**alignment["recordingEnd"], "notes": ending_omissions})
-        _write_json(package / "import/recording-sync.json", alignment["recordingSync"])
-        manifest.setdefault("song_import", {}).update(recordingEnd=alignment["recordingEnd"],
-                    endingOmissionsFile="import/ending-omissions.json", recordingSyncFile="import/recording-sync.json")
+        header = cutoff_padding.omission_header(alignment) if combined_ending else alignment['recordingEnd']
+        _write_json(package / "import/ending-omissions.json", {**header, "notes": ending_omissions})
+        manifest.setdefault("song_import", {}).update(endingOmissionsFile="import/ending-omissions.json")
+        if not combined_ending:
+            _write_json(package / "import/recording-sync.json", alignment["recordingSync"])
+            manifest['song_import'].update(recordingEnd=alignment["recordingEnd"], recordingSyncFile="import/recording-sync.json")
     if artwork and (artwork.get("albumStatus") == "matched" or artwork.get("status") == "matched"):
         for key in ("album", "year"):
             if key not in manifest and artwork.get(key):

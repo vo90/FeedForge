@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 101
+VERSION = 102
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -635,9 +635,11 @@ def _terminal_adjustments(wanted, alignment, recipe, archive, duration, source, 
     required = {"version": 1, "policy": "trim-final-sustain-v1", "audioDuration": duration}
     if mixed:
         ending=alignment.get('endingPadding',{})
+        from . import cutoff_padding
+        combined = cutoff_padding.selected(alignment) and recipe.get('preservationContract', 0) >= 102
         duration=ending.get('originalDuration',0)+alignment.get('preparation',{}).get('seconds',0)
         required={'version':2,'policy':'trim-long-held-tail-with-padding-v1','audioDuration':duration,'onlyBeyondSeconds':2.0}
-        if (ending.get('version')!=2 or ending.get('trimLongHeldTails') is not True
+        if (not (ending.get('version')==2 or combined) or ending.get('trimLongHeldTails') is not True
                 or recipe.get('preservationContract',0)<37 or slide_policy is not None):
             check.fail('mixed_ending_policy','import','Held-tail shortening requires independent combined-ending authority.')
             return None
@@ -755,6 +757,11 @@ def _terminal_adjustments(wanted, alignment, recipe, archive, duration, source, 
 
 def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, check, manifest, timing):
     """Independently derive omissions, then recheck audio from the raw-source map."""
+    from . import cutoff_padding
+    if cutoff_padding.selected(alignment):
+        if source.format != 'songsterr':
+            raise ValueError('Combined ending requires original Songsterr evidence.')
+        return cutoff_padding.verify_omissions(wanted, alignment, recipe, archive, duration, check)
     policy = alignment.get("recordingEnd")
     if not policy:
         if any(recipe.get(k) for k in ("recordingEnd", "endingOmissionsFile", "recordingSyncFile", "terminalSlides")) or alignment.get("terminalSlides"):

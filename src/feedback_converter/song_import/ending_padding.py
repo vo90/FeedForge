@@ -29,10 +29,15 @@ def bounds(tracks, duration):
     return {'originalDuration': duration, 'lastNoteEnd': last}
 
 
-def candidate(performance, alignment, audio):
-    from .ending_cutoff import mapped_tracks
+def candidate(performance, alignment, audio, *, allow_cutoff=False):
+    from .ending_cutoff import mapped_tracks, boundary_policy
     try:
-        return plan_bounds(mapped_tracks(performance, alignment), audio['duration'])
+        tracks = mapped_tracks(performance, alignment)
+        spec = plan_bounds(tracks, audio['duration'])
+        if spec is None and allow_cutoff and boundary_policy(alignment, audio['duration']):
+            from .cutoff_padding import plan
+            spec = plan(tracks, audio['duration'])
+        return spec
     except (ImportFailure, ValueError, KeyError, TypeError):
         return None  # The ordinary structural/playable checks supply the error.
 
@@ -83,17 +88,24 @@ def assess(tracks, path, duration, map_hash, *, legacy=False, clock_version=None
 def authorize(performance, audio, alignment):
     from .ending_cutoff import mapped_tracks
     from .local_sync import _hash
-    spec = candidate(performance, alignment, audio)
+    from . import cutoff_padding as cp
+    from .cutoff_warning import matches_recording
+    combined = alignment.get('paddingCandidate', {}).get('omitLateAttacks') is True
+    spec = candidate(performance, alignment, audio, allow_cutoff=combined)
     if spec is None or alignment.get('mapping') != 'piecewise-linear':
         raise ImportFailure('source_sync_unavailable', 'This ending cannot use short silent padding.')
+    if combined and (not spec.get('omitLateAttacks') or not matches_recording(alignment, audio.get('source', {}))):
+        raise ImportFailure('source_sync_unavailable', 'Combined ending handling requires the mapped original recording.')
     info = sf.info(audio['path'])
     if abs(info.frames / info.samplerate - audio['duration']) > 1e-8:
         raise ImportFailure('source_sync_unavailable', 'The original recording length could not be verified.')
     frames = math.ceil((spec['lastNoteEnd'] - audio['duration']) * info.samplerate - 1e-8)
     tracks = mapped_tracks(performance, alignment)
+    if combined:
+        tracks, _ = cp.retained(tracks, audio['duration'])
     report = assess(tracks, audio['path'], audio['duration'], alignment['provenance']['mapHash'])
     from .ending_warning import acceptance
-    warning = acceptance(report, alignment, audio.get('source', {}), tracks=tracks)
+    warning = None if combined else acceptance(report, alignment, audio.get('source', {}), tracks=tracks)
     if report['status'] != 'supported' and warning is None:
         raise ImportFailure('source_sync_unavailable', 'The recording timing, including its ending, did not support adding silence.',
                             {'sourceSyncReason': 'ending_padding_sync_inconclusive', 'endingPaddingSync': report})
@@ -107,6 +119,8 @@ def authorize(performance, audio, alignment):
         from .terminal_sustains import mixed_policy_for
         result['endingPadding'].update(version=2, policy=MIXED_POLICY)
         result['terminalSustains'] = mixed_policy_for(audio['duration'])
+    if combined:
+        result['endingPadding'].update(version=3, policy=cp.POLICY)
     result['endingPaddingSync'] = report
     result.pop('paddingCandidate', None)
     result['status'] = 'validated'
@@ -121,9 +135,17 @@ def confirm_encoded(performance, audio, alignment):
     receipt = alignment['endingPadding']
     recording = recording_view(audio['path'], alignment['preparation'])
     tracks = original_tracks(mapped_tracks(performance, alignment), alignment['preparation']['seconds'])
+    from . import cutoff_padding as cp
+    combined = cp.selected(alignment)
+    if combined:
+        partition = cp.retained(tracks, receipt['originalDuration'])
+        from .cutoff_warning import matches_recording
+        if partition is None or partition[1] != receipt['omittedNoteCount'] or not matches_recording(alignment, audio.get('source', {})):
+            raise ImportFailure('ending_padding_unconfirmed', 'The encoded recording has inconsistent ending evidence.')
+        tracks, _ = partition
     report = assess(tracks, recording, receipt['originalDuration'], alignment['provenance']['mapHash'])
     from .ending_warning import acceptance
-    warning = acceptance(report, alignment, audio.get('source', {}), tracks=tracks)
+    warning = None if combined else acceptance(report, alignment, audio.get('source', {}), tracks=tracks)
     if report['status'] != 'supported' and warning is None:
         raise ImportFailure('ending_padding_unconfirmed', 'The encoded recording did not confirm short ending padding.',
                             {'endingPaddingSync': report})
@@ -160,13 +182,24 @@ def verify(wanted, alignment, recipe, archive, manifest, check):
         raise ValueError('Ending timing warnings require preservation contract 39.')
     if warning and warning.get('version') == 2 and recipe.get('preservationContract', 0) < 101:
         raise ValueError('Interior padding warnings require preservation contract 101.')
-    mixed = receipt.get('version') == 2 and receipt.get('policy') == MIXED_POLICY and receipt.get('trimLongHeldTails') is True
-    if (recipe.get('preservationContract', 0) < (37 if mixed else 36)
-            or not (mixed or receipt.get('version') == 1 and receipt.get('policy') == POLICY)
+    from . import cutoff_padding as cp
+    combined = cp.selected(alignment)
+    mixed = (combined or receipt.get('version') == 2 and receipt.get('policy') == MIXED_POLICY) and receipt.get('trimLongHeldTails') is True
+    if (recipe.get('preservationContract', 0) < (102 if combined else 37 if mixed else 36)
+            or not (combined or mixed or receipt.get('version') == 1 and receipt.get('policy') == POLICY)
             or alignment.get('method') != 'songsterr-video-points-v1' or alignment.get('mapping') != 'piecewise-linear'
             or any(alignment.get(k) for k in ('recordingEnd', 'terminalSlides', 'paddingCandidate'))
             or bool(alignment.get('terminalSustains')) != mixed):
         raise ValueError('Invalid ending padding policy.')
+    if combined:
+        from .cutoff_warning import matches_recording
+        from .ending_cutoff import boundary_policy
+        if (warning is not None or not cp.allowed(alignment, manifest['duration'])
+                or not matches_recording(alignment, recipe.get('audioSource', {}))
+                or boundary_policy(alignment, cp.cutoff(alignment)) is None):
+            raise ValueError('Combined ending requires supported original-recording evidence.')
+    elif any(k in receipt for k in ('omitLateAttacks', 'omittedNoteCount')):
+        raise ValueError('Undeclared combined ending policy.')
     prep = alignment['preparation']
     rate, frames, original_frames = receipt['sampleRate'], receipt['frames'], receipt['originalFrames']
     if (any(type(n) != int for n in (rate, frames, original_frames)) or not 8000 <= rate <= 384000
@@ -174,6 +207,13 @@ def verify(wanted, alignment, recipe, archive, manifest, check):
         raise ValueError('Invalid ending padding sample count.')
     duration = original_frames / rate
     tracks = original_tracks(tracks_from_expected(wanted), prep['seconds'])
+    if combined:
+        # Independently partition source events at the original sample boundary.
+        partition = cp.retained(tracks, duration)
+        if partition is None:
+            raise ValueError('Combined ending has no valid source partition.')
+        tracks, count = partition
+        check.equal('ending_padding_omissions', 'ending-padding/omittedNoteCount', count, receipt['omittedNoteCount'])
     spec = bounds(tracks, duration)
     if mixed:
         # Reconstruct the mixed policy from independent raw-source events.

@@ -200,7 +200,7 @@ test('recorded sustain adjustments are visible without claiming exact source dur
 test('ending omissions disclose the count, audio check and retained original', () => {
   const verification = { status: 'passed', adjustments: { omittedEndingNotes: 3 } };
   const html = job({ state: 'completed', verification });
-  assert.match(html, /3 ending notes omitted at or after the audio ending/);
+  assert.match(html, /3 ending notes omitted at or after the original audio ending/);
   assert.match(html, /Earlier timing passed the audio check/);
   assert.match(html, /original tab and omission details are saved/);
   assert.match(html, /recorded ending adjustments/);

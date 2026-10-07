@@ -336,7 +336,7 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
         result['status']='needs_opening_check'
         return result
     from .ending_padding import candidate
-    padding = candidate(performance, result, audio) if allow_padding_candidate else None
+    padding = candidate(performance, result, audio, allow_cutoff=allow_ending_candidate) if allow_padding_candidate else None
     from .ending_cutoff import boundary_policy
     ending_boundary = boundary_policy(result, duration) if allow_ending_candidate else None
     for track in performance.get("tracks", []):
