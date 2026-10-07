@@ -90,9 +90,10 @@ def authorize(performance, audio, alignment):
     if abs(info.frames / info.samplerate - audio['duration']) > 1e-8:
         raise ImportFailure('source_sync_unavailable', 'The original recording length could not be verified.')
     frames = math.ceil((spec['lastNoteEnd'] - audio['duration']) * info.samplerate - 1e-8)
-    report = assess(mapped_tracks(performance, alignment), audio['path'], audio['duration'], alignment['provenance']['mapHash'])
+    tracks = mapped_tracks(performance, alignment)
+    report = assess(tracks, audio['path'], audio['duration'], alignment['provenance']['mapHash'])
     from .ending_warning import acceptance
-    warning = acceptance(report, alignment, audio.get('source', {}))
+    warning = acceptance(report, alignment, audio.get('source', {}), tracks=tracks)
     if report['status'] != 'supported' and warning is None:
         raise ImportFailure('source_sync_unavailable', 'The recording timing, including its ending, did not support adding silence.',
                             {'sourceSyncReason': 'ending_padding_sync_inconclusive', 'endingPaddingSync': report})
@@ -122,7 +123,7 @@ def confirm_encoded(performance, audio, alignment):
     tracks = original_tracks(mapped_tracks(performance, alignment), alignment['preparation']['seconds'])
     report = assess(tracks, recording, receipt['originalDuration'], alignment['provenance']['mapHash'])
     from .ending_warning import acceptance
-    warning = acceptance(report, alignment, audio.get('source', {}))
+    warning = acceptance(report, alignment, audio.get('source', {}), tracks=tracks)
     if report['status'] != 'supported' and warning is None:
         raise ImportFailure('ending_padding_unconfirmed', 'The encoded recording did not confirm short ending padding.',
                             {'endingPaddingSync': report})
@@ -157,6 +158,8 @@ def verify(wanted, alignment, recipe, archive, manifest, check):
     warning = receipt.get('timingWarning')
     if 'timingWarning' in receipt and (recipe.get('preservationContract', 0) < 39 or not isinstance(warning, dict)):
         raise ValueError('Ending timing warnings require preservation contract 39.')
+    if warning and warning.get('version') == 2 and recipe.get('preservationContract', 0) < 101:
+        raise ValueError('Interior padding warnings require preservation contract 101.')
     mixed = receipt.get('version') == 2 and receipt.get('policy') == MIXED_POLICY and receipt.get('trimLongHeldTails') is True
     if (recipe.get('preservationContract', 0) < (37 if mixed else 36)
             or not (mixed or receipt.get('version') == 1 and receipt.get('policy') == POLICY)
@@ -209,7 +212,8 @@ def verify(wanted, alignment, recipe, archive, manifest, check):
         fresh = assess(tracks, recording, duration, alignment['provenance']['mapHash'], clock_version=stored['version'])
         if warning is not None:
             from .ending_warning import acceptance
-            expected = acceptance(fresh, alignment, recipe.get('audioSource', {}))
+            expected = acceptance(fresh, alignment, recipe.get('audioSource', {}),
+                                  **({'tracks': tracks} if warning.get('version') == 2 else {}))
             if expected is None:
                 check.fail('ending_padding_warning', 'import/ending-padding', 'The recording does not qualify for an ending timing warning.')
             check.equal('ending_padding_warning', 'import/ending-padding/timingWarning', expected, warning)

@@ -332,6 +332,16 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             raise ImportFailure('alignment_failed', 'Uncharted timing gaps require source activity evidence and contract 100.')
     if alignment.get('endingPadding',{}).get('timingWarning') and (recipe or {}).get('preservationContract',0)<39:
         raise ImportFailure('alignment_failed','Ending timing warnings require the current preservation contract.')
+    warning = alignment.get('endingPadding', {}).get('timingWarning', {})
+    if warning.get('version') == 2:
+        from .ending_warning import acceptance
+        from .ending_cutoff import mapped_tracks
+        from .ending_padding import original_tracks
+        tracks = original_tracks(mapped_tracks(performance, alignment), alignment['preparation']['seconds'])
+        expected = acceptance(alignment.get('endingPaddingSync', {}), alignment,
+                              (recipe or {}).get('audioSource', {}), tracks=tracks)
+        if source_path is None or (recipe or {}).get('preservationContract', 0) < 101 or expected != warning:
+            raise ImportFailure('alignment_failed', 'Interior padding warnings require source evidence and contract 101.')
     if alignment.get("terminalSlides") is not None and (not slides_allowed(alignment, audio["duration"])
             or source_path is None or (recipe or {}).get("preservationContract", 0) < 33):
         raise ImportFailure("alignment_failed", "A final slide-out cutoff requires verified recording timing, the original tab and contract 33.")

@@ -9,7 +9,15 @@ POLICY = 'source-map-ending-warning-v1'
 MESSAGE = 'Ending sync not independently confirmed. Songsterr timing retained; short ending silence added.'
 
 
-def acceptance(report, alignment, audio_source):
+def acceptance(report, alignment, audio_source, *, tracks=None):
+    legacy = _legacy_acceptance(report, alignment, audio_source)
+    if legacy is not None or tracks is None:
+        return legacy
+    from .padding_warning import acceptance as general
+    return general(report, alignment, audio_source, tracks)
+
+
+def _legacy_acceptance(report, alignment, audio_source):
     """Return a reproducible warning receipt only for a supported song body."""
     from .recording_sync import VERSION
     timing = alignment.get('sourceTiming', {})
