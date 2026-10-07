@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 99
+VERSION = 100
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -788,6 +788,18 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
                     'mappedScoreEnd': anchors[-1]['audio'], 'syncEvidenceHash': digest(stored)}
     warning = policy.get('timingWarning')
     if warning:
+        from .activity_coverage import KEY, receipt
+        if KEY in stored or warning.get('version') == 2:
+            # These are raw-source events reconstructed by verify_timeline,
+            # not chart events or the producer's performance/coverage claims.
+            source_tracks = [{'events': [{'t': i['note']['t'],
+                'end': i['note']['t'] + i['note'].get('sus', 0)}
+                for i in part.get('sync_notes', part['notes'])]} for part in wanted['parts']]
+            proof = receipt(stored, source_tracks)
+            if (recipe.get('preservationContract', 0) < 100 or proof is None
+                    or stored.get(KEY) != proof or warning.get('version') != 2):
+                check.fail('ending_activity_coverage', 'import/recording-sync',
+                           'Uncharted gaps are not supported by the independently read source.'); return None
         from .cutoff_warning import acceptance, matches_recording
         expected_warning = acceptance(stored, alignment)
         if (recipe.get('preservationContract', 0) < 57 or expected_warning is None
@@ -856,6 +868,9 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
                            **({'analysis_origin':offset} if offset else {}), clock_version=stored['version'])
             timing["independentAudioMatchAssessed"] = True
             if warning:
+                if KEY in stored:
+                    from .activity_coverage import attach
+                    fresh = attach(fresh, tracks)
                 check.equal('ending_audio_warning', 'import/recording-sync/timingWarning', warning, acceptance(fresh, alignment))
                 timing['timingWarning'] = warning
                 timing['recordingSyncStatus'] = fresh['status']

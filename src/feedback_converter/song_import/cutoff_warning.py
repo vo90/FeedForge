@@ -17,6 +17,10 @@ def matches_recording(alignment, audio_source):
 
 def acceptance(report, alignment):
     from .recording_sync import PREVIOUS_VERSION
+    from .activity_coverage import KEY, declared
+    source_coverage = declared(report)
+    if KEY in report and not source_coverage:
+        return None
     timing = alignment.get('sourceTiming', {})
     provenance = alignment.get('provenance', {})
     if (report.get('version') != PREVIOUS_VERSION
@@ -50,7 +54,7 @@ def acceptance(report, alignment):
                 or not 0 <= start < end <= duration + .001
                 or status not in ('supported', 'inconclusive', 'suspected_mismatch')
                 or (i and (start <= windows[i-1]['start'] or end <= windows[i-1]['end']
-                           or start > windows[i-1]['end']))):
+                           or start > windows[i-1]['end'] and not source_coverage))):
             return None
         if status == 'supported':
             if window.get('jointEvidence', {}).get('status') == 'suspected_mismatch':
@@ -63,10 +67,11 @@ def acceptance(report, alignment):
             uncertain.append({'start': start, 'end': end})
     # A wholly unconfirmed recording must still use the matching-audio fallback.
     # Overlapping windows must not count as independent corroboration.
-    if (len(independent) < 3 or not uncertain or windows[0]['start'] > .001
-            or abs(windows[-1]['end']-duration) > .001):
+    if (len(independent) < 3 or not uncertain or not source_coverage and (
+            windows[0]['start'] > .001 or abs(windows[-1]['end']-duration) > .001)):
         return None
-    return {'version': 1, 'policy': POLICY, 'status': 'accepted_with_warning',
+    return {'version': 2 if source_coverage else 1, 'policy': POLICY, 'status': 'accepted_with_warning',
             'message': 'Imported with timing warnings. Songsterr timing was retained; some notes may not match the recording.',
             'timeDomain': 'original_recording_seconds', 'uncertainRanges': uncertain,
-            'supportedPassages': len(independent), 'everyNoteVerified': False}
+            'supportedPassages': len(independent), 'everyNoteVerified': False,
+            **({'sourceActivityCoverage': report[KEY]} if source_coverage else {})}
