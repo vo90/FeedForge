@@ -67,10 +67,12 @@ class State:
         return self.names[bisect_right(self.times, time)]
 
 
-def hybrid(plan, originals, duration):
+def hybrid(plan, originals, duration, *, passage_boundaries=True):
     """Switch owners over validated passage spans, checking selected sustains.
 
-    A passage owns its declared region AND complete selected gestures. A main
+    The selected passage includes complete gestures. Its broader selection
+    reservation can also contain rests or restored main material, so that
+    reservation must not extend its sound ownership. A main
     sustain overlapping a donor with a different program cannot be represented
     by one active rig and must not be certified as a faithful tone schedule.
     """
@@ -82,8 +84,11 @@ def hybrid(plan, originals, duration):
                 for s in row['toneProof']['sounds']}
     spans = []
     for p in plan['passages']:
-        lo = max(0, min(p['recordingStart'], p.get('recordingOwnedStart', p['recordingStart'])))
-        hi = min(duration, max(p['recordingEnd'], p.get('recordingOwnedEnd', p['recordingEnd'])))
+        lo, hi = p['recordingStart'], p['recordingEnd']
+        if not passage_boundaries:  # Preservation contracts before 98.
+            lo = min(lo, p.get('recordingOwnedStart', lo))
+            hi = max(hi, p.get('recordingOwnedEnd', hi))
+        lo, hi = max(0, lo), min(duration, hi)
         if lo < hi:
             spans.append((lo, hi, p['trackId']))
     spans.sort()
