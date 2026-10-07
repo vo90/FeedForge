@@ -15,6 +15,107 @@ const SETTINGS = { outputLayout: 'flat', nameTemplate: '{artist} - {title}' };
 const revisionReceipt = require('../tests/fixtures/songsterr-revision-selection.json');
 function pendingMetadata() { return structuredClone(revisionReceipt.base); }
 
+for (const state of ['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed', 'awaiting_main_choice']) {
+  test(`fresh import preserves ${state} attempt and reacquires without inheriting its source`, async t => {
+    const f = await fixture(t, { acquire: async (chart, ctx, normal) => {
+      if (chart.id === CHART.id) throw Object.assign(new Error('Input required'), { code: state });
+      return normal(chart, ctx);
+    } });
+    const old = f.enqueue(); await settle(f.jobs);
+    const original = JSON.stringify(f.jobs.public(f.jobs.jobs[0]));
+    const options = { outputDir: path.join(f.directory, 'new-output'), outputSettings: SETTINGS, freshFrom: old.id };
+    const fresh = f.jobs.enqueue(CHART, options);
+    assert.notEqual(fresh.id, old.id);
+    assert.equal(f.jobs.enqueue(CHART, options).id, fresh.id, 'double click must reuse the new attempt');
+    await settle(f.jobs);
+    assert.equal(f.acquisitions.length, 2);
+    assert.equal(f.jobs.public(f.jobs.jobs[0]).state, state);
+    assert.equal(JSON.stringify(f.jobs.public(f.jobs.jobs[0])), original);
+    assert.equal(f.jobs.snapshot()[1].outputDir, options.outputDir);
+    assert.equal(f.jobs.enqueue(CHART, options).id, fresh.id, 'a fast second failure still deduplicates');
+    await f.jobs.dispose();
+    const restored = new SongsterrJobs(f.config); t.after(() => restored.dispose()); await settle(restored);
+    assert.equal(restored.enqueue(CHART, options).id, fresh.id);
+    const other = restored.enqueue({ ...CHART, id: '124' }, { outputDir: f.outputDir });
+    await settle(restored); assert.equal(restored.snapshot().find(j => j.id === other.id).state, 'completed');
+  });
+}
+
+test('waiting history does not fill the queue; admission and resumes share the 30 runnable limit', async t => {
+  const f = await fixture(t, { missingAudio: true });
+  for (let i = 0; i < 31; i++) { f.enqueue({ ...CHART, id: String(1000 + i) }); await settle(f.jobs); }
+  assert.equal(f.jobs.snapshot().filter(j => j.state === 'needs_audio').length, 31);
+  f.jobs._start = () => {}; // Keep admitted jobs queued while testing the capacity boundary.
+  for (let i = 0; i < 30; i++) f.enqueue({ ...CHART, id: String(2000 + i) });
+  assert.throws(() => f.enqueue({ ...CHART, id: '3000' }), /queue has 30/);
+  const old = f.jobs.jobs[0], before = JSON.stringify(recordForTest(old));
+  assert.throws(() => f.jobs.retry(old.id, { audio: { kind: 'file', path: 'replacement.wav' } }), /queue has 30/);
+  assert.equal(JSON.stringify(recordForTest(old)), before, 'rejected resume cannot mutate saved options or retry budget');
+  await f.jobs.cancel(f.jobs.jobs.at(-1).id);
+  f.jobs.retry(old.id); assert.equal(old.state, 'queued');
+});
+function recordForTest(job) { const { controller, done, resolveDone, ...saved } = job; return saved; }
+
+test('fresh request validates its origin and revision and cannot bypass an active duplicate', async t => {
+  const f = await fixture(t, { missingAudio: true });
+  const old = f.jobs.enqueue(CHART, { outputDir: f.outputDir, requestedRevisionId: '456' }); await settle(f.jobs);
+  const freshOptions = { outputDir: f.outputDir, freshFrom: old.id, requestedRevisionId: '456' };
+  for (const freshFrom of [null, {}, '../bad', crypto.randomUUID()]) assert.throws(() => f.jobs.enqueue(CHART, { ...freshOptions, freshFrom }), /waiting import/);
+  assert.throws(() => f.jobs.enqueue({ ...CHART, id: '124' }, freshOptions), /waiting import/);
+  assert.throws(() => f.jobs.enqueue(CHART, { ...freshOptions, requestedRevisionId: undefined }), /waiting import/);
+  f.jobs._start = () => {};
+  const fresh = f.jobs.enqueue(CHART, freshOptions);
+  assert.equal(fresh.requestedRevisionId, '456');
+  assert.equal(f.jobs.jobs.at(-1).scorePath, undefined);
+  assert.equal(f.jobs.jobs.at(-1).pinnedDescriptor, undefined);
+  assert.throws(() => f.jobs.retry(old.id), /already has an active import/);
+  await f.jobs.cancel(fresh.id);
+  const again = f.jobs.enqueue(CHART, freshOptions); assert.notEqual(again.id, fresh.id);
+});
+
+test('history boundary preserves waiting attempts and refuses overflow instead of losing resumable work', async t => {
+  const f = await fixture(t);
+  f.jobs._start = () => {};
+  for (let i = 0; i < 100; i++) {
+    f.enqueue({ ...CHART, id: String(1000 + i) });
+    f.jobs._set(f.jobs.jobs.at(-1), 'needs_attention', { message: 'Synthetic waiting job' });
+  }
+  const firstId = f.jobs.jobs[0].id;
+  assert.throws(() => f.enqueue({ ...CHART, id: '9999' }), /100 unfinished/);
+  await f.jobs.cancel(f.jobs.jobs.at(-1).id);
+  f.enqueue({ ...CHART, id: '9999' });
+  assert.equal(f.jobs.jobs.length, 100); assert.equal(f.jobs.jobs[0].id, firstId);
+  assert.ok(f.jobs.jobs.some(j => j.state === 'queued'));
+  await f.jobs.dispose();
+  const restored = new SongsterrJobs(f.config); t.after(() => restored.dispose()); await settle(restored);
+  assert.equal(restored.jobs.length, 100); assert.equal(restored.jobs[0].id, firstId);
+  assert.equal(restored.jobs.at(-1).state, 'needs_attention');
+  restored._start = () => {};
+  restored.retry(firstId); assert.equal(restored.jobs[0].state, 'queued', 'full history must still allow a resume');
+});
+
+test('loading oversized legacy history retains all unfinished imports', async t => {
+  const f = await fixture(t); await f.jobs.dispose();
+  const jobs = Array.from({ length: 101 }, (_, i) => ({ id: crypto.randomUUID(), source: 'songsterr', chart: { ...CHART, id: String(1000 + i) }, state: 'needs_attention', outputDir: f.outputDir }));
+  fs.writeFileSync(path.join(f.root, 'jobs.json'), JSON.stringify({ version: 1, jobs }));
+  const restored = new SongsterrJobs(f.config); t.after(() => restored.dispose()); await settle(restored);
+  assert.equal(restored.jobs.length, 101); assert.equal(restored.jobs[0].id, jobs[0].id);
+  assert.throws(() => restored.enqueue(CHART, { outputDir: f.outputDir }), /100 unfinished/);
+});
+
+test('completed fresh import does not make an older waiting attempt capture subsequent downloads', async t => {
+  let calls = 0;
+  const f = await fixture(t, { acquire: async (chart, ctx, normal) => {
+    if (++calls === 1) throw Object.assign(new Error('Old attempt needed input'), { code: 'needs_attention' });
+    return normal(chart, ctx);
+  } });
+  const old = f.enqueue(); await settle(f.jobs);
+  const fresh = f.jobs.enqueue(CHART, { outputDir: f.outputDir, freshFrom: old.id }); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot().find(j => j.id === fresh.id).state, 'completed');
+  const next = f.enqueue(); assert.notEqual(next.id, old.id); assert.notEqual(next.id, fresh.id);
+  await settle(f.jobs); assert.equal(calls, 3);
+});
+
 test('unreviewed selection survives conversion with truthful activity and two eligibility rechecks', async t => {
   const checks = [];
   const f = await fixture(t, { acquire: async (chart, ctx, normal) => {

@@ -18,6 +18,19 @@ const { numeric } = require('./providers/songsterr/policy.cjs');
 const WAITING = new Set(['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed', 'awaiting_main_choice']);
 const ACTIVE = new Set(['queued', 'resolving', 'downloading', 'converting', 'audio', 'aligning', 'validating', 'saving']);
 const PENDING = (job) => ACTIVE.has(job.state) || WAITING.has(job.state) || job.state === 'retry_wait';
+const RUNNABLE = (job) => ACTIVE.has(job.state) || job.state === 'retry_wait';
+const TERMINAL = (job) => ['completed', 'failed', 'cancelled'].includes(job.state);
+const QUEUE_LIMIT = 30, HISTORY_LIMIT = 100;
+function retainHistory(jobs) {
+  // Never evict resumable work, including older ledgers above the normal limit.
+  const retained = [...jobs];
+  while (retained.length > HISTORY_LIMIT) {
+    const index = retained.findIndex(TERMINAL);
+    if (index < 0) break;
+    retained.splice(index, 1);
+  }
+  return retained;
+}
 const defaultClock = { now: () => Date.now(), setTimeout, clearTimeout, random: Math.random };
 function retryCycle(previous) { return { version: 1, cycle: crypto.randomUUID(), used: 0, events: [], cycles: [...(previous?.cycles || []), ...(previous?.cycle ? [previous.cycle] : [])].slice(-20) }; }
 function validRetry(retry) { return retry?.version === 1 && UUID.test(retry.cycle) && Number.isInteger(retry.used) && retry.used >= 0 && retry.used <= 2
@@ -86,7 +99,7 @@ class SongsterrJobs {
       const saved = JSON.parse(fs.readFileSync(ledger, 'utf8'));
       if (saved.version !== 1 || !Array.isArray(saved.jobs)) throw new Error('Songsterr import history could not be read.');
       for (const service of ['songsterr', 'youtube', 'audio_host']) if (Number.isSafeInteger(saved.cooldowns?.[service]) && saved.cooldowns[service] > clock.now()) this.cooldowns[service] = saved.cooldowns[service];
-      this.jobs = saved.jobs.filter((j) => UUID.test(j.id) && j.source === 'songsterr' && /^\d+$/.test(j.chart?.id)).slice(-100);
+      this.jobs = retainHistory(saved.jobs.filter((j) => UUID.test(j.id) && j.source === 'songsterr' && /^\d+$/.test(j.chart?.id)));
       for (const job of this.jobs) {
         job.controller = new AbortController();
         this.provider.restoreTrustedResult?.(job.chart);
@@ -202,7 +215,7 @@ class SongsterrJobs {
       revisionLabel: revisionLabel(job.metadata || job.pinnedDescriptor), requestedRevisionId: job.requestedRevisionId,
       outputDir: job.outputDir, outputSettings: job.outputSettings,
       hybridLead: job.hybridLead, hybridChoice: job.state === 'awaiting_main_choice' ? job.hybridChoice : undefined,
-      originalsOnlyFrom: job.originalsOnlyFrom,
+      originalsOnlyFrom: job.originalsOnlyFrom, freshFrom: job.freshFrom,
       outputPath: job.state === 'completed' ? job.outputPath : undefined,
       outputAvailable: job.state === 'completed' && Boolean(job.outputPath && fs.existsSync(job.outputPath)),
       warnings: job.warnings, alignment: job.alignment, coverage: job.coverage, synchronization: job.synchronizationSummary,
@@ -218,20 +231,38 @@ class SongsterrJobs {
       canCancel: PENDING(job) };
   }
   snapshot() { return this.jobs.map((job) => this.public(job)); }
-  enqueue(chart, { outputDir, outputSettings, hybridLead, originalsOnlyFrom, retainedFrom, requestedRevisionId }) {
+  _assertQueueCapacity() {
+    if (this.jobs.filter(RUNNABLE).length >= QUEUE_LIMIT) throw new Error('The import queue has 30 songs. Wait for one to finish or cancel a queued import. Songs waiting for your input do not use queue slots.');
+  }
+  enqueue(chart, { outputDir, outputSettings, hybridLead, originalsOnlyFrom, retainedFrom, requestedRevisionId, freshFrom }) {
     if (this.disposed || this.persistenceFailed) throw new Error('Reopen Songsterr before adding imports.');
     if (!path.isAbsolute(outputDir || '')) throw new Error('Choose an output folder in FeedForge Settings.');
     const options = normalizeHybridLead(hybridLead);
     if (requestedRevisionId != null && !numeric(requestedRevisionId)) throw new Error('Choose a valid revision.');
     requestedRevisionId = requestedRevisionId == null ? undefined : numeric(requestedRevisionId);
-    const existing = this.jobs.find((job) => job.chart.id === String(chart.id) && PENDING(job)
+    if (freshFrom !== undefined) {
+      const previous = this.jobs.find(job => job.id === freshFrom);
+      if (typeof freshFrom !== 'string' || !UUID.test(freshFrom) || !previous || !WAITING.has(previous.state)
+          || previous.chart.id !== String(chart.id) || previous.requestedRevisionId !== requestedRevisionId
+          || originalsOnlyFrom || retainedFrom) throw new Error('Choose a waiting import of this song and revision before starting fresh.');
+      // Idempotent even if the first click already finished or needs input again.
+      const created = [...this.jobs].reverse().find(job => job.freshFrom === freshFrom && !['cancelled', 'failed'].includes(job.state));
+      if (created) return this.public(created);
+    }
+    const matching = [...this.jobs].reverse().filter((job) => job.chart.id === String(chart.id)
+      && !['failed', 'cancelled'].includes(job.state)
       && job.requestedRevisionId === requestedRevisionId
-      && JSON.stringify(normalizeHybridLead(job.hybridLead)) === JSON.stringify(options) && job.originalsOnlyFrom === originalsOnlyFrom);
+      && (freshFrom !== undefined ? Boolean(job.hybridLead?.enabled) === options.enabled
+        : JSON.stringify(normalizeHybridLead(job.hybridLead)) === JSON.stringify(options)) && job.originalsOnlyFrom === originalsOnlyFrom);
+    // A completed fresh attempt must not expose an older waiting attempt as
+    // the default again. Running work still takes precedence over history.
+    const existing = matching.find(RUNNABLE) || (freshFrom === undefined && WAITING.has(matching[0]?.state) ? matching[0] : null);
     if (existing) return this.public(existing);
-    if (this.jobs.filter(PENDING).length >= 30) throw new Error('Finish or cancel some imports before adding more songs.');
+    this._assertQueueCapacity();
+    if (this.jobs.filter(job => !TERMINAL(job)).length >= HISTORY_LIMIT) throw new Error('Import history has 100 unfinished songs. Resume or cancel an old import before adding more. Existing attempts and reports are kept.');
     const job = { id: crypto.randomUUID(), source: 'songsterr', sourceKey: `songsterr:${chart.id}`, chart: { ...chart, id: String(chart.id) },
       state: 'queued', createdAt: this.clock.now(), retry: retryCycle(), outputDir: path.resolve(outputDir), outputSettings: normalizeOutputSettings(outputSettings),
-      requestedRevisionId, hybridLead: options, ...(originalsOnlyFrom ? { originalsOnlyFrom } : {}), controller: new AbortController() };
+      requestedRevisionId, hybridLead: options, ...(freshFrom ? { freshFrom } : {}), ...(originalsOnlyFrom ? { originalsOnlyFrom } : {}), controller: new AbortController() };
     if (retainedFrom?.scorePath) {
       const oldRoot = path.join(this.root, retainedFrom.id), source = containedFile(oldRoot, retainedFrom.scorePath);
       if (!source.path || fs.statSync(source.path).size > 80 * 1024 ** 2) throw new Error('The retained original tab is unavailable.');
@@ -255,12 +286,7 @@ class SongsterrJobs {
       }
     }
     const previous = this.jobs;
-    this.jobs = [...previous, job];
-    while (this.jobs.length > 100) {
-      const oldest = this.jobs.findIndex((entry) => ['completed', 'failed', 'cancelled'].includes(entry.state));
-      if (oldest < 0) break;
-      this.jobs.splice(oldest, 1);
-    }
+    this.jobs = retainHistory([...previous, job]);
     try { this._save(); } catch (error) { this.jobs = previous; throw error; }
     this.emit(this.public(job)); this._start(); return this.public(job);
   }
@@ -274,6 +300,11 @@ class SongsterrJobs {
     if (originalsOnly === true) {
       if (!job.hybridLead?.enabled) throw new Error('This import already uses original arrangements only.');
       return this.enqueue(job.chart, { outputDir: job.outputDir, outputSettings: job.outputSettings, requestedRevisionId: job.requestedRevisionId, hybridLead: { enabled: false }, originalsOnlyFrom: job.id, retainedFrom: job });
+    }
+    this._assertQueueCapacity();
+    if (this.jobs.some(other => other !== job && RUNNABLE(other) && other.chart.id === job.chart.id
+        && other.requestedRevisionId === job.requestedRevisionId && Boolean(other.hybridLead?.enabled) === Boolean(job.hybridLead?.enabled))) {
+      throw new Error('This song already has an active import. Wait for it to finish before resuming this attempt.');
     }
     if (hybridLead !== undefined) {
       if (job.state !== 'awaiting_main_choice') throw new Error('The source choices are not awaiting a selection.');

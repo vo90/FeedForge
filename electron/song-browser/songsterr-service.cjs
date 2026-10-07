@@ -71,13 +71,13 @@ function registerSongsterr({ app, BrowserWindow, session, ipcMain, dialog, shell
     while (revisionChoices.size > 2000) revisionChoices.delete(revisionChoices.keys().next().value);
     return catalogue;
   });
-  handler('enqueue', ({ id, hybridLead, requestedRevisionId }) => {
+  handler('enqueue', ({ id, hybridLead, requestedRevisionId, freshFrom }) => {
     const song = results.get(String(id)); if (!song) throw new Error('Search for this song again before importing it.');
     if (requestedRevisionId != null && !revisionChoices.get(String(id))?.has(String(requestedRevisionId))) throw new Error('Choose an available revision from this song’s revision list.');
     const settings = getSettings();
     if (!settings.outputDir) throw new Error('Choose an output folder in FeedForge Settings.');
     validateOutput(settings.outputDir);
-    return jobs.enqueue(song, { ...settings, hybridLead, requestedRevisionId });
+    return jobs.enqueue(song, { ...settings, hybridLead, requestedRevisionId, freshFrom });
   });
   handler('retry', ({ id, allowAccount, hybridLead, originalsOnly, rediscoverAudio }) => jobs.retry(String(id), { allowAccount: allowAccount === true, hybridLead, originalsOnly: originalsOnly === true, rediscoverAudio: rediscoverAudio === true }));
   handler('cancel', async ({ id }) => { await jobs.cancel(String(id)); return { ok: true }; });

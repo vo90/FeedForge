@@ -13,10 +13,29 @@ const built = esbuild.buildSync({ entryPoints: [filename], bundle: true, platfor
   external: ['react', 'lucide-react'], loader: { '.css': 'empty' } });
 const compiled = new Module(filename, module); compiled.filename = filename;
 compiled.paths = Module._nodeModulePaths(path.dirname(filename)); compiled._compile(built.outputFiles[0].text, filename);
-const { SongsterrJob, default: SongsterrBrowser } = compiled.exports;
+const { SongsterrJob, SongsterrResult, default: SongsterrBrowser } = compiled.exports;
 const base = { id: 'job-songsterr-1', songId: '564073', title: 'Woodland Rites', artist: 'Green Lung', state: 'queued', canCancel: true, canRetry: false };
 const render = (Component, props) => renderToStaticMarkup(React.createElement(Component, props));
 const job = (change) => render(SongsterrJob, { job: { ...base, ...change }, api: {}, action() {}, busy: false });
+
+for (const state of ['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed', 'awaiting_main_choice', 'queued', 'retry_wait', 'completed', 'failed', 'cancelled']) {
+  test(`search actions distinguish ${state} from active imports`, () => {
+    const waiting = ['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed', 'awaiting_main_choice'].includes(state);
+    const html = render(SongsterrResult, { song: { id: base.songId, title: base.title, artist: base.artist },
+      jobs: [{ ...base, state }], api: {}, action() {}, outputDir: 'C:/output', busy: false, hybridEnabled: false });
+    assert.equal(html.includes('Resume existing import'), waiting);
+    assert.equal(html.includes('Start fresh import'), waiting);
+    assert.equal(html.match(/<button class="sb-button sb-primary"[^>]*>/)[0].includes('disabled'), ['queued', 'retry_wait'].includes(state));
+    if (waiting) assert.match(job({ state }), /Waiting for your input\. Other queued songs can continue/);
+  });
+}
+
+test('active attempt takes precedence over a later waiting attempt in search', () => {
+  const html = render(SongsterrResult, { song: { id: base.songId }, jobs: [{ ...base, state: 'queued' }, { ...base, id: 'later', state: 'needs_audio' }],
+    api: {}, action() {}, outputDir: 'C:/output', hybridEnabled: false });
+  assert.doesNotMatch(html, /Start fresh import/);
+  assert.match(html, /class="sb-button sb-primary" disabled/);
+});
 
 test('Songsterr uses the saved Hybrid Lead preference supplied by the application', () => {
   for (const enabled of [true, false]) {
