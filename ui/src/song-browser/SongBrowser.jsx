@@ -141,7 +141,7 @@ export default function SongBrowser(props) {
       <button type="button" className="sb-button" aria-pressed={source === 'songsterr'} onClick={() => { setSongsterrOpened(true); chooseSource('songsterr'); }}>Songsterr</button>
     </nav>
     <div style={{ display: source === 'customsforge' ? undefined : 'none' }}><CustomsForgeBrowser {...props} /></div>
-    {songsterrOpened ? <div style={{ display: source === 'songsterr' ? undefined : 'none' }}><SongsterrBrowser outputSettings={props.outputSettings} onOpenOutputSettings={props.onOpenOutputSettings} outputApi={props.api} /></div> : null}
+    {songsterrOpened ? <div style={{ display: source === 'songsterr' ? undefined : 'none' }}><SongsterrBrowser hybridEnabled={props.hybridEnabled} onHybridEnabledChange={props.onHybridEnabledChange} outputSettings={props.outputSettings} onOpenOutputSettings={props.onOpenOutputSettings} outputApi={props.api} /></div> : null}
   </>;
 }
 

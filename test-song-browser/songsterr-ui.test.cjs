@@ -17,6 +17,18 @@ const { SongsterrJob, default: SongsterrBrowser } = compiled.exports;
 const base = { id: 'job-songsterr-1', songId: '564073', title: 'Woodland Rites', artist: 'Green Lung', state: 'queued', canCancel: true, canRetry: false };
 const render = (Component, props) => renderToStaticMarkup(React.createElement(Component, props));
 const job = (change) => render(SongsterrJob, { job: { ...base, ...change }, api: {}, action() {}, busy: false });
+
+test('Songsterr uses the saved Hybrid Lead preference supplied by the application', () => {
+  for (const enabled of [true, false]) {
+    // A fresh render models a newly mounted page; the application owns the
+    // preference, so navigation must not replace it with a page-local default.
+    const html = render(SongsterrBrowser, { api: {}, hybridEnabled: enabled, onHybridEnabledChange() {} });
+    const input = html.match(/<input[^>]*type="checkbox"[^>]*>\s*Create Hybrid Lead/)?.[0];
+    assert.ok(input);
+    assert.equal(input.includes('checked=""'), enabled);
+    assert.equal(html.includes('Let me choose the base'), enabled);
+  }
+});
 test('saved unavailable recordings offer explicit full-mix discovery separately from same-recording retry', () => {
   const html = job({ state: 'needs_audio', canRetryRecording: true, canRefreshRecording: true });
   assert.match(html, /Check Songsterr full mix/); assert.match(html, /Retry same recording/);
