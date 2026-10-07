@@ -4,7 +4,7 @@ from datetime import date
 import re
 
 from .artwork import (_LookupFailure, _norm, _artist_names, _title_identity,
-                      _search_title, _query_url, _pages, _UUID, _EXCLUDE)
+                      _search_title, _query_url, _pages, _UUID, _EXCLUDE, _VERSIONS)
 
 MAX_RECORDINGS = 300
 MAX_GROUPS = 8
@@ -76,6 +76,8 @@ def _context_versions(title, audio, names):
         for tag in ('acoustic', 'remix', 'demo', 'instrumental'):
             if re.search(r'\b' + tag + r'\b', remainder, re.I):
                 versions.add(tag)
+        if re.search(_VERSIONS['djmix'], remainder, re.I):
+            versions.add('djmix')
     return versions, details
 
 
