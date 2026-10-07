@@ -703,6 +703,14 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         manifest.setdefault('song_import', {})['mutedTieIdentityFile'] = 'import/muted-tie-identity.json'
     if performance.get('plainTieIdentityEvidence'):
         from .plain_ties import BEND_RULE, POLICY as PLAIN_TIE_POLICY, archive_evidence as plain_tie_archive
+        from .pending_slide_ties import RULE as PENDING_SLIDE_RULE
+        if any(row.get('rule') == PENDING_SLIDE_RULE for row in performance['plainTieIdentityEvidence']):
+            contract = (recipe or {}).get('preservationContract')
+            inventory = (compatibility or {}).get('version')
+            if (source_path is None or type(contract) is not int or contract < 96
+                    or type(inventory) is not int or inventory < 96):
+                raise ImportFailure('unsupported_score',
+                                    'Pending-slide tie identity requires the original tab, preservation contract 96 and compatibility inventory 96.')
         if any(row.get('rule') == BEND_RULE for row in performance['plainTieIdentityEvidence']):
             contract = (recipe or {}).get('preservationContract')
             inventory = (compatibility or {}).get('version')

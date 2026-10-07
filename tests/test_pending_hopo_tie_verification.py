@@ -441,7 +441,7 @@ def test_archive_opening_repair_passes_declared_tie_contract(tmp_path, monkeypat
     manifest['song_import']['openingRepairFile'] = 'import/opening-repair.json'
     files['import/opening-repair.json'] = json.dumps(receipt).encode()
     seen = []
-    def check_route(independent, mapping, retained, recording, check, *, pending_hopo_ties=True):
+    def check_route(independent, mapping, retained, recording, check, *, pending_hopo_ties=True, pending_slide_ties=True):
         seen.append(pending_hopo_ties)
         tracks, _ = local_sync.independent_tracks(independent, pending_hopo_ties=pending_hopo_ties)
         assert bool(tracks[0]['events'][-1]['effects'].get('po')) is (contract < 95)

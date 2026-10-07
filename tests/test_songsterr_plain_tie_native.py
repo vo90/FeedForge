@@ -52,11 +52,12 @@ def native_source_clock(row):
 def test_plain_tie_held_identity_matches_reviewed_native_source_clock(row):
     source = deepcopy(row['source']); before = deepcopy(source)
     # The pinned contract90 fixture retains its original guarded disposition.
-    # Contract93 separately qualifies this ordinary initial bend's plain tie.
+    # Contracts93/96 separately qualify initial bends and pending slides.
     newly_qualified_bend = row['id'] == 'plain-tie/guard/ancestor-bend'
-    if newly_qualified_bend:
+    newly_qualified_slide = row['id'] == 'plain-tie/guard/ancestor-outgoing-slide'
+    if newly_qualified_bend or newly_qualified_slide:
         assert row['expectedDisposition'] == 'blocked'
-    if row['expectedDisposition'] == 'blocked' and not newly_qualified_bend:
+    if row['expectedDisposition'] == 'blocked' and not (newly_qualified_bend or newly_qualified_slide):
         for reader in (lambda: render(parse(source)),
                        lambda: expected(songsterr(source), {'offset': 0, 'scale': 1})):
             with pytest.raises(ValueError):
@@ -75,6 +76,13 @@ def test_plain_tie_held_identity_matches_reviewed_native_source_clock(row):
             assert identity['rule'] == 'plain-tie-keeps-bent-attack-target'
             assert identity['authored'] == {'fret':0} and identity['used'] == {'fret':7}
         assert actual['fingerBendTimingEvidence'][0]['status'] == 'resolved'
+    if newly_qualified_slide:
+        for rows in (actual['plainTieIdentityEvidence'], independent['plain_tie_identities']):
+            identity, = rows
+            assert identity['rule'] == 'plain-tie-keeps-pending-slide-attack-target'
+            assert identity['authored'] == {'fret':0, 'tie':True, 'slide':'shift'}
+            assert identity['used'] == {'fret':7, 'pendingSlide':'shift'}
+        assert producer_notes(actual)[0]['sl'] == 9
     candidates = [producer_notes(actual),
                   sorted((n['note'] for n in independent['parts'][0]['notes']), key=lambda n: (n['t'], n['s']))]
     wanted = native_source_clock(row)

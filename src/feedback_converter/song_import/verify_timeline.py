@@ -313,17 +313,17 @@ class RecordingMap:
         return (a1 - a0) / (s1 - s0)
 
 
-def expected(source, alignment, *, pending_hopo_ties=True):
+def expected(source, alignment, *, pending_hopo_ties=True, pending_slide_ties=True):
     from .verify_voices import project
     def reconstruct(selected, mapping):
-        return _expected(selected, mapping, pending_hopo_ties=pending_hopo_ties)
+        return _expected(selected, mapping, pending_hopo_ties=pending_hopo_ties, pending_slide_ties=pending_slide_ties)
     result = reconstruct(source, alignment)
     result = project(source, alignment, result, reconstruct) if source.format == 'songsterr' else result
     from .verify_collapsed_opening import project as project_opening
     return project_opening(result, alignment)
 
 
-def _expected(source, alignment, *, pending_hopo_ties=True):
+def _expected(source, alignment, *, pending_hopo_ties=True, pending_slide_ties=True):
     order = visits(source)
     clock, recording = Clock(source, order), RecordingMap(alignment)
     result = {"parts": [], "beats": [], "sections": [], "time_signatures": [], "tempos": [], "order": order,
@@ -513,6 +513,15 @@ def _expected(source, alignment, *, pending_hopo_ties=True):
                                   or any(atom.effects.get(k) for k in ('hm','hp','hn','harmonic_target','vb')))
                     if event.get('muted_identity') and expressive:
                         unsupported(atom.location, 'A normalized muted continuation has a pitch gesture.')
+                    slide_tie = False
+                    if (pending_slide_ties and source.format == 'songsterr'
+                            and (event['f'] != atom.fret or event.get('pending_slide_identity'))):
+                        from .verify_pending_slide_ties import admitted as hold_slide, record as slide_record
+                        slide_tie = hold_slide(atom, event, pending_slides.get(key), start,
+                            unique=source_slots[(atom.q, atom.voice, atom.string)] == 1,
+                            interrupted=interrupted, competing=key in pending_hopos or key in muted_pending)
+                        if event.get('pending_slide_identity') and not slide_tie:
+                            unsupported(atom.location, 'A normalized pending slide has an unqualified continuation.')
                     if event['f'] != atom.fret:
                         rest_starts, rest_ends = rest_indices.get(atom.voice, ([], []))
                         ri = bisect_left(rest_starts, start) - 1
@@ -522,7 +531,12 @@ def _expected(source, alignment, *, pending_hopo_ties=True):
                                             unique=source_slots[(atom.q, atom.voice, atom.string)] == 1,
                                             pending=key in pending_slides or key in pending_hopos or key in muted_pending,
                                             continuous=event['end'] == start))
-                        if plain_target:
+                        if slide_tie:
+                            result['plain_tie_identities'].append(
+                                slide_record(part, atom, event, occurrence, start, end, clock))
+                            event['pending_slide_identity'] = True
+                            notation_fret = event['f']
+                        elif plain_target:
                             p = atom.location.split('/')
                             first = event['locations'][0].split('/')
                             result['plain_tie_identities'].append({

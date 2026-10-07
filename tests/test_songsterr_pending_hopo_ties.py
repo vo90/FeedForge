@@ -446,9 +446,10 @@ def test_immediate_boundary_does_not_repair_unqualified_held_history(fault):
         produced(document)
 
 
-def test_separate_pending_shift_slide_placeholder_remains_guarded():
+def test_pending_slide_is_retained_unlike_consumed_hopo():
     document = source()
     n = document['parts'][0]['measures'][0]['voices'][0]['beats'][0]['notes'][0]
     n.pop('hp');n['slide'] = 'shift'
-    with pytest.raises(ScoreImportError, match='Unresolved tie'):
-        produced(document)
+    held, fresh = flat(produced(document)['tracks'][0])
+    assert held['sl'] == fresh['f'] == 0
+    assert not fresh.get('po')
