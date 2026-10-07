@@ -73,8 +73,11 @@ def test_legacy_before_beat_grace_keeps_exact_budget(initial):
 def test_dotted_rest_is_not_an_undotted_whole_bar_or_pickup():
     r={'rest':True,'type':1,'dotted':True,'duration':[1,1],'notes':[{'rest':True}]}
     source=raw_score([measure(r,signature=[3,4]),measure(beat())])
-    with pytest.raises(ValueError):parse(source)
-    with pytest.raises(ValueError):songsterr(source)
+    with pytest.raises(ValueError):songsterr(source, bounded_measures=False)
+    parsed = parse(source)
+    assert parsed.measures[0].length == 3 and not parsed.measures[0].pickup
+    assert parsed.source['measureBoundaryAdjustments'] == songsterr(source).boundary_adjustments
+    assert parsed.source['measureBoundaryAdjustments'][0]['action'] == 'duration_cap'
     source['parts'][0]['anacrusis']=True
     with pytest.raises(ValueError):parse(source)
     with pytest.raises(ValueError):songsterr(source)

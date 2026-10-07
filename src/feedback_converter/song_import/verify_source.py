@@ -276,6 +276,7 @@ class Source:
     legacy_brush_timing: bool = False
     negative_fret_mutes: bool = False
     instrument_resolution: dict | None = None
+    boundary_adjustments: list = field(default_factory=list)
 
 
 def inactive(value):
@@ -369,9 +370,11 @@ def _songsterr_dots(beat, location):
     return 1 if flag is True else 0
 
 
-def _songsterr_beat_clock(beats, measure_length, location, performed_lengths=None, *, preceding=None, initial=False):
+def _songsterr_beat_clock(beats, measure_length, location, performed_lengths=None, *, preceding=None, initial=False, bounded=True):
     written = [4 * fraction(b["duration"], location) for b in beats]
     lengths = performed_lengths if performed_lengths is not None else written
+    if bounded:
+        lengths = [min(length, measure_length) for length in lengths]
     if beats and beats[0].get("graceNote") == "beforeBeat":
         leading = 0
         while leading < len(beats) and beats[leading].get("graceNote"):
@@ -380,7 +383,7 @@ def _songsterr_beat_clock(beats, measure_length, location, performed_lengths=Non
             leading += 1
         if initial:
             copied = [{**b, 'graceNote': 'onBeat'} if i < leading else b for i, b in enumerate(beats)]
-            return _songsterr_beat_clock(copied, measure_length, location, lengths)
+            return _songsterr_beat_clock(copied, measure_length, location, lengths, bounded=bounded)
         if preceding:
             old_source, old_times, old_limit = preceding
             if old_source[-1].get('graceNote'):
@@ -403,10 +406,10 @@ def _songsterr_beat_clock(beats, measure_length, location, performed_lengths=Non
                 head.append([cursor, length, F(0)])
                 cursor += length
             old_times[-1][1] = min(old_times[-1][1], remaining - sum(allocated, F(0)))
-            tail = _songsterr_beat_clock(beats[leading:], measure_length, location, lengths[leading:])
+            tail = _songsterr_beat_clock(beats[leading:], measure_length, location, lengths[leading:], bounded=bounded)
             return head + tail
-    # Independent recognition of a silent whole-rest overrun. Do not reuse the
-    # producer's helper or accept ordinary overflowing rhythm.
+    # Independent recognition of the pre-existing whole-rest rules. Ordinary
+    # overflow is admitted only by the versioned measure-boundary policy.
     if len(beats) == 1:
         rest = beats[0]
         dots = _songsterr_dots(rest, location)
@@ -418,7 +421,7 @@ def _songsterr_beat_clock(beats, measure_length, location, performed_lengths=Non
                 and written[0] == 8 - F(4, 2**dots) and written[0] > measure_length):
             return [[F(0), measure_length, F(0)]]
     if (len(beats) == 1 and beats[0].get("rest") is True and beats[0].get("type") == 1
-            and lengths == [F(4)] and not _songsterr_dots(beats[0], location)
+            and written == [F(4)] and not _songsterr_dots(beats[0], location)
             and not any(beats[0].get(k) for k in ("tuplet", "graceNote"))
             and isinstance(beats[0].get("notes"), list)
             and all(n.get("rest") is True for n in beats[0]["notes"])):
@@ -432,7 +435,7 @@ def _songsterr_beat_clock(beats, measure_length, location, performed_lengths=Non
         if not beat.get("graceNote"):
             position += length
             written_position += written[len(starts) - 1]
-    if position > measure_length:
+    if position > measure_length and not bounded:
         raise ValueError(location + ": overfull written voice")
     times = [[start, length, w] for start, length, w in zip(starts, lengths, written_starts)]
     pending = []
@@ -595,9 +598,9 @@ def _section_annotation(names, location):
     return ranked[0][2]
 
 
-def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_instruments=True):
+def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_instruments=True, bounded_measures=True):
     """Read current note controls, or reproduce a historical archive's fanout."""
-    if type(resolve_instruments) is not bool:
+    if type(resolve_instruments) is not bool or type(bounded_measures) is not bool:
         raise ValueError("source: invalid instrument policy selection")
     if type(note_owned_vibrato) is not bool:
         raise ValueError("source: invalid note vibrato policy selection")
@@ -800,7 +803,7 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                     rates.append(clock[max(before)])
             if len(set(rates)) > 1:
                 unsupported("automations", "Tracks have different performed tempo automation.")
-    parts, excluded = [], []
+    parts, excluded, boundary_adjustments = [], [], []
     note_keys = {"string", "fret", "tie", "rest", "dead", "vibrato", "wideVibrato", "ghost", "accentuated",
                  "trill", "tap", "tapping", "hp", "harmonic", "harmonicFret", "slide", "bend", "leftHandVibrato", "staccato", "pickScrape", "leftFingering", "tremolo"}
     beat_keys = {"tremoloBar", "vibratoWithTremoloBar", "duration", "notes", "rest", "type", "dots", "dotted", "tuplet", "tupletStart", "tupletStop", "graceNote",
@@ -821,11 +824,44 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
         for bi, bar in enumerate(raw['measures']):
             feel = bar.get('tripletFeel') or feel
             durations = _songsterr_swing_lengths(bar, feel, f'parts/{pi}/measures/{bi}')
+            if bounded_measures:
+                for vi, voice in enumerate(bar['voices']):
+                    bs = voice['beats']
+                    dots = _songsterr_dots(bs[0], 'measure-boundary/rest') if len(bs) == 1 else 0
+                    written_length = fraction(bs[0]['duration']) * 4 if len(bs) == 1 else F(0)
+                    whole_rest = (len(bs) == 1 and bs[0].get('rest') is True and bs[0].get('type') == 1
+                                  and not any(bs[0].get(k) for k in ('tuplet', 'graceNote'))
+                                  and all(n.get('rest') is True for n in bs[0]['notes'])
+                                  and (dots == 0 and written_length == 4 or
+                                       1 <= dots <= 4 and bs[0]['notes'] and written_length == 8 - F(4, 2**dots)))
+                    for bti, duration in enumerate(durations[vi]):
+                        if duration > bars[bi].length and not whole_rest:
+                            boundary_adjustments.append({'trackId': tid,
+                                'location': f'parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}',
+                                'measure': bi + 1, 'voice': vi + 1, 'beat': bti + 1,
+                                'action': 'duration_cap', 'duration': str(duration), 'usedDuration': str(bars[bi].length)})
             values = [_songsterr_beat_clock(v['beats'], bars[bi].length, f'parts/{pi}/measures/{bi}/voices/{vi}',
-                                           durations[vi], preceding=previous.get(vi), initial=bi == 0)
+                                           durations[vi], preceding=previous.get(vi), initial=bi == 0, bounded=bounded_measures)
                       for vi, v in enumerate(bar['voices'])]
             all_times.append(values)
             previous = {vi: (v['beats'], values[vi], bars[bi].length) for vi, v in enumerate(bar['voices']) if v['beats']}
+        if bounded_measures:
+            for bi, voices in enumerate(all_times):
+                limit = bars[bi].length
+                for vi, times in enumerate(voices):
+                    for bti, timing in enumerate(times):
+                        start, length, _ = timing
+                        omitted = start >= limit
+                        if not omitted and start + length <= limit:
+                            continue
+                        used = None if omitted else str(max(F(0), limit - start))
+                        boundary_adjustments.append({'trackId': tid,
+                            'location': f'parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}',
+                            'measure': bi + 1, 'voice': vi + 1, 'beat': bti + 1,
+                            'action': 'omit' if omitted else 'clip', 'start': str(start),
+                            'duration': str(length), 'usedDuration': used})
+                        if not omitted:
+                            timing[1] = max(F(0), limit - start)
         feel = "off"
         for bi, bar in enumerate(raw["measures"]):
             feel = bar.get("tripletFeel") or feel
@@ -839,6 +875,7 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                 _active_unknown(voice, {"beats", "rest"}, {"id"}, f"parts/{pi}/measures/{bi}/voices/{vi}", ignored)
                 times = all_times[bi][vi]
                 for bti, beat in enumerate(voice["beats"]):
+                    atom_start = len(atoms)
                     loc = f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}"
                     _legacy_beat_tempo(beat, loc)
                     _legacy_beat_effects(beat, loc)
@@ -1098,6 +1135,11 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                             atoms[-1].slide_in = "down"
                         elif raw_slide in {"below", "belowshift", "belowlegato", "belowupwards", "belowdownwards"}:
                             atoms[-1].slide_in = "up"
+                    if bounded_measures and q >= bars[bi].length:
+                        # Retained source contains the written beat, but native
+                        # playback emits neither an attack nor a tied segment.
+                        del atoms[atom_start:]
+                        beat_facts.pop()
             track.bars.append(atoms)
             track.beats.append(beat_facts)
         from .verify_tones import read as read_tones
@@ -1107,6 +1149,7 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
     return Source("songsterr", str(document.get("title", "")), str(document.get("artist", "")), bars, parts,
                   excluded, len(metadata), {k: str(document[k]) for k in ("songId", "revisionId") if k in document}, ignored, section_labels,
                   instrument_resolution=instrument_resolution, legacy_brush_timing=legacy_brush_timing,
+                  boundary_adjustments=boundary_adjustments,
                   negative_fret_mutes=any(a.authored_fret == -1 for p in parts for b in p.bars for a in b))
 
 
@@ -1307,11 +1350,11 @@ def gpif(data):
     return Source("gpif", _txt(root, "Score/Title"), _txt(root, "Score/Artist"), bars, parts, excluded, len(ids))
 
 
-def read_source(path: Path, *, note_owned_vibrato=True, resolve_instruments=True):
+def read_source(path: Path, *, note_owned_vibrato=True, resolve_instruments=True, bounded_measures=True):
     if path.stat().st_size > MAX_SOURCE:
         raise ValueError("source: verification size limit exceeded")
     if path.suffix.lower() == ".json":
-        return songsterr(json.loads(path.read_text(encoding="utf-8-sig")), note_owned_vibrato=note_owned_vibrato, resolve_instruments=resolve_instruments)
+        return songsterr(json.loads(path.read_text(encoding="utf-8-sig")), note_owned_vibrato=note_owned_vibrato, resolve_instruments=resolve_instruments, bounded_measures=bounded_measures)
     if path.suffix.lower() in {".gpif", ".xml"}:
         return gpif(path.read_bytes())
     with ZipFile(path) as archive:

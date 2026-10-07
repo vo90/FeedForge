@@ -30,8 +30,13 @@ def test_whole_measure_rest_uses_meter_in_both_readers(tmp_path, meter):
 def test_whole_bar_rest_does_not_hide_a_real_overflow(tmp_path):
     rest = {"rest": True, "type": 1, "duration": [1, 1], "notes": [{"rest": True}]}
     for beats in ([beat()], [rest, rest], [{**rest, "dots": 1}]):
-        with pytest.raises(ScoreImportError, match="exceeds"):
-            import_json(tmp_path, raw_score([measure(*beats, signature=[2, 4])]))
+        document = raw_score([measure(*beats, signature=[2, 4]), measure(beat())])
+        with pytest.raises(ValueError, match='overfull'):
+            read_source(document, bounded_measures=False)
+        result = import_json(tmp_path, document)
+        assert result['source']['measureBoundaryAdjustments'] == read_source(document).boundary_adjustments
+        assert result['tracks'][0]['notes'][-1]['t'] == 1
+        assert result['source']['measureBoundaryAdjustments'][0]['action'] == 'duration_cap'
 
 
 def test_rest_meter_changes_repeats_and_independent_voice(tmp_path):

@@ -105,6 +105,7 @@ class Track:
     written_bars: list[list[WrittenVoice]] = field(default_factory=list)
     clefs: list[str | None] = field(default_factory=list)
     tone_source: dict | None = None
+    boundary_adjustments: list[dict] = field(default_factory=list)
 
 
 @dataclass

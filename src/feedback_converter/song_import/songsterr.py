@@ -395,7 +395,8 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
         feel = "off"
         from .songsterr_trills import resolution
         trill_clock = resolution(part["measures"])
-        part_clocks = part_timing(part["measures"], [m.length for m in measures])
+        boundary_rows = []
+        part_clocks = part_timing(part["measures"], [m.length for m in measures], adjustments=boundary_rows)
         for bi, measure in enumerate(part["measures"]):
             inventory.inspect(measure, "Songsterr measure", f"$.parts[{index}].measures[{bi}]",
                               playable={"signature", "voices", "rest", "repeat", "repeatStart", "alternateEnding", "marker", "direction", "directions", "fromDirection", "fermata", "freeTime", "tripletFeel"},
@@ -495,10 +496,12 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
                             parsed.attack_offset = offset
                             if boundary_grace:
                                 parsed.effects["__leading_grace"] = True
-                            bar_notes.append(parsed)
+                            if position < measures[bi].length:
+                                bar_notes.append(parsed)
                             written_beat.notes.append(parsed)
                     written_beat.rest = not written_beat.notes
-                    written_voice.beats.append(written_beat)
+                    if position < measures[bi].length:
+                        written_voice.beats.append(written_beat)
                 written_voices.append(written_voice)
             track_bars.append(bar_notes)
             written_bars.append(written_voices)
@@ -506,6 +509,9 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
             "rhythm" if "rhythm" in name.lower() else "lead" if any(w in name.lower() for w in ("lead", "solo")) else "guitar")
         tracks.append(Track(str(meta.get("id", index)), name, instrument, tuning, track_bars,
                             integer(part.get("capo", meta.get("capo", 0)), "capo"), role, written_bars))
+        tracks[-1].boundary_adjustments = [{'trackId': tracks[-1].id,
+            'location': f"parts/{index}/measures/{r['measure'] - 1}/voices/{r['voice'] - 1}/beats/{r['beat'] - 1}",
+            **r} for r in boundary_rows]
         from .songsterr_tones import read as read_tones
         tracks[-1].tone_source = read_tones(part, meta, measures, part_clocks, index,
                                             document.get('songId', ''), inventory,
@@ -517,6 +523,10 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
     source = {key: document[key] for key in ("songId", "revisionId", "approved", "url") if key in document}
     source["format"] = "songsterr"
     source["instrumentResolution"] = instrument_resolution
+    boundary_rows = [r for t in tracks for r in t.boundary_adjustments]
+    if boundary_rows:
+        source['measureBoundaryAdjustments'] = boundary_rows
+        warnings.append('Some overfilled tab bars use Songsterr playback boundaries: overflowing durations are shortened and attacks outside their bar are omitted. Original tab retained.')
     if not written_beat_vibrato:
         source['fingerVibratoPolicy'] = NOTE_VIBRATO_POLICY
     if legacy_brush_timing:

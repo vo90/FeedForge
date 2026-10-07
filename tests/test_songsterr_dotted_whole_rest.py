@@ -54,7 +54,7 @@ def test_single_dotted_whole_rest_retains_glyph_and_correct_following_attack(tmp
 
 
 @pytest.mark.parametrize('bad', ['note','additional_rest','inconsistent_dots','tuplet','grace','wrong_type'])
-def test_overflow_exception_is_not_a_general_truncation_rule(tmp_path,bad):
+def test_historical_rest_exception_and_versioned_measure_boundaries(tmp_path,bad):
     r=rest(); beats=[r]
     if bad=='note': r.pop('rest');r['notes']=[{'string':0,'fret':5}]
     elif bad=='additional_rest': beats.append(deepcopy(r))
@@ -63,8 +63,19 @@ def test_overflow_exception_is_not_a_general_truncation_rule(tmp_path,bad):
     elif bad=='grace': r['graceNote']='onBeat'
     else:r['type']=2
     source=raw_score([measure(*beats,signature=[2,4])])
-    with pytest.raises((ScoreImportError,ValueError)):import_json(tmp_path,source)
-    with pytest.raises(ValueError):songsterr(source)
+    # Pre-99 archives keep their strict overfull-voice rejection. The new
+    # native boundary policy accounts for ordinary caps separately; it does
+    # not pretend these variants qualify for the old whole-rest exception.
+    with pytest.raises(ValueError):songsterr(source, bounded_measures=False)
+    if bad == 'grace':
+        with pytest.raises((ScoreImportError, ValueError)): import_json(tmp_path, source)
+        with pytest.raises(ValueError): songsterr(source)
+    else:
+        from feedback_converter.song_import.songsterr import parse
+        parsed = parse(source)
+        independent = songsterr(source)
+        assert parsed.source['measureBoundaryAdjustments'] == independent.boundary_adjustments
+        assert any(r['action'] == 'duration_cap' for r in independent.boundary_adjustments)
 
 
 def test_repeat_and_other_voice_keep_their_notes(tmp_path):

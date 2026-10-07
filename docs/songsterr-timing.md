@@ -95,7 +95,32 @@ copied into the authored rational clock.
 
 The single undotted whole-rest glyph (`type: 1`, duration 1/1, rest-only
 notes) occupies the complete current measure, including irregular meters.
-Ordinary overflowing notes/rest sequences are not shortened. Written whole-rest
+Contract 99 follows Songsterr's measure-bounded playback for overflowing voices.
+Individual performed beat lengths are capped to the measure length before
+laying out their positions. Grace borrowing is resolved before bounding a beat
+that crosses the bar end. Beats starting at or beyond the boundary emit no
+playable event, including no tied segment; later bars do not move. A shortened
+beat can still tie into the following bar through the ordinary tie rules.
+The exported playable tab/notation omits those outside-bar beats; their complete
+original notation remains in the immutable source. Other written durations are
+retained separately from performed endpoints. No source JSON is rewritten.
+
+`import/measure-boundaries.json` records exact rational positions, original and
+used durations, source locations, track IDs and the original source hash.
+Compatibility findings expose each cap, clipping or omission. The independent
+reader recomputes this evidence and the package verifier compares it, as well as
+the resulting chart and notation. Contracts before 99 keep the prior strict
+overflow rejection. Missing/unknown musical data is not repaired by this rule.
+
+Qualified with synthetic boundary, grace, strum, tuplet and tied-continuation
+cases against the reviewed public worker SHA256
+`4219f9dbf0952af83be36c8b590f10fea7a0f36d72bd1f92297a3d768f93f5ab`.
+The public worker linked on 2026-10-07 (SHA256
+`75cb7118bcd9f6e360764367e0d47bb33e667426e0cc7528932e801a2f5047ca`)
+also retains these clipping/suppression rules; it has not replaced the reviewed
+reference. Tests retain the synthetic reference clocks and emitted events.
+
+Written whole-rest
 notation and the original source remain unchanged.
 
 Bends with `precisePosition` on every point use those percent coordinates
