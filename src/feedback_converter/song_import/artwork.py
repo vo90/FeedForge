@@ -29,7 +29,7 @@ import warnings
 
 from PIL import Image, ImageOps
 
-POLICY_VERSION = 3
+POLICY_VERSION = 4
 COVER_ENCODING = "jpeg-512-q90-v1"
 COVER_MAX_SIZE = 512
 USER_AGENT = "FeedForge/2.0.1 (album artwork; https://github.com/balki97/FeedForge)"
@@ -638,6 +638,8 @@ def resolve_album_art(metadata: dict, directory: Path, cache_dir: Path | None = 
                           "albumSelection": "supplied-album" if values["album"] else "original-official-release",
                           "releaseType": group["releaseType"], "lookupTitle": group["lookupTitle"],
                           "versions": group["versions"], "trackEvidence": group["trackEvidence"]}
+            if group.get("artistCreditResolution"):
+                provenance["artistCreditResolution"] = group["artistCreditResolution"]
             enrichment = {"albumStatus": "matched", "album": group["album"], "year": group["interval"][0].year,
                           "provenance": provenance}
             try:

@@ -131,6 +131,7 @@ def _artist_lookup(client, artist):
 
 
 def _recordings(client, metadata):
+    credit_resolution = None
     names = [metadata['artist']]
     title = _lookup_title(metadata, names)
     audio = _audio_context(metadata, names, _search_title(title))
@@ -172,7 +173,20 @@ def _recordings(client, metadata):
         versions, details = _context_versions(title, audio, names)
         records = _search(client, title, metadata['artist'], versions, artist_ids)
         matches = [r for r in records if _matches(r, metadata, title, versions, details, artist_ids)]
-    return matches, title, versions, audio
+    if not identifier and not matches and records:
+        from .artist_credit_match import resolve_artist_credit
+        credit_resolution = resolve_artist_credit(client, records, metadata, title, versions, details)
+        if credit_resolution:
+            artist_ids = credit_resolution['artistIds']
+            names += credit_resolution['names']
+            title = _lookup_title(metadata, names)
+            audio = _audio_context(metadata, names, _search_title(title))
+            versions, details = _context_versions(title, audio, names)
+            # Resolve by complete credited identity, not a shortened name which
+            # might return only part of the catalogue. Keep input metadata intact.
+            records = _search(client, title, metadata['artist'], versions, artist_ids)
+            matches = [r for r in records if _matches(r, metadata, title, versions, details, artist_ids)]
+    return matches, title, versions, audio, credit_resolution
 
 
 def _eligible(release, versions, artist_ids, supplied_album):
@@ -294,7 +308,7 @@ def _confirm_track(client, group, metadata, title, versions):
 
 
 def select_album(client, metadata):
-    records, title, versions, audio = _recordings(client, metadata)
+    records, title, versions, audio, credit_resolution = _recordings(client, metadata)
     if not records:
         raise _LookupFailure('recording_not_found')
     groups = _group_candidates(client, records, metadata, versions)
@@ -302,4 +316,6 @@ def select_album(client, metadata):
     _confirm_track(client, group, metadata, title, versions)
     group['lookupTitle'] = title
     group['versions'] = sorted(versions)
+    if credit_resolution:
+        group['artistCreditResolution'] = credit_resolution['proof']
     return group
