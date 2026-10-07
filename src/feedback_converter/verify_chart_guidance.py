@@ -80,6 +80,11 @@ def validate(chart, *, window=None, duration=None):
         if proof.get("window") != (list(window) if window is not None else None):
             fail("Guidance phrase window changed.")
         left, right = window if window is not None else (0, duration if duration is not None else math.inf)
+        # Note start and sustain each serialize to microseconds, whereas audio
+        # ends on a sample boundary. Their sum can exceed that boundary by up to
+        # one microsecond. Phrase windows retain their exact authored bounds.
+        if window is None and duration is not None:
+            right += .0000011
         members = [(n["t"], n) for n in chart.get("notes", [])]
         members.extend((n.get("t", c["t"]), n) for c in chart.get("chords", []) for n in c.get("notes", []))
         times = defaultdict(set)
