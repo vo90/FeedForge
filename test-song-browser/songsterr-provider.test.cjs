@@ -445,8 +445,69 @@ test('missing mix and ambiguous players never supply audio or acquire retryable 
     const win = state.provider._window(false); await state.provider._navigate(win, descriptor.approvedUrl);
     assert.equal(await state.provider._discoverAudio(win, { songId: result.id, revisionId: descriptor.revisionId }, await state.provider._read(win), undefined, 10), null);
     assert.deepEqual(state.actions, ['play', 'pause']); assert.equal(win.webContents.page.playing, false);
-    assert.ok(state.diagnostics.some(value => value.code === (options.noMix ? 'audio_probe_mix_unavailable' : 'audio_probe_ambiguous_iframes')));
+    assert.ok(state.diagnostics.some(value => value.code === (options.noMix ? 'audio_probe_primary_unverified' : 'audio_probe_ambiguous_iframes')));
   }
+});
+
+test('absent mix selector accepts only freshly verified primary audio and retains its evidence', async t => {
+  const state = runtime(await temporary(t), { lazyMix: true, noMix: true, lazyAudio: true });
+  t.after(() => state.provider.dispose());
+  const win = state.provider._window(false); await state.provider._navigate(win, descriptor.approvedUrl);
+  let reads = 0;
+  state.provider.anonymousSession.fetch = async (url, options) => {
+    reads++; assert.equal(url, `https://www.songsterr.com/api/video-points/${result.id}/${descriptor.revisionId}/list`);
+    assert.equal(options.credentials, 'omit');
+    return response([{ songId: result.id, revisionId: descriptor.revisionId, videoId: 'abcdefghijk',
+      status: 'done', feature: null, points: [0, 2, 4] }]);
+  };
+  const audio = await state.provider._discoverAudio(win, { songId: result.id, revisionId: descriptor.revisionId }, win.webContents.page, undefined, 10);
+  assert.equal(audio.videoId, 'abcdefghijk'); assert.equal(reads, 1);
+  assert.equal(audio.primaryRecordingEvidence.policy, 'absent-selector-primary-recording-v1');
+  assert.equal(audio.primaryRecordingEvidence.feature, null);
+  assert.deepEqual(state.actions, ['play', 'pause']); assert.equal(win.webContents.page.playing, false);
+});
+
+test('primary fallback rechecks page and video after evidence arrives and cleans up on cancellation', async t => {
+  for (const changed of ['video', 'revision', 'source', 'unknown_mix', 'loading_mix', 'backing', 'cancel']) {
+    const state = runtime(await temporary(t), { lazyMix: true, noMix: true }); t.after(() => state.provider.dispose());
+    const win = state.provider._window(false); await state.provider._navigate(win, descriptor.approvedUrl);
+    const controller = new AbortController();
+    state.provider.anonymousSession.fetch = async () => {
+      if (changed === 'video') win.webContents.page.audio = ['https://www.youtube.com/embed/lmnopqrstuv'];
+      if (changed === 'revision') win.webContents.page.revisionId = '999';
+      if (changed === 'source') win.webContents.page.originalSelected = false;
+      if (changed.endsWith('_mix')) win.webContents.page.mixControlState = changed.split('_')[0];
+      if (changed === 'backing') Object.assign(win.webContents.page, { audioMix: 'backing', mixControlState: 'backing' });
+      if (changed === 'cancel') controller.abort();
+      return response([{ songId: result.id, revisionId: descriptor.revisionId, videoId: 'abcdefghijk',
+        status: 'done', feature: null, points: [0, 2, 4] }]);
+    };
+    const run = state.provider._discoverAudio(win, { songId: result.id, revisionId: descriptor.revisionId }, win.webContents.page, controller.signal, 10);
+    if (changed === 'revision') await assert.rejects(run, { code: 'revision_unavailable' });
+    else if (changed === 'cancel') await assert.rejects(run, { code: 'cancelled' });
+    else assert.equal(await run, null, changed);
+    assert.deepEqual(state.actions, ['play', 'pause']);
+  }
+});
+
+test('primary fallback rejects excluded or ambiguous players without a network request', async t => {
+  for (const ambiguous of [false, true]) {
+    const state = runtime(await temporary(t), { lazyMix: true, noMix: true, ambiguousAudio: ambiguous }); t.after(() => state.provider.dispose());
+    const win = state.provider._window(false); await state.provider._navigate(win, descriptor.approvedUrl);
+    state.provider.anonymousSession.fetch = async () => { throw new Error('Must not fetch'); };
+    assert.equal(await state.provider._discoverAudio(win, { songId: result.id, revisionId: descriptor.revisionId }, win.webContents.page,
+      undefined, 10, ambiguous ? [] : ['abcdefghijk']), null);
+    assert.deepEqual(state.actions, ['play', 'pause']);
+  }
+});
+
+test('primary fallback preserves transient HTTP failures for bounded automatic retry', async t => {
+  const state = runtime(await temporary(t), { lazyMix: true, noMix: true }); t.after(() => state.provider.dispose());
+  const win = state.provider._window(false); await state.provider._navigate(win, descriptor.approvedUrl);
+  state.provider.anonymousSession.fetch = async () => response({}, 503);
+  await assert.rejects(state.provider._discoverAudio(win, { songId: result.id, revisionId: descriptor.revisionId }, win.webContents.page, undefined, 10),
+    error => error.code === 'needs_audio' && error.transport.status === 503);
+  assert.deepEqual(state.actions, ['play', 'pause']);
 });
 
 test('unknown source or mix controls do not start playback or invent a selection', async t => {

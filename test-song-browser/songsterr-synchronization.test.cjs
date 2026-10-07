@@ -2,12 +2,28 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { retrieveSynchronization, selectSynchronization, audioVideo, synchronizationSummary, MAX_SYNC_BYTES, MAX_ENTRIES } = require('../electron/song-browser/providers/songsterr/synchronization.cjs');
+const { retrieveSynchronization, selectSynchronization, primaryRecordingEvidence, audioVideo, synchronizationSummary, MAX_SYNC_BYTES, MAX_ENTRIES } = require('../electron/song-browser/providers/songsterr/synchronization.cjs');
 
 const ID = { songId: '123', revisionId: '456', videoId: 'abcdefghijk' };
 const ENTRY = { ...ID, id: 'entry-one', revisionToVideoId: 'binding-one', status: 'done', feature: null,
   problematic: null, tracks: null, points: [1.25, 3.25, 5.5] };
 const response = (value, status = 200, headers = {}) => new Response(typeof value === 'string' ? value : JSON.stringify(value), { status, headers });
+
+test('absent-selector evidence requires unambiguous primary classification and a valid exact recording map', () => {
+  const evidence = rows => ({ selectionEvidence: { version: 1, policy: 'primary-before-alternative', response: rows } });
+  assert.equal(primaryRecordingEvidence(evidence([ENTRY]), ID).videoId, ID.videoId);
+  assert.equal(primaryRecordingEvidence(evidence([ENTRY, { ...ENTRY }]), ID).matchingEntries, 2);
+  for (const changes of [{ feature: 'backing' }, { feature: 'solo' }, { feature: 'playthrough' }, { feature: 'alternative' },
+    { feature: undefined }, { tracks: [] }, { trackHashes: ['track'] }, { problematic: true }, { status: 'pending' },
+    { revisionId: '999' }, { songId: '999' }, { videoId: 'lmnopqrstuv' }, { points: [0, 0] }, { points: [0, 2, 1] }]) {
+    assert.equal(primaryRecordingEvidence(evidence([{ ...ENTRY, ...changes }]), ID), null, JSON.stringify(changes));
+  }
+  for (const conflicting of [{ feature: 'backing' }, { feature: 'alternative' }, { revisionId: '999' }, { points: [0, 2, 4] }]) {
+    assert.equal(primaryRecordingEvidence(evidence([ENTRY, { ...ENTRY, ...conflicting }]), ID), null);
+  }
+  assert.equal(primaryRecordingEvidence(evidence([]), ID), null);
+  assert.equal(primaryRecordingEvidence({}, ID), null);
+});
 
 test('collapsed opening preserves every boundary, requires a later positive interval and exact identity', () => {
   for (const points of [[.53, .53, 2.62, 4.76], [.53, .53, .53, 4.76], [0, 0, .000001, 2]]) {

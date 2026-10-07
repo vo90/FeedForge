@@ -76,6 +76,23 @@ function selectSynchronization(entries, identity) {
   return result;
 }
 
+// Missing UI controls are not proof of a full recording. This stricter use of
+// the public timing response admits only an explicitly classified primary,
+// never the alternative fallback allowed when selecting a timing map.
+function primaryRecordingEvidence(sync, identity) {
+  const evidence = sync?.selectionEvidence;
+  if (evidence?.version !== 1 || evidence.policy !== 'primary-before-alternative') return null;
+  const selected = selectSynchronization(evidence.response, identity);
+  if (selected.status !== 'done' || selected.feature !== null) return null;
+  const matching = evidence.response.filter(entry => entry.videoId === identity.videoId);
+  if (matching.some(entry => numeric(entry.songId) !== identity.songId || numeric(entry.revisionId) !== identity.revisionId
+      || entry.feature !== null || entry.status !== 'done' || entry.tracks != null || entry.trackHashes != null
+      || (entry.problematic != null && entry.problematic !== false))) return null;
+  return { version: 1, policy: 'absent-selector-primary-recording-v1', songId: selected.songId,
+    revisionId: selected.revisionId, videoId: selected.videoId, feature: null, status: 'done',
+    mapHash: selected.mapHash, pointCount: selected.points.length, matchingEntries: matching.length };
+}
+
 async function retrieveSynchronization(identity, { fetch, signal, timeoutMs = 15000 } = {}) {
   check(signal);
   if (!numeric(identity?.songId) || !numeric(identity?.revisionId) || !/^[\w-]{11}$/.test(identity?.videoId || '')) {
@@ -138,4 +155,4 @@ function synchronizationSummary(value) {
     }) };
 }
 
-module.exports = { retrieveSynchronization, selectSynchronization, unavailableSynchronization, audioVideo, synchronizationSummary, MAX_SYNC_BYTES, MAX_ENTRIES };
+module.exports = { retrieveSynchronization, selectSynchronization, primaryRecordingEvidence, unavailableSynchronization, audioVideo, synchronizationSummary, MAX_SYNC_BYTES, MAX_ENTRIES };
