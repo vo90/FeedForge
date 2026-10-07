@@ -146,6 +146,64 @@ test('approval reader associates each explicit badge with its own revision and e
   ]);
 });
 
+test('revision identity and status ignore authored references, comments and profile text', () => {
+  const song = '/a/wsa/example-tab-s42';
+  for (const href of [song + '/r999', '/a/wsa/other-tab-s99/r888', 'https://other.test' + song + '/r101']) {
+    for (const content of [
+      el('p', {}, [el('a', { href }, [], 'View'), span('Alternative')]),
+      el('div', { class: 'newBuild_messageBlock' }, [el('a', { href }, [], 'View'), span('Alternative')]),
+      el('article', {}, [el('a', { href }, [], 'Show full tab'), span('Alternative')]),
+      el('a', { href, rel: 'noopener ugc' }, [span('Alternative')]),
+      el('a', { href: '/user/Alternative' }, [], 'Alternative'),
+    ]) {
+      const row = el('li', { id: 'r101' }, [el('a', { href: song + '/r100...r101', 'aria-label': 'View' },
+        [span('Approved'), span('1/1/2026'), content])]);
+      const state = run(readSongsterrPage, page([el('ul', { id: 'revisions-list' }, [row])], 'https://www.songsterr.com' + song));
+      assert.equal(state.revisionRows.length, 1, href);
+      assert.equal(state.revisionRows[0].status, 'reviewed');
+      assert.equal(state.revisionRows[0].ambiguous, false);
+      assert.deepEqual(state.revisionIssues, []);
+    }
+  }
+});
+
+test('description-only approval, moderator icons and revision links cannot supply evidence', () => {
+  const song = '/a/wsa/example-tab-s42';
+  for (const tag of ['p', 'article', 'form', 'blockquote']) {
+    const description = el(tag, {}, [span('Approved'), el('img', { alt: 'Moderator' }),
+      el('a', { href: song + '/r101' }, [], 'View')]);
+    const row = el('li', { id: 'r101' }, [span('1/1/2026'), description]);
+    const doc = page([el('ul', { id: 'revisions-list' }, [row])], 'https://www.songsterr.com' + song);
+    const missing = run(readSongsterrPage, doc);
+    assert.deepEqual(missing.revisionRows, []);
+    assert.deepEqual(missing.revisionIssues, [{ revisionId: '101', reason: 'missing_revision_control' }]);
+    const link = el('a', { href: song + '/r101', 'aria-label': 'View' }); link.parentElement = row; row.children.push(link);
+    const observed = run(readSongsterrPage, doc);
+    assert.equal(observed.revisionRows[0].status, 'unreviewed');
+    assert.equal(observed.revisionRows[0].moderator, false);
+  }
+});
+
+test('a valid description link never repairs an invalid actual revision control', () => {
+  const song = '/a/wsa/example-tab-s42';
+  for (const href of [song + '/r999', '/a/wsa/other-tab-s99/r101', 'https://other.test' + song + '/r101', song + '/r', 'https://user@www.songsterr.com' + song + '/r101']) {
+    const row = el('li', { id: 'r101' }, [span('Approved'), span('1/1/2026'),
+      el('a', { href, 'aria-label': 'View' }),
+      el('p', {}, [el('a', { href: song + '/r101' }, [], 'Show full tab')])]);
+    const state = run(readSongsterrPage, page([el('ul', { id: 'revisions-list' }, [row])], 'https://www.songsterr.com' + song));
+    assert.deepEqual(state.revisionRows, [], href);
+    assert.deepEqual(state.revisionIssues, [{ revisionId: '101', reason: 'conflicting_revision_control' }]);
+  }
+});
+
+test('conflicting actual controls remain invalid even alongside a correct View control', () => {
+  const song = '/a/wsa/example-tab-s42';
+  const row = el('li', { id: 'r101' }, [span('Approved'), span('1/1/2026'),
+    el('a', { href: song + '/r101' }, [], 'View'), el('a', { href: song + '/r999' }, [], 'Show full tab')]);
+  const state = run(readSongsterrPage, page([el('ul', { id: 'revisions-list' }, [row])], 'https://www.songsterr.com' + song));
+  assert.deepEqual(state.revisionRows, []);
+});
+
 test('initial-revision history retains the song and approved full-tab identity', () => {
   const song = '/a/wsa/green-lung-evil-in-this-house-tab-s5197918';
   const row = el('li', { id: 'r6797098' }, [span('5/13/2026'), span('Approved'), span('Initial revision'),
