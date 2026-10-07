@@ -253,6 +253,10 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     if alignment.get("status") != "validated":
         raise ImportFailure("alignment_failed", "The recording has not passed synchronization checks.")
     source_model = performance.get('source') or {}
+    boundaries = source_model.get('measureBoundaryAdjustments', [])
+    if boundaries and (source_path is None or (recipe or {}).get('preservationContract', 0) < 99
+                       or (compatibility or {}).get('version', 0) < 99):
+        raise ImportFailure('unsupported_score', 'Measure-boundary playback requires the original tab and preservation contract 99.')
     finger_policy = source_model.get('fingerVibratoPolicy')
     contract = (recipe or {}).get('preservationContract', 0)
     declared_finger_policy = (recipe or {}).get('fingerVibratoPolicy')
@@ -546,6 +550,10 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         manifest['song_import']['fingerVibratoPolicy'] = finger_policy
     if source.get("format") == "songsterr" and contract >= 97:
         manifest["song_import"]["instrumentResolution"] = deepcopy(source["instrumentResolution"])
+    if boundaries:
+        from .measure_boundaries import receipt
+        _write_json(package / 'import/measure-boundaries.json', receipt(boundaries, source_path))
+        manifest['song_import']['measureBoundariesFile'] = 'import/measure-boundaries.json'
     from .strum_groups import POLICY as STRUM_GROUP_POLICY
     manifest['song_import']['strumGroupingPolicy'] = STRUM_GROUP_POLICY
     if negative_mute_policy:

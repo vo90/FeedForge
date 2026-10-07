@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 98
+VERSION = 99
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -347,7 +347,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, 89, 90, 91, 92, 93, 94, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, 89, 90, 91, 92, 93, 94, 98, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     reports_precedence = type(report.get('version')) is int and report['version'] >= 46
     if preservation_contract >= 46 and not reports_precedence:
@@ -377,6 +377,8 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_target", "import/compatibility/notation", 1, target.get("notation"))
     expected = {}
     legacy_effect_retained = set()
+    for row in source.boundary_adjustments:
+        expected[('beat.measure_boundary', row['location'] + '/' + row['action'])] = row
     pending_hopo_tracks = {}
     for row in finger_bends:
         if row['status'] == 'deferred':
@@ -534,7 +536,10 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
             check.equal("compatibility_value", key[1] + "/boolean", True, row.get("value") is True)
         check.equal("compatibility_value", key[1] + "/truncated", len(encoded) > 2048, row.get("valueTruncated"))
         check.equal("compatibility_retention", key[1], "original_source", row.get("retained"))
-        check.equal("compatibility_impact", key[1], "source_retained" if retained else "gameplay_omission" if key[0] in ("note.fret_range", "note.consumed_strum_grace") else "display_or_expression", row.get("impact"))
+        boundary_omission = key[0] == 'beat.measure_boundary' and value['action'] == 'omit'
+        check.equal("compatibility_impact", key[1], "source_retained" if retained else "gameplay_omission" if boundary_omission or key[0] in ("note.fret_range", "note.consumed_strum_grace") else "display_or_expression", row.get("impact"))
+        if key[0] == 'beat.measure_boundary':
+            check.equal('compatibility_track', key[1], value['trackId'], row.get('trackId'))
         if retained:
             check.equal('compatibility_work_status', key[1], 'source_retained', row.get('workStatus'))
         elif key[0] == 'beat.fadeIn':
@@ -545,7 +550,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
         category = ("source_metadata" if key[0] in ('measure.index', 'beat.tempo', 'note.grace') or key in legacy_effect_retained else
                     "source_interpretation" if key[0] in ('tempo.origin', 'note.negative_fret_mute') else
                     "conversion_check" if key[0] == "note.bend_timing" else
-                    "source_interpretation" if key[0] in ("tempo.superseded", "tempo.outside_score", "note.consumed_strum_grace") else "game_limitation")
+                    "source_interpretation" if key[0] in ("beat.measure_boundary", "tempo.superseded", "tempo.outside_score", "note.consumed_strum_grace") else "game_limitation")
         check.equal("compatibility_category", key[1], category, row.get("category"))
 
 
@@ -896,11 +901,19 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             # Reconstruct historical packages with their original interpretation.
             # A manifest policy label alone cannot opt an older contract into the
             # new note-owned vibrato or pending HP tie interpretations.
-            source = read_source(score_path, note_owned_vibrato=contract >= 94, resolve_instruments=contract >= 97)
+            source = read_source(score_path, note_owned_vibrato=contract >= 94, resolve_instruments=contract >= 97,
+                                 bounded_measures=contract >= 99)
             if source.format == "songsterr" and (contract >= 97 or (recipe.get("instrumentResolution") or {}).get("tracks")):
                 check.equal("instrument_resolution", "manifest/song_import/instrumentResolution",
                             source.instrument_resolution, recipe.get("instrumentResolution"))
             report["sourceSha256"] = hashlib.sha256(score_path.read_bytes()).hexdigest()
+            if source.boundary_adjustments or recipe.get('measureBoundariesFile'):
+                retained = _json(z, recipe.get('measureBoundariesFile', ''), check)
+                evidence = {'version': 1, 'policy': 'songsterr-measure-boundaries-v1',
+                            'timeDomain': 'measure_quarters', 'sourceSha256': report['sourceSha256'],
+                            'adjustments': source.boundary_adjustments}
+                check.equal('measure_boundaries', 'import/measure-boundaries', evidence, retained)
+                report['scope'].append('measure_boundary_playback')
             report["format"] = source.format
             if source.format == 'songsterr':
                 if contract >= 94:

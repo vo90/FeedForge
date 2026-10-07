@@ -1,0 +1,1244 @@
+{
+  "referenceSha256": "4219f9dbf0952af83be36c8b590f10fea7a0f36d72bd1f92297a3d768f93f5ab",
+  "cases": [
+    {
+      "id": "clip_tie",
+      "parts": [
+        {
+          "index": 0,
+          "tpqn": 16384,
+          "beats": [
+            {
+              "id": "0:0:0",
+              "quarter": 0,
+              "duration": 3.75
+            },
+            {
+              "id": "0:0:1",
+              "quarter": 3.75,
+              "duration": 0.25
+            },
+            {
+              "id": "1:0:0",
+              "quarter": 0,
+              "duration": 2
+            },
+            {
+              "id": "1:0:1",
+              "quarter": 2,
+              "duration": 2
+            }
+          ],
+          "authoredEvents": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 61439,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 8,
+              "sourceFret": 8,
+              "attackTick": 61440,
+              "endTick": 65535,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:0:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 8,
+              "sourceFret": 8,
+              "attackTick": 65536,
+              "endTick": 98303,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:1:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 9,
+              "sourceFret": 9,
+              "attackTick": 98304,
+              "endTick": 131071,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "events": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 61439,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 8,
+              "sourceFret": 8,
+              "attackTick": 61440,
+              "endTick": 98303,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:0:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 8,
+              "sourceFret": 8,
+              "attackTick": 65536,
+              "endTick": 98303,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:1:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 9,
+              "sourceFret": 9,
+              "attackTick": 98304,
+              "endTick": 131071,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "outside",
+      "parts": [
+        {
+          "index": 0,
+          "tpqn": 16384,
+          "beats": [
+            {
+              "id": "0:0:0",
+              "quarter": 0,
+              "duration": 4
+            },
+            {
+              "id": "0:0:1",
+              "quarter": 4,
+              "duration": 1
+            },
+            {
+              "id": "0:0:2",
+              "quarter": 5,
+              "duration": 1
+            },
+            {
+              "id": "1:0:0",
+              "quarter": 0,
+              "duration": 4
+            }
+          ],
+          "authoredEvents": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 65535,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:0:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 7,
+              "sourceFret": 7,
+              "attackTick": 65536,
+              "endTick": 131071,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "events": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 65535,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:0:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 7,
+              "sourceFret": 7,
+              "attackTick": 65536,
+              "endTick": 131071,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "outside_tie",
+      "parts": [
+        {
+          "index": 0,
+          "tpqn": 16384,
+          "beats": [
+            {
+              "id": "0:0:0",
+              "quarter": 0,
+              "duration": 4
+            },
+            {
+              "id": "0:0:1",
+              "quarter": 4,
+              "duration": 1
+            },
+            {
+              "id": "1:0:0",
+              "quarter": 0,
+              "duration": 4
+            }
+          ],
+          "authoredEvents": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 65535,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:0:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 65536,
+              "endTick": 131071,
+              "hidden": false,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "events": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 131071,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:0:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 65536,
+              "endTick": 131071,
+              "hidden": true,
+              "tie": true,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "individual_cap",
+      "parts": [
+        {
+          "index": 0,
+          "tpqn": 16384,
+          "beats": [
+            {
+              "id": "0:0:0",
+              "quarter": 0,
+              "duration": 4
+            },
+            {
+              "id": "0:0:1",
+              "quarter": 4,
+              "duration": 1
+            },
+            {
+              "id": "1:0:0",
+              "quarter": 0,
+              "duration": 4
+            }
+          ],
+          "authoredEvents": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 65535,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:0:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 7,
+              "sourceFret": 7,
+              "attackTick": 65536,
+              "endTick": 131071,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "events": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 65535,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:0:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 7,
+              "sourceFret": 7,
+              "attackTick": 65536,
+              "endTick": 131071,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "before_grace",
+      "parts": [
+        {
+          "index": 0,
+          "tpqn": 16384,
+          "beats": [
+            {
+              "id": "0:0:0",
+              "quarter": 0,
+              "duration": 3.75
+            },
+            {
+              "id": "0:0:1",
+              "quarter": 3.75,
+              "duration": 0.125
+            },
+            {
+              "id": "1:0:0",
+              "quarter": -0.125,
+              "duration": 0.125
+            },
+            {
+              "id": "1:0:1",
+              "quarter": 0,
+              "duration": 4
+            }
+          ],
+          "authoredEvents": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 61439,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 8,
+              "sourceFret": 8,
+              "attackTick": 61440,
+              "endTick": 63487,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:0:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 9,
+              "sourceFret": 9,
+              "attackTick": 63488,
+              "endTick": 65535,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:1:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 10,
+              "sourceFret": 10,
+              "attackTick": 65536,
+              "endTick": 131071,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "events": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 61439,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 8,
+              "sourceFret": 8,
+              "attackTick": 61440,
+              "endTick": 63487,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:0:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 9,
+              "sourceFret": 9,
+              "attackTick": 63488,
+              "endTick": 65535,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:1:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 10,
+              "sourceFret": 10,
+              "attackTick": 65536,
+              "endTick": 131071,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "on_grace",
+      "parts": [
+        {
+          "index": 0,
+          "tpqn": 16384,
+          "beats": [
+            {
+              "id": "0:0:0",
+              "quarter": 0,
+              "duration": 3.5
+            },
+            {
+              "id": "0:0:1",
+              "quarter": 3.5,
+              "duration": 0.125
+            },
+            {
+              "id": "0:0:2",
+              "quarter": 3.625,
+              "duration": 0.375
+            },
+            {
+              "id": "1:0:0",
+              "quarter": 0,
+              "duration": 4
+            }
+          ],
+          "authoredEvents": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 57343,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 9,
+              "sourceFret": 9,
+              "attackTick": 57344,
+              "endTick": 59391,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 10,
+              "sourceFret": 10,
+              "attackTick": 59392,
+              "endTick": 65535,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:0:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 65536,
+              "endTick": 131071,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "events": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 57343,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 9,
+              "sourceFret": 9,
+              "attackTick": 57344,
+              "endTick": 59391,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 10,
+              "sourceFret": 10,
+              "attackTick": 59392,
+              "endTick": 65535,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:0:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 65536,
+              "endTick": 131071,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "strum",
+      "parts": [
+        {
+          "index": 0,
+          "tpqn": 16384,
+          "beats": [
+            {
+              "id": "0:0:0",
+              "quarter": 0,
+              "duration": 3.5
+            },
+            {
+              "id": "0:0:1",
+              "quarter": 3.5,
+              "duration": 0.5
+            },
+            {
+              "id": "1:0:0",
+              "quarter": 0,
+              "duration": 4
+            }
+          ],
+          "authoredEvents": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 57343,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 7,
+              "sourceFret": 7,
+              "attackTick": 57856,
+              "endTick": 65535,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:1",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 1,
+              "fret": 9,
+              "sourceFret": 9,
+              "attackTick": 57344,
+              "endTick": 65535,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:0:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 65536,
+              "endTick": 131071,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "events": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 57343,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 7,
+              "sourceFret": 7,
+              "attackTick": 57856,
+              "endTick": 65535,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:1",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 1,
+              "fret": 9,
+              "sourceFret": 9,
+              "attackTick": 57344,
+              "endTick": 65535,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:0:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 65536,
+              "endTick": 131071,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tuplet",
+      "parts": [
+        {
+          "index": 0,
+          "tpqn": 16384,
+          "beats": [
+            {
+              "id": "0:0:0",
+              "quarter": 0,
+              "duration": 0.6666666666666666
+            },
+            {
+              "id": "0:0:1",
+              "quarter": 0.6666666666666666,
+              "duration": 0.6666666666666666
+            },
+            {
+              "id": "0:0:2",
+              "quarter": 1.3333333333333333,
+              "duration": 0.6666666666666666
+            },
+            {
+              "id": "0:0:3",
+              "quarter": 2,
+              "duration": 0.6666666666666666
+            },
+            {
+              "id": "0:0:4",
+              "quarter": 2.6666666666666665,
+              "duration": 0.6666666666666666
+            },
+            {
+              "id": "0:0:5",
+              "quarter": 3.333333333333333,
+              "duration": 0.6666666666666666
+            },
+            {
+              "id": "0:0:6",
+              "quarter": 3.9999999999999996,
+              "duration": 4.440892098500626e-16
+            },
+            {
+              "id": "1:0:0",
+              "quarter": 0,
+              "duration": 4
+            }
+          ],
+          "authoredEvents": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 10921.666666666666,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 4,
+              "sourceFret": 4,
+              "attackTick": 10922.666666666666,
+              "endTick": 21844.333333333332,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 5,
+              "sourceFret": 5,
+              "attackTick": 21845.333333333332,
+              "endTick": 32767,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:3:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 6,
+              "sourceFret": 6,
+              "attackTick": 32768,
+              "endTick": 43689.666666666664,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:4:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 7,
+              "sourceFret": 7,
+              "attackTick": 43690.666666666664,
+              "endTick": 54612.33333333333,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:5:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 8,
+              "sourceFret": 8,
+              "attackTick": 54613.33333333333,
+              "endTick": 65534.99999999999,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:6:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 9,
+              "sourceFret": 9,
+              "attackTick": 65535.99999999999,
+              "endTick": 65535,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:0:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 65536,
+              "endTick": 131071,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "events": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 10921.666666666666,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 4,
+              "sourceFret": 4,
+              "attackTick": 10922.666666666666,
+              "endTick": 21844.333333333332,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:2:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 5,
+              "sourceFret": 5,
+              "attackTick": 21845.333333333332,
+              "endTick": 32767,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:3:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 6,
+              "sourceFret": 6,
+              "attackTick": 32768,
+              "endTick": 43689.666666666664,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:4:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 7,
+              "sourceFret": 7,
+              "attackTick": 43690.666666666664,
+              "endTick": 54612.33333333333,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:5:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 8,
+              "sourceFret": 8,
+              "attackTick": 54613.33333333333,
+              "endTick": 65534.99999999999,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:6:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 9,
+              "sourceFret": 9,
+              "attackTick": 65535.99999999999,
+              "endTick": 65535,
+              "hidden": true,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:0:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 65536,
+              "endTick": 131071,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ordinary",
+      "parts": [
+        {
+          "index": 0,
+          "tpqn": 16384,
+          "beats": [
+            {
+              "id": "0:0:0",
+              "quarter": 0,
+              "duration": 2
+            },
+            {
+              "id": "0:0:1",
+              "quarter": 2,
+              "duration": 2
+            },
+            {
+              "id": "1:0:0",
+              "quarter": 0,
+              "duration": 4
+            }
+          ],
+          "authoredEvents": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 32767,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 8,
+              "sourceFret": 8,
+              "attackTick": 32768,
+              "endTick": 65535,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:0:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 65536,
+              "endTick": 131071,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ],
+          "events": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 0,
+              "endTick": 32767,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "0:0:1:0",
+              "occurrence": 0,
+              "bar": 0,
+              "string": 0,
+              "fret": 8,
+              "sourceFret": 8,
+              "attackTick": 32768,
+              "endTick": 65535,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            },
+            {
+              "id": "1:0:0:0",
+              "occurrence": 1,
+              "bar": 1,
+              "string": 0,
+              "fret": 3,
+              "sourceFret": 3,
+              "attackTick": 65536,
+              "endTick": 131071,
+              "hidden": false,
+              "tie": false,
+              "customEvents": 0,
+              "preEvents": 0
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
