@@ -15,11 +15,13 @@ def policy_for(duration: float) -> dict:
 
 def allowed(alignment: dict, duration: float) -> bool:
     ending = alignment.get('endingPadding', {})
-    if ending.get('version') == 2:
+    from . import cutoff_padding
+    combined = cutoff_padding.selected(alignment)
+    if ending.get('version') == 2 or combined:
         from .ending_padding import MIXED_POLICY
         cutoff = ending['originalDuration'] + alignment.get('preparation', {}).get('seconds', 0)
         return (alignment.get('status') == 'validated' and ending.get('trimLongHeldTails') is True
-                and ending.get('policy') == MIXED_POLICY and 0 < ending['seconds'] <= 2
+                and (ending.get('policy') == MIXED_POLICY or combined and cutoff_padding.allowed(alignment, duration)) and 0 < ending['seconds'] <= 2
                 and alignment.get('method') == 'songsterr-video-points-v1' and alignment.get('mapping') == 'piecewise-linear'
                 and alignment.get('terminalSustains') == mixed_policy_for(cutoff)
                 and abs(duration-cutoff-ending['seconds']) <= EPSILON)

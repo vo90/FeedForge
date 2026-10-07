@@ -175,7 +175,11 @@ def test_worker_builds_hybrid_with_cutoff_and_independent_evidence(suffix, tmp_p
     assert result['verification']['status'] == 'passed'
     assert result['verification']['adjustments']['omittedEndingNotes'] == 26
     assert result['verification']['hybridLead']['status'] == 'no_additions'
-    assert result['recipe']['alignment']['recordingEnd']['version'] == 2
+    # The worker now preserves the already-started short tail while still
+    # omitting all 26 later attacks; the explicit legacy-cutoff tests above stay.
+    ending = result['recipe']['alignment']['endingPadding']
+    assert ending['version'] == 3 and ending['omitLateAttacks'] is True
+    assert 0 < result['verification']['endingSilenceSeconds'] <= 2
     assert result['evidence']['version'] == CONTRACT_VERSION
     with zipfile.ZipFile(result['stagingPath']) as z:
         manifest = yaml.safe_load(z.read('manifest.yaml'))
@@ -183,4 +187,5 @@ def test_worker_builds_hybrid_with_cutoff_and_independent_evidence(suffix, tmp_p
         for arrangement in manifest['arrangements']:
             chart = json.loads(z.read(arrangement['file']))
             assert len(chart['notes']) == 206
-            assert all(n['t'] < manifest['duration'] for n in chart['notes'])
+            boundary = ending['originalDuration'] + result['recipe']['preparation']['seconds']
+            assert all(n['t'] < boundary for n in chart['notes'])
