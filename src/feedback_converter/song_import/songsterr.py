@@ -25,25 +25,7 @@ NOTE_VIBRATO_POLICY = 'songsterr-note-vibrato-v1'
 WRITTEN_BEAT_VIBRATO_POLICY = 'songsterr-written-beat-vibrato-v1'
 
 
-def _instrument(meta):
-    if meta.get("isVocalTrack") is True:
-        return ""
-    program = meta.get("instrumentId", meta.get("midiProgram"))
-    if isinstance(program, int) and not isinstance(program, bool):
-        if 24 <= program <= 31:
-            return "guitar"
-        if 32 <= program <= 39:
-            return "bass"
-        if program >= 0:
-            return ""
-    # The authored part name is descriptive text, not an instrument assignment.
-    # A "Bass Clarinet" or "Guitar cues" label cannot override its MIDI program.
-    instrument = str(meta.get("instrument", meta.get("type", ""))).lower()
-    if "bass" in instrument:
-        return "bass"
-    if "guitar" in instrument:
-        return "guitar"
-    return ""
+from .songsterr_instruments import program_kind as _instrument, resolve as resolve_instruments
 
 
 def _endings(value):
@@ -250,7 +232,8 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
     if any(len(part["measures"]) != count for part in parts):
         raise ScoreImportError("A Songsterr track is truncated.")
     measures, section_labels = [], []
-    eligible = {i for i, meta in enumerate(metadata) if _instrument(meta)}
+    instruments, instrument_resolution = resolve_instruments(metadata, parts)
+    eligible = {i for i, kind in enumerate(instruments) if kind}
     # Validate these two scoped flags even when a part is excluded. Musical
     # harmonic qualification belongs only to selected pitched arrangements.
     for pi, mi, vi, bi, beat in beat_effects(parts):
@@ -391,7 +374,7 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
     for index, (meta, part) in enumerate(zip(metadata, parts)):
         if not isinstance(meta, dict):
             raise ScoreImportError("Invalid track metadata.")
-        instrument = _instrument(meta)
+        instrument = instruments[index]
         inventory.inspect(meta, "Songsterr track", f"$.tracks[{index}]", playable={"id", "instrumentId", "midiProgram", "name", "instrument", "title", "type", "tuning", "capo", "isVocalTrack"},
                           retained={"views", "difficulty", "hash", "isEmpty"})
         inventory.inspect(part, "Songsterr part", f"$.parts[{index}]", playable={"measures", "tuning", "automations", "capo", "anacrusis", "sounds", "trackAutomations"},
@@ -533,6 +516,7 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
             tracks[-1].clefs.append(clef)
     source = {key: document[key] for key in ("songId", "revisionId", "approved", "url") if key in document}
     source["format"] = "songsterr"
+    source["instrumentResolution"] = instrument_resolution
     if not written_beat_vibrato:
         source['fingerVibratoPolicy'] = NOTE_VIBRATO_POLICY
     if legacy_brush_timing:
