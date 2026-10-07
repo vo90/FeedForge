@@ -29,7 +29,7 @@ import warnings
 
 from PIL import Image, ImageOps
 
-POLICY_VERSION = 6
+POLICY_VERSION = 7
 COVER_ENCODING = "jpeg-512-q90-v1"
 COVER_MAX_SIZE = 512
 USER_AGENT = "FeedForge/2.0.1 (album artwork; https://github.com/balki97/FeedForge)"
@@ -295,6 +295,9 @@ _VERSIONS = {
     "remix": r"\bremix(?:ed)?\b", "demo": r"\bdemo\b", "rerecorded": r"\bre[- ]?record(?:ed|ing)?\b",
     "remastered": r"\bremaster(?:ed)?\b", "edit": r"\b(?:radio|single|video)\s+edit\b",
     "extended": r"\bextended\b", "mono": r"\bmono\b", "stereo": r"\bstereo\b",
+    # A segment of a continuous DJ mix is not the ordinary recording. Match
+    # explicit version annotations only; plain "mix" includes normal stereo mixes.
+    "djmix": r"\bdj[\s\-\u2010-\u2015]*mix(?:ed)?\b",
 }
 
 
