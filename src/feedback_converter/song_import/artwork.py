@@ -29,7 +29,7 @@ import warnings
 
 from PIL import Image, ImageOps
 
-POLICY_VERSION = 5
+POLICY_VERSION = 6
 COVER_ENCODING = "jpeg-512-q90-v1"
 COVER_MAX_SIZE = 512
 USER_AGENT = "FeedForge/2.0.1 (album artwork; https://github.com/balki97/FeedForge)"
@@ -383,13 +383,13 @@ _EXCLUDE = {"compilation", "live", "remix", "dj-mix", "mixtape/street", "demo", 
 
 
 def _cover_indexes(client, group):
-    """Prefer the matched edition, then album default, then verified editions.
+    """Prefer the album default, then matched edition, then verified editions.
 
     Other editions only supply artwork. They never replace the original track
     evidence, album/year, recording choice or audio synchronization.
     """
-    yield "release", group["release"]["id"]
     yield "release-group", group["id"]
+    yield "release", group["release"]["id"]
     from .album_match import _ids
     editions = sorted(group.get("releases", {}).values(), key=lambda r: (str(r.get("date") or "9999"), r["id"]))
     editions = [r for r in editions if r["id"] != group["release"]["id"]]
@@ -433,6 +433,22 @@ def _cover(client, group):
         cover_release = release_url.rstrip("/").split("/")[-1]
         if not _UUID.fullmatch(cover_release) or (kind == "release" and cover_release != identifier):
             raise _LookupFailure("invalid_artwork_metadata")
+        if kind == "release-group":
+            # CAA's default can refer to an edition absent from our track
+            # search. Verify that edition before using its image, without
+            # replacing the original release/track evidence or album year.
+            from .album_match import _ids
+            try:
+                full = client.json(f"https://musicbrainz.org/ws/2/release/{cover_release}?fmt=json&inc=artist-credits+release-groups", "mb")
+            except _LookupFailure as exc:
+                if exc.reason != "service_unavailable":
+                    raise
+                unavailable = exc
+                continue
+            if (not full or full.get("id") != cover_release or full.get("status") != "Official"
+                    or (full.get("release-group") or {}).get("id") != group["id"]
+                    or _ids(full) != group["artistIds"]):
+                continue
         for image in eligible[:3]:
             thumbnails = image.get("thumbnails") if isinstance(image.get("thumbnails"), dict) else {}
             variants = 0
