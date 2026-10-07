@@ -9,7 +9,7 @@ const { ORIGIN, MAX_TOTAL_BYTES, failure, check, clean, numeric, sourceFilename,
 const { acquireAnonymous } = require('./acquire.cjs');
 const { resolveRevision, loadCatalogue, chooseRevision, revalidateRevision, MAX_REVISIONS } = require('./revisions.cjs');
 const { validRevisionSelection } = require('./revision-policy.cjs');
-const { retrieveSynchronization, unavailableSynchronization, audioVideo } = require('./synchronization.cjs');
+const { retrieveSynchronization, primaryRecordingEvidence, unavailableSynchronization, audioVideo } = require('./synchronization.cjs');
 const { networkTransport } = require('../../songsterr-retry.cjs');
 
 class SongsterrProvider {
@@ -192,6 +192,37 @@ class SongsterrProvider {
       if (!await poll(value => value.audioMix === 'main')) return absent('full_mix_selection_timeout');
       return true;
     };
+    const verifyAbsentSelector = async () => {
+      const candidate = () => {
+        if (!page.tabReady || !page.originalAvailable || !page.originalSelected
+            || page.sourceControlState !== 'original' || page.mixControlState !== 'absent'
+            || page.mixControlKind !== 'absent') return null;
+        const values = recordings();
+        if (values.size !== 1) return null;
+        const value = values.values().next().value;
+        return staleMixVideos.has(value.videoId) ? null : value;
+      };
+      const video = candidate();
+      if (!video) return absent('mix_unavailable');
+      this.diagnostic('audio_probe_primary_check', 'started');
+      const sync = await retrieveSynchronization({ ...identity, videoId: video.videoId }, {
+        fetch: this.anonymousSession.fetch.bind(this.anonymousSession), signal,
+      });
+      // No page state is trusted across the network wait, including a selector
+      // becoming visible with a conflicting or still-loading selection.
+      page = await this._read(win, signal); validate(page);
+      if (candidate()?.videoId !== video.videoId) return absent('primary_page_changed');
+      const evidence = primaryRecordingEvidence(sync, { ...identity, videoId: video.videoId });
+      if (!evidence) {
+        this.diagnostic('audio_probe_primary_unverified', 'unavailable');
+        if (sync.transport && ['timeout', 'network_error', 'rate_limited'].includes(sync.reasonCode)) {
+          throw Object.assign(failure('needs_audio', 'The original recording could not be checked. Please retry.'), { transport: sync.transport });
+        }
+        return null;
+      }
+      this.diagnostic('audio_probe_primary_verified', 'success');
+      return { ...video, primaryRecordingEvidence: evidence };
+    };
     try {
       this.diagnostic('audio_probe_started', 'started');
       validate(page); pauseNeeded = page.playing === true;
@@ -218,7 +249,7 @@ class SongsterrProvider {
       // Some pages create the selector only after Play. Its absence is never
       // proof of a full recording, even if an iframe has already appeared.
       if (page.mixControlState === 'absent'
-        && !await poll(value => !['absent', 'loading'].includes(value.mixControlState))) return absent('mix_unavailable');
+        && !await poll(value => !['absent', 'loading'].includes(value.mixControlState))) return await verifyAbsentSelector();
       if (!await ensureFullMix()) return absent('unverified_full_mix');
       return await poll(() => Boolean(audio())) ? found() : absent(recordings().size > 1 ? 'ambiguous_iframes'
         : staleMixVideos.size ? 'stale_mix_timeout' : 'iframe_timeout');

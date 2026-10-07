@@ -25,6 +25,11 @@ function registerSongsterr({ app, BrowserWindow, session, ipcMain, dialog, shell
       'audio_probe_full_mix_unavailable', 'audio_probe_full_mix_action_failed', 'audio_probe_full_mix_selection_timeout',
       'audio_probe_play_unavailable', 'audio_probe_play_action_failed', 'audio_probe_stale_mix_timeout', 'audio_probe_iframe_timeout',
       'audio_probe_original_control', 'audio_probe_original_selected', 'audio_probe_full_mix', 'audio_probe_play_control', 'audio_probe_iframe',
+      'audio_probe_unsupported_source_control', 'audio_probe_mix_menu_action_failed', 'audio_probe_mix_menu_timeout',
+      'audio_probe_unverified_full_mix', 'audio_probe_mix_unavailable', 'audio_probe_ambiguous_iframes',
+      'audio_probe_primary_check', 'audio_probe_primary_unverified', 'audio_probe_primary_verified', 'audio_probe_primary_page_changed',
+      ...['source', 'mix'].flatMap(control => ['original', 'synth', 'main', 'backing', 'solo', 'absent', 'loading', 'unknown']
+        .map(state => `audio_probe_${control}_${state}`)),
       'audio_probe_play_enabled', 'audio_probe_play_attribute_true', 'audio_probe_play_attribute_false', 'audio_probe_play_attribute_missing', 'audio_probe_play_attribute_other']);
     const outcomes = new Set(['started', 'success', 'ready', 'unavailable']);
     const onDiagnostic = (event) => {

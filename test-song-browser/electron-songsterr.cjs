@@ -116,6 +116,11 @@ app.whenReady().then(async () => {
   provider = new SongsterrProvider({ BrowserWindow, session, profilePath: path.join(runtime, 'account') });
   const handler = request => {
     const address = new URL(request.url);
+    if (address.pathname === '/api/video-points/42/101/list') {
+      return new Response(JSON.stringify(fixture.primary ? [{ songId: 42, revisionId: 101,
+        videoId: 'abcdefghijk', status: 'done', feature: null, points: [0, 2, 4] }] : []),
+        { headers: { 'content-type': 'application/json' } });
+    }
     const html = address.hostname === 'www.songsterr.com'
       ? '<!doctype html><body><script>(' + mount.toString() + ')(' + JSON.stringify(fixture) + ')</script></body>' : '<!doctype html><body>Offline player</body>';
     return new Response(html, { headers: { 'content-type': 'text/html' } });
@@ -136,6 +141,14 @@ app.whenReady().then(async () => {
     await verify('missing mix cannot validate an existing iframe', async () => {
       const { win, page } = await load({ lazyMix: true, noMix: true });
       assert.equal(await provider._discoverAudio(win, identity, page, undefined, 700), null);
+      assert.equal((await provider._read(win)).playing, false);
+    });
+    await verify('absent selector uses exact primary evidence with real DOM and anonymous transport', async () => {
+      const { win, page } = await load({ lazyMix: true, noMix: true, primary: true });
+      const audio = await provider._discoverAudio(win, identity, page, undefined, 700);
+      assert.equal(audio.videoId, 'abcdefghijk');
+      assert.equal(audio.primaryRecordingEvidence.policy, 'absent-selector-primary-recording-v1');
+      assert.equal(audio.primaryRecordingEvidence.revisionId, '101');
       assert.equal((await provider._read(win)).playing, false);
     });
     await verify('stalled player and cancellation both pause', async () => {

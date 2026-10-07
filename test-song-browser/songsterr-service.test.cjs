@@ -14,6 +14,20 @@ const realRequire = createRequire(sourcePath);
 const SONG = { id: '564073', source: 'songsterr', title: 'Woodland Rites', artist: 'Green Lung', url: 'https://www.songsterr.com/a/wsa/green-lung-woodland-rites-tab-s564073', supported: true };
 const pause = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms));
 
+test('audio discovery diagnostics retain bounded state enums but discard arbitrary data', async t => {
+  const f = await fixture(t); await f.call('search', { query: 'green lung' });
+  const emit = f.providers[0].config.onDiagnostic;
+  for (const code of ['audio_probe_mix_unavailable', 'audio_probe_source_original', 'audio_probe_mix_absent',
+    'audio_probe_primary_verified', 'audio_probe_primary_unverified', 'audio_probe_primary_page_changed']) {
+    emit({ code, outcome: 'unavailable', url: 'https://private.invalid', text: 'private' });
+  }
+  emit({ code: 'private-unknown', outcome: 'unavailable' });
+  const value = JSON.parse(fs.readFileSync(path.join(f.root, 'songsterr/audio-diagnostics.json'), 'utf8'));
+  assert.equal(value.events.length, 6);
+  assert.ok(value.events.every(e => Object.keys(e).sort().join(',') === 'at,code,outcome'));
+  assert.ok(!JSON.stringify(value).includes('private'));
+});
+
 test('fresh-import IPC uses current shared settings and keeps the old waiting attempt', async t => {
   const f = await fixture(t); const old = await f.waitingJob();
   const outputDir = path.join(f.root, 'fresh-output'); fs.mkdirSync(outputDir);
