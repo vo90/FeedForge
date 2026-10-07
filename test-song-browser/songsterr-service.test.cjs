@@ -14,6 +14,20 @@ const realRequire = createRequire(sourcePath);
 const SONG = { id: '564073', source: 'songsterr', title: 'Woodland Rites', artist: 'Green Lung', url: 'https://www.songsterr.com/a/wsa/green-lung-woodland-rites-tab-s564073', supported: true };
 const pause = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms));
 
+test('fresh-import IPC uses current shared settings and keeps the old waiting attempt', async t => {
+  const f = await fixture(t); const old = await f.waitingJob();
+  const outputDir = path.join(f.root, 'fresh-output'); fs.mkdirSync(outputDir);
+  f.setSettings({ outputDir, outputSettings: { outputLayout: 'flat', nameTemplate: '{title}' } });
+  const request = { id: SONG.id, freshFrom: old.id, hybridLead: { enabled: true } };
+  const fresh = await f.call('enqueue', request); assert.notEqual(fresh.id, old.id);
+  await f.waitState(fresh.id, 'needs_audio');
+  assert.equal((await f.call('enqueue', request)).id, fresh.id);
+  assert.equal(fresh.outputDir, outputDir); assert.equal(fresh.outputSettings.nameTemplate, '{title}');
+  assert.equal(fresh.hybridLead.enabled, true); assert.equal(f.acquisitions.length, 2);
+  assert.equal((await f.call('getState')).jobs.find(j => j.id === old.id).state, 'needs_audio');
+  assert.equal((await f.call('enqueue', { ...request, freshFrom: '../bad' })).ok, false);
+});
+
 test('revision choices are scoped to a searched song, eligible rows and the main renderer', async t => {
   const f = await fixture(t);
   assert.equal((await f.call('revisions', { id: SONG.id })).ok, false);

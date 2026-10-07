@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Check, Download, FolderOpen, LoaderCircle, Search } from 'lucide-react';
 
 const ACTIVE = new Set(['queued', 'resolving', 'downloading', 'converting', 'audio', 'aligning', 'validating', 'saving']);
+const WAITING = new Set(['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed', 'awaiting_main_choice']);
 const searchMemory = new WeakMap();
 ACTIVE.add('retry_wait');
 const LABELS = { queued: 'Queued', resolving: 'Checking revision', downloading: 'Retrieving tab', audio: 'Preparing audio', aligning: 'Aligning audio', converting: 'Creating FeedPak', validating: 'Validating', saving: 'Saving', completed: 'FeedPak ready', needs_audio: 'Audio needed', needs_login: 'Sign in needed', needs_attention: 'Needs attention', alignment_failed: 'Audio could not be aligned', failed: 'Failed', cancelled: 'Cancelled' };
@@ -115,7 +116,7 @@ export function SongsterrJob({ job, api, action, busy }) {
   const timingWarning = job.state === 'completed' && job.verification?.status === 'passed'
     && job.verification?.timingWarning?.status === 'accepted_with_warning' ? job.verification.timingWarning : null;
   const recordingTime = value => `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
-  return <li className={`sb-job ${job.state === 'completed' ? 'sb-job-completed' : ''}`}>
+  return <li id={`songsterr-job-${job.id}`} tabIndex={-1} className={`sb-job ${job.state === 'completed' ? 'sb-job-completed' : ''}`}>
     <div className="sb-job-top"><div className="sb-job-heading"><strong>{job.title}</strong><span>{job.artist}</span></div>
       <span className="sb-job-status">{active ? <LoaderCircle className="sb-spin" size={14} /> : timingWarning ? <AlertTriangle size={14} /> : job.state === 'completed' ? <Check size={14} /> : job.state !== 'cancelled' ? <AlertTriangle size={14} /> : null}{timingWarning ? 'Imported with timing warnings' : job.state === 'completed' && job.verification?.omissions?.omittedNotes ? 'Ready with omitted notes' : job.state === 'completed' && job.compatibility?.status === 'limitations' ? 'Ready with limitations' : LABELS[job.state] || job.state}</span></div>
     {timingWarning ? <div role="status"><p>Songsterr timing was retained. Some notes may not match the recording.</p>
@@ -124,6 +125,7 @@ export function SongsterrJob({ job, api, action, busy }) {
     {job.verification?.omissions?.omittedNotes ? <p>{job.verification.omissions.omittedNotes} high-fret or connected slide events omitted from display and scoring. The complete original tab is saved inside the FeedPak.{job.verification.omissions.excludedTracks?.length ? ` ${job.verification.omissions.excludedTracks.length} arrangements had no supported notes remaining.` : ''}</p> : null}
     {active ? <progress className="sb-progress" aria-label={`${job.title}: ${LABELS[job.state]}`} /> : null}
     <p>{job.error || job.message}</p>
+    {WAITING.has(job.state) ? <p>Waiting for your input. Other queued songs can continue.</p> : null}
     <RetryStatus job={job} />
     {job.state === 'awaiting_main_choice' ? <HybridChoice key={job.hybridChoice?.sourceSha256} job={job} api={api} action={action} busy={busy} /> : null}
     {job.state === 'completed' ? <HybridResult result={job.verification?.hybridLead} /> : null}
@@ -177,10 +179,12 @@ export function SongsterrResult({ song, jobs, api, action, busy, outputDir, hybr
   const [loading, setLoading] = useState(false), [error, setError] = useState('');
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const job = [...jobs].reverse().find(entry => entry.songId === String(song.id)
+  const matching = [...jobs].reverse().filter(entry => entry.songId === String(song.id)
     && (entry.requestedRevisionId || '') === selected && Boolean(entry.hybridLead?.enabled) === hybridEnabled
     && !['cancelled', 'failed'].includes(entry.state));
-  const pending = job && job.state !== 'completed';
+  const job = matching.find(entry => ACTIVE.has(entry.state)) || matching[0];
+  const pending = job && ACTIVE.has(job.state);
+  const waiting = job && WAITING.has(job.state);
   const choice = catalogue?.revisions.find(row => row.revisionId === selected);
   async function load() {
     setLoading(true); setError('');
@@ -206,10 +210,18 @@ export function SongsterrResult({ song, jobs, api, action, busy, outputDir, hybr
       {catalogue.revisions.some(row => !row.eligible) ? <details><summary>Unavailable revisions</summary><ul>{catalogue.revisions.filter(row => !row.eligible).map(row => <li key={row.revisionId}>{row.revisionId}: {row.reason}</li>)}</ul></details> : null}</> : null}
       <button className="sb-text-button" disabled={loading || busy} onClick={() => void load()}>Refresh revisions</button>
     </details> : null}
-  </div><div className="sb-result-actions"><button className="sb-button sb-primary" disabled={!api || busy || loading || !outputDir || Boolean(pending) || Boolean(selected && !choice?.eligible)}
+    {waiting ? <p>{LABELS[job.state]}. Resume opens the saved attempt’s controls. Start fresh uses your current settings and revision selection.</p> : null}
+  </div><div className="sb-result-actions">
+    {waiting ? <>
+      <button className="sb-button" disabled={busy} onClick={() => {
+        const target = document.getElementById(`songsterr-job-${job.id}`);
+        target?.scrollIntoView({ block: 'center' }); target?.focus({ preventScroll: true });
+      }}>Resume existing import</button></> : null}
+    <button className="sb-button sb-primary" disabled={!api || busy || loading || !outputDir || Boolean(pending) || Boolean(selected && !choice?.eligible)}
     onClick={() => action(() => api.enqueue({ id: String(song.id), ...(selected ? { requestedRevisionId: selected } : {}),
+      ...(waiting ? { freshFrom: job.id } : {}),
       hybridLead: hybridEnabled ? { enabled: true, ...(reviewSources ? { reviewSources: true } : {}) } : { enabled: false } }))}>
-    <Download size={16} />{pending ? LABELS[job.state] : 'Download & convert'}</button>
+    <Download size={16} />{pending ? LABELS[job.state] : waiting ? 'Start fresh import' : 'Download & convert'}</button>
     {job?.state === 'completed' && job.outputAvailable ? <button className="sb-text-button" onClick={() => action(() => api.showOutput({ id: job.id }))}>Show saved FeedPak</button> : null}</div></article>;
 }
 

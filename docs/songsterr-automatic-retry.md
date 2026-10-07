@@ -24,6 +24,21 @@ unchanged. User-supplied audio is never automatically replaced. No account copy 
 uncertain creation response. Managed downloader retries are zero at yt-dlp's
 download/fragment/extractor/file-access layers so they cannot multiply the budget.
 
+The 30-song queue limit counts running, queued and automatic-retry work. Songs
+waiting for audio, sign-in, alignment input, attention or a Hybrid Lead choice
+do not consume queue slots. Manual resumes use the same admission limit before
+changing the saved attempt. History keeps up to 100 entries by retiring terminal
+entries first; it never silently drops unfinished imports. At 100 unfinished
+imports, adding another requires resuming or cancelling one. Older oversized
+ledgers retain all unfinished entries until the user resolves them.
+
+Waiting search results offer **Resume existing import**, which focuses the saved
+attempt and its input controls, and **Start fresh import**, which acquires a new
+tab using current output settings and the chosen revision policy. Automatic
+selection is resolved again; an explicit revision stays explicit. The old attempt
+and evidence remain intact. Repeated fresh clicks use a persisted origin ID to
+avoid duplicate attempts, and active imports still prevent duplicate work.
+
 `retry_wait` releases the worker. Cancellation invalidates pending work, and app
 shutdown clears its timer. Startup recovers verified publication receipts before
 resuming valid waiting retries. Old failures and interrupted active imports do
