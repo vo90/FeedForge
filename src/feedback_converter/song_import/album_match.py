@@ -9,6 +9,15 @@ from .artwork import (_LookupFailure, _norm, _artist_names, _title_identity,
 MAX_RECORDINGS = 300
 MAX_GROUPS = 8
 MAX_RELEASES = 300
+MAX_TRACK_EDITIONS = 3
+
+
+class _CheckedTrackMismatch(_LookupFailure):
+    """No matching track in valid checked editions, not universal absence."""
+
+    def __init__(self, evidence):
+        super().__init__('album_track_unconfirmed', 'ambiguous')
+        self.evidence = evidence
 
 
 def _quote(value):
@@ -266,6 +275,34 @@ def _choose(groups, metadata, versions, audio):
     return ordered[0]
 
 
+def _complete_tracklist(release):
+    """Require explicit complete track counts before using negative evidence."""
+    media = release.get('media')
+    if not isinstance(media, list) or not media:
+        return False
+    if 'media-count' in release and release['media-count'] != len(media):
+        return False
+    if any(not isinstance(m, dict) for m in media):
+        return False
+    if [m.get('position') for m in media] != list(range(1, len(media) + 1)):
+        return False
+    for medium in media:
+        tracks = medium.get('tracks')
+        count = medium.get('track-count')
+        if type(count) is not int or count <= 0 or not isinstance(tracks, list) or count != len(tracks):
+            return False
+        if any(not isinstance(t, dict) for t in tracks):
+            return False
+        if [t.get('position') for t in tracks] != list(range(1, count + 1)):
+            return False
+        for track in tracks:
+            record = track.get('recording')
+            if (not isinstance(record, dict) or not _UUID.fullmatch(str(record.get('id', '')))
+                    or not isinstance(record.get('title'), str) or not record['title'].strip() or not _ids(record)):
+                return False
+    return True
+
+
 def _confirm_track(client, group, metadata, title, versions):
     # An original-year edition avoids mistaking a later bonus track for a song
     # originally on this album. Supplied albums may intentionally be reissues.
@@ -279,17 +316,22 @@ def _confirm_track(client, group, metadata, title, versions):
             query += f' AND date:[{year}-01-01 TO {year}-12-31]'
         editions = _pages(client, 'release', {'query': query}, 'releases', 'count', 100)
     editions = sorted(editions, key=lambda r: (str(r.get('date') or '9999'), r['id']))
-    for edition in editions[:3]:
+    checked = []
+    inconclusive = False
+    for edition in editions[:MAX_TRACK_EDITIONS]:
         url = f"https://musicbrainz.org/ws/2/release/{edition['id']}?fmt=json&inc=recordings+artist-credits+release-groups"
         full = client.json(url, 'mb')
         if client.last_json_cached and (not full or (full.get('release-group') or {}).get('id') != group['id'] or
                 not any((t.get('recording') or {}).get('id') in group['records'] for m in full.get('media', []) for t in m.get('tracks', []))):
             full = client.json(url, 'mb', fresh=True)
         if not full or full.get('id') != edition['id'] or full.get('status') != 'Official':
+            inconclusive = True
             continue
         if (full.get('release-group') or {}).get('id') != group['id'] or _ids(full) != group['artistIds']:
+            inconclusive = True
             continue
         if not metadata.get('album') and not str(full.get('date', '')).startswith(str(year)):
+            inconclusive = True
             continue
         for medium in full.get('media', []):
             for track in medium.get('tracks', []):
@@ -306,6 +348,17 @@ def _confirm_track(client, group, metadata, title, versions):
                                               'basis': 'supplied-album-track' if metadata.get('album') else 'original-year-release-track'}
                     group['trackEvidence']['recordingMatch'] = 'linked-id' if record['id'] in group['records'] else 'exact-artist-title-version'
                     return
+        if _complete_tracklist(full):
+            checked.append(full['id'])
+        else:
+            inconclusive = True
+    if checked and not inconclusive:
+        raise _CheckedTrackMismatch({
+            'releaseGroupId': group['id'], 'album': group['album'],
+            'reason': 'track-not-found-in-checked-original-editions',
+            'checkedReleaseIds': checked, 'candidateEditionCount': len(editions),
+            'editionLimitReached': len(editions) > MAX_TRACK_EDITIONS,
+        })
     raise _LookupFailure('album_track_unconfirmed', 'ambiguous')
 
 
@@ -315,7 +368,19 @@ def select_album(client, metadata):
         raise _LookupFailure('recording_not_found')
     groups = _group_candidates(client, records, metadata, versions)
     group = _choose(groups, metadata, versions, audio)
-    _confirm_track(client, group, metadata, title, versions)
+    try:
+        _confirm_track(client, group, metadata, title, versions)
+    except _CheckedTrackMismatch as exc:
+        # A later deluxe edition may nominate an album for an EP song. Bounded
+        # original-album checks do not prove absence from every edition. They
+        # permit a positively verified EP fallback, never an unverified album
+        # guess. Explicit album requests and live-session ambiguity stay strict.
+        eps = [candidate for candidate in groups if candidate['releaseType'] == 'EP']
+        if metadata.get('album') or 'live' in versions or group['releaseType'] != 'Album' or not eps:
+            raise
+        group = _choose(eps, metadata, versions, audio)
+        _confirm_track(client, group, metadata, title, versions)
+        group['albumCandidateChecks'] = [exc.evidence]
     group['lookupTitle'] = title
     group['versions'] = sorted(versions)
     if credit_resolution:
