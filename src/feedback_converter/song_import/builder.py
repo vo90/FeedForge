@@ -322,6 +322,14 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             or (recipe or {}).get('preservationContract', 0) < 57
             or not ending_cutoff_allowed(alignment, audio['duration'])):
         raise ImportFailure('alignment_failed', 'A cutoff with timing warnings requires the original tab and contract 57.')
+    if alignment.get('recordingEnd', {}).get('timingWarning', {}).get('version') == 2:
+        from .activity_coverage import KEY, receipt
+        from .ending_cutoff import mapped_tracks
+        report = alignment.get('recordingSync', {})
+        proof = receipt(report, mapped_tracks(performance, alignment))
+        if ((recipe or {}).get('preservationContract', 0) < 100 or proof is None
+                or report.get(KEY) != proof):
+            raise ImportFailure('alignment_failed', 'Uncharted timing gaps require source activity evidence and contract 100.')
     if alignment.get('endingPadding',{}).get('timingWarning') and (recipe or {}).get('preservationContract',0)<39:
         raise ImportFailure('alignment_failed','Ending timing warnings require the current preservation contract.')
     if alignment.get("terminalSlides") is not None and (not slides_allowed(alignment, audio["duration"])

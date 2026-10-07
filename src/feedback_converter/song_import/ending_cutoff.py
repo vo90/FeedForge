@@ -59,16 +59,21 @@ def authorize(performance, audio, alignment):
     if policy is None:
         raise ImportFailure('alignment_failed', 'The recording ending is outside a valid source timeline.')
     offset=alignment.get('preparation',{}).get('seconds',0)
-    report = assess(mapped_tracks(performance, alignment), audio["path"], audio["duration"], alignment["provenance"]["mapHash"],
+    tracks = mapped_tracks(performance, alignment)
+    report = assess(tracks, audio["path"], audio["duration"], alignment["provenance"]["mapHash"],
                     **({'analysis_origin':offset} if offset else {}), clock_version=PREVIOUS_VERSION)
-    alignment["recordingSync"] = report
     warning = None
     if report["status"] != "supported":
         from .cutoff_warning import acceptance, matches_recording
         warning = acceptance(report, alignment) if matches_recording(alignment, audio.get('source', {})) else None
+        if warning is None and matches_recording(alignment, audio.get('source', {})):
+            from .activity_coverage import attach
+            report = attach(report, tracks)
+            warning = acceptance(report, alignment)
         if warning is None:
             raise ImportFailure("alignment_failed", "The earlier tab could not be matched reliably to this recording, so its ending was not shortened.",
                                 {"sourceSyncReason": "ending_sync_inconclusive", "recordingSync": report})
+    alignment["recordingSync"] = report
     alignment["recordingEnd"] = {**policy, "syncEvidenceHash": digest(report),
                                 **({'timingWarning': warning} if warning else {})}
     if (alignment.get("endingCandidate") or {}).get("directionalSlides"):
