@@ -40,6 +40,33 @@ def rehash(data):
     proof["guidanceSha256"] = digest({k: data[k] for k in proof["fields"]})
 
 
+@pytest.mark.parametrize('duration', [335.5812698412699, 335.5812691])
+def test_sample_boundary_accepts_only_note_serialization_rounding(duration):
+    data = chart(chords=[chord(335.41252, (5, 0), .16875)], templates=[template((5, 0))])
+    original = music_digest(data)
+    finalize(data)
+    assert data['handshapes'][0]['end_time'] > duration
+    assert validate(data, duration=duration) == []
+    assert music_digest(data) == original
+
+
+@pytest.mark.parametrize('overrun', [.000002, .001, .035])
+def test_sample_boundary_still_rejects_actual_guidance_overrun(overrun):
+    data = chart(chords=[chord(1, sustain=1)], templates=[template()])
+    finalize(data)
+    assert validate(data, duration=2-overrun)
+
+
+def test_phrase_window_does_not_borrow_sample_boundary_tolerance():
+    data = chart(chords=[chord(1, sustain=1)], templates=[template()])
+    window = (0, 1.9999998)
+    finalize(data, window=window)
+    assert validate(data, window=window) == []
+    data['handshapes'][0]['end_time'] = 2
+    rehash(data)
+    assert validate(data, window=window)
+
+
 def test_touching_cross_string_boundaries_do_not_create_wide_lane():
     data = chart([note(38.1525, 2, 1, .1625), note(38.315, 7, 0, .325)],
                  [chord(38.64, (0, 2, 2), .325)], [template((0, 2, 2))])
