@@ -192,28 +192,43 @@ function runtime(root, options = {}) {
           signedOut: config.webPreferences.session === sessions[1] && options.signedOut === true,
           audio: options.lazyAudio ? [] : ['https://www.youtube.com/embed/' + (options.initialMix === 'backing' ? 'zzzzzzzzzzz' : 'abcdefghijk')],
           originalAvailable: !options.noOriginal, originalSelected: !options.initialSynth, audioMix: options.initialMix || 'main', fullMixAvailable: true,
+          sourceControlState: options.noOriginal ? 'absent' : options.initialSynth ? 'synth' : 'original',
+          mixControlKind: options.customMix ? 'combobox' : 'select', mixControlState: options.initialMix || 'main',
           canPlay: true, playing: false };
+        if (options.lazyMix && parsed?.id !== '99999') Object.assign(wc.page, { audioMix: null, mixControlKind: 'absent', mixControlState: 'absent', fullMixAvailable: false });
       };
       wc.mainFrame = { executeJavaScript: async (script) => {
         if (script.includes('function readSongsterrPage')) {
+          if (wc.page.copyForm && options.delayedCreate && ++wc.copyReads >= 3) wc.page.canCreateCopy = true;
+          if (wc.page.copyForm && options.changedCopyRevision) wc.page.revisionId = '999';
           if (options.delayedHistory && wc.page.songId && !wc.page.historyVisible && wc.controlReads++ < 1) return { ...wc.page, canOpenHistory: false };
           if (wc.historyPending && wc.historyReads++ < 1) return { ...wc.page, historyReady: false, approvedRevisions: [] };
           if (options.delayedMixer && wc.page.revisionId && wc.mixerReads++ < 1) return { ...wc.page, tabReady: false };
           if (options.delayedAudioControls && wc.page.revisionId && wc.audioControlReads++ < 2) return { ...wc.page, originalAvailable: false, originalSelected: false, canPlay: false };
           if (options.delayedPlayControl && wc.page.revisionId && wc.audioControlReads++ < 2) return { ...wc.page, canPlay: false };
           if (wc.playerPending && !options.noAudio && wc.playerReads++ >= (options.delayedAudio ? 1 : 0)) {
-            wc.page.audio = ['https://www.youtube.com/embed/' + (options.fallbackVideo || 'abcdefghijk')]; wc.playerPending = false;
+            wc.page.audio = ['https://www.youtube.com/embed/' + (options.lazyMix && !wc.selectedFullMix && ['backing', 'solo'].includes(options.initialMix)
+              ? 'zzzzzzzzzzz' : options.fallbackVideo || 'abcdefghijk')]; wc.playerPending = false;
           }
+          if (wc.page.playing && options.lazyMix && !options.noMix && wc.page.mixControlState === 'absent') Object.assign(wc.page, {
+            mixControlKind: 'combobox', mixControlState: options.initialMix || 'main', audioMix: options.initialMix || 'main', fullMixAvailable: false,
+          });
+          if (options.ambiguousAudio) wc.page.audio = ['https://www.youtube.com/embed/abcdefghijk', 'https://www.youtube.com/embed/lmnopqrstuv'];
           return wc.page;
         }
         const request = JSON.parse(script.slice(script.lastIndexOf(')(') + 2, -1)); actions.push(request.action);
-        if (['selectOriginal', 'selectFullMix', 'play', 'pause'].includes(request.action)) {
+        if (['selectOriginal', 'openMix', 'selectFullMix', 'play', 'pause'].includes(request.action)) {
           if (request.songId !== wc.page.songId || request.revisionId !== wc.page.revisionId) return { ok: false, reason: 'revision_changed' };
           if (request.action === 'selectOriginal') wc.page.originalSelected = true;
-          if (request.action === 'selectFullMix') wc.page.audioMix = 'main';
+          if (request.action === 'openMix') Object.assign(wc.page, { mixMenuReady: true, fullMixAvailable: !options.noFullMix });
+          if (request.action === 'selectFullMix') {
+            wc.selectedFullMix = true;
+            wc.page.audioMix = wc.page.mixControlState = 'main';
+            if (options.lazyMix) { options.lazyMix = false; wc.playerPending = true; wc.playerReads = 0; }
+          }
           if (request.action === 'pause') wc.page.playing = false;
           if (request.action === 'play') {
-            assert.equal(wc.muted, true); assert.equal(wc.page.originalSelected, true); assert.equal(wc.page.audioMix, 'main');
+            assert.equal(wc.muted, true); assert.equal(wc.page.originalSelected, true); assert.ok(wc.page.audioMix === 'main' || wc.page.mixControlState === 'absent');
             wc.page.playing = true; wc.playerPending = true;
             if (options.afterPlayStatus) wc.page.status = options.afterPlayStatus;
             if (options.changedRevision) { wc.page.revisionId = '999'; wc.url = result.url + '/r999'; wc.page.url = wc.url; }
@@ -229,8 +244,9 @@ function runtime(root, options = {}) {
         if (request.action === 'moreHistory') {
           wc.page.revisionRows = historyRows(); wc.page.historyHasMore = false;
         }
-        if (request.action === 'copy') wc.page = { ...wc.page, copyForm: true };
+        if (request.action === 'copy') { wc.copyReads = 0; wc.page = { ...wc.page, copyForm: true, canCreateCopy: !options.delayedCreate }; }
         if (request.action === 'create') {
+          assert.equal(wc.page.canCreateCopy, true);
           if (options.uncertainCreate) throw new Error('lost create response');
           wc.url = 'https://www.songsterr.com/a/wsa/unpublished-copy-tab-s99999?open=editor';
           wc.page = { status: 'ready', url: wc.url, songId: '99999', unpublished: true, editor: true };
@@ -413,6 +429,44 @@ test('a stale backing player that never updates cannot be accepted as Full mix',
   assert.equal(value, null); assert.deepEqual(state.actions, ['selectFullMix', 'play', 'pause']); assert.equal(win.webContents.page.playing, false);
 });
 
+test('current mix selector may appear only after muted Play, including a backing selection', async t => {
+  for (const initialMix of ['main', 'backing', 'solo']) {
+    const state = runtime(await temporary(t), { lazyMix: true, lazyAudio: true, initialMix, customMix: true });
+    t.after(() => state.provider.dispose()); state.provider.restoreTrustedResult(result);
+    assert.equal((await state.provider.findAudio(result, { revisionId: descriptor.revisionId })).videoId, 'abcdefghijk');
+    assert.deepEqual(state.actions, initialMix === 'main' ? ['play', 'pause'] : ['play', 'openMix', 'selectFullMix', 'pause']);
+    assert.equal(state.windows[0].webContents.page.playing, false);
+  }
+});
+
+test('missing mix and ambiguous players never supply audio or acquire retryable transport errors', async t => {
+  for (const options of [{ lazyMix: true, noMix: true }, { ambiguousAudio: true }]) {
+    const state = runtime(await temporary(t), options); t.after(() => state.provider.dispose());
+    const win = state.provider._window(false); await state.provider._navigate(win, descriptor.approvedUrl);
+    assert.equal(await state.provider._discoverAudio(win, { songId: result.id, revisionId: descriptor.revisionId }, await state.provider._read(win), undefined, 10), null);
+    assert.deepEqual(state.actions, ['play', 'pause']); assert.equal(win.webContents.page.playing, false);
+    assert.ok(state.diagnostics.some(value => value.code === (options.noMix ? 'audio_probe_mix_unavailable' : 'audio_probe_ambiguous_iframes')));
+  }
+});
+
+test('unknown source or mix controls do not start playback or invent a selection', async t => {
+  for (const field of ['source', 'mix']) {
+    const state = runtime(await temporary(t)); t.after(() => state.provider.dispose());
+    const win = state.provider._window(false); await state.provider._navigate(win, descriptor.approvedUrl);
+    Object.assign(win.webContents.page, field === 'source' ? { originalAvailable: false, sourceControlState: 'unknown' }
+      : { audioMix: null, mixControlState: 'unknown' });
+    assert.equal(await state.provider._discoverAudio(win, { songId: result.id, revisionId: descriptor.revisionId }, win.webContents.page, undefined, 20), null);
+    assert.deepEqual(state.actions, []);
+  }
+});
+
+test('current combo with no Full mix option never clicks a request-generation option', async t => {
+  const state = runtime(await temporary(t), { customMix: true, initialMix: 'solo', noFullMix: true }); t.after(() => state.provider.dispose());
+  state.provider.restoreTrustedResult(result);
+  assert.equal(await state.provider.findAudio(result, { revisionId: descriptor.revisionId }), null);
+  assert.deepEqual(state.actions, ['openMix', 'pause']);
+});
+
 test('cancellation after Play still pauses and rejects without losing the cancellation status', async (t) => {
   const controller = new AbortController(), root = await temporary(t), state = runtime(root, { lazyAudio: true, onPlay: () => controller.abort() }); t.after(() => state.provider.dispose());
   state.provider.restoreTrustedResult(result);
@@ -498,6 +552,24 @@ test('ambiguous copy creation is journaled and never repeated automatically afte
   await restarted.provider.search({ query: 'green lung' }); const pinnedAgain = await restarted.provider.resolve(result);
   await assert.rejects(restarted.provider.acquire(pinnedAgain, { directory, allowAccount: true }), { code: 'needs_attention' });
   assert.equal(restarted.actions.includes('create'), false);
+});
+
+test('account copy waits for duplicate checking before journaling and creating exactly once', async t => {
+  const root = await temporary(t), state = runtime(root, { delayedCreate: true }); t.after(() => state.provider.dispose());
+  await state.provider.search({ query: 'green lung' }); const selected = await state.provider.resolve(result);
+  const directory = path.join(root, 'job'); await fs.mkdir(directory);
+  await state.provider.acquire(selected, { allowAccount: true, directory });
+  assert.equal(state.actions.filter(action => action === 'create').length, 1);
+  assert.ok(state.windows.at(-1).webContents.copyReads >= 3);
+});
+
+test('a changed account revision before Create produces no remote copy or uncertain journal', async t => {
+  const root = await temporary(t), state = runtime(root, { changedCopyRevision: true }); t.after(() => state.provider.dispose());
+  await state.provider.search({ query: 'green lung' }); const selected = await state.provider.resolve(result);
+  const directory = path.join(root, 'job'); await fs.mkdir(directory);
+  await assert.rejects(state.provider.acquire(selected, { allowAccount: true, directory }), { code: 'revision_unavailable' });
+  assert.equal(state.actions.includes('create'), false);
+  await assert.rejects(fs.access(path.join(root, 'profile', 'feedforge-copy-journal.json')), { code: 'ENOENT' });
 });
 
 test('account GP export opens Download first when the Guitar Pro format control is hidden', async (t) => {

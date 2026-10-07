@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const fsp = fs.promises;
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { readSongsterrPage, actOnSongsterrPage } = require('./dom.cjs');
+const { readSongsterrPage, actOnSongsterrPage, songsterrPageScript } = require('./dom.cjs');
 const { ORIGIN, MAX_TOTAL_BYTES, failure, check, clean, numeric, sourceFilename, songUrl, safeResult, allowedNavigation, allowedDownload, publicAudio, delay, bounded } = require('./policy.cjs');
 const { acquireAnonymous } = require('./acquire.cjs');
 const { resolveRevision, loadCatalogue, chooseRevision, revalidateRevision, MAX_REVISIONS } = require('./revisions.cjs');
@@ -87,7 +87,7 @@ class SongsterrProvider {
     check(signal);
     if (this.disposed || win.isDestroyed()) throw failure('unavailable', 'The Songsterr page closed.');
     if (!allowedNavigation(win.webContents.getURL())) throw failure('unavailable', 'The Songsterr page is not ready.');
-    return bounded(win.webContents.mainFrame.executeJavaScript(`(${fn.toString()})(${JSON.stringify(request || {})})`), signal, timeout, () => win.webContents.stop());
+    return bounded(win.webContents.mainFrame.executeJavaScript(songsterrPageScript(fn, request || {})), signal, timeout, () => win.webContents.stop());
   }
   _read(win, signal) { return this._execute(win, readSongsterrPage, null, signal); }
   _act(win, action, signal, identity = {}, timeout) { return this._execute(win, actOnSongsterrPage, { ...identity, action }, signal, timeout); }
@@ -135,19 +135,29 @@ class SongsterrProvider {
         throw failure('revision_unavailable', 'The Songsterr tab changed while checking its original audio. Please retry.');
       }
     };
-    const audio = () => page.tabReady && page.originalSelected && (page.audioMix === null || page.audioMix === 'main')
-      ? (page.audio || []).map(publicAudio).find((value) => value && !staleMixVideos.has(value.videoId)) || null : null;
+    const recordings = () => new Map((page.audio || []).map(publicAudio).filter(Boolean).map(value => [value.videoId, value]));
+    const audio = () => {
+      if (!page.tabReady || !page.originalSelected || page.audioMix !== 'main') return null;
+      const candidates = recordings();
+      if (candidates.size !== 1) return null;
+      const candidate = candidates.values().next().value;
+      return staleMixVideos.has(candidate.videoId) ? null : candidate;
+    };
     const absent = (reason) => {
       this.diagnostic('audio_probe_' + reason, 'unavailable');
       this.diagnostic('audio_probe_original_control', page.originalAvailable ? 'ready' : 'unavailable');
       this.diagnostic('audio_probe_original_selected', page.originalSelected ? 'ready' : 'unavailable');
-      this.diagnostic('audio_probe_full_mix', page.audioMix === null || page.audioMix === 'main' ? 'ready' : 'unavailable');
+      this.diagnostic('audio_probe_full_mix', page.audioMix === 'main' ? 'ready' : 'unavailable');
+      for (const [name, value] of [['source', page.sourceControlState], ['mix', page.mixControlState]]) {
+        const state = ['original', 'synth', 'main', 'backing', 'solo', 'absent', 'loading', 'unknown'].includes(value) ? value : 'unknown';
+        this.diagnostic('audio_probe_' + name + '_' + state, 'unavailable');
+      }
       this.diagnostic('audio_probe_play_control', page.canPlay ? 'ready' : 'unavailable');
       this.diagnostic('audio_probe_play_enabled', page.playEnabled ? 'ready' : 'unavailable');
       const eligibility = ['true', 'false', 'missing', 'other'].includes(page.playEligibility) ? page.playEligibility : 'missing';
       this.diagnostic('audio_probe_play_attribute_' + eligibility, 'ready');
       this.diagnostic('audio_probe_iframe', (page.audio || []).length ? 'ready' : 'unavailable');
-      if (['original_selection_timeout', 'full_mix_selection_timeout', 'iframe_timeout'].includes(reason)) {
+      if (['original_selection_timeout', 'full_mix_selection_timeout', 'mix_menu_timeout', 'iframe_timeout'].includes(reason)) {
         throw Object.assign(failure('needs_audio', 'The original recording player did not become ready. Please retry.'),
           { transport: { version: 1, phase: 'audio', operation: 'audio_probe', service: 'songsterr', reason: 'player_timeout' } });
       }
@@ -167,26 +177,35 @@ class SongsterrProvider {
       }
       return false;
     };
+    const ensureFullMix = async () => {
+      if (page.audioMix === 'main') return true;
+      if (!['backing', 'solo'].includes(page.audioMix)) return false;
+      // Keep all known non-main player identities excluded during selection.
+      for (const video of recordings().keys()) staleMixVideos.add(video);
+      pauseNeeded = true;
+      if (page.mixControlKind === 'combobox') {
+        if (!await act('openMix')) return absent('mix_menu_action_failed');
+        if (!await poll(value => value.mixMenuReady)) return absent('mix_menu_timeout');
+      }
+      if (!page.fullMixAvailable) return absent('full_mix_unavailable');
+      if (!await act('selectFullMix')) return absent('full_mix_action_failed');
+      if (!await poll(value => value.audioMix === 'main')) return absent('full_mix_selection_timeout');
+      return true;
+    };
     try {
       this.diagnostic('audio_probe_started', 'started');
       validate(page); pauseNeeded = page.playing === true;
       // The track mixer can become ready before the independent audio
       // controls. Give those controls the same bounded discovery window.
-      if (!page.originalAvailable && !await poll((value) => value.originalAvailable)) return absent('original_unavailable');
+      if (!page.originalAvailable && !await poll((value) => value.originalAvailable || value.sourceControlState === 'unknown')) return absent('original_unavailable');
+      if (!page.originalAvailable) return absent('unsupported_source_control');
       if (!page.originalSelected) {
         pauseNeeded = true;
         if (!await act('selectOriginal')) return absent('original_action_failed');
         if (!await poll((value) => value.originalSelected)) return absent('original_selection_timeout');
       }
-      if (page.audioMix !== null && page.audioMix !== 'main') {
-        for (const url of page.audio || []) { const previous = publicAudio(url); if (previous) staleMixVideos.add(previous.videoId); }
-        if (!page.fullMixAvailable && !await poll((value) => value.fullMixAvailable || value.audioMix === null || value.audioMix === 'main')) return absent('full_mix_unavailable');
-        if (page.audioMix !== null && page.audioMix !== 'main') {
-          pauseNeeded = true;
-          if (!await act('selectFullMix')) return absent('full_mix_action_failed');
-          if (!await poll((value) => value.audioMix === 'main')) return absent('full_mix_selection_timeout');
-        }
-      }
+      if (page.mixControlState === 'loading' && !await poll(value => value.mixControlState !== 'loading')) return absent('mix_menu_timeout');
+      if (page.mixControlState !== 'absent' && !await ensureFullMix()) return absent('unverified_full_mix');
       if (audio()) return found();
       if (!page.canPlay && !await poll((value) => value.canPlay || Boolean(audio()))) return absent('play_unavailable');
       if (audio()) return found();
@@ -196,7 +215,13 @@ class SongsterrProvider {
       this.diagnostic('audio_probe_play_requested', 'started');
       if (!await act('play')) return absent('play_action_failed');
       this.diagnostic('audio_probe_play', 'success');
-      return await poll(() => Boolean(audio())) ? found() : absent(staleMixVideos.size ? 'stale_mix_timeout' : 'iframe_timeout');
+      // Some pages create the selector only after Play. Its absence is never
+      // proof of a full recording, even if an iframe has already appeared.
+      if (page.mixControlState === 'absent'
+        && !await poll(value => !['absent', 'loading'].includes(value.mixControlState))) return absent('mix_unavailable');
+      if (!await ensureFullMix()) return absent('unverified_full_mix');
+      return await poll(() => Boolean(audio())) ? found() : absent(recordings().size > 1 ? 'ambiguous_iframes'
+        : staleMixVideos.size ? 'stale_mix_timeout' : 'iframe_timeout');
     } finally {
       if (pauseNeeded && !this.disposed && !win.isDestroyed()) {
         // Cleanup must still run after cancellation; the guarded page action
@@ -477,8 +502,9 @@ class SongsterrProvider {
         await delay(400, signal);
         if (!(await this._act(win, 'copy', signal)).ok) throw failure('unavailable', 'The Songsterr copy control could not be found.');
       }
-      page = await this._wait(win, (value) => value.copyForm || value.status === 'needs_login', signal);
+      page = await this._wait(win, (value) => value.copyForm && value.canCreateCopy || value.status === 'needs_login', signal);
       if (page.status === 'needs_login') throw failure('needs_login', 'Sign in to Songsterr to create an unpublished copy.');
+      if (page.songId !== descriptor.id || page.revisionId !== descriptor.revisionId) throw failure('revision_unavailable', 'The account tab changed before creating its copy.');
       // Persist intent before the one non-idempotent action. An ambiguous
       // response remains parked across restart, never blindly clicked twice.
       await this._saveCopy(key, { state: 'creating', createdAt: Date.now() });

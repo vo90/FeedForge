@@ -1,8 +1,87 @@
 'use strict';
 
+// Shared, serialized DOM contract. Both reading and acting use these exact
+// controls; no page stores, cookies, CSS hashes or positional menu choices.
+function inspectSongsterrControls() {
+  const all = (root, selector) => Array.from(root.querySelectorAll(selector));
+  const visible = node => {
+    if (!node) return false;
+    for (let at = node; at; at = at.parentElement) {
+      if (at.hidden || at.getAttribute?.('aria-hidden') === 'true' || at.style?.display === 'none' || at.style?.visibility === 'hidden') return false;
+    }
+    return !node.getClientRects || node.getClientRects().length > 0;
+  };
+  const enabled = node => visible(node) && !node.disabled && node.getAttribute?.('aria-disabled') !== 'true';
+  const text = node => String(node?.textContent || '').replace(/\s+/g, ' ').trim();
+  const label = node => String(node?.getAttribute?.('aria-label') || node?.getAttribute?.('title') || text(node));
+  const controls = all(document, 'a, button').filter(enabled);
+  const history = all(document, '#revisions-toggle-tab, #control-revisions, #control-revision-history, #control-revision').find(enabled);
+  const historyLabels = controls.filter(node => /^(?:show revisions|revisions|revision history|\d{1,2}\/\d{1,2}\/\d{4})$/i.test(label(node)));
+  const sourceNodes = all(document, '#control-source').filter(visible);
+  const source = sourceNodes.find(enabled) || sourceNodes[0];
+  let sourceKind = source ? 'unsupported' : 'absent', sourceState = source ? 'unknown' : 'absent', original;
+  if (source?.tagName === 'BUTTON') {
+    sourceKind = 'toggle';
+    const values = new Set(sourceNodes.filter(enabled).map(node => node.getAttribute('data-value')));
+    if (values.size === 1 && ['original', 'synth'].includes(source.getAttribute('data-value'))) sourceState = source.getAttribute('data-value');
+    original = source;
+  } else if (source) {
+    original = all(source, 'label').find(node => {
+      const input = node.querySelector('input');
+      return enabled(node) && input?.getAttribute('type') === 'radio' && input.getAttribute('value') === 'original'
+        && !input.disabled && input.getAttribute('aria-disabled') !== 'true';
+    });
+    if (original) { sourceKind = 'radio'; sourceState = original.querySelector('input').checked === true ? 'original' : 'synth'; }
+  }
+  if (source && !enabled(source)) sourceState = 'loading';
+  const sourceReady = enabled(source) && enabled(original) && ['original', 'synth'].includes(sourceState);
+  const mixNodes = all(document, '#video-select, #video-type-side-button').filter(visible);
+  const mix = mixNodes.find(enabled) || mixNodes[0];
+  const mixNames = { 'Full mix': 'main', 'Backing track': 'backing', Solo: 'solo' };
+  let mixKind = mix ? 'unsupported' : 'absent', mixState = mix ? 'unknown' : 'absent', main, list;
+  if (mix?.tagName === 'SELECT') {
+    mixKind = 'select';
+    if (['main', 'backing', 'solo'].includes(mix.value)) mixState = mix.value;
+    main = all(mix, 'option').find(node => node.getAttribute('value') === 'main' && !node.disabled);
+  } else if (mix?.tagName === 'BUTTON' && mix.getAttribute('role') === 'combobox' && mix.getAttribute('aria-haspopup') === 'listbox') {
+    mixKind = 'combobox'; mixState = mixNames[text(mix)] || 'unknown';
+    const lists = all(document, '[role="listbox"]').filter(node => visible(node)
+      && (node.getAttribute('aria-labelledby') === mix.getAttribute('id')
+        || (mix.getAttribute('aria-controls') && node.getAttribute('id') === mix.getAttribute('aria-controls'))));
+    if (lists.length === 1) {
+      list = lists[0];
+      const options = all(list, '[role="option"]').filter(visible);
+      const selected = options.filter(node => node.getAttribute('aria-selected') === 'true');
+      if (selected.length !== 1 || selected[0].getAttribute('key') !== mixState) mixState = 'unknown';
+      const mains = options.filter(node => node.getAttribute('key') === 'main' && text(node) === 'Full mix' && enabled(node));
+      if (mains.length === 1) main = mains[0];
+    } else if (lists.length > 1) mixState = 'unknown';
+    else if (mix.getAttribute('aria-expanded') === 'true') mixState = 'loading';
+  }
+  // Two simultaneously visible, different selector implementations cannot
+  // establish one selection. Sticky copies of the same kind must agree too.
+  if (mixNodes.filter(enabled).some(node => node.tagName !== mix.tagName
+    || (node.tagName === 'SELECT' ? node.value !== mix.value : text(node) !== text(mix)))) mixState = 'unknown';
+  if (mix && !enabled(mix)) mixState = 'loading';
+  const copy = all(document, '#control-tabcopy').find(enabled) || controls.find(node => /^make a copy$/i.test(label(node)));
+  const forms = all(document, '#copy-tab-form').filter(visible);
+  const copyForm = forms.length === 1 ? forms[0] : null;
+  const creates = copyForm ? all(copyForm, 'button').filter(node => visible(node) && /^create$/i.test(label(node))) : [];
+  const create = creates.length === 1 ? creates[0] : null;
+  return { visible, enabled, history: history || (historyLabels.length === 1 ? historyLabels[0] : null),
+    source, original, sourceKind, sourceState, sourceReady, mix, mixKind, mixState, main, list,
+    mixReady: enabled(mix), copy, copyForm, create };
+}
+
+function songsterrPageScript(fn, request = {}) {
+  if (![readSongsterrPage, actOnSongsterrPage].includes(fn)) throw new Error('Unsupported Songsterr page function.');
+  return `(function(inspectSongsterrControls) { return (${fn.toString()}); })(${inspectSongsterrControls.toString()})(${JSON.stringify(request || {})})`;
+}
+
 // Serialized into an ordinary sandboxed page. Only rendered content and
 // ordinary controls are read: no cookies, page stores or private APIs.
 function readSongsterrPage() {
+  const ui = inspectSongsterrControls();
   const text = (node) => String(node?.textContent || '').replace(/\s+/g, ' ').trim();
   const all = (root, selector) => Array.from(root.querySelectorAll(selector));
   const visible = (node) => {
@@ -36,9 +115,7 @@ function readSongsterrPage() {
   // first matching element can be a CSS-hidden copy of a ready control.
   const visibleNode = (selector) => all(document, selector).find(visible);
   const enabledControl = (selector) => all(document, selector).find(enabled);
-  const historyControls = all(document, '#revisions-toggle-tab, #control-revisions, #control-revision-history');
-  const historyLabels = controls.filter((node) => /^(?:show revisions|revisions|revision history|\d{1,2}\/\d{1,2}\/\d{4})$/i.test(label(node)) && enabled(node));
-  const canOpenHistory = historyControls.some(enabled) || historyLabels.length === 1;
+  const canOpenHistory = Boolean(ui.history);
   const titleElement = visibleNode('#song-ttl'), artistElement = visibleNode('#song-artist');
   // The pinned URL and header appear before track loading has finished. The
   // observed mixer changes from disabled Loading to an enabled track control.
@@ -113,14 +190,7 @@ function readSongsterrPage() {
   }
   // The Original player is created lazily on Play. Only its rendered iframe
   // identifies linked song audio; YouTube links in comments are unrelated.
-  const sourceControl = visibleNode('#control-source');
-  const originalLabel = sourceControl && all(sourceControl, 'label').find((node) => {
-    const input = node.querySelector('input');
-    return enabled(node) && input?.getAttribute('type') === 'radio' && input.getAttribute('value') === 'original'
-      && !input.disabled && input.getAttribute('aria-disabled') !== 'true';
-  });
-  const originalInput = originalLabel?.querySelector('input');
-  const mixControl = visibleNode('#video-select'), playControl = enabledControl('#control-play');
+  const playControl = enabledControl('#control-play');
   const audio = [];
   for (const container of all(document, '#youtube-video-container').filter(visible)) {
     for (const node of all(container, 'iframe[src]').filter(visible)) {
@@ -132,7 +202,8 @@ function readSongsterrPage() {
         && video && player?.[1] === video && player[2] === currentIdentity?.songId) audio.push(url.href);
     }
   }
-  const copyForm = controls.some((node) => /^create$/i.test(label(node))) && all(document, 'input').filter(visible).some((node) => !['password', 'hidden', 'checkbox'].includes(node.getAttribute('type')));
+  const copyForm = Boolean(ui.copyForm && all(ui.copyForm, 'input').filter(visible)
+    .some(node => !['password', 'hidden', 'checkbox'].includes(node.getAttribute('type'))));
   // The homepage is not a search result. During an in-page search Songsterr
   // updates the URL/input before replacing its popular list. The completed
   // search list has an in-list suggestion; a genuine empty response names
@@ -149,11 +220,14 @@ function readSongsterrPage() {
     historyVisible, historyReady: historyVisible && readableHistoryRows > 0, approvedRevisions: approved, revisionRows,
     historyHasMore: Boolean(historyRoot?.parentElement && all(historyRoot.parentElement, 'button, a')
       .some(node => enabled(node) && /^(?:show more|load more)$/i.test(label(node)))),
-    copyForm, unpublished: /\bnot published\b/i.test(body), editor: Boolean(enabledControl('#control-export-gp')),
+    copyForm, canCreateCopy: copyForm && enabled(ui.create), unpublished: /\bnot published\b/i.test(body), editor: Boolean(enabledControl('#control-export-gp')),
     canExport: Boolean(enabledControl('#control-export-gp')),
-    audio, originalAvailable: Boolean(originalInput), originalSelected: originalInput?.checked === true,
-    audioMix: mixControl ? String(mixControl.value || '') : null,
-    fullMixAvailable: Boolean(enabled(mixControl) && all(mixControl, 'option').some((node) => node.getAttribute('value') === 'main' && !node.disabled)),
+    audio: [...new Set(audio)], originalAvailable: ui.sourceReady, originalSelected: ui.sourceReady && ui.sourceState === 'original',
+    sourceControlKind: ui.sourceKind, sourceControlState: ui.sourceState,
+    audioMix: ['main', 'backing', 'solo'].includes(ui.mixState) ? ui.mixState : null,
+    mixControlKind: ui.mixKind, mixControlState: ui.mixState,
+    canOpenMix: ui.mixReady && ui.mixKind === 'combobox', mixMenuReady: Boolean(ui.list),
+    fullMixAvailable: ui.mixReady && Boolean(ui.main),
     canPlay: Boolean(playControl && playControl.getAttribute('data-can-play') === 'true'),
     playEnabled: Boolean(playControl),
     playEligibility: !playControl || playControl.getAttribute('data-can-play') === null ? 'missing'
@@ -163,6 +237,7 @@ function readSongsterrPage() {
 }
 
 function actOnSongsterrPage(request = {}) {
+  const ui = inspectSongsterrControls();
   const visible = (node) => {
     if (!node) return false;
     for (let at = node; at; at = at.parentElement) {
@@ -194,22 +269,19 @@ function actOnSongsterrPage(request = {}) {
     input.dispatchEvent(new Event('change', { bubbles: true }));
     return { ok: true };
   }
-  if (['selectOriginal', 'selectFullMix', 'play', 'pause'].includes(request.action)) {
+  if (['selectOriginal', 'selectFullMix', 'openMix', 'play', 'pause'].includes(request.action)) {
     const pinned = /^\/a\/wsa\/[^/]+-s([1-9]\d{0,11})(?:t\d+)?\/r([1-9]\d{0,11})$/.exec(current.pathname);
     if (!pinned || pinned[1] !== request.songId || pinned[2] !== request.revisionId) return { ok: false, reason: 'revision_changed' };
-    const source = Array.from(document.querySelectorAll('#control-source')).find(visible);
-    const original = source && Array.from(source.querySelectorAll('label')).find((node) => {
-      const input = node.querySelector('input');
-      return enabled(node) && input?.getAttribute('type') === 'radio' && input.getAttribute('value') === 'original'
-        && !input.disabled && input.getAttribute('aria-disabled') !== 'true';
-    });
-    const selected = original?.querySelector('input')?.checked === true;
-    const mix = Array.from(document.querySelectorAll('#video-select')).find(visible);
-    if (request.action === 'selectOriginal') return selected ? { ok: true, changed: false } : click(original);
+    const selected = ui.sourceReady && ui.sourceState === 'original', mix = ui.mix;
+    if (request.action === 'selectOriginal') return !ui.sourceReady ? { ok: false, reason: 'control_unavailable' }
+      : selected ? { ok: true, changed: false } : click(ui.original);
+    if (request.action === 'openMix') return ui.mixKind !== 'combobox' || !ui.mixReady ? { ok: false, reason: 'control_unavailable' }
+      : ui.list || mix.getAttribute('aria-expanded') === 'true' ? { ok: true, changed: false } : click(mix);
     if (request.action === 'selectFullMix') {
-      if (!mix || mix.value === 'main') return { ok: true, changed: false };
-      const main = Array.from(mix.querySelectorAll('option')).find((node) => node.getAttribute('value') === 'main' && !node.disabled);
-      if (!enabled(mix) || !main) return { ok: false, reason: 'control_unavailable' };
+      if (ui.mixState === 'main') return { ok: true, changed: false };
+      if (!ui.mixReady || !ui.main || !['backing', 'solo'].includes(ui.mixState)) return { ok: false, reason: 'control_unavailable' };
+      if (ui.mixKind === 'combobox') return click(ui.main);
+      if (ui.mixKind !== 'select') return { ok: false, reason: 'control_unavailable' };
       const setter = Object.getOwnPropertyDescriptor(globalThis.HTMLSelectElement?.prototype || {}, 'value')?.set;
       if (setter) setter.call(mix, 'main'); else mix.value = 'main';
       mix.dispatchEvent(new Event('input', { bubbles: true })); mix.dispatchEvent(new Event('change', { bubbles: true }));
@@ -218,13 +290,13 @@ function actOnSongsterrPage(request = {}) {
     const play = enabledControl('#control-play'), pressed = play?.getAttribute('aria-pressed');
     if (!play || !['true', 'false'].includes(pressed)) return { ok: false, reason: 'control_unavailable' };
     if (request.action === 'pause') return pressed === 'false' ? { ok: true, changed: false } : click(play);
-    if (!selected || (mix && mix.value !== 'main') || play.getAttribute('data-can-play') !== 'true') return { ok: false, reason: 'control_unavailable' };
+    // Absent mix controls may materialize on this muted discovery Play. A
+    // recording is never accepted until the provider verifies main afterward.
+    if (!selected || !['main', 'absent'].includes(ui.mixState) || play.getAttribute('data-can-play') !== 'true') return { ok: false, reason: 'control_unavailable' };
     return pressed === 'true' ? { ok: true, changed: false } : click(play);
   }
   if (request.action === 'history') {
-    const byId = enabledControl('#revisions-toggle-tab, #control-revisions, #control-revision-history');
-    const candidates = controls.filter((node) => /^(?:show revisions|revisions|revision history|\d{1,2}\/\d{1,2}\/\d{4})$/i.test(text(node)));
-    return click(byId || (candidates.length === 1 ? candidates[0] : null));
+    return click(ui.history);
   }
   if (request.action === 'moreHistory') {
     const root = Array.from(document.querySelectorAll('#revisions-list, [data-testid="revisions-list"], [class*="revisions-list"]')).find(visible);
@@ -233,11 +305,8 @@ function actOnSongsterrPage(request = {}) {
     return click(candidates.length === 1 ? candidates[0] : null);
   }
   if (request.action === 'editor') return click(enabledControl('#control-editor') || controls.find((node) => /^editor$/i.test(text(node))));
-  if (request.action === 'copy') return click(controls.find((node) => /^make a copy$/i.test(text(node))));
-  if (request.action === 'create') {
-    const candidates = controls.filter((node) => /^create$/i.test(text(node)));
-    return click(candidates.length === 1 ? candidates[0] : null);
-  }
+  if (request.action === 'copy') return ui.copyForm ? { ok: true, changed: false } : click(ui.copy);
+  if (request.action === 'create') return click(ui.create);
   if (request.action === 'exportMenu') {
     const downloads = controls.filter((node) => /^download$/i.test(text(node)));
     return click(enabledControl('#control-export') || (downloads.length === 1 ? downloads[0] : null));
@@ -248,4 +317,4 @@ function actOnSongsterrPage(request = {}) {
   return { ok: false, reason: 'unsupported_action' };
 }
 
-module.exports = { readSongsterrPage, actOnSongsterrPage };
+module.exports = { readSongsterrPage, actOnSongsterrPage, songsterrPageScript };

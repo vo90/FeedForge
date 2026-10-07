@@ -7,6 +7,8 @@ const args = process.argv.slice(2);
 const option = (name) => { const index = args.indexOf(name); return index >= 0 ? args[index + 1] : undefined; };
 const electron = option('--electron');
 const runtime = option('--runtime');
+const suite = option('--suite') || 'catalogue';
+if (!['catalogue', 'songsterr'].includes(suite)) throw new Error('Unknown offline Electron suite.');
 if (!electron || !runtime || !path.isAbsolute(electron) || !path.isAbsolute(runtime)) {
   throw new Error('Usage: node test-song-browser/electron-runner.cjs --electron ABSOLUTE_ELECTRON_PATH --runtime FRESH_ABSOLUTE_OUTPUT_DIRECTORY');
 }
@@ -15,7 +17,7 @@ if (fs.existsSync(runtime)) throw new Error('Choose a fresh runtime directory; e
 fs.mkdirSync(runtime, { recursive: true });
 const env = { ...process.env, SONG_BROWSER_ELECTRON_RUNTIME: runtime };
 delete env.ELECTRON_RUN_AS_NODE;
-const child = spawn(electron, [path.join(__dirname, 'electron-integration.cjs')], {
+const child = spawn(electron, [path.join(__dirname, suite === 'songsterr' ? 'electron-songsterr.cjs' : 'electron-integration.cjs')], {
   env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']
 });
 const stdout = fs.createWriteStream(path.join(runtime, 'stdout.log'), { flags: 'wx' });
