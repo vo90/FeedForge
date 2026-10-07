@@ -146,7 +146,10 @@ function readSongsterrPage() {
     results.push({ id: match[1], source: 'songsterr', title, artist, url: url.href });
   }
   const historyRoot = visibleNode('#revisions-list, [data-testid="revisions-list"], [class*="revisions-list"]');
-  const approved = [], revisionRows = [], revisionSeen = new Set();
+  const approved = [], revisionRows = [], revisionSeen = new Set(), revisionIssues = [];
+  const revisionIssue = (revisionId, reason) => {
+    if (revisionIssues.length < 20) revisionIssues.push({ revisionId, reason });
+  };
   const historyVisible = visible(historyRoot);
   // Observed history: ul#revisions-list > li#r7788783. The active row
   // contains a full-tab link; older rows wrap their contents in a comparison
@@ -158,14 +161,36 @@ function readSongsterrPage() {
     const rowId = /^r([1-9]\d{0,11})$/.exec(row.getAttribute?.('id') || '')?.[1]
       || (/^[1-9]\d{0,11}$/.test(row.getAttribute?.('data-revision-id') || '') ? row.getAttribute('data-revision-id') : null);
     if (!rowId) continue;
+    // The revision's navigation control is evidence; links and status words
+    // written by its author or commenters are not. Class suffixes identify
+    // semantic message containers without depending on generated CSS hashes.
+    const authored = (node) => {
+      for (let at = node; at && at !== row; at = at.parentElement) {
+        if (['P', 'ARTICLE', 'FORM', 'TEXTAREA', 'BLOCKQUOTE'].includes(at.tagName)
+            || /(?:^|\s)\S*_(?:message|messageBlock|comments|commentsList|comment|nameText)(?:\s|$)/.test(at.getAttribute?.('class') || '')
+            || String(at.getAttribute?.('rel') || '').split(/\s+/).includes('ugc')
+            || (at.tagName === 'LI' || at.getAttribute?.('data-revision-id'))) return true;
+      }
+      return false;
+    };
+    const revisionControls = all(row, 'a[href]').filter(node => visible(node) && !authored(node)
+      && (/^(?:view|show full tab|tab)$/i.test(label(node))
+        || new RegExp(`^show ${rowId} revision$`, 'i').test(label(node))));
+    const metadataNodes = all(row, '*').filter(node => {
+      if (!visible(node) || authored(node)) return false;
+      for (let at = node; at && at !== row; at = at.parentElement) {
+        if (at.tagName === 'A' && !revisionControls.includes(at)) return false;
+      }
+      return true;
+    });
     const rowText = text(row);
     const date = rowText.match(/\b(\d{1,2}\/\d{1,2}\/\d{4})\b/)?.[1] || null;
-    const ids = new Set(); let foreignRevisionLink = false;
-    for (const anchor of all(row, 'a[href]').filter(visible)) {
-      let url; try { url = new URL(anchor.getAttribute('href'), current); } catch { continue; }
+    const ids = new Set(); let invalidRevisionLink = false;
+    for (const anchor of revisionControls) {
+      let url; try { url = new URL(anchor.getAttribute('href'), current); } catch { invalidRevisionLink = true; continue; }
       const revision = songIdentity(url.pathname);
-      if (!revision?.revisionId) continue;
-      if (url.origin !== current.origin || revision.songId !== currentIdentity?.songId) { foreignRevisionLink = true; continue; }
+      if (!revision?.revisionId || url.origin !== current.origin || url.username || url.password
+          || revision.songId !== currentIdentity?.songId) { invalidRevisionLink = true; continue; }
       ids.add(revision.revisionId);
     }
     // Empty/skeleton lists are not yet usable. A row's explicit identity must
@@ -173,17 +198,20 @@ function readSongsterrPage() {
     // that explicit link; never infer an ID from absence of a View button.
     if (!rowText || (!date && !ids.size)) continue;
     readableHistoryRows++;
-    if (foreignRevisionLink || ids.size !== 1 || !ids.has(rowId)) continue;
-    const badges = all(row, '*').filter((node) => visible(node) && /^approved$/i.test(text(node))
-      && !Array.from(node.children || []).some((child) => visible(child) && /^approved$/i.test(text(child))));
+    if (invalidRevisionLink || ids.size !== 1 || !ids.has(rowId)) {
+      revisionIssue(rowId, revisionControls.length ? 'conflicting_revision_control' : 'missing_revision_control');
+      continue;
+    }
+    const badges = metadataNodes.filter(node => /^approved$/i.test(text(node))
+      && !Array.from(node.children || []).some(child => /^approved$/i.test(text(child))));
     const statusNames = { approved: 'reviewed', alternative: 'alternative', deleted: 'deleted',
       'on moderation': 'awaiting_moderation', 'on review': 'awaiting_review', pending: 'unknown', rejected: 'rejected' };
-    const statusNodes = all(row, '*').filter(node => visible(node) && Object.hasOwn(statusNames, text(node).toLowerCase())
-      && !Array.from(node.children || []).some(child => visible(child) && text(child) === text(node)));
+    const statusNodes = metadataNodes.filter(node => Object.hasOwn(statusNames, text(node).toLowerCase())
+      && !Array.from(node.children || []).some(child => text(child) === text(node)));
     const statuses = statusNodes.map(node => statusNames[text(node).toLowerCase()]);
     const status = statuses.length === 1 ? statuses[0] : statuses.length ? 'unknown' : 'unreviewed';
     const excluded = statuses.some(value => !['reviewed', 'unreviewed'].includes(value));
-    const moderator = all(row, '[alt="Moderator"], [aria-label="Moderator"], [title="Moderator"]').some(visible);
+    const moderator = metadataNodes.some(node => ['alt', 'aria-label', 'title'].some(key => node.getAttribute?.(key) === 'Moderator'));
     revisionRows.push({ revisionId: rowId, approved: badges.length === 1, excluded, moderator, status, ambiguous: statuses.length > 1 });
     if (badges.length !== 1 || revisionSeen.has(rowId)) continue;
     revisionSeen.add(rowId); approved.push({ revisionId: rowId, approval: 'approved', date });
@@ -217,7 +245,7 @@ function readSongsterrPage() {
   return { status: loginRequired ? 'needs_login' : 'ready', url: current.href, songId: currentIdentity?.songId || null,
     revisionId: currentRevision, signedOut, searchReady, searchQuery, searchInput,
     canSearch: searchPage && searchInputs.length === 1, searchHome, results, noResults, canOpenHistory, tabReady,
-    historyVisible, historyReady: historyVisible && readableHistoryRows > 0, approvedRevisions: approved, revisionRows,
+    historyVisible, historyReady: historyVisible && readableHistoryRows > 0, approvedRevisions: approved, revisionRows, revisionIssues,
     historyHasMore: Boolean(historyRoot?.parentElement && all(historyRoot.parentElement, 'button, a')
       .some(node => enabled(node) && /^(?:show more|load more)$/i.test(label(node)))),
     copyForm, canCreateCopy: copyForm && enabled(ui.create), unpublished: /\bnot published\b/i.test(body), editor: Boolean(enabledControl('#control-export-gp')),

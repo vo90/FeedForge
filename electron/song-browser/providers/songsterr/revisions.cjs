@@ -6,7 +6,9 @@ const { POLICY, LABELS, classifyRevision, approvalFor, validRevisionSelection } 
 
 const MAX_HISTORY_BYTES = 2 * 1024 * 1024;
 const MAX_REVISIONS = 10000;
-const unverified = () => failure('revision_history_unverified', 'Songsterr’s revision history could not be verified. Please retry.');
+const unverified = (reason = 'invalid_history', revisionId) => Object.assign(
+  failure('revision_history_unverified', 'Songsterr’s revision history could not be verified. Please retry.'),
+  { diagnostics: { revisionHistoryReason: reason, ...(numeric(revisionId) ? { revisionId: numeric(revisionId) } : {}) } });
 const sameText = (a, b) => typeof a === 'string' && typeof b === 'string'
   && clean(a).normalize('NFKC').toLowerCase() === clean(b).normalize('NFKC').toLowerCase();
 const sameSong = (row, descriptor) => numeric(row?.songId) === numeric(descriptor?.id)
@@ -37,12 +39,12 @@ function revisionCatalogue(descriptor, metadata, history, page) {
   if (!id || !sameSong(metadata, descriptor) || !current || metadata.isPublished !== true
       || (metadata.isSongDeleted != null && metadata.isSongDeleted !== false)
       || page?.songId !== id || page.historyReady !== true || page.historyHasMore === true
-      || !Array.isArray(page.revisionRows)) throw unverified();
+      || !Array.isArray(page.revisionRows)) throw unverified('incomplete_or_mismatched_history');
   validateHistory(descriptor, history);
-  if (!history.some(row => numeric(row.revisionId) === current)) throw unverified();
+  if (!history.some(row => numeric(row.revisionId) === current)) throw unverified('missing_current_revision', current);
   const visibleRows = new Map();
   for (const row of page.revisionRows) {
-    if (!row || !numeric(row.revisionId) || visibleRows.has(row.revisionId)) throw unverified();
+    if (!row || !numeric(row.revisionId) || visibleRows.has(row.revisionId)) throw unverified('invalid_or_duplicate_rendered_revision');
     visibleRows.set(row.revisionId, row);
   }
   return history.map(row => {
@@ -50,7 +52,12 @@ function revisionCatalogue(descriptor, metadata, history, page) {
     // Incomplete rendered history is not proof that there is no reviewed revision.
     // Deleted/rejected entries can lack a rendered tab link. They remain
     // unavailable, but cannot prevent importing a separately verified row.
-    if (state.eligible && !visibleMatches(visible, state.status)) throw unverified();
+    if (state.eligible && !visibleMatches(visible, state.status)) {
+      const issue = page.revisionIssues?.find(item => item.revisionId === revisionId);
+      const reason = !visible && ['missing_revision_control', 'conflicting_revision_control'].includes(issue?.reason)
+        ? issue.reason : visible ? 'moderation_evidence_mismatch' : 'missing_rendered_revision';
+      throw unverified(reason, revisionId);
+    }
     if (!sameSong(row, descriptor) || !numeric(row.author?.personId)
         || typeof row.createdAt !== 'string' || !Number.isFinite(Date.parse(row.createdAt))) {
       return { revisionId, status: 'unknown', eligible: false, automatic: false, label: LABELS.unknown,

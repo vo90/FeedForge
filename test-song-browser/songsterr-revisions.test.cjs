@@ -109,6 +109,19 @@ test('matching visible Approved evidence is required for a reviewed row', () => 
   f.page.revisionRows[2].approved = false; reject(f);
 });
 
+test('revision failures retain bounded identity and moderation diagnostics without weakening selection', () => {
+  for (const reason of ['missing_revision_control', 'conflicting_revision_control']) {
+    const f = fixture(); f.page.revisionRows = f.page.revisionRows.filter(row => row.revisionId !== '7470773');
+    f.page.revisionIssues = [{ revisionId: '7470773', reason }];
+    assert.throws(() => choose(f), error => error.code === 'revision_history_unverified'
+      && error.diagnostics.revisionHistoryReason === reason && error.diagnostics.revisionId === '7470773');
+  }
+  const f = fixture(); f.page.revisionRows[2].approved = false;
+  assert.throws(() => choose(f), error => error.diagnostics.revisionHistoryReason === 'moderation_evidence_mismatch');
+  f.page.historyHasMore = true;
+  assert.throws(() => choose(f), error => error.diagnostics.revisionHistoryReason === 'incomplete_or_mismatched_history');
+});
+
 test('ambiguous metadata/history fail closed', () => {
   const changes = [f => { f.metadata.isPublished = false; }, f => { delete f.metadata.isPublished; },
     f => { f.metadata.songId = 1; }, f => { f.metadata.title = 'Other'; }, f => { f.page.songId = '1'; },
