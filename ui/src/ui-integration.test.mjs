@@ -89,3 +89,14 @@ test('settings writes preserve unknown values, latest performance version and ex
     customFutureOption: 42, performanceSettingsVersion: 3, bStandardTo7String: true, generateDifficulty: false,
   });
 });
+
+test('Hybrid Lead preferences survive unrelated settings writes and can be explicitly disabled', () => {
+  const app = application('home', { songsterrCreateHybridLead: true, outputDir: 'C:\\Test library' });
+  const utils = app.load(path.join(root, 'ui/src/workspace-utils.jsx'));
+  utils.writeSettings({ outputLayout: 'artist' });
+  assert.equal(app.settings().songsterrCreateHybridLead, true);
+  utils.writeSettings({ songsterrCreateHybridLead: false });
+  assert.equal(app.settings().songsterrCreateHybridLead, false);
+  assert.equal(app.settings().outputDir, 'C:\\Test library');
+  assert.equal(app.settings().outputLayout, 'artist');
+});

@@ -128,6 +128,7 @@ function App() {
   const [overwrite, setOverwrite] = useState(false);
   const [bStandardTo7String, setBStandardTo7String] = useState(() => initialSettingsRef.current.bStandardTo7String === true);
   const [generateDifficulty, setGenerateDifficulty] = useState(() => initialSettingsRef.current.generateDifficulty === true);
+  const [songsterrCreateHybridLead, setSongsterrCreateHybridLead] = useState(() => initialSettingsRef.current.songsterrCreateHybridLead === true);
   const [separateStems, setSeparateStems] = useState(() => initialSettingsRef.current.separateStems === true);
   const [demucsUrl, setDemucsUrl] = useState(() => initialSettingsRef.current.demucsUrl || "");
   const [demucsApiKey, setDemucsApiKey] = useState("");
@@ -214,8 +215,8 @@ function App() {
   }, [items]);
 
   useEffect(() => {
-    writeSettings({ outputDir, outputLayout, outputNameFormat, outputNameTemplate, lastSourcePath, bStandardTo7String, generateDifficulty, separateStems, conversionWorkers, validationPolicy, demucsUrl, demucsInstallDir, pythonPath, demucsModel, demucsDevice, demucsStemJobs, demucsStems, auditFolder, auditCriteria, performanceSettingsVersion: 3 });
-  }, [outputDir, outputLayout, outputNameFormat, outputNameTemplate, lastSourcePath, bStandardTo7String, generateDifficulty, separateStems, conversionWorkers, validationPolicy, demucsUrl, demucsInstallDir, pythonPath, demucsModel, demucsDevice, demucsStemJobs, demucsStems, auditFolder, auditCriteria]);
+    writeSettings({ outputDir, outputLayout, outputNameFormat, outputNameTemplate, lastSourcePath, bStandardTo7String, generateDifficulty, songsterrCreateHybridLead, separateStems, conversionWorkers, validationPolicy, demucsUrl, demucsInstallDir, pythonPath, demucsModel, demucsDevice, demucsStemJobs, demucsStems, auditFolder, auditCriteria, performanceSettingsVersion: 3 });
+  }, [outputDir, outputLayout, outputNameFormat, outputNameTemplate, lastSourcePath, bStandardTo7String, generateDifficulty, songsterrCreateHybridLead, separateStems, conversionWorkers, validationPolicy, demucsUrl, demucsInstallDir, pythonPath, demucsModel, demucsDevice, demucsStemJobs, demucsStems, auditFolder, auditCriteria]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1683,7 +1684,7 @@ function App() {
         </div>
         {activeView === "home" ? <Home navigate={setActiveView} chooseFiles={chooseFiles} chooseFolder={() => chooseFolder("feedpak")} items={items} selectItem={item => { setSelectedId(item.id); setActiveView(item.sourceType === "feedpak" ? "feedpak" : "workspace"); }} />
           : activeView === "songsterr" ? null
-          : activeView === "songs" ? <SongBrowser api={window.songBrowser} outputSettings={outputSettings} onOpenOutputSettings={() => { setSettingsSection("conversion"); setActiveView("settings"); }} onOutputDirChange={setOutputDir} onReview={async (inputPath) => { await addFiles([inputPath]); setActiveView("feedpak"); }} /> : activeView === "settings" || activeView === "stems" ? (
+          : activeView === "songs" ? <SongBrowser api={window.songBrowser} hybridEnabled={songsterrCreateHybridLead} onHybridEnabledChange={setSongsterrCreateHybridLead} outputSettings={outputSettings} onOpenOutputSettings={() => { setSettingsSection("conversion"); setActiveView("settings"); }} onOutputDirChange={setOutputDir} onReview={async (inputPath) => { await addFiles([inputPath]); setActiveView("feedpak"); }} /> : activeView === "settings" || activeView === "stems" ? (
           <section className={`settings-page ${activeView === "stems" ? "settings-page-full" : ""}`}>
             {activeView === "settings" && (
               <div className="settings-nav" aria-label="Settings sections">

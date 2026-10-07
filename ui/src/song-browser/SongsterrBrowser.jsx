@@ -213,7 +213,7 @@ export function SongsterrResult({ song, jobs, api, action, busy, outputDir, hybr
     {job?.state === 'completed' && job.outputAvailable ? <button className="sb-text-button" onClick={() => action(() => api.showOutput({ id: job.id }))}>Show saved FeedPak</button> : null}</div></article>;
 }
 
-export default function SongsterrBrowser({ api: providedApi, outputApi: providedOutputApi, outputSettings, onOpenOutputSettings }) {
+export default function SongsterrBrowser({ api: providedApi, outputApi: providedOutputApi, outputSettings, onOpenOutputSettings, hybridEnabled = false, onHybridEnabledChange }) {
   const api = providedApi ?? globalThis.window?.songsterrBrowser;
   const outputApi = providedOutputApi ?? globalThis.window?.songBrowser;
   const saved = api ? searchMemory.get(api) : null;
@@ -222,7 +222,7 @@ export default function SongsterrBrowser({ api: providedApi, outputApi: provided
   const [sort, setSort] = useState(saved?.sort || 'relevance'), [searching, setSearching] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [searchNotice, setSearchNotice] = useState(saved?.searchNotice || '');
   const [compatibilityList, setCompatibilityList] = useState(null);
-  const [hybridEnabled, setHybridEnabled] = useState(false), [reviewSources, setReviewSources] = useState(false);
+  const [reviewSources, setReviewSources] = useState(false);
   const searchGeneration = useRef(0), mounted = useRef(false), settingsSync = useRef(Promise.resolve());
   const settingsKey = JSON.stringify(outputSettings || {});
   useEffect(() => { if (api) searchMemory.set(api, { query, results, searched, sort, searchNotice }); }, [api, query, results, searched, sort, searchNotice]);
@@ -289,7 +289,7 @@ export default function SongsterrBrowser({ api: providedApi, outputApi: provided
       <div className="sb-job-controls"><button className="sb-button" disabled={!api || busy} onClick={() => action(() => api.showBrowser())}>Open Songsterr</button><button className="sb-button" disabled={!api || busy} onClick={() => action(() => api.signIn())}>Songsterr sign in</button></div></header>
     <div className="sb-output"><FolderOpen size={20} /><div><strong>FeedForge output folder</strong><p>{outputDir || 'Choose an output folder in Settings.'}</p><small>Uses the filename and folder layout from Settings.</small></div><button className="sb-button" onClick={onOpenOutputSettings}>Open Settings</button></div>
     <p className="st-experimental">Songsterr import is experimental. Unreviewed tabs are supported. Revision eligibility and audio timing are checked before saving.</p>
-    <div className="st-hybrid-options"><label><input type="checkbox" checked={hybridEnabled} onChange={event => setHybridEnabled(event.target.checked)} /> Create Hybrid Lead</label>
+    <div className="st-hybrid-options"><label><input type="checkbox" checked={hybridEnabled} onChange={event => onHybridEnabledChange?.(event.target.checked)} /> Create Hybrid Lead</label>
       <p>Add one guitar arrangement that follows the featured guitarist through the song and fills suitable gaps. It stays in the base tuning; all originals are retained.</p>
       {hybridEnabled ? <details><summary>Source choices</summary><label><input type="checkbox" checked={reviewSources} onChange={event => setReviewSources(event.target.checked)} /> Let me choose the base and supplementary guitars after downloading the tab</label><p>Otherwise FeedForge chooses automatically and reports any uncertain choices or incompatible sources.</p></details> : null}
     </div>
