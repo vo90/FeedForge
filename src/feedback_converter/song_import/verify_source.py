@@ -222,6 +222,8 @@ class Atom:
     explicit_tie: bool = False
     authored_fret: int | None = None
     explicit_hopo_origin: bool = False
+    explicit_slide: str | None = None
+    explicit_note_vibrato: bool = False
 
 
 @dataclass
@@ -1062,6 +1064,8 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True):
                         fact["notes"].append(atoms[-1])
                         atoms[-1].explicit_tie = note.get("tie") is True
                         atoms[-1].explicit_hopo_origin = note.get("hp") is True
+                        atoms[-1].explicit_slide = note.get("slide")
+                        atoms[-1].explicit_note_vibrato = note.get("vibrato") is True
                         atoms[-1].authored_fret = -1 if negative_mute else None
                         atoms[-1].strum_direction = direction
                         atoms[-1].strum_kind = _songsterr_strum_kind(beat) if direction else None

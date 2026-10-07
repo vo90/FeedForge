@@ -265,6 +265,19 @@ def _render(score: Score) -> dict:
                                 continuous=prior[1] == position,
                                 uninterrupted=rest_index < 0 or ends[rest_index] <= prior_articulation['start']):
                             raise ScoreImportError('A normalized bent-origin tie cannot introduce an unqualified continuation.')
+                    slide_tie = False
+                    if songsterr_tie and (output['f'] != note.fret or prior_articulation.get('pending_slide_identity')):
+                        from .pending_slide_ties import admitted as hold_slide, record as record_slide_tie
+                        starts, ends = rest_limits.get(note.voice_id, ([], []))
+                        rest_index = bisect_left(starts, position) - 1
+                        slide_tie = hold_slide(output, note, prior_articulation, score.source_document['document'],
+                            pending=pending_slide.get(link_key),
+                            competing=link_key in pending_hopo or link_key in pending_muted_shifts,
+                            unique=source_counts[(note.position, note.voice_id, note.string)] == 1,
+                            continuous=prior[1] == position,
+                            uninterrupted=rest_index < 0 or ends[rest_index] <= prior_articulation['start'])
+                        if prior_articulation.get('pending_slide_identity') and not slide_tie:
+                            raise ScoreImportError('A normalized pending-slide tie cannot introduce an unqualified continuation.')
                     if output['f'] != note.fret:
                         starts, ends = rest_limits.get(note.voice_id, ([], []))
                         rest_index = bisect_left(starts, position) - 1
@@ -275,8 +288,11 @@ def _render(score: Score) -> dict:
                             unique=source_counts[(note.position, note.voice_id, note.string)] == 1,
                             continuous=prior[1] == position,
                             uninterrupted=uninterrupted)
-                        if plain:
-                            identity = record_plain_tie(output, note, track, occurrence, position, end, at, prior_articulation)
+                        if plain or slide_tie:
+                            identity = (record_slide_tie if slide_tie else record_plain_tie)(
+                                output, note, track, occurrence, position, end, at, prior_articulation)
+                            if slide_tie:
+                                prior_articulation['pending_slide_identity'] = True
                             plain_tie_identities.append(identity)
                             if identity['rule'] == BEND_RULE:
                                 prior_articulation['bent_identity'] = True

@@ -120,7 +120,8 @@ def verify_source_timing(source, alignment, recipe, timing, check, *, strums=Non
     if strums is None:
         from .verify_timeline import expected as evaluate
         strums = evaluate(source, {'offset': 0, 'scale': 1},
-                          pending_hopo_ties=recipe.get('preservationContract', 0) >= 95)['strums']
+                          pending_hopo_ties=recipe.get('preservationContract', 0) >= 95,
+                         pending_slide_ties=recipe.get('preservationContract', 0) >= 96)['strums']
     early, groups = set(), set()
     for group in strums:
         for note in group['notes']:

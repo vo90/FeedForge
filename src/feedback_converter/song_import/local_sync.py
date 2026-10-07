@@ -340,9 +340,9 @@ def tracks_from_expected(wanted):
     return tracks
 
 
-def independent_tracks(source, *, pending_hopo_ties=True):
+def independent_tracks(source, *, pending_hopo_ties=True, pending_slide_ties=True):
     from .verify_timeline import expected, Clock, visits
-    wanted=expected(source,{'offset':0,'scale':1},pending_hopo_ties=pending_hopo_ties)
+    wanted=expected(source,{'offset':0,'scale':1},pending_hopo_ties=pending_hopo_ties, pending_slide_ties=pending_slide_ties)
     clock=Clock(source,visits(source))
     return tracks_from_expected(wanted),[float(clock.at(q)) for q in [*clock.measure_starts,clock.quarters]]
 
@@ -367,12 +367,12 @@ def compare_opening_evidence(fresh, stored, check):
             check.equal('opening_repair_audio', where+'/'+key, value, actual)
 
 
-def verify_repair(source, alignment, stored, path, check, *, pending_hopo_ties=True):
+def verify_repair(source, alignment, stored, path, check, *, pending_hopo_ties=True, pending_slide_ties=True):
     """Re-evaluate acoustic gates from independent raw-source note reconstruction."""
     check.equal('opening_repair_receipt','import/opening-repair',alignment.get('openingRepair'),stored)
     if not isinstance(stored,dict) or stored.get('version')!=REPAIR or stored.get('status')!='supported':
         check.fail('opening_repair','import','A repair requires current supported acoustic evidence.');return
-    tracks,boundaries=independent_tracks(source,pending_hopo_ties=pending_hopo_ties)
+    tracks,boundaries=independent_tracks(source,pending_hopo_ties=pending_hopo_ties, pending_slide_ties=pending_slide_ties)
     calibration=tuning(path)
     if hasattr(path,'seek'):path.seek(0)
     pitch,flux,_=rs.features(path,reference_hz=calibration['referenceHz'])

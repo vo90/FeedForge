@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 95
+VERSION = 96
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -917,7 +917,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 provenance = alignment.get("provenance", {})
                 if provenance.get(key) is not None:
                     check.equal("timing_identity", "alignment/" + key, value, str(provenance[key]))
-            wanted = expected(source, alignment, pending_hopo_ties=contract >= 95)
+            wanted = expected(source, alignment, pending_hopo_ties=contract >= 95, pending_slide_ties=contract >= 96)
             report["counts"].update(sourceTracks=source.track_count, selectedTracks=len(wanted["parts"]),
                                     excludedTracks=len(source.excluded), writtenMeasures=len(source.bars),
                                     performedMeasures=len(wanted["order"]), sourceNotes=wanted["raw_notes"],
@@ -982,7 +982,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 if len(full)!=1:raise ValueError('Opening repair requires one full recording.')
                 recording=recording_view(io.BytesIO(z.read(full[0]['file'])),alignment.get('preparation'))
                 verify_repair(source,alignment,_json(z,recipe.get('openingRepairFile',''),check),recording,check,
-                              pending_hopo_ties=contract >= 95)
+                              pending_hopo_ties=contract >= 95, pending_slide_ties=contract >= 96)
                 report['scope'].append('verified_local_opening_repair')
             if recipe.get('pickupTimelineFile') or recipe.get('preservationContract', 0) >= 34 and any(b.pickup for b in source.bars):
                 from .verify_pickup import verify as verify_pickup
@@ -999,7 +999,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 # Verification of historical archives retains their old voice
                 # contract. New imports always declare the projection receipt.
                 from .verify_timeline import _expected
-                wanted = _expected(source, alignment, pending_hopo_ties=contract >= 95)
+                wanted = _expected(source, alignment, pending_hopo_ties=contract >= 95, pending_slide_ties=contract >= 96)
                 report['counts'].update(selectedTracks=len(wanted['parts']),expectedNotes=sum(len(p['notes']) for p in wanted['parts']))
             if wanted.get('voice_projection') or recipe.get('voicesFile'):
                 from .verify_voices import verify as verify_voices
@@ -1207,13 +1207,22 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 if json.dumps(stable_staccato(evidence), sort_keys=True) != json.dumps(stable_staccato(retained), sort_keys=True):
                     check.fail('staccato_bends', 'import/staccato-bends', 'Tied staccato bend evidence differs from the independently reconstructed source.')
                 report['scope'].append('staccato_bend_timing')
-            if (wanted['plain_tie_identities'] or recipe.get('plainTieIdentityFile')
-                    or recipe.get('plainTieIdentityPolicy') or 'import/plain-tie-identity.json' in names):
+            if (wanted['plain_tie_identities'] or 'plainTieIdentityFile' in recipe
+                    or 'plainTieIdentityPolicy' in recipe or 'import/plain-tie-identity.json' in names):
                 if not wanted['plain_tie_identities']:
                     check.fail('plain_tie_extra', 'manifest/song_import/plainTieIdentityFile',
                                'Source has no qualifying plain tied-target identities.')
                 if recipe.get('preservationContract', 0) < 90:
                     check.fail('plain_tie_contract', 'manifest/song_import', 'Plain tie identity requires preservation contract 90.')
+                if any(row['rule'] == 'plain-tie-keeps-pending-slide-attack-target'
+                       for row in wanted['plain_tie_identities']):
+                    if type(contract) is not int or contract < 96:
+                        check.fail('pending_slide_tie_contract', 'manifest/song_import',
+                                   'Pending-slide tied-target identity requires preservation contract 96.')
+                    if type(compatibility.get('version')) is not int or compatibility['version'] < 96:
+                        check.fail('pending_slide_tie_inventory', 'import/compatibility/version',
+                                   'Pending-slide tied-target identity requires compatibility inventory 96.')
+                    report['scope'].append('pending_slide_tie_identity')
                 bent_identity = any(row['rule'] == 'plain-tie-keeps-bent-attack-target'
                                     for row in wanted['plain_tie_identities'])
                 if bent_identity:
