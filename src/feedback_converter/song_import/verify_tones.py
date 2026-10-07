@@ -163,7 +163,7 @@ def verify(z, recipe, source, selected, alignment, duration, source_hash, manife
     compare(wanted, proof, check, 'import/tone-timeline')
 
 
-def hybrid(receipt, parts, source, alignment, duration, charts, check):
+def hybrid(receipt, parts, source, alignment, duration, charts, check, *, passage_boundaries=True):
     schedules = {tid: expected(part['source'].tone_source, source, alignment, duration)[0]
                  for tid, part in parts.items()}
     programs = {s['name']: s['instrumentId'] for part in parts.values() for s in part['source'].tone_source['sounds']}
@@ -171,8 +171,10 @@ def hybrid(receipt, parts, source, alignment, duration, charts, check):
     clock = Clock(source, visits(source))
     recording = RecordingMap(alignment)
     def at(q): return recording.at(clock.at(fraction(q)))
-    intervals = [(max(0, at(min(p['start'], p.get('ownedStart', p['start'])))),
-                  min(duration, at(max(p['end'], p.get('ownedEnd', p['end'])))), p['trackId'])
+    # Independently map the selected complete-gesture bounds. Selection
+    # reservations can outlast those gestures and contain resumed main notes.
+    intervals = [(max(0, at(p['start'] if passage_boundaries else min(p['start'], p.get('ownedStart', p['start'])))),
+                  min(duration, at(p['end'] if passage_boundaries else max(p['end'], p.get('ownedEnd', p['end'])))), p['trackId'])
                  for p in receipt['passages']]
     intervals = sorted((a, b, tid) for a, b, tid in intervals if a < b)
     if any(a[1] > b[0] + .0000011 for a, b in zip(intervals, intervals[1:])):

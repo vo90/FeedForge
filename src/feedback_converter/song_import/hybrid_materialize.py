@@ -87,7 +87,8 @@ def notation_for(plan, originals):
     return result, None
 
 
-def materialize(plan, originals, options, source_hash, audio_hash, duration, generate_difficulty=False):
+def materialize(plan, originals, options, source_hash, audio_hash, duration, generate_difficulty=False,
+                *, tone_passage_boundaries=True):
     base = originals[plan["mainTrackId"]]
     chart = deepcopy(base["chart"])
     chart["name"] = NAME
@@ -130,7 +131,7 @@ def materialize(plan, originals, options, source_hash, audio_hash, duration, gen
     for key in ("notes", "chords"):
         chart[key].sort(key=lambda e: e["t"])
     from .tone_timeline import hybrid as hybrid_tones
-    tones = hybrid_tones(plan, originals, duration)
+    tones = hybrid_tones(plan, originals, duration, passage_boundaries=tone_passage_boundaries)
     if tones is not None:
         chart['tones'] = tones
     # Values above 24 need a referencing unpitched chord: fret 127 is a mute

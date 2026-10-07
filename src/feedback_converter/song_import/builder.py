@@ -492,7 +492,8 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             composition = plan(planning, options, main_id, alignment, duration, original_charts)
             composition['selectionRevision'] = SELECTION_REVISION
             chart, notation, derived, receipt = materialize(composition, original_charts, options,
-                recipe["scoreHash"], recipe["audioHash"], duration, settings.get("generateDifficulty") is True)
+                recipe["scoreHash"], recipe["audioHash"], duration, settings.get("generateDifficulty") is True,
+                tone_passage_boundaries=contract >= 98)
             receipt['tabActivity'] = activity_summary(original_charts, performance['tracks'], main_id, chart)
             if derived["id"].lower() in used:
                 raise ImportFailure("hybrid_failed", "The derived arrangement ID collides with a source track.")
