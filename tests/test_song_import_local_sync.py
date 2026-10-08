@@ -80,10 +80,17 @@ def test_competing_repeated_opening_is_not_chosen_arbitrarily():
     assert ls.propose(tracks,bounds,points,pitch,flux)['status']=='inconclusive'
 
 
-def test_worker_repair_uses_real_encoded_audio_and_independent_source(tmp_path,monkeypatch):
+@pytest.mark.parametrize('legacy', [False, True])
+def test_worker_repair_uses_real_encoded_audio_and_independent_source(tmp_path,monkeypatch,legacy):
     import json
     from pathlib import Path
     from feedback_converter.song_import import worker, audio as audio_module
+    if legacy:
+        from feedback_converter.song_import import evidence, compatibility
+        monkeypatch.setattr(evidence, 'CONTRACT_VERSION', 105)
+        monkeypatch.setattr(worker, 'CONTRACT_VERSION', 105)
+        monkeypatch.setattr(compatibility, 'VERSION', 105)
+        monkeypatch.setattr(ls, 'confirm', lambda *args: ls.propose(*args[:-1]))
     frets=[5,9,12,7,3,10,2,8]*2
     raw={'format':'songsterr','songId':12,'revisionId':34,'title':'Opening fixture','artist':'Synthetic',
          'tracks':[{'id':0,'name':'Lead','instrumentId':29,'tuning':[64,59,55,50,45,40]}],
@@ -111,6 +118,8 @@ def test_worker_repair_uses_real_encoded_audio_and_independent_source(tmp_path,m
     result=worker.run_import(request)
     assert result['ok'],result
     assert result['verification']['status']=='passed'
+    assert result['alignment']['openingRepair']['version'] == (ls.REPAIR if legacy else ls.CONFIRMED_REPAIR)
+    if legacy: assert result['recipe']['preservationContract'] == 105
     assert result['alignment']['openingRepair']['status']=='supported'
     assert result['verification']['preparationSeconds']>1.7
     from zipfile import ZipFile

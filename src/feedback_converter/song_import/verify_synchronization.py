@@ -94,7 +94,10 @@ def verify_source_timing(source, alignment, recipe, timing, check, *, strums=Non
     anchors = alignment.get('anchors', [])
     repair = alignment.get('openingRepair')
     if repair:
-        if repair.get('version') != 'bounded-opening-map-v1' or repair.get('status') != 'supported':
+        versions={'bounded-opening-map-v1'}
+        if recipe.get('preservationContract',0)>=106:
+            versions.add('bounded-opening-map-v2')
+        if repair.get('version') not in versions or repair.get('status') != 'supported':
             fail('Unverified opening repair.'); return
         if repair.get('originalBoundaries') != retained[:2] or repair.get('lockedBoundary') != retained[2]:
             fail('Opening repair does not belong to this original map.'); return

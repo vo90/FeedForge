@@ -108,8 +108,9 @@ def finalize(performance,audio,alignment,directory):
         calibration=ls.tuning(original)
         if hasattr(original,'seek'):original.seek(0)
         pitch,flux,_=rs.features(original,reference_hz=calibration['referenceHz'])
-        proposal=ls.propose(ls.score_tracks(performance),[a['score'] for a in result['anchors']],
-                            result['sourceTiming']['points'],pitch,flux)
+        proposal=ls.confirm(ls.score_tracks(performance),[a['score'] for a in result['anchors']],
+                            result['sourceTiming']['points'],pitch,flux,
+                            result['openingRepair']['replacementBoundaries'])
         proposal.update(tuning=calibration,audioSha256=ls._hash(original))
         if proposal['status']!='supported' or proposal['replacementBoundaries']!=result['openingRepair']['replacementBoundaries']:
             raise ImportFailure('alignment_failed','The encoded recording did not confirm the opening timing repair.',{'openingRepair':proposal})
