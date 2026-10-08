@@ -18,6 +18,28 @@ const base = { id: 'job-songsterr-1', songId: '564073', title: 'Woodland Rites',
 const render = (Component, props) => renderToStaticMarkup(React.createElement(Component, props));
 const job = (change) => render(SongsterrJob, { job: { ...base, ...change }, api: {}, action() {}, busy: false });
 
+test('uncertain timing is explained without accusing the source or claiming a pass', () => {
+  const verification = { status: 'passed', timing: 'source_map', timingAssessment: {
+    version: 'local-recording-clock-v3', status: 'inconclusive', supportedWindows: 1, windowCount: 27,
+    suspectedMismatchRanges: [] } };
+  const html = job({ state: 'completed', verification });
+  assert.match(html, /Imported — timing not fully verified/);
+  assert.match(html, /supported timing in 1 of 27 passages/);
+  assert.match(html, /does not necessarily mean they are wrong/);
+  assert.match(html, /timing was preserved/);
+  assert.doesNotMatch(html, /Possible timing mismatch/);
+  const suspected = structuredClone(verification);
+  suspected.timingAssessment.suspectedMismatchRanges = [{ start: 48, end: 64 }];
+  assert.match(job({ state: 'completed', verification: suspected }), /Possible timing mismatch near 0:48–1:04/);
+  suspected.timingAssessment.version = 'local-recording-clock-v2';
+  assert.doesNotMatch(job({ state: 'completed', verification: suspected }), /Possible timing mismatch/);
+  for (const change of [{ state: 'failed' }, { verification: { ...verification, status: 'modified' } }]) {
+    assert.doesNotMatch(job({ state: 'completed', verification, ...change }), /Imported — timing not fully verified/);
+  }
+  assert.match(job({ state: 'completed', verification: { ...verification, timing: 'source_map_repaired' } }), /opening adjustment was retained/);
+  assert.doesNotMatch(job({ state: 'completed', verification: { ...verification, timing: 'estimated' } }), /Songsterr&#x27;s timing was preserved/);
+});
+
 for (const state of ['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed', 'awaiting_main_choice', 'queued', 'retry_wait', 'completed', 'failed', 'cancelled']) {
   test(`search actions distinguish ${state} from active imports`, () => {
     const waiting = ['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed', 'awaiting_main_choice'].includes(state);

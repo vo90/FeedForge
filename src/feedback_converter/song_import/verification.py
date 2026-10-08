@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 103
+VERSION = 104
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -1009,7 +1009,8 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                     tracks=original_tracks(tracks,alignment['preparation']['seconds'])
                     path=recording_view(path,alignment['preparation'])
                     duration=alignment['endingPadding']['originalDuration']
-                diagnostic_version = 'local-recording-clock-v2' if contract >= 103 else 'local-recording-clock-v1'
+                diagnostic_version = ('local-recording-clock-v3' if contract >= 104 else
+                                      'local-recording-clock-v2' if contract >= 103 else 'local-recording-clock-v1')
                 fresh=assess(tracks,path,duration,alignment['provenance']['mapHash'],version=diagnostic_version)
                 compare_assessment(fresh,stored,check)
                 report['timing']['acousticAssessment']={k:fresh[k] for k in

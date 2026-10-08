@@ -102,7 +102,7 @@ def joint(pitch, flux, times, vectors, channel):
     return ps * valid, ac * valid
 
 
-def assess_features(tracks, pitch, flux, duration, *, windows=None, unique_clock=False):
+def assess_features(tracks, pitch, flux, duration, *, windows=None, unique_clock=False, corroborate_mismatch=False):
     rows = []
     # Non-overlapping windows provide coverage without inflating evidence counts.
     intervals = windows if windows is not None else [(left, min(float(left+16), duration)) for left in np.arange(0, duration, 16)]
@@ -139,6 +139,12 @@ def assess_features(tracks, pitch, flux, duration, *, windows=None, unique_clock
                           'status': 'supported' if supported else 'suspected_mismatch' if confident and separated else 'inconclusive',
                           'bestOffset': round(lag, 3), 'jointContrast': round(contrast, 4),
                           'jointAtMap': round(float(scores[near].max()), 6), 'jointBest': round(strength, 6)})
+            if corroborate_mismatch and parts[-1]['status'] == 'suspected_mismatch':
+                from .timing_diagnostic import corroborate
+                evidence = corroborate(ps, ac, lags, lag)
+                parts[-1]['mismatchEvidence'] = evidence
+                if evidence['status'] != 'corroborated':
+                    parts[-1]['status'] = 'inconclusive'
             if unique_clock:
                 parts[-1]['distantBest'] = round(distant, 6)
         active = any(any(left <= n['t'] < right for n in t['events']) for t in tracks)
@@ -155,9 +161,9 @@ def assess_features(tracks, pitch, flux, duration, *, windows=None, unique_clock
             'suspectedMismatchWindows':sum(r['status']=='suspected_mismatch' for r in rows)}
 
 
-def assess(tracks, path, duration, map_hash, *, version='local-recording-clock-v2'):
-    from . import pitch_clock
-    if version not in (VERSION, pitch_clock.VERSION):
+def assess(tracks, path, duration, map_hash, *, version='local-recording-clock-v3'):
+    from . import pitch_clock, timing_diagnostic
+    if version not in (VERSION, pitch_clock.VERSION, timing_diagnostic.VERSION):
         raise ValueError('Unsupported timing diagnostic version.')
     calibration = tuning(path)
     if hasattr(path, 'seek'):
@@ -166,8 +172,20 @@ def assess(tracks, path, duration, map_hash, *, version='local-recording-clock-v
     if abs(len(signal)/rs.RATE-duration) > .001:
         raise ValueError('The recording duration does not match its timing evidence.')
     report = assess_features(tracks, pitch, flux, duration)
-    if version == pitch_clock.VERSION:
+    if version in (pitch_clock.VERSION, timing_diagnostic.VERSION):
         report, reference = pitch_clock.assess(tracks, path, duration, calibration, report)
+        if version == timing_diagnostic.VERSION:
+            # Select the reference using the established v2 evidence, before
+            # downgrading uncertain mismatches. This grants no new authority
+            # to select a tuning, repair an opening or shorten an ending.
+            if any(p['status'] == 'suspected_mismatch' for w in report['windows'] for p in w['parts']):
+                selected_hz = reference.get('referenceHz', calibration['referenceHz'])
+                if selected_hz != calibration['referenceHz']:
+                    if hasattr(path, 'seek'):
+                        path.seek(0)
+                    pitch, flux, _ = rs.features(path, reference_hz=selected_hz)
+                report = assess_features(tracks, pitch, flux, duration, corroborate_mismatch=True)
+            report.update(timing_diagnostic.summary(report))
         report = {**report, 'version': version, 'pitchReference': reference}
     return {**report, 'tuning':calibration,
             'audioSha256': _hash(path), 'mapHash': map_hash, 'audioDuration':duration}
@@ -199,7 +217,7 @@ def compare_assessment(fresh, stored, check, path='import/timing-assessment'):
     one microsecond at an FFT frame boundary. Their chart comparison already
     enforces that tighter musical tolerance; feature scores are not note times.
     """
-    metrics={'jointAtMap','jointBest','jointContrast','atMap','best','distantBest','contrast'}
+    metrics={'jointAtMap','jointBest','jointContrast','atMap','best','distantBest','contrast','atCandidate'}
     rounded_metrics={'pitchAtMap','pitchShiftRank','pitchNearBest','pitchBest','pitchContrast',
                      'attackAtMap','attackBest','attackNearBest','attackContrast'}
     if isinstance(fresh,dict) and isinstance(stored,dict):

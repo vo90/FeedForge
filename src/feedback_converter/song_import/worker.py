@@ -243,6 +243,8 @@ def run_import(request: dict, progress=None) -> dict:
             summary['timingAssessment']={k:alignment['timingAssessment'][k] for k in
                 ('version','status','everyNoteVerified','windowCount','supportedWindows','suspectedMismatchWindows')}
             summary['timingAssessment']['pitchReference'] = alignment['timingAssessment'].get('pitchReference')
+            for field in ('suspectedMismatchRanges', 'unverifiedWindows'):
+                summary['timingAssessment'][field] = alignment['timingAssessment'][field]
         summary['preparationSeconds']=alignment.get('preparation',{}).get('seconds',0)
         summary['endingSilenceSeconds']=alignment.get('endingPadding',{}).get('seconds',0)
         if alignment.get('endingPaddingSync'):
@@ -275,7 +277,9 @@ def run_import(request: dict, progress=None) -> dict:
                     "verification": summary, "evidence": evidence, "compatibility": compatibility_summary(compatibility),
                     "warnings": (verification.get("errors", []) + verification.get("unsupported", []))[:10]}
         from .pitch_clock import warning as pitch_warning
+        from .timing_diagnostic import warning as timing_warning
         pitch_message = pitch_warning(alignment.get('timingAssessment', {}))
+        timing_message = timing_warning(alignment.get('timingAssessment', {}), opening_repaired=bool(alignment.get('openingRepair')))
         return {"ok": True, **result, "scoreHash": score_hash, "audioHash": audio["hash"],
                 "recipe": recipe, "alignment": _alignment_summary(alignment),
                 "verification": summary, "evidence": evidence, "compatibility": compatibility_summary(compatibility),
@@ -286,8 +290,7 @@ def run_import(request: dict, progress=None) -> dict:
                              if alignment.get('recordingEnd',{}).get('timingWarning') else []) +
                             ([alignment['endingPadding']['timingWarning']['message']]
                              if alignment.get('endingPadding',{}).get('timingWarning') else []) +
-                            ([f"Audio timing check: {alignment['timingAssessment']['supportedWindows']} of {alignment['timingAssessment']['windowCount']} passages supported. These checks do not establish every note's timing; the imported source timing is retained outside any recorded opening repair."]
-                             if alignment.get('timingAssessment',{}).get('status')=='inconclusive' else []) +
+                            ([timing_message] if timing_message else []) +
                             (["Practice difficulty was requested. Verification covers the main chart and any declared omissions; generated levels are not source-authored."]
                              if (request.get("outputSettings") or {}).get("generateDifficulty") is True else []) +
                             (["Timing was imported from Songsterr for this tab revision and recording."]

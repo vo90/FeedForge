@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from feedback_converter.song_import import local_sync as ls, pitch_clock as pc, recording_sync as rs
+from feedback_converter.song_import import local_sync as ls, pitch_clock as pc, recording_sync as rs, timing_diagnostic as td
 
 
 def report(strength=.5, supported=True, count=9):
@@ -54,7 +54,8 @@ def test_pitch_warning_can_never_claim_timing_when_some_passages_are_uncertain()
 
 
 @pytest.mark.parametrize('cents,offset',[(67,0),(-67,0),(0,0),(67,.26),(67,1)])
-def test_real_audio_reference_and_wrong_clock(tmp_path,cents,offset):
+@pytest.mark.parametrize('version',[pc.VERSION,td.VERSION])
+def test_real_audio_reference_and_wrong_clock(tmp_path,cents,offset,version):
     rate=11025;duration=96;signal=np.zeros(rate*duration)
     rng=np.random.default_rng(18)
     times=np.cumsum(rng.uniform(.35,.85,170));times=times[times<94]
@@ -68,8 +69,8 @@ def test_real_audio_reference_and_wrong_clock(tmp_path,cents,offset):
         events.append({'t':float(time+offset),'end':float(time+offset+.25),'midi':int(midi),'effects':{}})
     path=tmp_path/'audio.wav';sf.write(path,signal,rate,subtype='FLOAT')
     tracks=[{'id':'guitar','instrument':'guitar','events':events}];before=deepcopy(tracks)
-    result=ls.assess(tracks,path,duration,'test-map')
-    assert tracks==before and result['version']==pc.VERSION and result['everyNoteVerified'] is False
+    result=ls.assess(tracks,path,duration,'test-map',version=version)
+    assert tracks==before and result['version']==version and result['everyNoteVerified'] is False
     if offset:
         assert result['status']=='inconclusive'
         assert result['pitchReference']['status']!='corroborated'
