@@ -155,14 +155,21 @@ def assess_features(tracks, pitch, flux, duration, *, windows=None, unique_clock
             'suspectedMismatchWindows':sum(r['status']=='suspected_mismatch' for r in rows)}
 
 
-def assess(tracks, path, duration, map_hash):
+def assess(tracks, path, duration, map_hash, *, version='local-recording-clock-v2'):
+    from . import pitch_clock
+    if version not in (VERSION, pitch_clock.VERSION):
+        raise ValueError('Unsupported timing diagnostic version.')
     calibration = tuning(path)
     if hasattr(path, 'seek'):
         path.seek(0)
     pitch, flux, signal = rs.features(path, reference_hz=calibration['referenceHz'])
     if abs(len(signal)/rs.RATE-duration) > .001:
         raise ValueError('The recording duration does not match its timing evidence.')
-    return {**assess_features(tracks, pitch, flux, duration), 'tuning':calibration,
+    report = assess_features(tracks, pitch, flux, duration)
+    if version == pitch_clock.VERSION:
+        report, reference = pitch_clock.assess(tracks, path, duration, calibration, report)
+        report = {**report, 'version': version, 'pitchReference': reference}
+    return {**report, 'tuning':calibration,
             'audioSha256': _hash(path), 'mapHash': map_hash, 'audioDuration':duration}
 
 
@@ -208,7 +215,11 @@ def compare_assessment(fresh, stored, check, path='import/timing-assessment'):
             else:compare_assessment(value,actual,check,path+'/'+key)
     elif isinstance(fresh,list) and isinstance(stored,list):
         check.equal('timing_assessment_count',path,len(fresh),len(stored))
-        for i,(a,b) in enumerate(zip(fresh,stored)):compare_assessment(a,b,check,path+'/'+str(i))
+        for i,(a,b) in enumerate(zip(fresh,stored)):
+            if path.endswith('/strengths'):
+                check.near('timing_assessment_metric',path+'/'+str(i),a,b,max(.005,abs(a)*.01))
+            else:
+                compare_assessment(a,b,check,path+'/'+str(i))
     elif _source_time_field(path):
         # Reuse Check.near's six-decimal chart-time tolerance. The independently
         # mapped source can round one microsecond either side of the producer.

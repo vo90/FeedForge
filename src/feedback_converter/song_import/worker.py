@@ -242,6 +242,7 @@ def run_import(request: dict, progress=None) -> dict:
         if alignment.get('timingAssessment'):
             summary['timingAssessment']={k:alignment['timingAssessment'][k] for k in
                 ('version','status','everyNoteVerified','windowCount','supportedWindows','suspectedMismatchWindows')}
+            summary['timingAssessment']['pitchReference'] = alignment['timingAssessment'].get('pitchReference')
         summary['preparationSeconds']=alignment.get('preparation',{}).get('seconds',0)
         summary['endingSilenceSeconds']=alignment.get('endingPadding',{}).get('seconds',0)
         if alignment.get('endingPaddingSync'):
@@ -273,11 +274,14 @@ def run_import(request: dict, progress=None) -> dict:
                              "The converted FeedPak differs from the source tab. It has not been saved to your song folder.",
                     "verification": summary, "evidence": evidence, "compatibility": compatibility_summary(compatibility),
                     "warnings": (verification.get("errors", []) + verification.get("unsupported", []))[:10]}
+        from .pitch_clock import warning as pitch_warning
+        pitch_message = pitch_warning(alignment.get('timingAssessment', {}))
         return {"ok": True, **result, "scoreHash": score_hash, "audioHash": audio["hash"],
                 "recipe": recipe, "alignment": _alignment_summary(alignment),
                 "verification": summary, "evidence": evidence, "compatibility": compatibility_summary(compatibility),
                 "artwork": {key: artwork[key] for key in ("status", "albumStatus", "album", "year", "message", "reason") if key in artwork},
                 "warnings": list(performance.get("warnings", [])) + result["warnings"] +
+                            ([pitch_message] if pitch_message else []) +
                             ([alignment['recordingEnd']['timingWarning']['message']]
                              if alignment.get('recordingEnd',{}).get('timingWarning') else []) +
                             ([alignment['endingPadding']['timingWarning']['message']]
