@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 107
+VERSION = 108
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -347,7 +347,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, 89, 90, 91, 92, 93, 94, 98, 104, 105, 106, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, 89, 90, 91, 92, 93, 94, 98, 104, 105, 106, 107, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     reports_precedence = type(report.get('version')) is int and report['version'] >= 46
     if preservation_contract >= 46 and not reports_precedence:
@@ -892,6 +892,22 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
     return {"omittedEndingNotes": len(omissions)}
 
 
+def _verify_terminal_extension(alignment, duration, check):
+    # Called after independent preparation/padding verification. The source map
+    # must cross the original recording end, not the silence added to preserve
+    # an already-started tail. Packaged duration still bounds notes and assets.
+    recording_end = duration
+    if alignment.get('endingPadding'):
+        recording_end = (alignment['endingPadding']['originalDuration']
+                         + alignment.get('preparation', {}).get('seconds', 0))
+    anchors = alignment.get('anchors', [])
+    if (alignment.get('mapping') != 'piecewise-linear'
+            or alignment.get('provenance', {}).get('terminalBoundary') not in {'explicit', 'songsterr-last-interval'}
+            or len(anchors) < 2 or anchors[0]['audio'] >= recording_end
+            or anchors[-1]['audio'] <= recording_end):
+        check.fail('terminal_boundary', 'alignment', 'Invalid silent terminal extension.')
+
+
 def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: dict | None = None, *, hybrid_options: dict | None = None, guidance_policy: str | None = None) -> dict:
     """Compare an immutable raw score with a completed staged FeedPak.
 
@@ -1429,12 +1445,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                     except (RuntimeError, ValueError) as exc:
                         check.fail("adjustment_audio", "audio", str(exc))
             if alignment.get("provenance", {}).get("terminalBeyondAudio") in {"silent_notation_only", "recorded_sustain_adjustments"} or adjustments:
-                anchors = alignment.get("anchors", [])
-                if (alignment.get("mapping") != "piecewise-linear"
-                        or alignment.get("provenance", {}).get("terminalBoundary") not in {"explicit", "songsterr-last-interval"}
-                        or len(anchors) < 2 or anchors[0]["audio"] >= duration
-                        or anchors[-1]["audio"] <= duration):
-                    check.fail("terminal_boundary", "alignment", "Invalid silent terminal extension.")
+                _verify_terminal_extension(alignment, duration, check)
                 # One or several trailing written bars may be silent. Their
                 # boundaries may be supplied or extended by the source player.
                 # The independent event comparison and audio bounds below,

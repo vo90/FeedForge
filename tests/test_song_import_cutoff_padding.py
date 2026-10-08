@@ -11,7 +11,7 @@ from feedback_converter.song_import import cutoff_padding as cp, ending_padding 
 from feedback_converter.song_import.audio import ImportFailure
 from feedback_converter.song_import.score import load_performance
 from feedback_converter.song_import.synchronization import align_from_songsterr
-from feedback_converter.song_import.verification import verify_import
+from feedback_converter.song_import.verification import Check, _verify_terminal_extension, verify_import
 from test_song_import_ending_padding import source_audio
 from test_songsterr_recording_end import META
 
@@ -102,6 +102,59 @@ def test_combined_ending_preserves_tails_and_omits_attacks_including_hybrid(comb
         assert sorted(n['audioStart'] for n in ledger['notes']) == [53.9375, 54]
 
 
+@pytest.mark.parametrize('preparation', [0, 2])
+@pytest.mark.parametrize('map_end,valid', [(9.9, False), (10, False), (10.2, True), (10.4, True), (11, True)])
+def test_terminal_extension_uses_recording_end_not_padding(preparation, map_end, valid):
+    # The final map anchor may precede, equal or follow the padded file end.
+    alignment = {'mapping': 'piecewise-linear', 'provenance': {'terminalBoundary': 'explicit'},
+        'anchors': [{'audio': preparation}, {'audio': preparation + map_end}],
+        'endingPadding': {'originalDuration': 10}, 'preparation': {'seconds': preparation}}
+    check = Check()
+    _verify_terminal_extension(alignment, preparation + 10.4, check)
+    assert (not check.errors) == valid
+
+
+@pytest.mark.parametrize('fault', ['no_crossing', 'starts_after_recording', 'mapping', 'provenance', 'anchors'])
+def test_terminal_extension_still_requires_a_valid_crossing(fault):
+    alignment = {'mapping': 'piecewise-linear', 'provenance': {'terminalBoundary': 'explicit'},
+        'anchors': [{'audio': 0}, {'audio': 11}]}
+    if fault == 'no_crossing': alignment['anchors'][-1]['audio'] = 10
+    elif fault == 'starts_after_recording': alignment['anchors'][0]['audio'] = 10
+    elif fault == 'mapping': alignment['mapping'] = 'offset'
+    elif fault == 'provenance': alignment['provenance'] = {}
+    else: alignment['anchors'] = []
+    check = Check()
+    _verify_terminal_extension(alignment, 10, check)
+    assert [e['code'] for e in check.errors] == ['terminal_boundary']
+
+
+def test_combined_ending_at_final_map_anchor(combined_source, tmp_path, monkeypatch):
+    source, _, audio, sync = combined_source
+    raw = json.loads(source.read_text())
+    # Remove the trailing bars that hid the bug in the original fixture. A
+    # rhythm attack inside the padding is still omitted; the started chord's
+    # bend/slide tails reach the final written boundary at 52 seconds.
+    for part in raw['parts']: part['measures'] = part['measures'][:26]
+    source = tmp_path/'last-bar.json'; source.write_text(json.dumps(raw))
+    sync = {**sync, 'points': sync['points'][:27]}
+    monkeypatch.setattr(worker, 'prepare_audio', lambda *a, **kw: deepcopy(audio))
+    result = worker.run_import({'scorePath': str(source), 'metadata': META, 'synchronization': sync,
+        'workDir': str(tmp_path/'work'), 'outputDir': str(tmp_path/'out'), 'artworkLookup': False,
+        'hybridLead': {'enabled': True}})
+    assert result['ok'], result
+    assert result['verification']['status'] == 'passed'
+    assert result['verification']['adjustments']['omittedEndingNotes'] == 1
+    with ZipFile(result['stagingPath']) as z:
+        manifest = yaml.safe_load(z.read('manifest.yaml'))
+        assert manifest['duration'] == 54
+        assert result['verification']['preparationSeconds'] == 2
+        for arrangement in manifest['arrangements']:
+            chart = json.loads(z.read(arrangement['file']))
+            notes = chart['notes'] + [{**n, 't': n.get('t', c['t'])} for c in chart['chords'] for n in c['notes']]
+            assert all(n['t'] < 53.9 for n in notes)
+            assert all(n['t'] + n.get('sus', 0) <= 54.000001 for n in notes)
+
+
 def test_combined_requires_explicit_cutoff_permission_and_matching_recording(combined_source):
     _, perf, audio, sync = combined_source
     with pytest.raises(ImportFailure):
@@ -110,6 +163,24 @@ def test_combined_requires_explicit_cutoff_permission_and_matching_recording(com
     changed = deepcopy(audio); changed['source']['videoId'] = 'different'
     with pytest.raises(ImportFailure, match='original recording'):
         ep.authorize(perf, changed, alignment)
+
+
+def test_previous_contract_remains_independently_verifiable(combined_package, tmp_path):
+    source, path, alignment, _ = combined_package
+    with ZipFile(path) as z:
+        files = {name: z.read(name) for name in z.namelist()}
+    manifest = yaml.safe_load(files['manifest.yaml'])
+    recipe = manifest['song_import']
+    recipe['preservationContract'] = 107
+    compatibility = json.loads(files[recipe['compatibilityFile']])
+    compatibility['version'] = 107
+    files[recipe['compatibilityFile']] = json.dumps(compatibility).encode()
+    files['manifest.yaml'] = yaml.safe_dump(manifest).encode()
+    target = tmp_path/'previous-contract.feedpak'
+    with ZipFile(target, 'w') as z:
+        for name, data in files.items(): z.writestr(name, data)
+    report = verify_import(source, target, alignment, META)
+    assert report['status'] == 'passed', report
 
 
 def test_uncertain_acoustic_evidence_does_not_allow_combined_padding(combined_source, monkeypatch):
