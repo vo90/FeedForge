@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 102
+VERSION = 103
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -1009,10 +1009,13 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                     tracks=original_tracks(tracks,alignment['preparation']['seconds'])
                     path=recording_view(path,alignment['preparation'])
                     duration=alignment['endingPadding']['originalDuration']
-                fresh=assess(tracks,path,duration,alignment['provenance']['mapHash'])
+                diagnostic_version = 'local-recording-clock-v2' if contract >= 103 else 'local-recording-clock-v1'
+                fresh=assess(tracks,path,duration,alignment['provenance']['mapHash'],version=diagnostic_version)
                 compare_assessment(fresh,stored,check)
                 report['timing']['acousticAssessment']={k:fresh[k] for k in
                     ('version','status','everyNoteVerified','windowCount','supportedWindows','suspectedMismatchWindows')}
+                if 'pitchReference' in fresh:
+                    report['timing']['acousticAssessment']['pitchReference'] = fresh['pitchReference']
             if alignment.get('openingRepair') or recipe.get('openingRepairFile'):
                 from .local_sync import verify_repair
                 from .preparation import recording_view
