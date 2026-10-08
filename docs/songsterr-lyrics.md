@@ -42,6 +42,20 @@ tempo changes. Tied/underscore continuations stop at rests and navigation jumps.
 Both the start and end of each syllable pass through the final recording
 alignment, including its piecewise anchors and prepared-audio padding.
 
+The `songsterr-authored-lyrics-v2` policy keeps supported grace slots out of
+the ordinary lyric interval boundary check. A before-beat grace at the start
+of a bar can have a negative bar-relative position: it borrows time from the
+preceding bar and carries no syllable. Its full clock calculation remains in
+place, including the shortened preceding beat. Skipping this slot does not
+move sung syllables or permit out-of-bar ordinary lyric beats. Unknown grace
+types and malformed clocks remain unsupported.
+
+New imports use preservation contract 109 and policy v2. Historical v1 receipts
+are rechecked with their original strict boundary rule, including streams
+previously recorded as unsupported. Contract 109 requires v2; older lyric
+contracts can still verify an explicitly identified v1 or v2 stream. The
+manifest policy and retained lyric receipt must agree.
+
 Events are clipped to the recording bounds. The importer does not extrapolate
 beyond an available alignment map or invent timestamps from character counts.
 Invalid, overlapping or collapsed intervals omit the optional lyric stream with

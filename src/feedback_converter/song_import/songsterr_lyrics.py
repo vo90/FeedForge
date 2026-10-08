@@ -11,7 +11,8 @@ import re
 from .model import ScoreImportError, integer, rational
 from .songsterr_timing import part_timing
 
-POLICY = 'songsterr-authored-lyrics-v1'
+LEGACY_POLICY = 'songsterr-authored-lyrics-v1'
+POLICY = 'songsterr-authored-lyrics-v2'
 MAX_TEXT = 20_000
 MAX_EVENTS = 100_000
 _SEPARATORS = re.compile(r'(\[.*?\]|\s?-\s?)|\r\n|\n|\s')
@@ -172,12 +173,14 @@ def legacy_assign(part, measures):
     return output, 0
 
 
-def written(document, lengths):
+def written(document, lengths, *, policy=POLICY):
+    if policy not in (LEGACY_POLICY, POLICY):
+        raise ValueError('Unknown authored lyric policy.')
     try:
         chosen, report = select(document)
     except (ValueError, TypeError, KeyError, AttributeError) as exc:
         chosen, report = None, {'status': 'unsupported', 'reason': str(exc), 'candidates': []}
-    report.update(policy=POLICY, events=[], warnings=[])
+    report.update(policy=policy, events=[], warnings=[])
     if chosen is None:
         return report
     try:
@@ -202,7 +205,12 @@ def written(document, lengths):
                 text = slot['text'].strip()
                 if len(text) > 200 or any(ord(c) < 32 for c in text if c not in '\n\r\t'):
                     raise ValueError('Unsupported lyric text/control characters.')
-                if q < 0 or q + length > lengths[bi]:
+                # Valid before-beat graces can borrow from the preceding bar.
+                # Assignment/playback skip them; they are not lyric intervals.
+                # Keep their clock calculation above so the borrowed time is
+                # still removed from the neighbouring ordinary beat.
+                skipped_grace = policy == POLICY and beat.get('graceNote') in ('beforeBeat', 'onBeat')
+                if not skipped_grace and (q < 0 or q + length > lengths[bi]):
                     raise ValueError('Lyric beat crosses a written measure boundary.')
                 # Slots remain explicit so a repeat jump can never extend a
                 # syllable through a rest or borrow one from a different verse.
