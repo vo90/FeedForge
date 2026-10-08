@@ -329,6 +329,10 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
     if alignment.get('endingPaddingSync',{}).get('version') == 'recording-clock-v4' and (recipe or {}).get('preservationContract',0)<38:
         raise ImportFailure('alignment_failed','Phrase timing evidence requires the current preservation contract.')
     from .recording_sync import CUTOFF_VERSION, PADDING_VERSION
+    from .local_sync import CONFIRMED_REPAIR
+    if (alignment.get('openingRepair',{}).get('version') == CONFIRMED_REPAIR
+            and (recipe or {}).get('preservationContract',0)<106):
+        raise ImportFailure('alignment_failed', 'Fixed opening confirmation requires preservation contract 106.')
     if ((alignment.get('recordingSync', {}).get('version') == CUTOFF_VERSION
             or alignment.get('endingPaddingSync', {}).get('version') == PADDING_VERSION)
             and (recipe or {}).get('preservationContract', 0) < 105):

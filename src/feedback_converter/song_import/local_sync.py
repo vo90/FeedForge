@@ -15,6 +15,7 @@ from . import recording_sync as rs
 
 VERSION = 'local-recording-clock-v1'
 REPAIR = 'bounded-opening-map-v1'
+CONFIRMED_REPAIR = 'bounded-opening-map-v2'
 
 
 def tuning(path):
@@ -265,7 +266,17 @@ def _hash(path):
 
 def propose(tracks, score_boundaries, audio_boundaries, pitch, flux):
     """Fit a faulty opening only, using later attacks exclusively as validation."""
-    no = lambda reason: {'version':REPAIR, 'status':'inconclusive', 'reason':reason}
+    return _opening(tracks, score_boundaries, audio_boundaries, pitch, flux)
+
+
+def confirm(tracks, score_boundaries, audio_boundaries, pitch, flux, candidate):
+    """Measure the exact applied candidate; never select a replacement map."""
+    return _opening(tracks, score_boundaries, audio_boundaries, pitch, flux,
+                    version=CONFIRMED_REPAIR, candidate=candidate)
+
+
+def _opening(tracks, score_boundaries, audio_boundaries, pitch, flux, *, version=REPAIR, candidate=None):
+    no = lambda reason: {'version':version, 'status':'inconclusive', 'reason':reason}
     if len(score_boundaries)<4 or len(audio_boundaries)<4:
         return no('insufficient_boundaries')
     s0,s1,s2 = score_boundaries[:3]
@@ -299,10 +310,28 @@ def propose(tracks, score_boundaries, audio_boundaries, pitch, flux):
     ps,ac=joint(pitch,flux,times,vectors,channel)
     scores=np.exp(np.log(np.maximum(ps*ac,1e-12)).mean(axis=1))
     best=int(scores.argmax()); chosen=times[best]
+    b0,b1=grid[best]
+    fit_pitch,fit_attack=ps[best],ac[best]
+    score=float(scores[best])
+    relative=1.0
+    if version == CONFIRMED_REPAIR:
+        if (not isinstance(candidate,list) or len(candidate)!=2
+                or any(type(v) not in (int,float) or not math.isfinite(v) for v in candidate)):
+            return no('invalid_applied_candidate')
+        # Initial receipts publish six-decimal grid coordinates. Accept exactly
+        # such a candidate, not an arbitrary near neighbour or widened range.
+        found=np.flatnonzero(np.all(np.round(grid,6)==np.asarray(candidate),axis=1))
+        if len(found)!=1:
+            return no('candidate_outside_original_grid')
+        b0,b1=candidate
+        chosen=b0+(b1-b0)*fractions
+        cp,ca=joint(pitch,flux,chosen,vectors,channel)
+        fit_pitch,fit_attack=cp[0],ca[0]
+        score=float(np.exp(np.log(np.maximum(fit_pitch*fit_attack,1e-12)).mean()))
+        relative=score/max(float(scores[best]),1e-12)
     separate=np.max(abs(times-chosen),axis=1)>.10
     alternative=float(scores[separate].max()) if separate.any() else 0
-    margin=float(scores[best]/max(alternative,1e-12))
-    b0,b1=grid[best]
+    margin=float(score/max(alternative,1e-12))
     checks=np.array([b1+(a2-b1)*(g[0]-s1)/(s2-s1) for g in held])
     hp,ha=joint(pitch,flux,checks,np.array([g[1] for g in held]),channel)
     # All fitted attacks and held-out attacks require independent pitch AND
@@ -312,15 +341,20 @@ def propose(tracks, score_boundaries, audio_boundaries, pitch, flux):
         lo=max(0,int(round((t-.10)/rs.DT)));hi=min(len(flux),int(round((t+.10)/rs.DT))+1)
         at=lo+int(flux[lo:hi,channel].argmax())
         peak_errors.append(abs(at*rs.DT-t))
-    supported=(margin>=1.15 and min(ps[best])>=.12 and min(ac[best])>=1.3
-               and min(hp[0])>=.12 and min(ha[0])>=1.3 and max(peak_errors)<=.055)
-    return {'version':REPAIR, 'status':'supported' if supported else 'inconclusive',
+    supported=(margin>=1.15 and min(fit_pitch)>=.12 and min(fit_attack)>=1.3
+               and min(hp[0])>=.12 and min(ha[0])>=1.3 and max(peak_errors)<=.055
+               and relative>=.95)
+    return {'version':version, 'status':'supported' if supported else 'inconclusive',
             'reason':'matched_opening_and_held_out_context' if supported else 'ambiguous_or_unsupported_opening',
             'trackId':track['id'], 'originalBoundaries':[a0,a1],
             'replacementBoundaries':[round(float(b0),6),round(float(b1),6)], 'lockedBoundary':a2,
             'fitTimes':[round(float(t),6) for t in chosen], 'heldOutTimes':[round(float(t),6) for t in checks],
-            'alternativeRatio':round(margin,6), 'fitPitch':[round(float(v),6) for v in ps[best]],
-            'heldOutPitch':[round(float(v),6) for v in hp[0]], 'maxOnsetError':round(max(peak_errors),6)}
+            'alternativeRatio':round(margin,6), 'fitPitch':[round(float(v),6) for v in fit_pitch],
+            'heldOutPitch':[round(float(v),6) for v in hp[0]], 'maxOnsetError':round(max(peak_errors),6),
+            **({'candidateToBestRatio':round(relative,6),
+                'fitAttack':[round(float(v),6) for v in fit_attack],
+                'heldOutAttack':[round(float(v),6) for v in ha[0]]}
+               if version == CONFIRMED_REPAIR else {})}
 
 
 def repair(performance, audio, synchronization, metadata, *, allow_padding_candidate=False):
@@ -380,32 +414,37 @@ def compare_opening_evidence(fresh, stored, check):
     """Permit one rounded diagnostic unit across BLAS reduction orders.
 
     Timing coordinates, decisions, tuning and audio identity remain exact.
-    Only the rounded acoustic pitch scores and alternative ratio are metrics.
+    Only rounded acoustic pitch/attack scores and comparison ratios are metrics.
     """
     where = 'import/opening-repair'
     check.equal('opening_repair_audio', where, sorted(fresh), sorted(stored))
     for key, value in fresh.items():
         actual = stored.get(key)
-        if key in ('fitPitch', 'heldOutPitch') and isinstance(actual, list):
+        if key in ('fitPitch', 'heldOutPitch', 'fitAttack', 'heldOutAttack') and isinstance(actual, list):
             check.equal('opening_repair_audio', where+'/'+key, len(value), len(actual))
             for i, (expected, recorded) in enumerate(zip(value, actual)):
                 check.near('opening_repair_metric', f'{where}/{key}/{i}', expected, recorded, .0000011)
-        elif key == 'alternativeRatio':
+        elif key in ('alternativeRatio', 'candidateToBestRatio'):
             check.near('opening_repair_metric', where+'/'+key, value, actual, .0000011)
         else:
             check.equal('opening_repair_audio', where+'/'+key, value, actual)
 
 
-def verify_repair(source, alignment, stored, path, check, *, pending_hopo_ties=True, pending_slide_ties=True):
+def verify_repair(source, alignment, stored, path, check, *, pending_hopo_ties=True, pending_slide_ties=True, preservation_contract=0):
     """Re-evaluate acoustic gates from independent raw-source note reconstruction."""
     check.equal('opening_repair_receipt','import/opening-repair',alignment.get('openingRepair'),stored)
-    if not isinstance(stored,dict) or stored.get('version')!=REPAIR or stored.get('status')!='supported':
+    allowed={REPAIR, CONFIRMED_REPAIR} if preservation_contract>=106 else {REPAIR}
+    if not isinstance(stored,dict) or stored.get('version') not in allowed or stored.get('status')!='supported':
         check.fail('opening_repair','import','A repair requires current supported acoustic evidence.');return
     tracks,boundaries=independent_tracks(source,pending_hopo_ties=pending_hopo_ties, pending_slide_ties=pending_slide_ties)
     calibration=tuning(path)
     if hasattr(path,'seek'):path.seek(0)
     pitch,flux,_=rs.features(path,reference_hz=calibration['referenceHz'])
-    fresh=propose(tracks,boundaries,alignment['sourceTiming']['points'],pitch,flux)
+    if stored['version']==CONFIRMED_REPAIR:
+        fresh=confirm(tracks,boundaries,alignment['sourceTiming']['points'],pitch,flux,
+                      stored.get('replacementBoundaries'))
+    else:
+        fresh=propose(tracks,boundaries,alignment['sourceTiming']['points'],pitch,flux)
     fresh.update(tuning=calibration,audioSha256=_hash(path))
     compare_opening_evidence(fresh, stored, check)
     check.equal('opening_repair_supported','import/opening-repair/status','supported',fresh['status'])
