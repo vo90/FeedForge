@@ -275,7 +275,18 @@ def confirm(tracks, score_boundaries, audio_boundaries, pitch, flux, candidate):
                     version=CONFIRMED_REPAIR, candidate=candidate)
 
 
-def _opening(tracks, score_boundaries, audio_boundaries, pitch, flux, *, version=REPAIR, candidate=None):
+def opening_groups(tracks, s0, s1, s2, *, midi_min=28):
+    """Complete source groups eligible for an opening and independent context."""
+    eligible=[]
+    for track in tracks:
+        first, held = groups(track,s0,s1,midi_min=midi_min), groups(track,s1,s2,midi_min=midi_min)
+        total={round(n['t'],6) for n in track['events'] if s0<=n['t']<s2}
+        if len(first)>=3 and len(held)>=2 and len(first)+len(held)==len(total):
+            eligible.append((track,first,held))
+    return eligible
+
+
+def _opening(tracks, score_boundaries, audio_boundaries, pitch, flux, *, version=REPAIR, candidate=None, midi_min=28):
     no = lambda reason: {'version':version, 'status':'inconclusive', 'reason':reason}
     if len(score_boundaries)<4 or len(audio_boundaries)<4:
         return no('insufficient_boundaries')
@@ -283,13 +294,8 @@ def _opening(tracks, score_boundaries, audio_boundaries, pitch, flux, *, version
     a0,a1,a2 = audio_boundaries[:3]
     if not (s0==0 and 0<s1<s2 and -.75<=a0<0<a1<a2<=8):
         return no('outside_opening_repair_bounds')
-    eligible=[]
-    for track in tracks:
-        first, held = groups(track,s0,s1), groups(track,s1,s2)
-        # Do not fit an incomplete subset of a mixed/unsupported opening.
-        total={round(n['t'],6) for n in track['events'] if s0<=n['t']<s2}
-        if len(first)>=3 and len(held)>=2 and len(first)+len(held)==len(total):
-            eligible.append((track,first,held))
+    # Do not fit an incomplete subset of a mixed/unsupported opening.
+    eligible=opening_groups(tracks,s0,s1,s2,midi_min=midi_min)
     if not eligible:
         return no('insufficient_pitched_opening_and_context')
     # Source-only choice prevents searching arrangements until one passes.
@@ -370,7 +376,11 @@ def repair(performance, audio, synchronization, metadata, *, allow_padding_candi
     boundaries=[p['score'] for p in checked['anchors']]
     calibration=tuning(audio['path'])
     pitch,flux,_=rs.features(audio['path'],reference_hz=calibration['referenceHz'])
-    proposal=propose(score_tracks(performance),boundaries,points,pitch,flux)
+    tracks=score_tracks(performance)
+    proposal=propose(tracks,boundaries,points,pitch,flux)
+    if proposal.get('reason')=='insufficient_pitched_opening_and_context':
+        from .low_bass_opening import propose as low_propose
+        proposal=low_propose(tracks,boundaries,points,audio['path'],calibration['referenceHz'])
     proposal.update(tuning=calibration,audioSha256=_hash(audio['path']))
     if proposal['status']!='supported':
         raise ImportFailure('source_sync_unavailable','The opening timing could not be corrected confidently.',{'openingRepair':proposal})
@@ -434,17 +444,24 @@ def verify_repair(source, alignment, stored, path, check, *, pending_hopo_ties=T
     """Re-evaluate acoustic gates from independent raw-source note reconstruction."""
     check.equal('opening_repair_receipt','import/opening-repair',alignment.get('openingRepair'),stored)
     allowed={REPAIR, CONFIRMED_REPAIR} if preservation_contract>=106 else {REPAIR}
+    from . import low_bass_opening as low
+    if preservation_contract>=107:
+        allowed.add(low.VERSION)
     if not isinstance(stored,dict) or stored.get('version') not in allowed or stored.get('status')!='supported':
         check.fail('opening_repair','import','A repair requires current supported acoustic evidence.');return
     tracks,boundaries=independent_tracks(source,pending_hopo_ties=pending_hopo_ties, pending_slide_ties=pending_slide_ties)
     calibration=tuning(path)
     if hasattr(path,'seek'):path.seek(0)
-    pitch,flux,_=rs.features(path,reference_hz=calibration['referenceHz'])
-    if stored['version']==CONFIRMED_REPAIR:
-        fresh=confirm(tracks,boundaries,alignment['sourceTiming']['points'],pitch,flux,
-                      stored.get('replacementBoundaries'))
+    if stored['version']==low.VERSION:
+        fresh=low.confirm(tracks,boundaries,alignment['sourceTiming']['points'],path,
+                          calibration['referenceHz'],stored.get('replacementBoundaries'))
     else:
-        fresh=propose(tracks,boundaries,alignment['sourceTiming']['points'],pitch,flux)
+        pitch,flux,_=rs.features(path,reference_hz=calibration['referenceHz'])
+        if stored['version']==CONFIRMED_REPAIR:
+            fresh=confirm(tracks,boundaries,alignment['sourceTiming']['points'],pitch,flux,
+                          stored.get('replacementBoundaries'))
+        else:
+            fresh=propose(tracks,boundaries,alignment['sourceTiming']['points'],pitch,flux)
     fresh.update(tuning=calibration,audioSha256=_hash(path))
     compare_opening_evidence(fresh, stored, check)
     check.equal('opening_repair_supported','import/opening-repair/status','supported',fresh['status'])
