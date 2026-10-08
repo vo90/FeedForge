@@ -97,6 +97,8 @@ def verify_source_timing(source, alignment, recipe, timing, check, *, strums=Non
         versions={'bounded-opening-map-v1'}
         if recipe.get('preservationContract',0)>=106:
             versions.add('bounded-opening-map-v2')
+        if recipe.get('preservationContract',0)>=107:
+            versions.add('bounded-opening-low-bass-v1')
         if repair.get('version') not in versions or repair.get('status') != 'supported':
             fail('Unverified opening repair.'); return
         if repair.get('originalBoundaries') != retained[:2] or repair.get('lockedBoundary') != retained[2]:

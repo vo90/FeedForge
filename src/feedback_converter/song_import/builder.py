@@ -330,6 +330,10 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         raise ImportFailure('alignment_failed','Phrase timing evidence requires the current preservation contract.')
     from .recording_sync import CUTOFF_VERSION, PADDING_VERSION
     from .local_sync import CONFIRMED_REPAIR
+    from .low_bass_opening import VERSION as LOW_OPENING
+    if (alignment.get('openingRepair',{}).get('version') == LOW_OPENING
+            and (recipe or {}).get('preservationContract',0)<107):
+        raise ImportFailure('alignment_failed', 'Low-bass opening evidence requires preservation contract 107.')
     if (alignment.get('openingRepair',{}).get('version') == CONFIRMED_REPAIR
             and (recipe or {}).get('preservationContract',0)<106):
         raise ImportFailure('alignment_failed', 'Fixed opening confirmation requires preservation contract 106.')

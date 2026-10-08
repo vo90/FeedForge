@@ -107,10 +107,16 @@ def finalize(performance,audio,alignment,directory):
         original=recording_view(target,receipt)
         calibration=ls.tuning(original)
         if hasattr(original,'seek'):original.seek(0)
-        pitch,flux,_=rs.features(original,reference_hz=calibration['referenceHz'])
-        proposal=ls.confirm(ls.score_tracks(performance),[a['score'] for a in result['anchors']],
-                            result['sourceTiming']['points'],pitch,flux,
-                            result['openingRepair']['replacementBoundaries'])
+        from . import low_bass_opening as low
+        if result['openingRepair']['version']==low.VERSION:
+            proposal=low.confirm(ls.score_tracks(performance),[a['score'] for a in result['anchors']],
+                result['sourceTiming']['points'],original,calibration['referenceHz'],
+                result['openingRepair']['replacementBoundaries'])
+        else:
+            pitch,flux,_=rs.features(original,reference_hz=calibration['referenceHz'])
+            proposal=ls.confirm(ls.score_tracks(performance),[a['score'] for a in result['anchors']],
+                                result['sourceTiming']['points'],pitch,flux,
+                                result['openingRepair']['replacementBoundaries'])
         proposal.update(tuning=calibration,audioSha256=ls._hash(original))
         if proposal['status']!='supported' or proposal['replacementBoundaries']!=result['openingRepair']['replacementBoundaries']:
             raise ImportFailure('alignment_failed','The encoded recording did not confirm the opening timing repair.',{'openingRepair':proposal})
