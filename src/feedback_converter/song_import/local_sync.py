@@ -72,7 +72,7 @@ def score_tracks(performance):
     return tracks
 
 
-def groups(track, left, right):
+def groups(track, left, right, *, midi_min=28):
     by_time = {}
     for event in track['events']:
         if left <= event['t'] < right:
@@ -82,10 +82,10 @@ def groups(track, left, right):
         # A dead string inside a pitched chord has no expected fixed pitch.
         # Keep its time in the group, but assess only the pitched strings.
         pitched=[e for e in events if not e['effects'].get('mt') and e['midi'] is not None]
-        if not pitched or not rs._paired(pitched):
+        if not pitched or not rs._paired(pitched, midi_min=midi_min):
             continue
-        vector = np.zeros(len(rs.MIDIS))
-        vector[[int(e['midi'])-28 for e in pitched]] = 1
+        vector = np.zeros(97-midi_min)
+        vector[[int(e['midi'])-midi_min for e in pitched]] = 1
         vector /= np.linalg.norm(vector)
         output.append((time, vector))
     return output
@@ -102,14 +102,14 @@ def joint(pitch, flux, times, vectors, channel):
     return ps * valid, ac * valid
 
 
-def assess_features(tracks, pitch, flux, duration, *, windows=None, unique_clock=False, corroborate_mismatch=False):
+def assess_features(tracks, pitch, flux, duration, *, windows=None, unique_clock=False, corroborate_mismatch=False, midi_min=28):
     rows = []
     # Non-overlapping windows provide coverage without inflating evidence counts.
     intervals = windows if windows is not None else [(left, min(float(left+16), duration)) for left in np.arange(0, duration, 16)]
     for left, right in intervals:
         parts = []
         for track in tracks:
-            selected = groups(track, float(left), right-.2)
+            selected = groups(track, float(left), right-.2, midi_min=midi_min)
             if len(selected) < 6:
                 continue
             selected = selected[::max(1, math.ceil(len(selected)/96))]

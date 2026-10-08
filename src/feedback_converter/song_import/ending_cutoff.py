@@ -6,7 +6,7 @@ import math
 
 from .alignment import map_time
 from .audio import ImportFailure
-from .recording_sync import assess, digest, PREVIOUS_VERSION, LEGACY_VERSION
+from .recording_sync import assess, digest, PREVIOUS_VERSION, LEGACY_VERSION, CUTOFF_VERSION
 
 POLICY = "cut-at-recording-end-v1"
 SUFFIX_POLICY = "cut-at-recording-end-v2"
@@ -61,7 +61,7 @@ def authorize(performance, audio, alignment):
     offset=alignment.get('preparation',{}).get('seconds',0)
     tracks = mapped_tracks(performance, alignment)
     report = assess(tracks, audio["path"], audio["duration"], alignment["provenance"]["mapHash"],
-                    **({'analysis_origin':offset} if offset else {}), clock_version=PREVIOUS_VERSION)
+                    **({'analysis_origin':offset} if offset else {}), clock_version=CUTOFF_VERSION)
     warning = None
     if report["status"] != "supported":
         from .cutoff_warning import acceptance, matches_recording
@@ -97,7 +97,7 @@ def allowed(alignment, duration):
     return (alignment.get("status") == "validated" and alignment.get("method") == "songsterr-video-points-v1"
             and alignment.get("mapping") == "piecewise-linear"
             and boundary is not None and policy == expected
-            and report.get("version") in (PREVIOUS_VERSION, LEGACY_VERSION)
+            and report.get("version") in (PREVIOUS_VERSION, LEGACY_VERSION, CUTOFF_VERSION)
             and (report.get("status") == "supported" or warning is not None)
             and report.get("audioDuration") == duration and report.get("mapHash") == alignment.get("provenance", {}).get("mapHash"))
 

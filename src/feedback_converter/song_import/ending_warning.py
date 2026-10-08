@@ -19,10 +19,10 @@ def acceptance(report, alignment, audio_source, *, tracks=None):
 
 def _legacy_acceptance(report, alignment, audio_source):
     """Return a reproducible warning receipt only for a supported song body."""
-    from .recording_sync import VERSION
+    from .recording_sync import VERSION, PADDING_VERSION
     timing = alignment.get('sourceTiming', {})
     provenance = alignment.get('provenance', {})
-    if (report.get('version') != VERSION or report.get('status') != 'inconclusive'
+    if (report.get('version') not in (VERSION, PADDING_VERSION) or report.get('status') != 'inconclusive'
             or report.get('outroSupported') is not False
             or report.get('suspectedMismatchWindows') != 0
             or alignment.get('method') != 'songsterr-video-points-v1'

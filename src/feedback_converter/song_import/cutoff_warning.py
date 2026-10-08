@@ -16,14 +16,14 @@ def matches_recording(alignment, audio_source):
 
 
 def acceptance(report, alignment):
-    from .recording_sync import PREVIOUS_VERSION
+    from .recording_sync import PREVIOUS_VERSION, CUTOFF_VERSION
     from .activity_coverage import KEY, declared
     source_coverage = declared(report)
     if KEY in report and not source_coverage:
         return None
     timing = alignment.get('sourceTiming', {})
     provenance = alignment.get('provenance', {})
-    if (report.get('version') != PREVIOUS_VERSION
+    if (report.get('version') not in (PREVIOUS_VERSION, CUTOFF_VERSION)
             or report.get('status') not in ('inconclusive', 'suspected_mismatch')
             or alignment.get('method') != 'songsterr-video-points-v1'
             or alignment.get('mapping') != 'piecewise-linear'
