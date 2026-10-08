@@ -8,14 +8,14 @@ function is used here. This is conversion verification, not acoustic alignment.
 import hashlib
 import json
 
-from .songsterr_lyrics import POLICY, MAX_EVENTS, written
+from .songsterr_lyrics import POLICY, LEGACY_POLICY, MAX_EVENTS, written
 from .lyric_timeline import phrases
 from .tone_timeline import clock_parameters, digest
 from .verify_timeline import Clock, RecordingMap, visits
 
 
-def expected(document, source, alignment, duration):
-    plan = written(document, [b.length for b in source.bars])
+def expected(document, source, alignment, duration, *, policy=POLICY):
+    plan = written(document, [b.length for b in source.bars], policy=policy)
     if plan['status'] != 'ready':
         return [], plan, []
     order = visits(source)
@@ -74,14 +74,19 @@ def expected(document, source, alignment, duration):
 
 
 def verify(archive, recipe, manifest, source_path, source, alignment, duration, check, read_json):
-    check.equal('lyrics_policy', 'song_import', POLICY, recipe.get('lyricsPolicy'))
+    policy = recipe.get('lyricsPolicy')
+    if policy not in (LEGACY_POLICY, POLICY):
+        check.fail('lyrics_policy', 'song_import', 'Unknown authored lyric policy.')
+        return
+    if recipe.get('preservationContract', 0) >= 109:
+        check.equal('lyrics_policy', 'song_import', POLICY, policy)
     check.equal('lyrics_report_path', 'song_import', 'import/lyrics.json', recipe.get('lyricsFile'))
     if recipe.get('preservationContract', 0) < 79:
         check.fail('lyrics_contract', 'song_import', 'Lyrics require preservation contract 79.')
     proof = read_json(archive, recipe.get('lyricsFile', ''), check)
     document = json.loads(source_path.read_text(encoding='utf-8-sig'))
-    wanted, plan, ledger = expected(document, source, alignment, duration)
-    for key, value in {'version': 1, 'policy': POLICY, 'timeDomain': 'recording_seconds',
+    wanted, plan, ledger = expected(document, source, alignment, duration, policy=policy)
+    for key, value in {'version': 1, 'policy': policy, 'timeDomain': 'recording_seconds',
                        'acousticAccuracyAssessed': False,
                        'sourceSha256': hashlib.sha256(source_path.read_bytes()).hexdigest(),
                        'audioSha256': hashlib.sha256(archive.read('audio/full.ogg')).hexdigest(),
