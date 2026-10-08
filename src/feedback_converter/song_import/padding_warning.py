@@ -45,10 +45,10 @@ def coverage(report, tracks):
 
 
 def acceptance(report, alignment, source, tracks):
-    from .recording_sync import VERSION
+    from .recording_sync import VERSION, PADDING_VERSION
     from .cutoff_warning import matches_recording
     timing, provenance = alignment.get('sourceTiming', {}), alignment.get('provenance', {})
-    if (report.get('version') != VERSION or report.get('status') != 'inconclusive'
+    if (report.get('version') not in (VERSION, PADDING_VERSION) or report.get('status') != 'inconclusive'
             or type(report.get('outroSupported')) is not bool
             or report.get('suspectedMismatchWindows') != 0
             or alignment.get('method') != 'songsterr-video-points-v1'

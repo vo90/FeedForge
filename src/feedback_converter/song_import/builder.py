@@ -328,6 +328,11 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             raise ImportFailure('alignment_failed', 'Combined ending requires independently confirmed source and recording evidence.')
     if alignment.get('endingPaddingSync',{}).get('version') == 'recording-clock-v4' and (recipe or {}).get('preservationContract',0)<38:
         raise ImportFailure('alignment_failed','Phrase timing evidence requires the current preservation contract.')
+    from .recording_sync import CUTOFF_VERSION, PADDING_VERSION
+    if ((alignment.get('recordingSync', {}).get('version') == CUTOFF_VERSION
+            or alignment.get('endingPaddingSync', {}).get('version') == PADDING_VERSION)
+            and (recipe or {}).get('preservationContract', 0) < 105):
+        raise ImportFailure('alignment_failed', 'Low-bass timing evidence requires preservation contract 105.')
     if alignment.get('recordingEnd', {}).get('version') == 2 and (source_path is None
             or (recipe or {}).get('preservationContract', 0) < 56
             or not ending_cutoff_allowed(alignment, audio['duration'])):

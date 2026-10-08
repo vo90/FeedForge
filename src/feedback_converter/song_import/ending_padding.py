@@ -73,7 +73,7 @@ def original_tracks(tracks, seconds):
 def assess(tracks, path, duration, map_hash, *, legacy=False, clock_version=None):
     from .local_sync import _hash
     report = rs.assess(tracks, path, duration, map_hash, **({'legacy':True} if legacy else {}),
-                       **({'clock_version':clock_version} if clock_version else {}))
+                       clock_version=clock_version or rs.PADDING_VERSION)
     # WAV containers may contain timestamped PEAK headers. Bind decoded samples.
     report.update(audioSha256=_hash(path), audioHashKind='decoded-float32')
     # Require support in the actual ending region, not just earlier verses.
@@ -174,6 +174,8 @@ def verify(wanted, alignment, recipe, archive, manifest, check):
     allowed = {rs.LEGACY_VERSION, rs.PREVIOUS_VERSION}
     if recipe.get('preservationContract',0)>=38:
         allowed.add(rs.VERSION)
+    if recipe.get('preservationContract',0)>=105:
+        allowed.add(rs.PADDING_VERSION)
     if stored.get('version') not in allowed:
         raise ValueError('Recording-clock evidence is not supported by this preservation contract.')
     check.equal('ending_padding_sync_receipt', 'import/ending-padding-sync', alignment.get('endingPaddingSync'), stored)
@@ -261,9 +263,9 @@ def verify(wanted, alignment, recipe, archive, manifest, check):
             check.equal('ending_padding_sync', 'import/ending-padding-sync', 'supported', fresh['status'])
         for key in ('audioSha256', 'audioDuration', 'mapHash', 'version', 'outroSupported', 'status'):
             check.equal('ending_padding_sync_identity', 'import/ending-padding-sync/' + key, fresh[key], stored.get(key))
-        if stored['version'] == rs.VERSION:
+        if stored['version'] in (rs.VERSION, rs.PADDING_VERSION):
             from .local_sync import compare_assessment
-            if warning is not None:
+            if warning is not None or stored['version'] == rs.PADDING_VERSION:
                 compare_assessment(fresh, stored, check, 'import/ending-padding-sync')
             compare_assessment(fresh.get('phraseEvidence'), stored.get('phraseEvidence'), check,
                                'import/ending-padding-sync/phraseEvidence')

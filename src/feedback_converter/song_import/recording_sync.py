@@ -15,6 +15,8 @@ import soundfile as sf
 LEGACY_VERSION = "mapped-pitch-onsets-v2"
 PREVIOUS_VERSION = "recording-clock-v3"
 VERSION = "recording-clock-v4"
+CUTOFF_VERSION = "recording-clock-v3-low-bass-v1"
+PADDING_VERSION = "recording-clock-v4-low-bass-v1"
 RATE = 11025
 HOP = 110
 DT = HOP / RATE
@@ -29,7 +31,10 @@ SPARSE_EXCLUSIONS = PITCH_EXCLUSIONS + ATTACK_EXCLUSIONS + (
     'harmonic_alias', 'pick_scrape_marks', 'slide_out', 'slide_out_marks', 'slide_in_marks', 'slide_interval', 'tr',
 )
 
-def features(path, *, reference_hz=440.0):
+def features(path, *, reference_hz=440.0, midi_min=28):
+    if midi_min not in (21, 28):
+        raise ValueError('Unsupported recording pitch profile.')
+    midis = MIDIS if midi_min == 28 else np.arange(midi_min, 97)
     with sf.SoundFile(path) as reader:
         if not 2 <= len(reader) / reader.samplerate <= 1202 or not 1 <= reader.channels <= 2:
             raise ValueError("The timing check needs a bounded mono or stereo recording.")
@@ -44,8 +49,8 @@ def features(path, *, reference_hz=440.0):
     # accommodate modest detuning; neighbours supply local spectral contrast.
     n = 4096
     freq = np.fft.rfftfreq(n, 1 / RATE)
-    bank = np.zeros((len(MIDIS), len(freq)), dtype='float32')
-    for i, midi in enumerate(MIDIS):
+    bank = np.zeros((len(midis), len(freq)), dtype='float32')
+    for i, midi in enumerate(midis):
         base = reference_hz * 2 ** ((midi - 69) / 12)
         for harmonic in range(1, 6):
             f = base * harmonic
@@ -59,7 +64,7 @@ def features(path, *, reference_hz=440.0):
     bank = bank.T
     pad = np.pad(signal, (n // 2, n // 2))
     window = np.hanning(n).astype('float32')
-    pitches = np.zeros((count, len(MIDIS)), dtype='float32')
+    pitches = np.zeros((count, len(midis)), dtype='float32')
     for begin in range(0, count, 128):
         frames = pad[(np.arange(begin, min(begin + 128, count)) * HOP)[:, None] + np.arange(n)]
         mag = abs(np.fft.rfft(frames * window, axis=1)).astype('float32')
@@ -132,7 +137,8 @@ def assess(tracks, audio_path, duration, map_hash, *, analysis_origin=0.0, legac
     unassessed/inconclusive; this checks the shared recording clock, not tab quality.
     """
     version = LEGACY_VERSION if legacy else clock_version or VERSION
-    if version not in (LEGACY_VERSION, PREVIOUS_VERSION, VERSION):
+    base_version = {CUTOFF_VERSION: PREVIOUS_VERSION, PADDING_VERSION: VERSION}.get(version, version)
+    if base_version not in (LEGACY_VERSION, PREVIOUS_VERSION, VERSION):
         raise ValueError('Unknown recording-clock evidence version.')
     if hasattr(audio_path, "read"):
         audio_path.seek(0)
@@ -161,14 +167,21 @@ def assess(tracks, audio_path, duration, map_hash, *, analysis_origin=0.0, legac
     if abs(actual_duration - duration) > .001:
         raise ValueError("The timing check audio duration does not match the recording.")
     report = assess_features(tracks, pitch, flux, duration)
-    if version == LEGACY_VERSION:
+    if base_version == LEGACY_VERSION:
         report['version'] = LEGACY_VERSION
     elif report['status'] != 'supported':
         from .clock_evidence import assess as assess_clock
         report = assess_clock(tracks, audio_path, duration, pitch, flux, report,
-                              phrases=version == VERSION)
+                              phrases=base_version == VERSION)
     else:
         report.update(method='established-pitch-onset-check', referenceEvidence={'status':'default', 'referenceHz':440.0})
+    if version in (CUTOFF_VERSION, PADDING_VERSION):
+        from .low_bass_sync import supplement
+        report = supplement(tracks, audio_path, duration, report)
+        # Reports which never used the supplement retain their exact legacy
+        # version and schema, including historical receipt replay.
+        if 'lowBassEvidence' not in report:
+            version = base_version
     return {**report, 'version':version,
             "audioSha256": audio_hash, "audioDuration": original_duration, "mapHash": map_hash,
             **({'analysisOriginSeconds':analysis_origin} if analysis_origin else {})}
@@ -213,10 +226,10 @@ def _measure(track, pitch, flux, left, right, minimum=MIN_GROUPS):
             'attackNearLag': round(near_lag, 3), 'attackLocalLag': round(local_lag, 3)}
 
 
-def _paired(group):
+def _paired(group, *, midi_min=28):
     # The low-sample path cannot infer an onset or a fixed pitch from a mute,
     # legato transition or moving-pitch gesture, including mixed chords.
-    return all(n['midi'] is not None and 28 <= n['midi'] <= 96 and int(n['midi']) == n['midi']
+    return all(n['midi'] is not None and midi_min <= n['midi'] <= 96 and int(n['midi']) == n['midi']
                and not any(n['effects'].get(k) for k in SPARSE_EXCLUSIONS)
                for n in group)
 

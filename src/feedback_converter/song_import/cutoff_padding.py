@@ -42,13 +42,13 @@ def cutoff(alignment):
 
 
 def allowed(alignment, duration):
-    from .recording_sync import digest, VERSION
+    from .recording_sync import digest, VERSION, PADDING_VERSION
     receipt, report = alignment.get('endingPadding', {}), alignment.get('endingPaddingSync', {})
     return (selected(alignment) and receipt.get('omitLateAttacks') is True
             and type(receipt.get('omittedNoteCount')) is int and receipt['omittedNoteCount'] > 0
             and alignment.get('status') == 'validated' and alignment.get('mapping') == 'piecewise-linear'
             and alignment.get('method') == 'songsterr-video-points-v1'
-            and report.get('version') == VERSION and report.get('status') == 'supported'
+            and report.get('version') in (VERSION, PADDING_VERSION) and report.get('status') == 'supported'
             and report.get('outroSupported') is True and bool(report.get('windows'))
             and all(w.get('status') == 'supported' for w in report['windows'])
             and report.get('audioDuration') == receipt.get('originalDuration')

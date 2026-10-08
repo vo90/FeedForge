@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 104
+VERSION = 105
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -347,7 +347,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, 89, 90, 91, 92, 93, 94, 98, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, 89, 90, 91, 92, 93, 94, 98, 104, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     reports_precedence = type(report.get('version')) is int and report['version'] >= 46
     if preservation_contract >= 46 and not reports_precedence:
@@ -779,7 +779,10 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
         return None
     # The acoustic check is recomputed from independently reconstructed notes
     # and the actual packaged recording. A forged saved status cannot authorize it.
-    from .recording_sync import assess, digest, PREVIOUS_VERSION as SYNC_VERSION, LEGACY_VERSION
+    from .recording_sync import assess, digest, PREVIOUS_VERSION as SYNC_VERSION, LEGACY_VERSION, CUTOFF_VERSION
+    allowed_versions = {SYNC_VERSION, LEGACY_VERSION}
+    if recipe.get('preservationContract', 0) >= 105:
+        allowed_versions.add(CUTOFF_VERSION)
     stored = _json(archive, recipe.get("recordingSyncFile", ""), check)
     # Derive the policy independently; never trust the producer's cutoff index.
     if (anchors[-2]['audio'] < duration and anchors[-1]['audio']-duration <= 3.0
@@ -816,7 +819,7 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
             return None
         required['timingWarning'] = expected_warning
     if (policy != required or recipe.get("recordingEnd") != required
-            or alignment.get("recordingSync") != stored or stored.get("version") not in (SYNC_VERSION, LEGACY_VERSION)
+            or alignment.get("recordingSync") != stored or stored.get("version") not in allowed_versions
             or (stored.get("status") != "supported" and not warning)
             or stored.get("mapHash") != alignment.get("provenance", {}).get("mapHash")):
         check.fail("ending_policy", "import", "The ending cutoff has no matching current timing evidence.")
@@ -883,6 +886,9 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
                 timing['recordingSyncStatus'] = fresh['status']
             else:
                 check.equal("ending_audio_sync", "import/recording-sync", "supported", fresh["status"])
+            if stored['version'] == CUTOFF_VERSION:
+                from .local_sync import compare_assessment
+                compare_assessment(fresh, stored, check, 'import/recording-sync')
     return {"omittedEndingNotes": len(omissions)}
 
 
