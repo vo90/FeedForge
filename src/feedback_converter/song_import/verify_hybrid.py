@@ -148,10 +148,6 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
                 del child['let_ring_sus']
             else:
                 child['let_ring_sus'] = span
-    for event in [*expected_chart['notes'], *expected_chart['chords']]:
-        boundaries = [p['recordingStart'] for p in receipt.get('passages', [])
-                      if p['recordingStart'] > event['t']]
-        ring_limit(event, min(boundaries, default=manifest['duration']))
     expected_chart["name"] = "Hybrid Lead"
     expected_chart.pop("phrases", None)
     expected_chart.pop("ext", None)
@@ -207,9 +203,15 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
         all_charts = {a['id']: _json(z, a['file'], check) for a in originals if a.get('type') in {'guitar','lead','rhythm'}}
         kept, removed, event_facts, primary_protected = audit(all_charts, receipt, facts, options, quarter_at, at, manifest['duration'], source.format, check, source=source, musical_audit=musical_audit)
         for kind in ('notes','chords'):
-            expected_chart[kind] = [e for i,e in enumerate(main[kind]) if (kind,i) in kept]
+            expected_chart[kind] = [deepcopy(e) for i,e in enumerate(main[kind]) if (kind,i) in kept]
         occupied_q = [(event_facts[main_id][k]['start'],event_facts[main_id][k]['end']) for k in kept]
         protected = [(at(a),at(b)) for a,b in occupied_q]
+    # Selection above reconstructs the main arrays from immutable originals.
+    # Bound retained ringing only after that reconstruction, never on originals.
+    for event in [*expected_chart['notes'], *expected_chart['chords']]:
+        boundaries = [p['recordingStart'] for p in receipt.get('passages', [])
+                      if p['recordingStart'] > event['t']]
+        ring_limit(event, min(boundaries, default=manifest['duration']))
     used_refs, seen_sources, previous = set(), {main_id}, None
     for passage in receipt.get("passages", []):
         tid, lo, hi = passage["trackId"], passage["start"], passage["end"]

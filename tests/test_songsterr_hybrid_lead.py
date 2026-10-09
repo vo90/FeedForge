@@ -43,7 +43,7 @@ def prepared(tmp_path, doc=None, overrides=None):
     return source, performance, options
 
 
-def build(tmp_path, doc=None, enabled=True, mapped=False, difficulty=False, overrides=None):
+def build(tmp_path, doc=None, enabled=True, mapped=False, difficulty=False, overrides=None, contract=None):
     source, p, options = prepared(tmp_path, doc, overrides)
     _, audio, _, directory = inputs(tmp_path)
     alignment = {"status": "validated", "offset": 0, "scale": 1}
@@ -56,6 +56,8 @@ def build(tmp_path, doc=None, enabled=True, mapped=False, difficulty=False, over
     has_interval = any("slide_interval" in n for t in p["tracks"]
                        for n in t["notes"] + [n for c in t.get("chords", []) for n in c["notes"]])
     recipe = {"preservationContract": 80 if has_interval else 62, "source": "songsterr", "scoreHash": options["sourceSha256"], "audioHash": audio["hash"]}
+    if contract is not None:
+        recipe['preservationContract'] = contract
     if enabled:
         recipe["hybridLead"] = options
     result = build_feedpak(p, audio, alignment, directory, output_dir=tmp_path / "out", recipe=recipe,

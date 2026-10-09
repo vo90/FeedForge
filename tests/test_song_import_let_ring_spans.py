@@ -154,3 +154,27 @@ def test_strummed_members_keep_separate_attacks_and_common_ring_end(tmp_path,dir
     first=sorted(ns,key=lambda n:n['t'])[:2]
     assert first[0]['t'] < first[1]['t']
     assert all(n['t']+n['let_ring_sus']==pytest.approx(2) for n in first)
+
+
+def test_full_package_primary_selection_bounds_ringing_without_mutating_original(tmp_path):
+    from test_hybrid_lead_priority import solo_song
+    from test_songsterr_hybrid_lead import build
+    from zipfile import ZipFile
+    import yaml
+    doc=solo_song()
+    bars=doc['parts'][0]['measures']
+    bars[0]['voices'][0]['beats']=source()['parts'][0]['measures'][0]['voices'][0]['beats']
+    for i in range(1,4):
+        bars[i]['voices'][0]['beats']=[{'duration':[1,1],'letRing':True,'notes':[{'string':4,'fret':3+i}]}]
+    *_,archive,report=build(tmp_path,doc,overrides={'mainTrackId':'0'},contract=110)
+    assert report['status']=='passed', [{k:v for k,v in e.items() if k not in ('actual','expected')} for e in report['errors']]
+    with ZipFile(archive) as z:
+        m=yaml.safe_load(z.read('manifest.yaml'))
+        receipt=json.loads(z.read('import/hybrid-lead.json'))
+        assert receipt['passages'] and receipt['removedMain']
+        main=json.loads(z.read('arrangements/0.json'))
+        hybrid=json.loads(z.read(m['arrangements'][-1]['file']))
+        a=main['notes'][0];b=next(n for n in hybrid['notes'] if n['t']==a['t'] and n['s']==a['s'])
+        assert a['let_ring_sus'] > b['let_ring_sus']
+        assert b['t']+b['let_ring_sus']==receipt['passages'][0]['recordingStart']
+        assert a['sus']==b['sus']
