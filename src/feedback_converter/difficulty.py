@@ -2,6 +2,7 @@
 from bisect import bisect_right
 from copy import deepcopy
 from math import ceil
+from .guidance_provenance import carry, digest, origins, resolve, stamp
 
 
 def ensure_difficulty(arrangement, *, beats=(), sections=(), duration=0):
@@ -74,12 +75,16 @@ def ensure_difficulty(arrangement, *, beats=(), sections=(), duration=0):
             # Keep the active authored anchor at each retained event, including
             # anchors beginning before this phrase. Avoid pans to hidden notes.
             previous = None
+            lane_origins = []
+            source_origins = origins(arrangement, "anchors")
+            origins_by_time = {a["time"]: o for a, o in zip(arrangement.get("anchors", []), source_origins)}
             for time, _, _ in selected:
                 index = bisect_right(anchor_times, time) - 1
                 if index >= 0 and index != previous:
                     anchor = deepcopy(anchors[index])
                     anchor["time"] = time
                     level["anchors"].append(anchor)
+                    lane_origins.append(origins_by_time.get(anchors[index]["time"], "unknown"))
                     previous = index
             for shape in arrangement.get("handshapes", ()):
                 if any(shape["start_time"] <= time < shape["end_time"]
@@ -90,14 +95,32 @@ def ensure_difficulty(arrangement, *, beats=(), sections=(), duration=0):
                     clipped["start_time"] = max(left, shape["start_time"])
                     clipped["end_time"] = min(right, shape["end_time"])
                     level["handshapes"].append(clipped)
-            if arrangement.get("ext", {}).get("chartGuidance", {}).get("policy") == "feedforge-chart-guidance-v2":
+            legacy = arrangement.get("ext", {}).get("chartGuidance", {})
+            if legacy.get("policy") == "feedforge-chart-guidance-v2" or arrangement.get("ext", {}).get("guidanceProvenance"):
                 from .chart_guidance import finalize
                 context = {k: deepcopy(arrangement[k]) for k in ("tuning", "capo", "centOffset", "templates") if k in arrangement}
                 context["beats"] = beats
                 context.update({"notes": level["notes"], "chords": level["chords"]})
+                for key in ("anchors", "handshapes"):
+                    state = resolve(arrangement, key)
+                    generated = state["origin"] == "generated" and state["integrity"] == "valid"
+                    if state["integrity"] == "unknown" and not arrangement.get("ext", {}).get("guidanceProvenance"):
+                        generated = key in legacy.get("fields", [])
+                    if not generated:
+                        context[key] = deepcopy(level[key])
+                        carry(arrangement, context, key, producer="feedforge-practice-v1",
+                              row_origins=lane_origins if key == "anchors" else None)
+                        # Unknown supplied values (including an empty selection)
+                        # are preserved; absence of proof is not generation consent.
+                        if key not in context.get("ext", {}).get("guidanceProvenance", {}).get("fields", {}):
+                            stamp(context, key, "unknown", producer="feedforge-practice-v1")
                 finalize(context, window=(left, right))
+                chord_origins = {digest(c): o for c, o in zip(arrangement.get("chords", []), origins(arrangement, "chords"))}
+                carry(arrangement, context, "chords", producer="feedforge-practice-v1",
+                      row_origins=[chord_origins.get(digest(c), "unknown") for c in level["chords"]])
                 for key in ("anchors", "handshapes", "ext"):
-                    level[key] = context[key]
+                    if key in context:
+                        level[key] = context[key]
             levels.append(level)
         phrases.append({"start_time": left, "end_time": right,
                         "max_difficulty": depth - 1, "levels": levels})
