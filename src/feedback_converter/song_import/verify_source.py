@@ -932,7 +932,7 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                     if duration <= 0:
                         raise ValueError(f"{loc}: nonpositive performed beat duration")
                     fact = {"q": q, "length": duration, "written_length": written_duration, "voice": str(vi), "location": loc, "written_q": written_q,
-                            "rest": not any(not n.get("rest") for n in beat["notes"]), "notation": written, "notes": [], "chord_label": label.get("text", "")}
+                            "rest": not any(not n.get("rest") for n in beat["notes"]), "notation": written, "notes": [], "chord_label": label.get("text", ""), "wah": beat.get("wahwah")}
                     if grace:
                         fact["notation"]["grace"] = "a" if grace == "beforeBeat" else "p"
                     beat_facts.append(fact)

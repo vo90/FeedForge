@@ -432,6 +432,10 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
         for chord in expected_chart['chords']:
             chord['id'] = ids[chord['id']]
     actual_chart = {k: v for k, v in chart.items() if k not in {"phrases", "ext"}}
+    if recipe.get('preservationContract', 0) >= 112:
+        from .verify_wah import hybrid as expected_wah, compare as compare_wah
+        compare_wah(expected_wah(receipt, charts), actual_chart.pop('wah', []), check, arr['file'])
+        expected_chart.pop('wah', None)
     if (source.format == 'songsterr' and recipe.get('preservationContract', 0) >= 73
             or recipe.get('toneTimelineFile')):
         from .verify_tones import hybrid as expected_tones, compare as compare_tones

@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 111
+VERSION = 112
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -1526,6 +1526,11 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 for key in ("beats", "sections", "tempos"):
                     _timeline(wanted[key], chart.get(key), check, arr["file"] + "/" + key)
                 _notation(z, arr, part, check)
+                if contract >= 112:
+                    from .verify_wah import compare as compare_wah
+                    edge = (alignment['endingPadding']['originalDuration'] + alignment.get('preparation', {}).get('seconds', 0)
+                            if alignment.get('endingPadding', {}).get('omitLateAttacks') else duration)
+                    compare_wah([e for e in part['wah'] if 0 <= e['t'] < edge], chart.get('wah', []), check, arr['file'])
             if (source.format == 'songsterr' and recipe.get('preservationContract', 0) >= 73
                     or recipe.get('toneTimelineFile') or recipe.get('toneTimelinePolicy')
                     or any('tones' in chart for _, _, chart in tone_selected)):
