@@ -63,7 +63,11 @@ def attach(source, result, alignment, duration, *, raw=None):
                 for left, right in candidates.get(loc, ()):
                     if before['t']-1.1e-6 <= left <= end+1.1e-6:
                         target = max(target, right)
-            if target > end+1e-6 and original['locations'][0] in short_origins:
+            # No visual extension: the ordinary note verifier already checks
+            # this duration. Do not remap its rounded endpoint as new evidence.
+            if target <= end+1e-6:
+                continue
+            if original['locations'][0] in short_origins:
                 # Cut against the next physical attack in the source clock,
                 # then apply the reference's staccato half-span rule.
                 next_times = [r['note']['t'] for r in reference

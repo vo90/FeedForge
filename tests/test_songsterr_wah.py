@@ -41,6 +41,16 @@ def test_pedal_is_not_part_of_played_notes():
     assert {k:v for k,v in a.items() if k!='wah'}==b
 
 
+def test_worker_evidence_uses_preserved_guidance_message(tmp_path):
+    from feedback_converter.song_import.score import load_performance
+    from feedback_converter.song_import.wah import MESSAGE
+    path = tmp_path/'score.json'
+    path.write_text(json.dumps(raw_score([measure(marked(beat(), 'open'))])))
+    report = load_performance(path)['compatibilityReport']
+    findings = [f for f in report['findings'] if f['feature'] == 'beat.wahwah']
+    assert findings and all(f['message'] == MESSAGE for f in findings)
+
+
 @pytest.mark.parametrize('contract',[111,112])
 def test_package_and_hybrid_source_selection(tmp_path,contract):
     doc=song()
