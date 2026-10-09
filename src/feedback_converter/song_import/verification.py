@@ -1475,12 +1475,16 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             timeline = _json(z, manifest["song_timeline"], check)
             for key in ("beats", "sections", "time_signatures", "tempos"):
                 _timeline(wanted[key], timeline.get(key), check, "song_timeline/" + key)
-            if contract >= 111:
+            raw_expression = None
+            if contract >= 111 and any(item['note'].get('tr') for part in wanted['parts'] for item in part['notes']):
                 from .verify_tremolo import attach as verify_picking
-                verify_picking(source, wanted, alignment, duration)
+                # Both expression checks need the same independent score clock.
+                # Reuse that reconstruction, never render the full score twice.
+                raw_expression = expected(source, {'scale':1,'offset':0})
+                verify_picking(source, wanted, alignment, duration, raw=raw_expression)
             if contract >= 110:
                 from .verify_let_ring import attach as verify_ringing
-                verify_ringing(source, wanted, alignment, duration)
+                verify_ringing(source, wanted, alignment, duration, raw=raw_expression)
             selected = [p for p in wanted["parts"] if p["notes"]]
             check.equal("arrangement_count", "manifest/arrangements", len(selected), len(arrangements))
             unmatched = list(arrangements)

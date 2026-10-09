@@ -119,3 +119,16 @@ def test_nonbinary_clock_rounding_does_not_lose_instruction_owners(tmp_path,bpm)
     ns,_=compare(tmp_path,doc)
     marked=[n for n in ns if n.get('tr')]
     assert len(marked)==2 and all(n['tremolo_marks'] for n in marked)
+
+
+def test_shared_reference_and_no_tremolo_do_not_recompute_full_score(tmp_path,monkeypatch):
+    from feedback_converter.song_import import verify_tremolo
+    from types import SimpleNamespace
+    def forbidden(*args,**kwargs):raise AssertionError('Redundant full score reconstruction')
+    monkeypatch.setattr(verify_tremolo,'expected',forbidden)
+    verify_tremolo.attach(SimpleNamespace(format='songsterr'),{'parts':[{'notes':[]}]},{},100)
+    path=tmp_path/'source.json';path.write_text(json.dumps(raw_score([measure(beat(tremolo=[1,16]))])))
+    source=read_source(path);raw=expected(source,{'scale':1,'offset':0});result=deepcopy(raw)
+    verify_tremolo.attach(source,result,{'scale':1,'offset':0},100,raw=raw)
+    assert result['parts'][0]['notes'][0]['note']['tremolo_marks']
+    assert 'tremolo_marks' not in raw['parts'][0]['notes'][0]['note']
