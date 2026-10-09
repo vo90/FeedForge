@@ -61,6 +61,10 @@ def load_performance(path: Path | str, metadata: dict | None = None, *, composit
         report_findings(performance, report)
         from .tremolo_detail import report_findings as report_picking
         report_picking(performance, report)
+        from .wah import MESSAGE as wah_message
+        for finding in report['findings']:
+            if finding['feature'] == 'beat.wahwah' and finding['impact'] != 'blocking':
+                finding['message'] = wah_message
         from .measure_boundaries import report_findings as report_boundaries
         report_boundaries(performance, report)
         from .bend_timing import report_findings as report_finger_bends

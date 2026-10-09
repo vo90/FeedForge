@@ -89,6 +89,15 @@ def test_optional_ring_stops_at_audio_boundary_without_extending_audio():
     assert result['let_ring_sus']==3 and result['sus']==.5
 
 
+def test_no_extension_does_not_remap_rounded_final_endpoint(tmp_path):
+    doc = source([{'duration':[1,1], 'notes':[{'string':0, 'fret':3}]}])
+    doc['parts'][0]['automations']['tempo'][0]['bpm'] = 127
+    end = 240/127
+    notes, _ = compare(tmp_path, doc, {'mapping':'piecewise-linear',
+        'anchors':[{'score':0, 'audio':2}, {'score':end, 'audio':end+2}]})
+    assert len(notes) == 1 and 'let_ring_sus' not in notes[0]
+
+
 def test_hybrid_limits_ring_at_handover_and_physical_reattack():
     from feedback_converter.song_import.let_ring import clip_chart,clip_event
     first={'t':0,'s':0,'f':3,'sus':.5,'let_ring_sus':5}
