@@ -6,6 +6,7 @@ const { getEventListeners } = require('node:events');
 const { createConcurrencyLimiter } = require('../electron/concurrency-limiter.cjs');
 const { SongJobs } = require('../electron/song-browser/jobs.cjs');
 const { SongsterrJobs } = require('../electron/song-browser/songsterr-jobs.cjs');
+const { HistoryWriter } = require('../electron/song-browser/history-writer.cjs');
 const { waitForSharedOperation } = require('../electron/song-browser/shared-operation.cjs');
 
 const RESPONSE = { code: 0, stdout: JSON.stringify({ ok: true }) };
@@ -14,7 +15,7 @@ const DEADLINE = 30 * 60 * 1000;
 function adapter(source, runConverter) {
   const job = { id: 'test', controller: new AbortController() };
   const jobs = Object.assign(Object.create(source === 'CustomsForge' ? SongJobs.prototype : SongsterrJobs.prototype), {
-    root: path.resolve('unused-test-root'), runConverter,
+    root: path.resolve('unused-test-root'), runConverter, historyWriter: new HistoryWriter(),
   });
   const run = () => source === 'CustomsForge' ? jobs._converter(job, []) : jobs._run(job, [], jobs.root);
   return { job, run };

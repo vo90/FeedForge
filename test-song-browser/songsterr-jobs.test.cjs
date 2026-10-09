@@ -418,6 +418,7 @@ async function fixture(t, options = {}) {
     return normalConverter(args, context);
   };
   const config = { root, provider, runConverter, getConverterRecipe: async () => ({ version: 'test' }),
+    ...(options.historyWriter ? { historyWriter: options.historyWriter } : {}),
     ...(options.clock ? { clock: options.clock } : {}),
     onCompleted: (job) => completed.push(job.id) };
   const jobs = new SongsterrJobs(config);
@@ -1149,6 +1150,49 @@ test('Songsterr recovers a committed receipt after an interrupted ledger update'
     assert.equal(restored.snapshot()[0].outputPath, completed.outputPath);
     assert.equal(fs.readdirSync(f.outputDir).length, 1);
   } finally { await restored.dispose(); }
+});
+
+test('temporary real persistence failures recover before admission dispatches or acknowledges work', async t => {
+  const { HistoryWriter } = require('../electron/song-browser/history-writer.cjs');
+  let locked=false;
+  const writer=new HistoryWriter({delays:[1,2,3],io:{...fs,renameSync:(from,to)=>{
+    if(locked && path.basename(to)==='jobs.json')throw Object.assign(Error('locked'),{code:'EPERM'});
+    fs.renameSync(from,to);
+  }}});
+  const f=await fixture(t,{historyWriter:writer});locked=true;
+  const queued=f.enqueue();assert.equal(typeof queued.then,'function');assert.equal(f.acquisitions.length,0);
+  setTimeout(()=>{locked=false;},0);
+  await queued;await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state,'completed');assert.equal(f.jobs.persistenceFailed,undefined);
+  f.enqueue({...CHART,id:'124'});await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[1].state,'completed');
+});
+
+test('exhausted publication-history lock reports queue failure and receipt recovers without duplicate output',async t=>{
+  const { HistoryWriter } = require('../electron/song-browser/history-writer.cjs');
+  const writer=new HistoryWriter({delays:[1,2],io:{...fs,renameSync:(from,to)=>{
+    if(path.basename(to)==='jobs.json' && JSON.parse(fs.readFileSync(from)).jobs.some(j=>j.committed && j.state==='completed'))
+      throw Object.assign(Error('locked'),{code:'EPERM'});
+    fs.renameSync(from,to);
+  }}});
+  const f=await fixture(t,{historyWriter:writer});f.enqueue();await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state,'completed');assert.equal(f.jobs.persistenceFailed,true);
+  assert.equal(f.jobs.persistence.code,'EPERM');assert.match(f.jobs.persistence.message,/Completed FeedPaks are kept/);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(f.root,'persistence-error.json'))).code,'EPERM');
+  assert.throws(()=>f.enqueue({...CHART,id:'124'}),/Imports paused/);
+  const originalFiles=fs.readdirSync(f.outputDir);await f.jobs.dispose();
+  const restored=new SongsterrJobs({...f.config,historyWriter:new HistoryWriter(),runConverter:()=>{throw Error('Must not convert on recovery');}});
+  try{await restored.ready;assert.equal(restored.snapshot()[0].state,'completed');assert.deepEqual(fs.readdirSync(f.outputDir),originalFiles);}
+  finally{await restored.dispose();}
+});
+
+test('failed initial history admission does not dispatch a download',async t=>{
+  const { HistoryWriter } = require('../electron/song-browser/history-writer.cjs');
+  let locked=false;const writer=new HistoryWriter({delays:[1],io:{...fs,renameSync:(from,to)=>{
+    if(locked)throw Object.assign(Error('locked'),{code:'EBUSY'});fs.renameSync(from,to);
+  }}});
+  const f=await fixture(t,{historyWriter:writer});locked=true;
+  await assert.rejects(f.enqueue(),/Imports paused/);assert.equal(f.acquisitions.length,0);assert.equal(f.jobs.jobs.length,0);
 });
 
 test('a ledger write failure after publication cannot turn a saved song into a retryable failure', async (t) => {

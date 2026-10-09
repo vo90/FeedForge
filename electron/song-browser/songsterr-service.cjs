@@ -10,7 +10,7 @@ function registerSongsterr({ app, BrowserWindow, session, ipcMain, dialog, shell
   let closing = false, closePromise;
   const results = new Map();
   const revisionChoices = new Map();
-  const state = () => ({ jobs: jobs.snapshot(), connection: provider.connection, outputDir: getSettings().outputDir });
+  const state = () => ({ jobs: jobs.snapshot(), connection: provider.connection, outputDir: getSettings().outputDir, persistence: jobs.persistence });
   const emit = () => { const win = getMainWindow(); if (jobs && win && !win.isDestroyed()) win.webContents.send('songsterr:state', state()); };
   function initialize() {
     if (jobs) return;
@@ -53,7 +53,7 @@ function registerSongsterr({ app, BrowserWindow, session, ipcMain, dialog, shell
       catch (error) { return { ok: false, code: error.code, error: String(error.message || 'The operation failed.').replace(/https?:\/\/[^\s]+/g, '[link]').slice(0, 1200) }; }
     });
   }
-  handler('getState', async () => { await jobs.refreshOutputs(); return state(); });
+  handler('getState', async ({ refreshOutputs = true }) => { if (refreshOutputs !== false) await jobs.refreshOutputs(); return state(); });
   handler('search', async (request) => {
     const query = typeof request.query === 'string' ? request.query.trim() : '';
     if (query.length < 2 || query.length > 160) throw new Error('Enter an artist or song title (2–160 characters).');

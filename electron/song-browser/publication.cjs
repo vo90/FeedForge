@@ -36,7 +36,8 @@ async function publishFeedpak({ job, staging, check, hashFile, writeReceipt }) {
       const target = path.join(root, index ? `${stem} (${index + 1}).feedpak` : name);
       try {
         // Receipt precedes the atomic link so an interrupted commit is recoverable.
-        writeReceipt(job, target);
+        await writeReceipt(job, target);
+        check(job);
         fs.linkSync(temporary, target);
         job.outputPath = target; job.committed = true;
         return target;

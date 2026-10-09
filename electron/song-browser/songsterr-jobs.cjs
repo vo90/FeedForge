@@ -15,6 +15,7 @@ const { normalizeHybridLead, matchesHybridRequest } = require('./hybrid-lead-opt
 const { selectSiteAudio, isSiteAudio, validRecovery, startRecovery, verifiedRecoveryMap } = require('./songsterr-recording.cjs');
 const { validRevisionSelection, revisionLabel } = require('./providers/songsterr/revision-policy.cjs');
 const { numeric } = require('./providers/songsterr/policy.cjs');
+const { HistoryWriter, after } = require('./history-writer.cjs');
 const WAITING = new Set(['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed', 'awaiting_main_choice']);
 const ACTIVE = new Set(['queued', 'resolving', 'downloading', 'converting', 'audio', 'aligning', 'validating', 'saving']);
 const PENDING = (job) => ACTIVE.has(job.state) || WAITING.has(job.state) || job.state === 'retry_wait';
@@ -88,10 +89,11 @@ function terminate(child) {
   } else child.kill('SIGTERM');
 }
 class SongsterrJobs {
-  constructor({ root, provider, runConverter, getConverterRecipe = async () => null, emit = () => {}, onCompleted = () => {}, tools = {}, artworkLookup = true, clock = defaultClock }) {
+  constructor({ root, provider, runConverter, getConverterRecipe = async () => null, emit = () => {}, onCompleted = () => {}, tools = {}, artworkLookup = true, clock = defaultClock, historyWriter = new HistoryWriter() }) {
     Object.assign(this, { root: path.resolve(root), provider, runConverter, getConverterRecipe, emit, onCompleted, tools, artworkLookup });
     this.auditRoot = path.join(path.dirname(this.root), 'evidence');
     this.clock = clock; this.cooldowns = {}; this.retryHistoryRoot = path.join(path.dirname(this.root), 'retry-history');
+    this.historyWriter = historyWriter;
     fs.mkdirSync(this.root, { recursive: true }); this.jobs = []; this.disposed = false;
     const ledger = path.join(this.root, 'jobs.json');
     if (fs.existsSync(ledger)) {
@@ -138,7 +140,7 @@ class SongsterrJobs {
         }
       } catch { /* Preserve interrupted job and files for an explicit retry. */ }
     }
-    await this.refreshOutputs(); this._save(); this.emit();
+    await this.refreshOutputs(); await this._save(); this.emit();
   }
   async refreshOutputs() {
     if (this.refreshing) return this.refreshing;
@@ -204,10 +206,36 @@ class SongsterrJobs {
     }
   }
   _save() {
-    try { atomicJson(path.join(this.root, 'jobs.json'), { version: 1, cooldowns: this.cooldowns, jobs: this.jobs.map(record) }); }
-    catch (error) { this.persistenceFailed = true; throw error; }
+    return this._writeHistory(path.join(this.root, 'jobs.json'), { version: 1, cooldowns: this.cooldowns, jobs: this.jobs.map(record) });
   }
-  _set(job, state, extra = {}) { Object.assign(job, { state, updatedAt: Date.now() }, extra); this._save(); this.emit(this.public(job)); }
+  _persistenceError(error, filename) {
+    if (!this.persistence) {
+      const code = /^[A-Z0-9_]+$/.test(error?.code || '') ? error.code : 'WRITE_FAILED';
+      const reason = code === 'ENOSPC' ? 'There is not enough disk space.'
+        : ['EPERM', 'EACCES', 'EBUSY'].includes(code) ? 'Windows kept the history file locked or denied access.' : 'The history file could not be written.';
+      this.persistence = { status: 'failed', code, file: path.basename(filename), at: new Date().toISOString(),
+        message: `Imports paused because import history could not be saved. ${reason} Completed FeedPaks are kept. Resolve the file-access or disk problem and restart FeedForge.` };
+      this.persistenceFailed = true;
+      // Diagnostic saving is best effort and must never conceal the original failure.
+      try { fs.writeFileSync(path.join(this.root, 'persistence-error.json'), JSON.stringify(this.persistence), { mode: 0o600 }); } catch {}
+      console.error('Songsterr history persistence failed', JSON.stringify(this.persistence));
+      this.emit();
+    }
+    return Object.assign(new Error(this.persistence.message), { code: 'history_persistence_failed', cause: error });
+  }
+  _writeHistory(filename, value) {
+    try {
+      const saved = this.historyWriter.write(filename, value);
+      if (!saved?.then) return;
+      const result = saved.catch(error => { throw this._persistenceError(error, filename); });
+      result.catch(() => {});
+      return result;
+    } catch (error) { throw this._persistenceError(error, filename); }
+  }
+  _set(job, state, extra = {}) {
+    Object.assign(job, { state, updatedAt: Date.now() }, extra);
+    return after(this._save(), () => this.emit(this.public(job)));
+  }
   public(job) {
     return { id: job.id, source: 'songsterr', sourceKey: job.sourceKey, songId: job.chart.id, title: job.chart.title, artist: job.chart.artist,
       state: job.state, message: clean(job.message), error: clean(job.error), createdAt: job.createdAt,
@@ -235,7 +263,9 @@ class SongsterrJobs {
     if (this.jobs.filter(RUNNABLE).length >= QUEUE_LIMIT) throw new Error('The import queue has 30 songs. Wait for one to finish or cancel a queued import. Songs waiting for your input do not use queue slots.');
   }
   enqueue(chart, { outputDir, outputSettings, hybridLead, originalsOnlyFrom, retainedFrom, requestedRevisionId, freshFrom }) {
-    if (this.disposed || this.persistenceFailed) throw new Error('Reopen Songsterr before adding imports.');
+    if (this.persistenceFailed) throw this._persistenceError(this.historyWriter.failure, 'jobs.json');
+    if (this.disposed) throw new Error('Reopen Songsterr before adding imports.');
+    if (this.historyWriter.pending) return this.historyWriter.pending.then(() => this.enqueue(chart, { outputDir, outputSettings, hybridLead, originalsOnlyFrom, retainedFrom, requestedRevisionId, freshFrom }));
     if (!path.isAbsolute(outputDir || '')) throw new Error('Choose an output folder in FeedForge Settings.');
     const options = normalizeHybridLead(hybridLead);
     if (requestedRevisionId != null && !numeric(requestedRevisionId)) throw new Error('Choose a valid revision.');
@@ -287,11 +317,16 @@ class SongsterrJobs {
     }
     const previous = this.jobs;
     this.jobs = retainHistory([...previous, job]);
-    try { this._save(); } catch (error) { this.jobs = previous; throw error; }
-    this.emit(this.public(job)); this._start(); return this.public(job);
+    const admitted = () => { this.emit(this.public(job)); this._start(); return this.public(job); };
+    try {
+      const saved = this._save();
+      return saved?.then ? saved.then(admitted, error => { this.jobs = previous; throw error; }) : admitted();
+    } catch (error) { this.jobs = previous; throw error; }
   }
   retry(id, { audio, allowAccount, hybridLead, originalsOnly, rediscoverAudio = false } = {}) {
-    if (this.disposed || this.persistenceFailed) throw new Error('Reopen Songsterr before retrying.');
+    if (this.persistenceFailed) throw this._persistenceError(this.historyWriter.failure, 'jobs.json');
+    if (this.disposed) throw new Error('Reopen Songsterr before retrying.');
+    if (this.historyWriter.pending) return this.historyWriter.pending.then(() => this.retry(id, { audio, allowAccount, hybridLead, originalsOnly, rediscoverAudio }));
     const job = this.jobs.find((j) => j.id === id);
     if (!job || !this.public(job).canRetry || this.current === job) throw new Error('This import cannot be retried yet.');
     if (rediscoverAudio && (audio || job.state !== 'needs_audio' || !job.scorePath || typeof this.provider.findAudio !== 'function')) {
@@ -325,14 +360,14 @@ class SongsterrJobs {
     job.retryAudioDetection = job.state === 'needs_audio' && !job.audio && Boolean(job.scorePath) && typeof this.provider.findAudio === 'function';
     job.controller = new AbortController(); job.committed = false; job.timedOut = false;
     job.retry = retryCycle(job.retry);
-    this._set(job, 'queued', { error: '', alignment: undefined, synchronizationSummary: undefined, pathValidation: undefined, message: 'Queued.' }); this._start(); return this.public(job);
+    return after(this._set(job, 'queued', { error: '', alignment: undefined, synchronizationSummary: undefined, pathValidation: undefined, message: 'Queued.' }), () => { this._start(); return this.public(job); });
   }
   async cancel(id) {
     const job = this.jobs.find((j) => j.id === id);
     if (!job || job.committed) return;
     job.controller.abort(); terminate(job.child);
     if (this.current === job) await job.done;
-    if (!job.committed && job.state !== 'cancelled') { this._event(job, 'cancelled'); this._set(job, 'cancelled', { message: 'Cancelled.', error: '' }); this._arm(); }
+    if (!job.committed && job.state !== 'cancelled') { await this._event(job, 'cancelled'); await this._set(job, 'cancelled', { message: 'Cancelled.', error: '' }); this._arm(); }
   }
   _event(job, outcome, extra = {}) {
     if (!job.retry) job.retry = retryCycle();
@@ -346,8 +381,7 @@ class SongsterrJobs {
     const directory = path.join(this.retryHistoryRoot, job.id);
     fs.mkdirSync(directory, { recursive: true });
     if (fs.lstatSync(this.retryHistoryRoot).isSymbolicLink() || fs.lstatSync(directory).isSymbolicLink()) throw new Error('Import history folder changed.');
-    try { atomicJson(path.join(directory, `${job.retry.cycle}.json`), { version: 1, jobId: job.id, cycle: job.retry.cycle, events: job.retry.events }); }
-    catch (error) { this.persistenceFailed = true; throw error; }
+    return this._writeHistory(path.join(directory, `${job.retry.cycle}.json`), { version: 1, jobId: job.id, cycle: job.retry.cycle, events: job.retry.events });
   }
   _cooldown(job) {
     const services = ['songsterr'];
@@ -363,7 +397,7 @@ class SongsterrJobs {
     this.retryTimer = this.clock.setTimeout(() => { this.retryTimer = null; this._start(); }, Math.min(2147483647, Math.max(1, Math.min(...times) - this.clock.now())));
     this.retryTimer?.unref?.();
   }
-  _scheduleFailure(job, error) {
+  async _scheduleFailure(job, error) {
     if (job.controller.signal.aborted || job.committed || this.disposed) return false;
     const terminal = ['cancelled', 'alignment_failed', 'needs_attention', 'needs_login', 'unsupported_score', 'invalid_score', 'revision_unavailable', 'access_denied', 'dependency_missing', 'import_file_location'].includes(error.code);
     const detail = terminal ? null : transport(error.transport);
@@ -372,11 +406,11 @@ class SongsterrJobs {
       && isSiteAudio(job) && Boolean(job.scorePath) && typeof this.provider.findAudio === 'function'
       && !job.recordingRecovery?.failedVideoIds?.includes(audioVideo(job.audio)?.videoId);
     const plan = retryPlan(detail, job.retry.used, this.clock.now(), this.clock.random, { recordingRecovery });
-    this._event(job, 'failed', { transport: detail, decision: plan ? plan.parked ? 'parked' : recordingRecovery ? 'rediscover_full_mix' : 'retry' : 'stop', nextAt: plan?.at });
+    await this._event(job, 'failed', { transport: detail, decision: plan ? plan.parked ? 'parked' : recordingRecovery ? 'rediscover_full_mix' : 'retry' : 'stop', nextAt: plan?.at });
     if (!plan) return false;
     if (recordingRecovery) startRecovery(job);
     Object.assign(job.retry, { used: job.retry.used + 1, nextAt: plan.at, reason: detail.reason, parked: plan.parked });
-    this._set(job, plan.parked ? 'needs_attention' : 'retry_wait', { error: '', message: plan.parked
+    await this._set(job, plan.parked ? 'needs_attention' : 'retry_wait', { error: '', message: plan.parked
       ? 'The service requested a long wait. Retry after the displayed time.' : recordingRecovery
         ? 'The recording is unavailable. Rechecking Songsterr for a working full mix.' : 'Temporary retrieval problem. Waiting to retry.' });
     return true;
@@ -386,6 +420,7 @@ class SongsterrJobs {
     this.clock.clearTimeout(this.retryTimer); this.retryTimer = null;
     this.draining = Promise.resolve().then(async () => {
       await this.ready;
+      await this.historyWriter.flush();
       while (!this.disposed && !this.persistenceFailed) {
         const job = this.jobs.filter(j => !j.controller.signal.aborted && (j.state === 'queued' || j.state === 'retry_wait')
           && (j.state === 'queued' || j.retry.nextAt <= this.clock.now()) && this._cooldown(j) <= this.clock.now())
@@ -396,9 +431,9 @@ class SongsterrJobs {
         try {
           if (!job.retry) job.retry = retryCycle();
           delete job.retry.nextAt; delete job.retry.parked;
-          this._event(job, 'started'); this._set(job, 'queued', { error: '' });
+          await this._event(job, 'started'); await this._set(job, 'queued', { error: '' });
           await this._work(job);
-          this._event(job, 'completed'); this._save();
+          await this._event(job, 'completed'); await this._save();
         }
         catch (error) {
           if (job.committed) {
@@ -409,18 +444,18 @@ class SongsterrJobs {
           }
           if (this.persistenceFailed) throw error;
           const code = job.controller.signal.aborted ? 'cancelled' : error.code;
-          if (code === 'cancelled') this._event(job, 'cancelled');
+          if (code === 'cancelled') await this._event(job, 'cancelled');
           if (!this.disposed && ['busy', 'service_cooldown'].includes(code)) {
             Object.assign(job.retry, { nextAt: code === 'busy' ? this.clock.now() + 1000 : error.nextAt, reason: code === 'busy' ? 'provider_busy' : 'service_cooldown' });
-            this._set(job, 'retry_wait', { message: code === 'busy' ? 'Waiting for the Songsterr browser…' : 'Waiting for the service to accept requests…', error: '' });
+            await this._set(job, 'retry_wait', { message: code === 'busy' ? 'Waiting for the Songsterr browser…' : 'Waiting for the service to accept requests…', error: '' });
             continue;
           }
           job.canUseAccount = error.canUseAccount === true;
           if (error.pathValidation) job.pathValidation = error.pathValidation;
           for (const key of ['verification', 'evidence', 'warnings', 'compatibility', 'hybridChoice']) if (error[key]) job[key] = error[key];
           if (code === 'alignment_failed' && error.alignment && typeof error.alignment === 'object' && !Array.isArray(error.alignment)) job.alignment = error.alignment;
-          if (this._scheduleFailure(job, error)) continue;
-          this._set(job, WAITING.has(code) || code === 'cancelled' ? code : 'failed', { error: code === 'cancelled' ? '' : clean(error.message), message: code === 'cancelled' ? 'Cancelled.' : '' });
+          if (await this._scheduleFailure(job, error)) continue;
+          await this._set(job, WAITING.has(code) || code === 'cancelled' ? code : 'failed', { error: code === 'cancelled' ? '' : clean(error.message), message: code === 'cancelled' ? 'Cancelled.' : '' });
         } finally {
           job.child = null;
           await this._cleanAttempts(job).catch(() => {});
@@ -430,9 +465,9 @@ class SongsterrJobs {
       }
     }).catch((error) => {
       // A ledger/history failure must never dispatch an unrecorded retry or spin.
-      this.persistenceFailed = true;
+      this._persistenceError(error, 'jobs.json');
       for (const job of this.jobs.filter(j => j.state === 'queued' || j.state === 'retry_wait' || ACTIVE.has(j.state))) {
-        job.state = 'needs_attention'; job.error = 'Import history could not be saved. Reopen FeedForge before retrying.';
+        job.state = 'needs_attention'; job.error = this.persistence?.message || 'Import history could not be saved. Reopen FeedForge before retrying.';
         this.emit(this.public(job));
       }
     }).finally(() => { this.draining = null; this._arm(); });
@@ -454,10 +489,10 @@ class SongsterrJobs {
         onSpawn: (child) => { job.child = child; if (admission.signal.aborted) terminate(child); },
         onStderrLine: (line) => {
           if (!line.startsWith('FEEDFORGE_PROGRESS ')) return;
-          try { const progress = JSON.parse(line.slice(19)); if (['audio', 'aligning', 'converting', 'validating'].includes(progress.stage)) this._set(job, progress.stage, { message: clean(progress.message) }); }
+          try { const progress = JSON.parse(line.slice(19)); if (['audio', 'aligning', 'converting', 'validating'].includes(progress.stage)) { const saved = this._set(job, progress.stage, { message: clean(progress.message) }); saved?.catch(() => { admission.abort(); terminate(job.child); }); } }
           catch { if (this.persistenceFailed) { admission.abort(); terminate(job.child); } }
         } });
-      job.child = null; check(job);
+      job.child = null; await this.historyWriter.flush(); check(job);
       if (this.persistenceFailed) throw new Error('Import history could not be saved.');
       if (timedOut) throw timeoutError();
       if (typeof result?.stdout !== 'string' || result.stdout.length > 4 * 1024 * 1024) throw new Error('The converter returned an invalid response.');
@@ -480,19 +515,19 @@ class SongsterrJobs {
     const stat = fs.lstatSync(directory); if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('The import working folder is invalid.');
     check(job); job.converterRecipe = await waitForSharedOperation(this.getConverterRecipe(), job.controller.signal); check(job);
     if ((!job.scorePath || (!fs.existsSync(job.scorePath) && job.retry.used === 0)) && !retryAudioDetection) {
-      this._set(job, 'resolving', { message: 'Checking importable revisions…', error: '' });
+      await this._set(job, 'resolving', { message: 'Checking importable revisions…', error: '' });
       // A cancelled provider may have finished writing before its promise rejects.
       // A fresh acquisition folder makes retry safe without overwriting that file.
       const acquisition = fs.mkdtempSync(path.join(directory, 'source-'));
       const acquired = await this.provider.acquire(job.chart, { directory: acquisition, signal: job.controller.signal, allowAccount: job.allowAccount === true,
-        requestedRevisionId: job.requestedRevisionId, pinnedDescriptor: job.pinnedDescriptor, onPinned: (descriptor) => {
+        requestedRevisionId: job.requestedRevisionId, pinnedDescriptor: job.pinnedDescriptor, onPinned: async (descriptor) => {
           check(job);
           if (!validRevisionSelection(descriptor) || (job.requestedRevisionId && descriptor.revisionId !== job.requestedRevisionId)) throw new Error('The revision selection is invalid.');
           if (job.pinnedDescriptor && descriptor.revisionId !== job.pinnedDescriptor.revisionId) throw new Error('The selected revision changed.');
           job.pinnedDescriptor = descriptor; if (!job.audio && descriptor.audio) selectSiteAudio(job, descriptor.audio, descriptor.revisionId);
-          this._save();
+          await this._save();
         },
-        onProgress: (p) => this._set(job, 'downloading', { message: clean(p?.message || 'Retrieving the selected tab…') }) });
+        onProgress: (p) => { const saved = this._set(job, 'downloading', { message: clean(p?.message || 'Retrieving the selected tab…') }); saved?.catch(() => {}); } });
       check(job);
       const source = containedFile(acquisition, acquired?.path);
       if (!source.path) throw fileLocationError('The source returned an invalid tab file', 'acquired_score', source.reason);
@@ -503,7 +538,7 @@ class SongsterrJobs {
       job.cachedScoreHash = await hashFile(job.scorePath, job.controller.signal);
       job.sourceKey = `songsterr:${job.chart.id}:${job.metadata.revisionId}`;
       if (!job.audio && acquired.audio) selectSiteAudio(job, acquired.audio);
-      this._save();
+      await this._save();
     }
     if (String(job.metadata?.songId) !== job.chart.id || !validRevisionSelection(job.metadata)
         || (job.requestedRevisionId && String(job.metadata.revisionId) !== job.requestedRevisionId)
@@ -515,7 +550,7 @@ class SongsterrJobs {
     check(job);
     if (job.recordingRecovery?.pending) {
       if (!validRecovery(job.recordingRecovery)) throw Object.assign(new Error('Recording recovery is invalid.'), { code: 'needs_attention' });
-      this._set(job, 'audio', { message: 'Checking Songsterr for another full-song recording…' });
+      await this._set(job, 'audio', { message: 'Checking Songsterr for another full-song recording…' });
       const previousVideoId = audioVideo(job.audio)?.videoId;
       const audio = await this.provider.findAudio(job.chart, { revisionId: String(job.metadata.revisionId),
         excludedVideoIds: [...job.recordingRecovery.failedVideoIds], signal: job.controller.signal });
@@ -526,15 +561,15 @@ class SongsterrJobs {
       }
       selectSiteAudio(job, audio); job.recordingRecovery.pending = false;
       for (const key of ['alignment', 'synchronizationSummary', 'verification', 'evidence', 'audioHash', 'recipe', 'outputVerification', 'compatibility', 'warnings']) delete job[key];
-      this._event(job, 'recording_selected', { previousVideoId, decision: 'check_replacement_map' }); this._save();
+      await this._event(job, 'recording_selected', { previousVideoId, decision: 'check_replacement_map' }); await this._save();
     }
     if ((retryAudioDetection || job.audioDiscoveryPending || job.retry.reason === 'player_timeout') && !job.audio) {
-      job.audioDiscoveryPending = true; this._save();
-      this._set(job, 'audio', { message: 'Checking Songsterr for the recording…' });
+      job.audioDiscoveryPending = true; await this._save();
+      await this._set(job, 'audio', { message: 'Checking Songsterr for the recording…' });
       const audio = await this.provider.findAudio(job.chart, { revisionId: String(job.metadata.revisionId), signal: job.controller.signal });
       check(job);
       if (audio) selectSiteAudio(job, audio);
-      job.audioDiscoveryPending = false; this._save();
+      job.audioDiscoveryPending = false; await this._save();
     }
     if (!job.audio) throw Object.assign(new Error('No usable original audio was found. Choose an audio file or paste a link.'), { code: 'needs_audio' });
     // The recording service may only become known during this acquisition.
@@ -546,7 +581,7 @@ class SongsterrJobs {
     const syncIdentity = { songId: job.chart.id, revisionId: String(job.metadata.revisionId), videoId: audioVideo(job.audio)?.videoId };
     let synchronization = unavailableSynchronization(syncIdentity, 'unavailable');
     if (typeof this.provider.findSynchronization === 'function') {
-      this._set(job, 'aligning', { message: 'Checking Songsterr timing for this recording…' });
+      await this._set(job, 'aligning', { message: 'Checking Songsterr timing for this recording…' });
       try {
         synchronization = await this.provider.findSynchronization(job.chart, { revisionId: syncIdentity.revisionId,
           audio: job.audio, signal: job.controller.signal }) || synchronization;
@@ -560,7 +595,7 @@ class SongsterrJobs {
     check(job);
     if (transport(synchronization.transport)) {
       if (job.retry.used < 2) throw Object.assign(new Error('Songsterr timing retrieval temporarily failed.'), { code: 'network_error', transport: synchronization.transport });
-      this._event(job, 'timing_fallback', { transport: transport(synchronization.transport), decision: 'existing_alignment_fallback' });
+      await this._event(job, 'timing_fallback', { transport: transport(synchronization.transport), decision: 'existing_alignment_fallback' });
       const detail = transport(synchronization.transport);
       if (detail.retryAfterAt) this.cooldowns[detail.service] = Math.max(this.cooldowns[detail.service] || 0, detail.retryAfterAt);
     }
@@ -568,7 +603,7 @@ class SongsterrJobs {
     if (job.recordingRecovery?.requireMap && !verifiedRecoveryMap(synchronization, syncIdentity)) {
       throw Object.assign(new Error('Songsterr could not verify a full-song timing map for the replacement recording. Choose a matching recording link or audio file.'), { code: 'needs_audio' });
     }
-    this._set(job, 'converting', { message: 'Preparing the tab and audio…' });
+    await this._set(job, 'converting', { message: 'Preparing the tab and audio…' });
     const attempt = fs.mkdtempSync(path.join(directory, 'attempt-'));
     const requestPath = path.join(attempt, 'request.json');
     atomicJson(requestPath, { managedRetries: true, scorePath: job.scorePath, metadata: job.metadata, audio: job.audio, synchronization, workDir: attempt,
@@ -580,7 +615,7 @@ class SongsterrJobs {
     const staged = containedFile(attempt, result.stagingPath);
     if (!staged.path) throw fileLocationError('The converter returned an invalid temporary FeedPak file', 'staged_feedpak', staged.reason);
     const staging = staged.path;
-    this._set(job, 'validating', { message: 'Checking the completed FeedPak…' });
+    await this._set(job, 'validating', { message: 'Checking the completed FeedPak…' });
     await this._run(job, ['--validate-feedpak', staging], attempt);
     const outputHash = await hashFile(staging, job.controller.signal);
     if (result.recipe?.preservationContract !== CURRENT_PRESERVATION_CONTRACT || result.verification?.version !== CURRENT_PRESERVATION_CONTRACT || result.verification.status !== 'passed'
@@ -620,13 +655,13 @@ class SongsterrJobs {
       job.outputPath = prior.outputPath; job.outputHash = prior.outputHash; job.committed = true;
       job.evidence = prior.evidence; job.verification = prior.verification;
     } else {
-      this._set(job, 'saving', { message: 'Saving to your FeedForge output folder…' });
-      await publishFeedpak({ job, staging, check, hashFile, writeReceipt: (j, target) => atomicJson(path.join(this.root, `${j.id}.receipt.json`), { ...record(j), outputPath: target }) });
+      await this._set(job, 'saving', { message: 'Saving to your FeedForge output folder…' });
+      await publishFeedpak({ job, staging, check, hashFile, writeReceipt: (j, target) => this._writeHistory(path.join(this.root, `${j.id}.receipt.json`), { ...record(j), outputPath: target }) });
     }
-    this._set(job, 'completed', { message: 'FeedPak ready.', error: '' });
+    await this._set(job, 'completed', { message: 'FeedPak ready.', error: '' });
     await Promise.resolve(this.onCompleted(this.public(job))).catch(() => {});
   }
-  async dispose() { this.disposed = true; this.clock.clearTimeout(this.retryTimer); for (const job of this.jobs) if (ACTIVE.has(job.state)) { job.controller.abort(); terminate(job.child); } await this.draining; }
+  async dispose() { this.disposed = true; this.clock.clearTimeout(this.retryTimer); for (const job of this.jobs) if (ACTIVE.has(job.state)) { job.controller.abort(); terminate(job.child); } await this.draining; await this.historyWriter.flush().catch(() => {}); }
   async _recheckRevision(job) {
     if (job.metadata?.revisionEvidence?.version !== 2) return;
     if (typeof this.provider.revalidate !== 'function') throw new Error('The selected revision cannot be rechecked. Update FeedForge and retry.');
@@ -634,7 +669,7 @@ class SongsterrJobs {
     const recheck = await this.provider.revalidate(job.chart, { metadata: job.metadata, signal: job.controller.signal });
     check(job);
     if (recheck?.revisionId !== String(job.metadata.revisionId)) throw new Error('The revision recheck returned a different tab.');
-    job.revisionRecheck = recheck; this._save();
+    job.revisionRecheck = recheck; await this._save();
   }
 }
 module.exports = { SongsterrJobs, hashFile, atomicJson };
