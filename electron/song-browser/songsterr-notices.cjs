@@ -5,6 +5,7 @@
 const VERSION = 1;
 // Exact, qualified converter meanings only. A changed meaning is reviewed again.
 const informational = new Map([
+  ["beat.wahwah", "Wah open/closed instructions are preserved as optional timed guidance in the updated highway and tab view. Audio and scoring are unchanged."],
   ["beat.tremolo", "Tremolo picking rates and active spans are preserved for the updated highway and tab view. Trail spacing indicates speed within readable limits; individual picks are not scored separately."],
   ["note.tremolo", "Tremolo picking rates and active spans are preserved for the updated highway and tab view. Trail spacing indicates speed within readable limits; individual picks are not scored separately."],
   [

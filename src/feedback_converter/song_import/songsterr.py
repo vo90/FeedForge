@@ -464,6 +464,7 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
                                                grace=("a" if grace == "beforeBeat" else "p") if grace else "", annotations=_annotations(beat),
                                                written_duration=written_duration, written_position=written_position)
                     written_beat.chord_label = _chord_label(beat)
+                    written_beat.wah = beat.get("wahwah")
                     for note_index, note in enumerate(beat["notes"]):
                         source_id = f"{beat_id}:{note_index}"
                         validate_legacy_metadata(note, "note")

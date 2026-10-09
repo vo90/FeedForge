@@ -279,6 +279,12 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             for finding in compatibility.get('findings', []):
                 if finding['feature'] in ('note.tremolo','beat.tremolo') and finding['impact'] != 'blocking':
                     finding['message'] = LIMITATIONS[tuple(finding['feature'].split('.'))]
+    if compatibility is not None:
+        from .wah import MESSAGE as wah_message
+        from .compatibility import LIMITATIONS
+        for finding in compatibility.get('findings', []):
+            if finding['feature'] == 'beat.wahwah' and finding['impact'] != 'blocking':
+                finding['message'] = wah_message if contract >= 112 else LIMITATIONS['beat', 'wahwah']
     if contract < 111:
         performance = deepcopy(performance)
         for track in performance.get('tracks', []):
@@ -510,6 +516,9 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
                 raise ImportFailure('tone_timing_failed', 'Missing source sound timeline.')
             chart['tones'], tone_proof = export_tones(track['toneTimeline'], alignment, duration)
             tone_rows.append({'trackId': track['id'], 'arrangementId': ident, **tone_proof})
+        if contract >= 112 and track.get('wah'):
+            from .wah import export as export_wah
+            chart['wah'] = export_wah(track['wah'], alignment, attack_boundary)
         from .strum_groups import attach as attach_strum_groups
         attach_strum_groups(chart, track['id'], performance.get('strumEvidence', []), alignment)
         finalize_guidance(chart)

@@ -583,7 +583,9 @@ def _render(score: Score) -> dict:
         warnings.extend(notation_warnings)
         from .songsterr_tones import perform as perform_tones
         tone_timeline = perform_tones(track.tone_source, visits, at, cursor)
-        outputs.append({"id": track.id, "name": track.name, "instrument": track.instrument,
+        from .wah import perform as perform_wah
+        wah = perform_wah(track, visits, at)
+        outputs.append({**({"wah": wah} if wah else {}), "id": track.id, "name": track.name, "instrument": track.instrument,
                         "role": track.role or track.instrument, "tuning": track.tuning,
                         "capo": track.capo, "notes": [note for note in rendered if id(note) not in grouped],
                         "chords": chords, "templates": templates, **({"notation": notation} if notation else {}),

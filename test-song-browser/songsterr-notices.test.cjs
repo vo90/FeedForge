@@ -13,6 +13,14 @@ const keySignature = { feature: 'measure.keySignature', category: 'game_limitati
 const letRing = { feature: 'beat.letRing', category: 'game_limitation', impact: 'display_or_expression', message: 'Let-ring instruction is not shown.' };
 const findings = rows => ({ version: 109, status: 'limitations', findingCount: rows.length, findings: rows });
 
+test('qualified wah guidance is informational while historical omission remains a warning', () => {
+  const f = {feature:'beat.wahwah',category:'game_limitation',impact:'display_or_expression',
+    message:'Wah open/closed instructions are preserved as optional timed guidance in the updated highway and tab view. Audio and scoring are unchanged.'};
+  assert.equal(classifyFinding(f),'info');
+  assert.equal(classifyFinding({...f,message:'The wah pedal marking is retained in the source. Notes and timing are converted; pedal expression is not represented in the game chart.'}),'warning');
+  assert.equal(playerNotices(completed,findings([f,f])).warnings.length,0);
+});
+
 test('qualified picking rates are information, generic and historical detail remain visible', () => {
   const f={feature:'note.tremolo',category:'game_limitation',impact:'display_or_expression',
     message:'Tremolo picking rates and active spans are preserved for the updated highway and tab view. Trail spacing indicates speed within readable limits; individual picks are not scored separately.'};

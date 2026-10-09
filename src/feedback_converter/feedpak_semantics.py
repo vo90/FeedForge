@@ -43,6 +43,10 @@ def validate_arrangement_semantics(
     string_count = _effective_string_count(data, manifest_entry)
     template_count = len(data.get("templates", []))
 
+    if 'wah' in data:
+        from .wah import validate as validate_wah
+        try: validate_wah(data['wah'], string_count)
+        except ValueError as exc: error(f'{label}: {exc}')
     _validate_templates(data.get("templates", []), label, string_count, error,
                         unpitched=_unpitched_template_slots(data))
     _validate_payload(data, label, string_count, template_count, error)

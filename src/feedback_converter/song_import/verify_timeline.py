@@ -902,16 +902,26 @@ def _expected(source, alignment, *, pending_hopo_ties=True, pending_slide_ties=T
             rendered.append({**({"_scoreStart": float(start), "_scoreEnd": float(end)} if recording.collapsed_count else {}), "note": row, "locations": n["locations"], "occurrence": n["occurrence"], "beat": n["beat"],
                              **({'trill': True} if n.get('trill') else {})})
         notation_beats = []
+        wah = []
         for occurrence, index in enumerate(order):
             origin = clock.measure_starts[occurrence]
             for beat in part.beats[index]:
+                if beat.get('wah') is not None:
+                    import re
+                    sid = lambda loc: 'songsterr:' + ':'.join(re.findall(r'\d+', loc))
+                    seconds = clock.at(origin + beat['q'])
+                    if not (recording.collapsed_count and seconds < recording.opening_end):
+                        wah.append(dict(t=recording.at(seconds), state=beat['wah'],
+                            source_id=sid(beat['location']), occurrence=occurrence+1,
+                            source_ids=[sid(n.location) for n in beat['notes']],
+                            strings=sorted({n.string for n in beat['notes']})))
                 notation_beats.append({"measure": occurrence + 1, "voice": beat["voice"], "location": beat["location"],
                                        "time": recording.at(clock.at(origin + beat["q"])),
                                        "end": recording.at(clock.at(origin + beat["q"] + beat["length"])),
                                        "quarter": beat["written_q"], "length": beat["length"], "rest": beat["rest"],
                                        "notation": beat["notation"], "notes": [notation_notes[(occurrence, n.location)] for n in beat["notes"]]})
         rendered.sort(key=lambda item: (item.get("_scoreStart", item["note"]["t"]), item["note"]["s"]))
-        result["parts"].append({"source": part, "notes": rendered, "notation_beats": notation_beats, "notation_measures": measure_facts,
+        result["parts"].append({"source": part, "notes": rendered, "wah": sorted(wah, key=lambda e:(e["t"],e["source_id"])), "notation_beats": notation_beats, "notation_measures": measure_facts,
                                 **({'consumed_strum_omissions': True} if omissions else {})})
     result["score_duration"] = float(clock.at(clock.quarters))
     result['harmonic_ties'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))

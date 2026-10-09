@@ -137,6 +137,9 @@ def materialize(plan, originals, options, source_hash, audio_hash, duration, gen
     for key in ("notes", "chords"):
         chart[key].sort(key=lambda e: e["t"])
     clip_chart(chart)
+    if any('wah' in row['chart'] for row in originals.values()):
+        from .wah import hybrid as hybrid_wah
+        chart['wah'] = hybrid_wah(plan, originals)
     from .tone_timeline import hybrid as hybrid_tones
     tones = hybrid_tones(plan, originals, duration, passage_boundaries=tone_passage_boundaries)
     if tones is not None:
