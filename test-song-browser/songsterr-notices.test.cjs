@@ -8,6 +8,41 @@ const crypto = require('node:crypto');
 const { playerNotices, classifyFinding, prioritizeFindings } = require('../electron/song-browser/songsterr-notices.cjs');
 const { SongsterrJobs } = require('../electron/song-browser/songsterr-jobs.cjs');
 const completed = { state: 'completed', verification: { status: 'passed', timing: 'source_map' } };
+
+test('hybrid high-fret omissions are explained once, but unsupported unknowns remain visible', () => {
+  const hybridLead = { coverageStatus: 'limited', limitations: [{ reason: 'unsupported_source_gesture' }] };
+  const job = { ...completed, verification: { ...completed.verification, omissions: { omittedNotes: 14 }, hybridLead } };
+  const result = playerNotices(job, { findings: [] });
+  assert.equal(result.warnings.length, 1);
+  assert.equal(result.warnings[0].id, 'high_frets');
+  assert.match(result.warnings[0].message, /Hybrid Lead/);
+  for (const reason of ['future_reason', undefined]) {
+    const changed = { ...job, verification: { ...job.verification, hybridLead: { ...hybridLead, limitations: [{ reason }] } } };
+    assert.ok(playerNotices(changed, { findings: [] }).warnings.some(w => w.id === 'hybrid'));
+  }
+  delete job.verification.omissions;
+  assert.ok(playerNotices(job, { findings: [] }).warnings.some(w => w.id === 'hybrid_unsupported'));
+});
+
+test('hybrid conflict, planning and absent lead have separate honest explanations', () => {
+  const job = { ...completed, verification: { ...completed.verification, hybridLead: {
+    coverageStatus: 'limited', planningLimited: true,
+    limitations: [{ reason: 'conflicting_primary', name: 'Right guitar', missingRanges: [{ start: 153.25, end: 155.775 }] }],
+    musicalAudit: { localLeadAudit: { unresolvedCount: 1 } }
+  } } };
+  const original = JSON.stringify(job);
+  const warnings = playerNotices(job, { findings: [] }).warnings;
+  assert.deepEqual(warnings.map(w => w.id).sort(), ['hybrid_choices', 'hybrid_missing_lead', 'hybrid_planning']);
+  assert.match(warnings.find(w => w.id === 'hybrid_choices').locations[0], /Right guitar.*2:33–2:36/);
+  assert.equal(JSON.stringify(job), original);
+});
+
+test('limited hybrid reports never silently disappear without an explanation', () => {
+  for (const limitations of [[], [{ reason: 'alternate_voice' }]]) {
+    const job = { ...completed, verification: { ...completed.verification, hybridLead: { coverageStatus: 'limited', limitations } } };
+    assert.ok(playerNotices(job, { findings: [] }).warnings.some(w => w.id === 'hybrid'));
+  }
+});
 const keySignature = { feature: 'measure.keySignature', category: 'game_limitation', impact: 'display_or_expression',
   message: 'The written key signature is retained in the source. Explicit pitches are converted unchanged.' };
 const letRing = { feature: 'beat.letRing', category: 'game_limitation', impact: 'display_or_expression', message: 'Let-ring instruction is not shown.' };

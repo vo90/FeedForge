@@ -326,7 +326,7 @@ def _activity_index(values, part, quarter_at):
     return lambda start, end: integral(end) - integral(start)
 
 
-def optional_fill_audit(rows, parts, selected, compatible, excluded, duration_quarters, quarter_at, recording_at, *, max_group_checks=MAX_GROUP_CHECKS):
+def optional_fill_audit(rows, parts, selected, compatible, excluded, duration_quarters, quarter_at, recording_at, *, max_group_checks=MAX_GROUP_CHECKS, min_active_quarters=4):
     """Report safe source opportunities; optional material is never mandatory.
 
     This conservative warning inventory is not an optimizer or a promise that
@@ -348,7 +348,7 @@ def optional_fill_audit(rows, parts, selected, compatible, excluded, duration_qu
             left = max(start + .25, quarter_at(recording_at(start) + .125))
         if end < duration_quarters - EPS:
             right = min(end - .25, quarter_at(recording_at(end) - .125))
-        if right - left < 4 - EPS:
+        if right - left < min_active_quarters - EPS:
             continue
         candidates = {}
         for tid in sorted(eligible):
@@ -361,7 +361,7 @@ def optional_fill_audit(rows, parts, selected, compatible, excluded, duration_qu
                 continue
             first, last = min(r['start'] for r in members.values()), max(r['end'] for r in members.values())
             active = activity[tid](first, last)
-            if active >= 4 - EPS:
+            if active >= min_active_quarters - EPS:
                 candidates[tid] = round(active, 6)
             if budget['limited']:
                 break

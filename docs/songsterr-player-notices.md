@@ -43,6 +43,20 @@ and durable developer backlog keep original ordering, counts and resolution rule
 
 ## Validation
 
+Contract 113 allows optional Hybrid Lead subphrases with two active quarter-note
+beats and two distinct pitched attacks (previously four beats). These still fit
+inside the existing guarded lead rests and retain complete written slots and
+connected gestures. Primary selection, solo priority, tuning/capo eligibility,
+and search budgets are unchanged. Older contracts retain their four-beat rule.
+
+Hybrid notices distinguish overlapping parts, unsupported gestures, incomplete
+searches, excluded sources and unresolved lead passages. Verified high-fret
+omissions also explain their Hybrid Lead impact in the existing omission notice.
+Unknown reasons and limited reports without an explanation remain warnings.
+For new imports, limitation details include recording-time ranges of omitted
+obligation events, excluding already selected events. The source arrangements
+and complete source evidence remain available.
+
 Run `node --test test-song-browser/songsterr-notices.test.cjs
 test-song-browser/songsterr-ui.test.cjs`, then the browser regression suite.
 Coverage includes thousands of repeated diagnostic records, mixed supported and

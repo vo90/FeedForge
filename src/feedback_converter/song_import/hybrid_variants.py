@@ -99,7 +99,7 @@ def _components(spans):
 
 
 def generate(parents, rows, context, timeline, clock, gaps, *, max_variants=MAX_VARIANTS,
-             max_window_checks=MAX_WINDOW_CHECKS, adjacent_parents=None):
+             max_window_checks=MAX_WINDOW_CHECKS, adjacent_parents=None, min_active_quarters=MIN_ACTIVE_QUARTERS):
     """Offer at most four complete alternatives per rejected parent and gap.
 
     Maximal safe membership competes with nearby musical/bar boundaries. Long
@@ -108,9 +108,13 @@ def generate(parents, rows, context, timeline, clock, gaps, *, max_variants=MAX_
     """
     from .hybrid_lead import _hand_endpoints, union
 
+    # Shorter fills use the same complete source boundaries and bounded search.
+    # The caller enables this only for newly versioned imports.
+    minimum = min_active_quarters
+
     if not parents:
         return [], {'candidateCount': 0, 'windowChecks': 0, 'budgetLimited': False,
-                    'minActiveQuarterBeats': MIN_ACTIVE_QUARTERS, 'minimumPitchedAttacks': 2}
+                    'minActiveQuarterBeats': minimum, 'minimumPitchedAttacks': 2}
     hard = _components([(r['start'], r['end']) for r in rows] +
                        [(b['start'], b['end']) for b in context['beats'] if not b['rest']])
     points = sorted({q for component in hard for q in component})
@@ -158,7 +162,7 @@ def generate(parents, rows, context, timeline, clock, gaps, *, max_variants=MAX_
             a, b = gaps[index]
             neighbors.setdefault(index, []).append(p)
             lo, hi = max(p['start'], a), min(p['end'], b)
-            if id(p) in rejected and hi - lo >= MIN_ACTIVE_QUARTERS - EPS:
+            if id(p) in rejected and hi - lo >= minimum - EPS:
                 opportunities.append((-(hi - lo), p['start'], p['end'], a, b, p))
             index += 1
         if limited:
@@ -188,7 +192,7 @@ def generate(parents, rows, context, timeline, clock, gaps, *, max_variants=MAX_
                 continue
             first, last = run[0], run[-1]
             lo, hi = max(first['start'], a), min(last['end'], b)
-            if hi - lo < MIN_ACTIVE_QUARTERS - EPS:
+            if hi - lo < minimum - EPS:
                 continue
             combined = {**first, 'end': last['end'],
                         'boundaryQuarters': [first['boundaryQuarters'][0], last['boundaryQuarters'][1]],
@@ -210,7 +214,7 @@ def generate(parents, rows, context, timeline, clock, gaps, *, max_variants=MAX_
                     or not any(abs(marker - q) <= EPS for marker in context.get('sectionQuarters', []))):
                 continue
             lo, hi = max(first['start'], a), min(last['end'], b)
-            if hi - lo < MIN_ACTIVE_QUARTERS - EPS:
+            if hi - lo < minimum - EPS:
                 continue
             if q not in proof_cache:
                 proof_cache[q] = _section_proof(q, rows, context, timeline, clock, charge)
@@ -243,7 +247,7 @@ def generate(parents, rows, context, timeline, clock, gaps, *, max_variants=MAX_
         parent_keys = {(r['kind'], r['index']) for r in parent['events']}
         for start in left_choices:
             for end in right_choices:
-                if end - start < MIN_ACTIVE_QUARTERS - EPS:
+                if end - start < minimum - EPS:
                     continue
                 selected = [r for r in rows if r['start'] >= start - EPS and r['end'] <= end + EPS
                             and r['start'] < end - EPS and (r['kind'], r['index']) in parent_keys]
@@ -259,11 +263,11 @@ def generate(parents, rows, context, timeline, clock, gaps, *, max_variants=MAX_
                 activity = sum(max(0, min(y, actual_end) - max(x, actual_start)) for x, y in active)
                 attacks = {round(n['t'], 8) for r in selected for n in r['notes']
                            if not n.get('ghost') and not n.get('mt') and 0 <= n['f'] <= 24}
-                if activity < MIN_ACTIVE_QUARTERS - EPS or len(attacks) < 2:
+                if activity < minimum - EPS or len(attacks) < 2:
                     continue
                 if len(variants) >= max_variants:
                     return variants, {'candidateCount': len(variants), 'windowChecks': checks,
-                                      'budgetLimited': True, 'minActiveQuarterBeats': MIN_ACTIVE_QUARTERS,
+                                      'budgetLimited': True, 'minActiveQuarterBeats': minimum,
                                       'minimumPitchedAttacks': 2}
                 seen.add(keys)
                 boundary_labels = [label(start), label(end)]
@@ -283,5 +287,5 @@ def generate(parents, rows, context, timeline, clock, gaps, *, max_variants=MAX_
                                              **({'sectionJoin': deepcopy(parent['sectionJoin'])}
                                                 if 'sectionJoin' in parent else {})}})
     return variants, {'candidateCount': len(variants), 'windowChecks': checks,
-                      'budgetLimited': limited, 'minActiveQuarterBeats': MIN_ACTIVE_QUARTERS,
+                      'budgetLimited': limited, 'minActiveQuarterBeats': minimum,
                       'minimumPitchedAttacks': 2}

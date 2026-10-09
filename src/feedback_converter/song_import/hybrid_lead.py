@@ -332,8 +332,9 @@ def _fill_gaps(performance, options, main_id, alignment, audio_duration, primary
         left = max(left, b)
     excluded, candidates, evaluated, donor_sources = [], [], [], {}
     from .hybrid_variants import generate, MAX_VARIANTS, MAX_WINDOW_CHECKS
+    minimum_fill = 2.0 if performance.get('hybridShortGapFills') else 4.0
     variant_generation = {'candidateCount': 0, 'windowChecks': 0, 'budgetLimited': False,
-                          'minActiveQuarterBeats': 4.0, 'minimumPitchedAttacks': 2}
+                          'minActiveQuarterBeats': minimum_fill, 'minimumPitchedAttacks': 2}
     main_signature = _fingerprint(event_rows(main, context["tracks"][main_id], clock), 0, end, clock)
     signatures = {main_signature}
     preferred = options.get("preferredTrackIds", [])
@@ -388,6 +389,7 @@ def _fill_gaps(performance, options, main_id, alignment, audio_duration, primary
                 rejected_parents.append(p)
         variants, generation = generate(rejected_parents, source['rows'], track_context,
                                         context['timeline'], clock, gaps,
+                                        min_active_quarters=minimum_fill,
                                         max_variants=max(0, MAX_VARIANTS - variant_generation['candidateCount']),
                                         max_window_checks=max(0, MAX_WINDOW_CHECKS - variant_generation['windowChecks']),
                                         adjacent_parents=[*accepted, *rejected_parents])
