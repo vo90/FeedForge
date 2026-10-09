@@ -16,6 +16,7 @@ const { selectSiteAudio, isSiteAudio, validRecovery, startRecovery, verifiedReco
 const { validRevisionSelection, revisionLabel } = require('./providers/songsterr/revision-policy.cjs');
 const { numeric } = require('./providers/songsterr/policy.cjs');
 const { HistoryWriter, after } = require('./history-writer.cjs');
+const { playerNotices, prioritizeFindings } = require('./songsterr-notices.cjs');
 const WAITING = new Set(['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed', 'awaiting_main_choice']);
 const ACTIVE = new Set(['queued', 'resolving', 'downloading', 'converting', 'audio', 'aligning', 'validating', 'saving']);
 const PENDING = (job) => ACTIVE.has(job.state) || WAITING.has(job.state) || job.state === 'retry_wait';
@@ -94,6 +95,7 @@ class SongsterrJobs {
     this.auditRoot = path.join(path.dirname(this.root), 'evidence');
     this.clock = clock; this.cooldowns = {}; this.retryHistoryRoot = path.join(path.dirname(this.root), 'retry-history');
     this.historyWriter = historyWriter;
+    this.noticeCache = new WeakMap();
     fs.mkdirSync(this.root, { recursive: true }); this.jobs = []; this.disposed = false;
     const ledger = path.join(this.root, 'jobs.json');
     if (fs.existsSync(ledger)) {
@@ -184,7 +186,7 @@ class SongsterrJobs {
     const job = this.jobs.find(entry => entry.id === id);
     if (!job?.evidence) throw new Error('This import has no saved report.');
     const report = compatibilityReport(this.auditRoot, job.evidence);
-    return report ? { ...report, findings: report.findings.slice(0, 200), displayedLimit: 200 } : null;
+    return report ? { ...report, findings: prioritizeFindings(report.findings).slice(0, 200), displayedLimit: 200, prioritized: true } : null;
   }
   compatibilityList() { return compatibilityBacklog(this.auditRoot); }
   async _cleanAttempts(job) {
@@ -246,7 +248,7 @@ class SongsterrJobs {
       originalsOnlyFrom: job.originalsOnlyFrom, freshFrom: job.freshFrom,
       outputPath: job.state === 'completed' ? job.outputPath : undefined,
       outputAvailable: job.state === 'completed' && Boolean(job.outputPath && fs.existsSync(job.outputPath)),
-      warnings: job.warnings, alignment: job.alignment, coverage: job.coverage, synchronization: job.synchronizationSummary,
+      warnings: job.warnings, playerNotices: this._playerNotices(job), alignment: job.alignment, coverage: job.coverage, synchronization: job.synchronizationSummary,
       verification: job.verification ? { ...job.verification, status: job.state === 'completed' ? job.outputVerification || 'not_checked' : job.verification.status } : undefined,
       artwork: job.artwork, compatibility: job.compatibility, hasReport: Boolean(job.evidence || job.retry?.events?.length),
       retry: job.retry ? { attempt: job.retry.used + 1, maxAttempts: 3, nextAt: job.retry.nextAt, parked: job.retry.parked === true,
@@ -257,6 +259,20 @@ class SongsterrJobs {
       canRefreshRecording: job.state === 'needs_audio' && Boolean(job.audio && job.scorePath) && typeof this.provider.findAudio === 'function',
       canUseAccount: job.canUseAccount === true,
       canCancel: PENDING(job) };
+  }
+  _playerNotices(job) {
+    const inputs = [job.state, job.evidence?.id, job.verification, job.outputVerification, job.compatibility, job.warnings, job.artwork];
+    const cached = this.noticeCache.get(job);
+    if (cached && inputs.every((value, index) => value === cached.inputs[index])) return cached.value;
+    let report = null, reportUnavailable = false;
+    if (job.evidence) {
+      try { report = compatibilityReport(this.auditRoot, job.evidence); reportUnavailable = !report; }
+      catch { reportUnavailable = true; }
+    }
+    const value = playerNotices({ ...job, verification: job.verification ? { ...job.verification,
+      status: job.state === 'completed' ? job.outputVerification || 'not_checked' : job.verification.status } : undefined }, report, { reportUnavailable });
+    this.noticeCache.set(job, { inputs, value });
+    return value;
   }
   snapshot() { return this.jobs.map((job) => this.public(job)); }
   _assertQueueCapacity() {

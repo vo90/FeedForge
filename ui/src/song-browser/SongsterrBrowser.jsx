@@ -89,7 +89,7 @@ export function CompatibilityDetails({ report }) {
     <ul>{report.findings.map((item, i) => <li key={i}><strong>{item.feature}</strong> · {categoryLabel(item)}
       <p>{[item.arrangement, item.measure && `Measure ${item.measure}`, item.beat && `beat ${item.beat}`, item.note && `note ${item.note}`].filter(Boolean).join(' · ')}</p>
       <p>{item.message}</p>{item.workStatus ? <p>{WORK[item.workStatus] || item.workStatus}</p> : null}<small>Source value: {JSON.stringify(item.value)}{item.valueTruncated ? '… (full value in saved source)' : ''}</small></li>)}</ul>
-    {report.findingCount > report.findings.length ? <p>Showing the first {report.findings.length} findings. Save the conversion report for the complete recorded list.</p> : null}
+    {report.findingCount > report.findings.length ? <p>Showing {report.findings.length} findings{report.prioritized ? ", with playing limitations first" : ""}. Save the conversion report for the complete recorded list.</p> : null}
   </div>;
 }
 
@@ -107,50 +107,46 @@ export function CompatibilityList({ report }) {
   </div>;
 }
 
+export function NoticeGroups({ groups }) {
+  if (!groups.length) return null;
+  return <ul>{groups.map(item => <li key={`${item.level}:${item.id}`}><strong>{item.title}</strong><p>{item.message}</p>
+    {item.locations?.length || item.examples?.length ? <details><summary>Affected passages and details</summary>
+      {item.occurrences > 1 ? <p>{item.occurrences} source records, grouped into this notice. Representative details below; all records remain in the saved report.</p> : null}
+      <ul>{item.locations.map((at, index) => <li key={index}>{at}</li>)}{item.examples.map((message, index) => <li key={`example-${index}`}>{message}</li>)}</ul>
+    </details> : null}
+  </li>)}</ul>;
+}
+
 export function SongsterrJob({ job, api, action, busy }) {
   const [url, setUrl] = useState('');
   const [compatibility, setCompatibility] = useState(null);
   useEffect(() => { setCompatibility(null); }, [job.id, job.evidence?.id, job.state]);
   const active = ACTIVE.has(job.state);
   const needsAudio = ['needs_audio', 'alignment_failed'].includes(job.state);
-  const warning = job.verification?.timingWarning || (job.verification?.endingTiming?.warning?.version === 2 ? job.verification.endingTiming.warning : null);
-  const timingWarning = job.state === 'completed' && job.verification?.status === 'passed'
-    && warning?.status === 'accepted_with_warning' ? warning : null;
-  const assessment = job.verification?.timingAssessment;
-  const timingUncertain = job.state === 'completed' && job.verification?.status === 'passed'
-    && assessment?.status === 'inconclusive';
-  const mismatchRanges = timingUncertain && assessment.version === 'local-recording-clock-v3'
-    ? assessment.suspectedMismatchRanges || [] : [];
-  const recordingTime = value => `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
+  const notices = job.playerNotices;
+  const playerWarnings = notices?.warnings || [];
+  const needsReview = job.state === 'completed' && (playerWarnings.length > 0 || !notices && job.compatibility?.status === 'limitations');
+  const timingWarning = playerWarnings.some(item => item.id === 'timing');
+  const omittedNotes = playerWarnings.some(item => item.id === 'high_frets' || item.id === 'ending_notes');
   return <li id={`songsterr-job-${job.id}`} tabIndex={-1} className={`sb-job ${job.state === 'completed' ? 'sb-job-completed' : ''}`}>
     <div className="sb-job-top"><div className="sb-job-heading"><strong>{job.title}</strong><span>{job.artist}</span></div>
-      <span className="sb-job-status">{active ? <LoaderCircle className="sb-spin" size={14} /> : timingWarning || timingUncertain ? <AlertTriangle size={14} /> : job.state === 'completed' ? <Check size={14} /> : job.state !== 'cancelled' ? <AlertTriangle size={14} /> : null}{timingWarning ? 'Imported with timing warnings' : job.state === 'completed' && job.verification?.omissions?.omittedNotes ? 'Ready with omitted notes' : timingUncertain ? 'Imported — timing not fully verified' : job.state === 'completed' && job.compatibility?.status === 'limitations' ? 'Ready with limitations' : LABELS[job.state] || job.state}</span></div>
-    {timingWarning ? <div role="status"><p>Songsterr timing was retained. Some notes may not match the recording.</p>
-      {timingWarning.uncertainRanges?.length ? <p>Timing could not be confirmed near {timingWarning.uncertainRanges.map(range => `${recordingTime(Math.floor(range.start))}–${recordingTime(Math.ceil(range.end))}`).join(', ')} in the original recording. This does not identify a particular arrangement as faulty.</p> : null}
-    </div> : null}
-    {job.verification?.omissions?.omittedNotes ? <p>{job.verification.omissions.omittedNotes} high-fret or connected slide events omitted from display and scoring. The complete original tab is saved inside the FeedPak.{job.verification.omissions.excludedTracks?.length ? ` ${job.verification.omissions.excludedTracks.length} arrangements had no supported notes remaining.` : ''}</p> : null}
+      <span className="sb-job-status">{active ? <LoaderCircle className="sb-spin" size={14} /> : needsReview ? <AlertTriangle size={14} /> : job.state === 'completed' ? <Check size={14} /> : job.state !== 'cancelled' ? <AlertTriangle size={14} /> : null}{job.state === 'completed' ? timingWarning ? 'Imported with timing warnings' : omittedNotes ? 'Ready with omitted notes' : needsReview ? 'Ready — review import notes' : 'FeedPak ready' : LABELS[job.state] || job.state}</span></div>
+    <NoticeGroups groups={playerWarnings} />
+    {needsReview && !notices ? <p>The earlier compatibility assessment needs review. Open the saved report for details.</p> : null}
     {active ? <progress className="sb-progress" aria-label={`${job.title}: ${LABELS[job.state]}`} /> : null}
     <p>{job.error || job.message}</p>
     {WAITING.has(job.state) ? <p>Waiting for your input. Other queued songs can continue.</p> : null}
     <RetryStatus job={job} />
     {job.state === 'awaiting_main_choice' ? <HybridChoice key={job.hybridChoice?.sourceSha256} job={job} api={api} action={action} busy={busy} /> : null}
-    {job.state === 'completed' ? <HybridResult result={job.verification?.hybridLead} /> : null}
     {job.originalsOnlyFrom ? <p>This is a separately requested originals-only import.</p> : null}
-    {job.revisionId ? <small>{job.revisionLabel || 'Selected revision'} · {job.revisionId}</small> : null}
-    {job.state === 'completed' ? <p>{job.verification?.status === 'passed' ? job.verification?.adjustments?.omittedEndingNotes ? 'Conversion checked against the source tab and recorded ending adjustments.' : job.verification?.adjustments?.terminalSustains ? 'Conversion checked against the source tab and recorded sustain adjustments.' : 'Conversion checked against the source tab.' : job.verification?.status === 'modified' ? 'This file has changed since conversion. The report describes the original import.' : 'Source verification is unavailable for this file.'}</p> : null}
-    {job.state === 'completed' && job.verification?.status === 'passed' && job.verification?.adjustments?.omittedEndingNotes ? <p>{job.verification.adjustments.omittedEndingNotes} ending {job.verification.adjustments.omittedEndingNotes === 1 ? 'note omitted' : 'notes omitted'} at or after the original audio ending. {timingWarning ? 'Source timing was retained with the warning above.' : 'Earlier timing passed the audio check.'} The original tab and omission details are saved in the FeedPak.</p> : null}
-    {job.state === 'completed' && job.verification?.adjustments?.terminalSustains ? <p>{job.verification.adjustments.terminalSustains} final {job.verification.adjustments.terminalSustains === 1 ? 'sustain' : 'sustains'} shortened to the audio ending. Original durations are saved with the tab.</p> : null}
-    {job.state === 'completed' && job.verification?.status === 'passed' && job.verification?.adjustments?.terminalSlideOuts ? <p>{job.verification.adjustments.terminalSlideOuts} directional {job.verification.adjustments.terminalSlideOuts === 1 ? 'slide-out ends' : 'slide-outs end'} with the audio after a timing check. The original slide intervals and cutoff details are saved in the FeedPak.</p> : null}
-    {job.verification?.timing ? <small>{job.verification.timing === 'source_map_repaired' ? 'Timing: opening corrected against the recording; later Songsterr timing retained.' : job.verification.timing === 'source_map' ? 'Timing: Songsterr recording map.' : 'Timing: automatic estimate.'}</small> : null}
-    {timingUncertain ? <p role="status">Automatic checks supported timing in {assessment.supportedWindows} of {assessment.windowCount} passages. The remaining passages could not be reliably verified; this does not necessarily mean they are wrong. {job.verification.timing === 'source_map_repaired' ? 'The recorded opening adjustment was retained; later Songsterr timing was preserved.' : job.verification.timing === 'source_map' ? "Songsterr's timing was preserved." : 'The imported timing was preserved.'}</p>
-      : assessment ? <small>Audio timing: {assessment.supportedWindows} of {assessment.windowCount} passages supported by automatic checks. Individual notes may remain uncertain.</small> : null}
-    {mismatchRanges.length ? <p>Possible timing mismatch near {mismatchRanges.map(range => `${recordingTime(Math.floor(range.start))}–${recordingTime(Math.ceil(range.end))}`).join(', ')}. Some notes may play early or late relative to the recording.</p> : null}
-    {job.verification?.preparationSeconds > 0 ? <small>Preparation time added: {job.verification.preparationSeconds.toFixed(2)} seconds.</small> : null}
-    {job.verification?.endingSilenceSeconds > 0 ? <small>Ending silence added: {job.verification.endingSilenceSeconds.toFixed(2)} seconds to preserve the final note tails. This adds no missing music.</small> : null}
-    {job.state === 'completed' && job.verification?.status === 'passed' && job.verification?.endingTiming?.status === 'supported' ? <small>Recording timing supported through the ending. This does not verify every transcribed note.</small> : null}
-    {job.state === 'completed' && job.verification?.status === 'passed' && job.verification?.endingTiming?.status === 'inconclusive' && job.verification?.endingTiming?.warning?.status === 'accepted_with_warning' && job.verification.endingTiming.warning.version !== 2 ? <p role="status"><AlertTriangle size={14} /> Ending sync not independently confirmed. Songsterr timing retained; short ending silence added.</p> : null}
-    {job.verification?.compatibility?.status === 'requires_consumer_support' ? <p>Ghost-note or directional-slide symbols need a FeedBack version that supports them. Their original meaning is preserved in this file.</p> : null}
-    {job.artwork ? <p>{job.artwork.status === 'matched' ? `Album cover: ${job.artwork.album || 'matched album'}.` : job.artwork.albumStatus === 'matched' ? `Album: ${job.artwork.album}. Cover currently unavailable; you can add an image in Edit FeedPaks.` : 'Album cover unavailable or uncertain. You can add an image in Edit FeedPaks.'}</p> : null}
+    {job.state === 'completed' || notices?.information?.length ? <details><summary>Import details</summary>
+      {job.revisionId ? <small>{job.revisionLabel || 'Selected revision'} · {job.revisionId}</small> : null}
+      {job.state === 'completed' && job.verification?.status === 'passed' ? <p>Conversion checked against the source tab and recorded {job.verification.adjustments?.omittedEndingNotes ? 'ending adjustments' : 'adjustments'}.</p> : null}
+      <NoticeGroups groups={notices?.information || []} />
+      {job.artwork?.status === 'matched' ? <p>Album cover: {job.artwork.album || 'matched album'}.</p> : null}
+      {job.state === 'completed' ? <HybridResult result={job.verification?.hybridLead} /> : null}
+      {notices?.diagnosticCount > 0 ? <p>Routine source and conversion details are retained in the saved report.</p> : null}
+    </details> : null}
     {job.state === 'completed' ? <div className="sb-job-controls">{job.outputAvailable ? <button className="sb-text-button" disabled={busy} onClick={() => action(() => api.showOutput({ id: job.id }))}><FolderOpen size={14} /> Show file</button> : <span>The saved file has been moved or removed.</span>}</div> : null}
     {needsAudio ? <div className="st-audio-input">
       {job.state === 'needs_audio' && job.canRetryAudio ? <button className="sb-button" disabled={busy} onClick={() => action(() => api.retry({ id: job.id }))}>Retry audio detection</button> : null}
@@ -178,7 +174,7 @@ export function SongsterrJob({ job, api, action, busy }) {
       {job.canCancel ? <button className="sb-text-button" disabled={busy} onClick={() => action(() => api.cancel({ id: job.id }))}>Cancel</button> : null}
     </div>
     <CompatibilityDetails report={compatibility} />
-    {job.warnings?.length ? <details><summary>Import notes</summary><ul>{job.warnings.map((warning, index) => <li key={index}>{typeof warning === 'string' ? warning : `${warning.location ? warning.location + ': ' : ''}${warning.message}`}</li>)}</ul></details> : null}
+    {!notices && job.warnings?.length ? <details><summary>Import notes</summary><p>Grouped notes are unavailable. Complete details remain in the saved report.</p><ul>{job.warnings.slice(0, 8).map((warning, index) => <li key={index}>{typeof warning === 'string' ? warning : warning.message}</li>)}</ul></details> : null}
   </li>;
 }
 
@@ -313,7 +309,7 @@ export default function SongsterrBrowser({ api: providedApi, outputApi: provided
       <p>Add one guitar arrangement that follows the featured guitarist through the song and fills suitable gaps. It stays in the base tuning; all originals are retained.</p>
       {hybridEnabled ? <details><summary>Source choices</summary><label><input type="checkbox" checked={reviewSources} onChange={event => setReviewSources(event.target.checked)} /> Let me choose the base and supplementary guitars after downloading the tab</label><p>Otherwise FeedForge chooses automatically and reports any uncertain choices or incompatible sources.</p></details> : null}
     </div>
-    {api?.compatibilityList ? <details className="st-compatibility-list"><summary>Import compatibility</summary><p>Recorded features that need converter improvements or additional game support.</p>
+    {api?.compatibilityList ? <details className="st-compatibility-list"><summary>Developer compatibility inventory</summary><p>Full source findings for development, including retained notation and supported playing policies. These counts are not the number of problems in your songs.</p>
       <button className="sb-button" disabled={busy} onClick={() => action(async () => { const result = await api.compatibilityList(); if (result?.ok === false) return result; setCompatibilityList(result); })}>Load compatibility list</button>
       <button className="sb-button" disabled={busy} onClick={() => action(() => api.exportCompatibility())}>Save compatibility list</button>
       {compatibilityList ? <CompatibilityList report={compatibilityList} /> : null}</details> : null}

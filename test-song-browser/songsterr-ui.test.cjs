@@ -16,14 +16,17 @@ compiled.paths = Module._nodeModulePaths(path.dirname(filename)); compiled._comp
 const { SongsterrJob, SongsterrResult, default: SongsterrBrowser } = compiled.exports;
 const base = { id: 'job-songsterr-1', songId: '564073', title: 'Woodland Rites', artist: 'Green Lung', state: 'queued', canCancel: true, canRetry: false };
 const render = (Component, props) => renderToStaticMarkup(React.createElement(Component, props));
-const job = (change) => render(SongsterrJob, { job: { ...base, ...change }, api: {}, action() {}, busy: false });
+const { playerNotices } = require('../electron/song-browser/songsterr-notices.cjs');
+const job = (change) => { const value = { ...base, verification: { status: 'passed' }, ...change }; return render(SongsterrJob, {
+  job: { ...value, playerNotices: playerNotices(value, change.report || null) }, api: {}, action() {}, busy: false }); };
 
 test('uncertain timing is explained without accusing the source or claiming a pass', () => {
   const verification = { status: 'passed', timing: 'source_map', timingAssessment: {
     version: 'local-recording-clock-v3', status: 'inconclusive', supportedWindows: 1, windowCount: 27,
     suspectedMismatchRanges: [] } };
   const html = job({ state: 'completed', verification });
-  assert.match(html, /Imported — timing not fully verified/);
+  assert.match(html, /FeedPak ready/);
+  assert.doesNotMatch(html, /Imported with timing warnings/);
   assert.match(html, /supported timing in 1 of 27 passages/);
   assert.match(html, /does not necessarily mean they are wrong/);
   assert.match(html, /timing was preserved/);
@@ -128,7 +131,7 @@ test('opening repair, acoustic evidence and preparation are distinguished', () =
     endingSilenceSeconds: .43 } });
   assert.match(html, /opening corrected against the recording/);
   assert.match(html, /8 of 10 passages supported/);
-  assert.match(html, /Individual notes may remain uncertain/);
+  assert.match(html, /does not verify every individual note/);
   assert.match(html, /Preparation time added: 1.83 seconds/);
   assert.match(html, /Ending silence added: 0.43 seconds to preserve the final note tails/);
   assert.doesNotMatch(html, /Timing: automatic estimate/);
@@ -190,8 +193,8 @@ test('retry countdown retains Cancel and delays replacement-audio prompts until 
 });
 
 test('completed imports distinguish limitations without implying a failed or fully supported chart', () => {
-  assert.match(job({ state: 'completed', compatibility: { status: 'limitations' } }), /Ready with limitations/);
-  assert.doesNotMatch(job({ state: 'failed', compatibility: { status: 'limitations' } }), /Ready with limitations/);
+  assert.match(job({ state: 'completed', compatibility: { status: 'limitations' } }), /Ready — review import notes/);
+  assert.doesNotMatch(job({ state: 'failed', compatibility: { status: 'limitations' } }), /Ready \u2014 review import notes/);
   const html = render(compiled.exports.CompatibilityDetails, { report: { findingCount: 1, findings: [
     { feature: '<script>future</script>', category: 'converter_gap', arrangement: 'Lead', measure: 5, beat: 2, value: '<img>', message: 'Not rendered.' }
   ] } });
@@ -207,7 +210,7 @@ test('conversion fidelity, audio timing and artwork have separate honest outcome
   const modified = job({ state: 'completed', verification: { status: 'modified' } });
   assert.match(modified, /changed since conversion/);
   assert.doesNotMatch(modified, /checked against the source tab/);
-  assert.doesNotMatch(job({ state: 'completed' }), /checked against the source tab/);
+  assert.doesNotMatch(job({ state: 'completed', verification: undefined }), /checked against the source tab/);
   assert.doesNotMatch(checked + modified, /library doctor|repair.*required/i);
 });
 
@@ -215,7 +218,7 @@ test('recorded sustain adjustments are visible without claiming exact source dur
   const html = job({ state: 'completed', verification: { status: 'passed', adjustments: { terminalSustains: 5 } } });
   assert.match(html, /5 final sustains shortened to the audio ending/);
   assert.match(html, /Original durations are saved with the tab/);
-  assert.match(html, /source tab and recorded sustain adjustments/);
+  assert.match(html, /source tab and recorded adjustments/);
   assert.doesNotMatch(job({ state: 'completed', verification: { status: 'passed' } }), /sustains shortened/);
 });
 
@@ -223,7 +226,7 @@ test('ending omissions disclose the count, audio check and retained original', (
   const verification = { status: 'passed', adjustments: { omittedEndingNotes: 3 } };
   const html = job({ state: 'completed', verification });
   assert.match(html, /3 ending notes omitted at or after the original audio ending/);
-  assert.match(html, /Earlier timing passed the audio check/);
+  assert.doesNotMatch(html, /Earlier timing passed the audio check/);
   assert.match(html, /original tab and omission details are saved/);
   assert.match(html, /recorded ending adjustments/);
   assert.doesNotMatch(job({ state: 'failed', verification }), /Earlier timing passed/);
@@ -295,7 +298,7 @@ test('a completed import with retained metadata only keeps the ordinary ready st
   const html = job({ state: 'completed', compatibility: { status: 'compatible', findingCount: 100 } });
   assert.match(html, /FeedPak ready/);
   assert.doesNotMatch(html, /Ready with limitations|Conversion work needed|Imported with timing warnings/);
-  assert.match(job({ state: 'completed', compatibility: { status: 'limitations' } }), /Ready with limitations/);
+  assert.match(job({ state: 'completed', compatibility: { status: 'limitations' } }), /Ready — review import notes/);
 });
 
 test('missing or mismatched audio offers exactly the supported link/file replacement flow', () => {
