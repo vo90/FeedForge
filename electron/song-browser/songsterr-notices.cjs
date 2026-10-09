@@ -5,6 +5,8 @@
 const VERSION = 1;
 // Exact, qualified converter meanings only. A changed meaning is reviewed again.
 const informational = new Map([
+  ["beat.tremolo", "Tremolo picking rates and active spans are preserved for the updated highway and tab view. Trail spacing indicates speed within readable limits; individual picks are not scored separately."],
+  ["note.tremolo", "Tremolo picking rates and active spans are preserved for the updated highway and tab view. Trail spacing indicates speed within readable limits; individual picks are not scored separately."],
   [
     "beat.letRing",
     "Let-ring instructions and source-derived ringing spans are preserved for the updated game. Written rhythm and scored note durations are unchanged."
@@ -74,8 +76,8 @@ const titles = {
   'note.tied_harmonic': 'Some sustained harmonic changes are not reproduced',
   'note.tied_mute': 'A tied mute continues as a sustain',
   'note.harmonicFret': 'Some harmonic expression is simplified',
-  'beat.tremolo': 'Tremolo subdivision is not shown or scored separately',
-  'note.tremolo': 'Tremolo subdivision is not shown or scored separately',
+  'beat.tremolo': 'Some tremolo detail uses a generic cue',
+  'note.tremolo': 'Some tremolo detail uses a generic cue',
   'beat.vibrato': 'Beat-level vibrato is not applied to notes',
   'beat.wideVibrato': 'Beat-level vibrato is not applied to notes',
   'note.rightFingering': 'Picking-hand fingering is not shown',
@@ -83,6 +85,7 @@ const titles = {
 };
 
 const informationTitles = {
+  'beat.tremolo': 'Tremolo picking', 'note.tremolo': 'Tremolo picking',
   'measure.keySignature': 'Key signatures retained', 'measure.doubleBarline': 'Barline appearance',
   'tempo.text': 'Tempo descriptions', 'note.staccato': 'Staccato durations preserved',
   'beat.chord': 'Chord labels', 'notation.unpitched_mute': 'Standard notation for muted notes',

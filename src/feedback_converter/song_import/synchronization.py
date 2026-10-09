@@ -369,6 +369,9 @@ def align_from_songsterr(performance: dict, audio: dict, synchronization: dict |
                     _unavailable("invalid_bend_timing")
             if mapped_end > duration + 0.0000011 and padding is None:
                 mapped = {**note, "t": round(mapped_start, 6), "sus": round(mapped_end - mapped_start, 6)}
+                if 'tremolo_marks' in note:
+                    from .tremolo_detail import retime as retime_picking
+                    mapped['tremolo_marks'] = retime_picking(note, result, start, mapped_start, mapped['sus'])
                 if 'slide_interval' in note:
                     mapped['slide_interval'] = {k: round(_mapped_value(result, start + v) - mapped_start, 6)
                                                 for k, v in note['slide_interval'].items()}
