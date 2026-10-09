@@ -581,6 +581,7 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             planning["hybridSourceOmissions"].extend(
                 {**row, "scoreDuration": row["scoreEnd"] - row["scoreStart"]}
                 for row in (opening_receipt or {}).get("notes", []))
+            planning['hybridShortGapFills'] = contract >= 113
             composition = plan(planning, options, main_id, alignment, duration, original_charts)
             composition['selectionRevision'] = SELECTION_REVISION
             chart, notation, derived, receipt = materialize(composition, original_charts, options,
@@ -610,6 +611,10 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
                                  for p in receipt['passages'] if p.get('priority') in {'solo', 'lead'}],
                 "excluded": [{**row, "name": next((t["name"] for t in performance["tracks"] if t["id"] == row["trackId"]), row["trackId"])} for row in receipt["excluded"]],
                 "notationStatus": receipt["notationStatus"]}
+            if contract >= 113:
+                from .hybrid_reporting import missing_ranges
+                for row in hybrid_summary['limitations']:
+                    row['missingRanges'] = missing_ranges(receipt, row)
     source = performance.get("source") or {}
     coverage = {"arrangements": len(arrangements), "notes": sum(x["note_count"] for x in arrangements),
                 "excludedTrackWarnings": [str(message) for message in performance.get("warnings", [])

@@ -185,8 +185,29 @@ function playerNotices(job, report, { reportUnavailable = false } = {}) {
   if (completed && v.status !== 'passed') add('verification', 'warning', 'Source verification unavailable', v.status === 'modified' ? 'This file has changed since conversion. The report describes the original import.' : 'Source verification is unavailable for this file.');
 
   const hybrid = v.hybridLead;
-  if (completed && hybrid && (hybrid.coverageStatus === 'limited' || hybrid.planningLimited || hybrid.musicalAudit?.localLeadAudit?.unresolvedCount > 0)) {
-    add('hybrid', 'warning', 'Hybrid Lead has passages to review', 'Some source passages could not be fully accounted for in Hybrid Lead. The original arrangements are preserved; review the Hybrid Lead details below.');
+  if (completed && hybrid) {
+    const reasons = new Set((hybrid.limitations || []).map(row => row.reason));
+    if (reasons.has('unsupported_source_gesture')) {
+      const omitted = groups.get('warning:high_frets');
+      if (verified && v.omissions?.omittedNotes > 0 && omitted) {
+        omitted.message += ' These omissions also limit the source phrases available to Hybrid Lead.';
+      } else add('hybrid_unsupported', 'warning', 'Hybrid Lead has unsupported source phrases', 'Some source gestures could not be represented in Hybrid Lead. Review the affected arrangements in the details below.');
+    }
+    if (reasons.has('conflicting_primary')) {
+      add('hybrid_choices', 'warning', 'Some overlapping guitar parts were left out of Hybrid Lead', 'Some source passages conflict with the selected lead or solo. The original arrangements remain available; the details show which parts were left out.');
+      for (const row of hybrid.limitations || []) if (row.reason === 'conflicting_primary') {
+        const at = [row.name || row.trackId, ranges(row.missingRanges)].filter(Boolean).join(' · ');
+        const group = groups.get('warning:hybrid_choices');
+        if (at && !group.locations.includes(at) && group.locations.length < 8) group.locations.push(at);
+      }
+    }
+    if (hybrid.planningLimited || reasons.has('planning_limit')) add('hybrid_planning', 'warning', 'Hybrid Lead search was incomplete', 'The search reached its limit. The best available arrangement was retained, but additional guitar passages may fit.');
+    if (hybrid.musicalAudit?.localLeadAudit?.unresolvedCount > 0 || reasons.has('unresolved_primary')) add('hybrid_missing_lead', 'warning', 'Hybrid Lead has lead passages to review', 'Some identified lead passages were not accounted for. Review the original arrangements and Hybrid Lead details.');
+    if (['incompatible_setup', 'excluded_by_user', 'explicit_accompaniment'].some(reason => reasons.has(reason))) add('hybrid_sources', 'warning', 'Some Hybrid Lead sources were unavailable or excluded', 'Some identified passages could not contribute because of tuning, capo or source selection. See the source choices below.');
+    const known = new Set(['unsupported_source_gesture', 'conflicting_primary', 'planning_limit', 'unresolved_primary', 'incompatible_setup', 'excluded_by_user', 'explicit_accompaniment', 'alternate_voice']);
+    if ([...reasons].some(reason => !known.has(reason)) || hybrid.coverageStatus === 'limited' && (!reasons.size || [...reasons].every(reason => reason === 'alternate_voice'))) {
+      add('hybrid', 'warning', 'Hybrid Lead has passages to review', 'Some source passages could not be fully accounted for in Hybrid Lead. The original arrangements are preserved; review the Hybrid Lead details below.');
+    }
   }
   for (const item of job.warnings || []) {
     const message = typeof item === 'string' ? item : item?.message || JSON.stringify(item);

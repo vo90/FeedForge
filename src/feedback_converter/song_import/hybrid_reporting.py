@@ -10,6 +10,26 @@ SELECTION_REVISION = 4
 EPS = 1.1e-6
 
 
+def missing_ranges(receipt, limitation):
+    """Recording spans of unselected obligation events, not the whole phrase."""
+    tid = limitation['trackId']
+    refs = {(r['kind'], r['index']) for o in receipt.get('obligations', [])
+            if o['trackId'] == tid and o.get('reason') == limitation['reason']
+            and o['start'] < limitation['end'] and o['end'] > limitation['start']
+            for r in o['events']}
+    spans = sorted((r['recordingStart'], r['recordingEnd'])
+                   for r in receipt.get('coverage', {}).get('events', [])
+                   if r['trackId'] == tid and (r['kind'], r['index']) in refs
+                   and r['status'] != 'included')
+    merged = []
+    for a, b in spans:
+        if merged and a <= merged[-1][1] + EPS:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b])
+    return [{'start': round(a, 6), 'end': round(b, 6)} for a, b in merged]
+
+
 def _spans(chart):
     atoms = [(n, n['t']) for n in chart.get('notes', [])]
     atoms.extend((n, n.get('t', c['t'])) for c in chart.get('chords', []) for n in c.get('notes', []))

@@ -120,9 +120,9 @@ def _events(chart, part, quarter_at, duration, source_format):
     return events
 
 
-def audit(charts, receipt, facts, options, quarter_at, recording_at, duration, source_format, check, *, source=None, musical_audit=None):
+def audit(charts, receipt, facts, options, quarter_at, recording_at, duration, source_format, check, *, source=None, musical_audit=None, min_active_quarters=4):
     if options.get('policy') == 'hybrid-lead-v3':
-        return _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, duration, source_format, check, source, musical_audit)
+        return _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, duration, source_format, check, source, musical_audit, min_active_quarters)
     return _audit_v2(charts, receipt, facts, options, quarter_at, recording_at, duration, source_format, check)
 
 
@@ -639,7 +639,7 @@ def _verified_reservations(receipt, rows, selected, compatible, excluded, durati
     return valid
 
 
-def _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, duration, source_format, check, source, musical_audit=None):
+def _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, duration, source_format, check, source, musical_audit=None, min_active_quarters=4):
     main_id = options['mainTrackId']
     parts = {p['source'].id: p for p in facts['parts'] if p['source'].instrument == 'guitar'}
     rows = {tid: _events(chart, parts[tid], quarter_at, duration, source_format)
@@ -779,7 +779,7 @@ def _audit_regional(charts, receipt, facts, options, quarter_at, recording_at, d
             'unverifiedClaim': 'Unlabelled musical choices beyond strongly evidenced peer responses and listening quality are not established by this audit.',
             'localLeadAudit': local_lead,
             'optionalFillAudit': optional_fill_audit(rows, parts, selected, compatible, excluded,
-                                                   quarter_at(duration), quarter_at, recording_at),
+                                                   quarter_at(duration), quarter_at, recording_at, min_active_quarters=min_active_quarters),
         })
     def mandated_hard_conflict(tid, key):
         """Prove a local impossible handover under whole-gesture composition.

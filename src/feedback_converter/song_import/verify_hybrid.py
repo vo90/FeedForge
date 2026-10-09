@@ -201,7 +201,8 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
     if primary_policy:
         from .verify_hybrid_priority import audit
         all_charts = {a['id']: _json(z, a['file'], check) for a in originals if a.get('type') in {'guitar','lead','rhythm'}}
-        kept, removed, event_facts, primary_protected = audit(all_charts, receipt, facts, options, quarter_at, at, manifest['duration'], source.format, check, source=source, musical_audit=musical_audit)
+        kept, removed, event_facts, primary_protected = audit(all_charts, receipt, facts, options, quarter_at, at, manifest['duration'], source.format, check, source=source, musical_audit=musical_audit,
+                                                           min_active_quarters=2 if recipe.get('preservationContract', 0) >= 113 else 4)
         for kind in ('notes','chords'):
             expected_chart[kind] = [deepcopy(e) for i,e in enumerate(main[kind]) if (kind,i) in kept]
         occupied_q = [(event_facts[main_id][k]['start'],event_facts[main_id][k]['end']) for k in kept]
@@ -364,8 +365,9 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
             if regional_policy:
                 members = {key: event_facts[tid][key] for key in refs if key in event_facts[tid]}
                 attacks = {round(row['onset'], 5) for row in members.values() if any(pitched(n) for n in row['notes'])}
-                if len(attacks) < 2 or (not retained_boundary and active_quarters(members, parts[tid], lo, hi, quarter_at) < 4 - 1e-5):
-                    check.fail('hybrid_subphrase', 'hybrid/passages/variant', 'An optional subphrase needs four active beats and two pitched attacks.')
+                minimum_fill = 2 if recipe.get('preservationContract', 0) >= 113 else 4
+                if len(attacks) < 2 or (not retained_boundary and active_quarters(members, parts[tid], lo, hi, quarter_at) < minimum_fill - 1e-5):
+                    check.fail('hybrid_subphrase', 'hybrid/passages/variant', f'An optional subphrase needs {minimum_fill} active beats and two pitched attacks.')
             if retained_boundary:
                 from .verify_hybrid_optional import audit_retained_boundary, audit_retained_parent_source
                 audit_retained_boundary(passage, receipt, event_facts, at, check)
@@ -462,6 +464,13 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
                                     tracks, main_id, chart, include_rest_windows=recipe.get('preservationContract', 0) >= 36)
         check.equal('hybrid_tab_activity', 'hybrid/tabActivity', activity, receipt.get('tabActivity'))
         summary = recipe.get('hybridLeadResult', {})
+        if recipe.get('preservationContract', 0) >= 113:
+            from .hybrid_reporting import missing_ranges
+            declared = summary.get('limitations', [])
+            check.equal('hybrid_limitations', 'song_import/hybridLeadResult/limitations/count', len(receipt.get('limitations', [])), len(declared))
+            for expected, actual in zip(receipt.get('limitations', []), declared):
+                check.equal('hybrid_missing_ranges', 'song_import/hybridLeadResult/limitations/missingRanges',
+                            missing_ranges(receipt, expected), actual.get('missingRanges'))
         check.equal('hybrid_tab_activity', 'song_import/hybridLeadResult/tabActivity', activity, summary.get('tabActivity'))
         check.equal('hybrid_selection_revision', 'song_import/hybridLeadResult/selectionRevision',
                     4 if recipe.get('preservationContract', 0) >= 37 else 3 if recipe.get('preservationContract', 0) >= 36 else 2, summary.get('selectionRevision'))

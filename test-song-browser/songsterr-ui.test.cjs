@@ -20,6 +20,17 @@ const { playerNotices } = require('../electron/song-browser/songsterr-notices.cj
 const job = (change) => { const value = { ...base, verification: { status: 'passed' }, ...change }; return render(SongsterrJob, {
   job: { ...value, playerNotices: playerNotices(value, change.report || null) }, api: {}, action() {}, busy: false }); };
 
+test('hybrid limitation details show omitted recording ranges, not quarter-beat values', () => {
+  const html = job({ state: 'completed', verification: { status: 'passed', hybridLead: {
+    status: 'created', mainName: 'Lead', coverageStatus: 'limited', passageCount: 1, contributors: [],
+    limitations: [{ trackId: '7', name: 'Right guitar', reason: 'conflicting_primary', start: 166.5, end: 184.5,
+      missingRanges: [{ start: 153.25, end: 155.775 }] }]
+  } } });
+  assert.match(html, /2:33–2:36/);
+  assert.match(html, /Some source material overlaps the selected lead or solo/);
+  assert.doesNotMatch(html, /166\.5|184\.5/);
+});
+
 test('uncertain timing is explained without accusing the source or claiming a pass', () => {
   const verification = { status: 'passed', timing: 'source_map', timingAssessment: {
     version: 'local-recording-clock-v3', status: 'inconclusive', supportedWindows: 1, windowCount: 27,
