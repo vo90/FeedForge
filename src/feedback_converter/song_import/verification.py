@@ -22,13 +22,13 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 110
+VERSION = 111
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
 TECHNIQUES.add("fg")
 TECHNIQUES.add("slide_interval")
-TECHNIQUES.add("let_ring_sus")
+TECHNIQUES.update({"let_ring_sus", "tremolo_marks"})
 TUNINGS = {"guitar": {6: [40, 45, 50, 55, 59, 64], 7: [35, 40, 45, 50, 55, 59, 64], 8: [30, 35, 40, 45, 50, 55, 59, 64]},
            "bass": {4: [28, 33, 38, 43], 5: [23, 28, 33, 38, 43], 6: [23, 28, 33, 38, 43, 48]}}
 
@@ -172,7 +172,7 @@ def _notes(wanted, actual, check, part, duration):
         for key in ("t", "sus"):
             check.near("note_time" if key == "t" else "note_sustain", loc + "/" + key, a[key], b.get(key, 0))
         for key in TECHNIQUES:
-            if key in {"slide_interval", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "whammy", "harmonic_changes", "vibrato_marks"}:
+            if key in {"slide_interval", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "whammy", "harmonic_changes", "vibrato_marks", "tremolo_marks"}:
                 continue
             wanted_value, actual_value = a.get(key), b.get(key)
             if key == "fg" and key in b and (type(actual_value) is not int or not 0 <= actual_value <= 4):
@@ -183,6 +183,8 @@ def _notes(wanted, actual, check, part, duration):
                 check.near("note_technique", loc + "/" + key, wanted_value, actual_value, TIME_TOLERANCE if key == "let_ring_sus" else 1e-8)
             else:
                 check.equal("note_technique", loc + "/" + key, wanted_value, actual_value)
+        from .verify_tremolo import compare as compare_picking
+        compare_picking(a.get('tremolo_marks'), b.get('tremolo_marks'), b.get('sus', 0), check, loc+'/tremolo_marks')
         from .verify_vibrato import compare as compare_vibrato
         compare_vibrato(a.get('vibrato_marks'), b.get('vibrato_marks'), b.get('sus', 0), check, loc+'/vibrato_marks')
         _slide_marks(a.get("slide_out_marks", []), b, check, loc)
@@ -720,6 +722,9 @@ def _terminal_adjustments(wanted, alignment, recipe, archive, duration, source, 
                             "exportedDuration": shortened, "trimmedSeconds": round(sustain - shortened, 6),
                             **({"slideOuts": slide_changes} if slide_changes else {})})
             note["sus"] = shortened
+            if 'tremolo_marks' in note:
+                note['tremolo_marks'] = [{**m, 'end': min(m['end'], shortened)}
+                    for m in note['tremolo_marks'] if m['start'] < shortened]
             if 'vibrato_marks' in note:
                 note['vibrato_marks'] = [{**m, 'end': min(m['end'], shortened)}
                     for m in note['vibrato_marks'] if m['start'] < shortened]
@@ -1470,6 +1475,9 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             timeline = _json(z, manifest["song_timeline"], check)
             for key in ("beats", "sections", "time_signatures", "tempos"):
                 _timeline(wanted[key], timeline.get(key), check, "song_timeline/" + key)
+            if contract >= 111:
+                from .verify_tremolo import attach as verify_picking
+                verify_picking(source, wanted, alignment, duration)
             if contract >= 110:
                 from .verify_let_ring import attach as verify_ringing
                 verify_ringing(source, wanted, alignment, duration)

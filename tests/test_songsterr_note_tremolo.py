@@ -80,7 +80,7 @@ def test_ties_keep_existing_whole_sustain_instruction_with_disclosed_limitation(
     assert len(notes) == 1 and notes[0]['tr'] is True and notes[0]['sus'] == 2
     independent = expected(songsterr(doc), {'offset':0, 'scale':1})['parts'][0]['notes']
     assert len(independent) == 1 and independent[0]['note']['tr'] is True
-    assert any('one marker for the whole sustain' in f['message'] for f in p['compatibilityReport']['findings'])
+    assert any('rates and active spans are preserved' in f['message'] for f in p['compatibilityReport']['findings'])
 
 
 @pytest.mark.parametrize('fault', [None, 'remove_mark', 'extra_mark', 'move_attack', 'change_pitch', 'remove_warning', 'change_rate'])

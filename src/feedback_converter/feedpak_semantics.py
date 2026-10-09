@@ -150,6 +150,12 @@ def _validate_note(
 ) -> None:
     if timed:
         _nonnegative_number(note.get("t"), f"{path}/t", error)
+    if 'tremolo_marks' in note:
+        from .tremolo import validate
+        try:
+            validate(note['tremolo_marks'], note.get('sus', 0))
+            if not note.get('tr'): raise ValueError('Tremolo intervals require tremolo instruction.')
+        except ValueError as exc: error(f'{path}/tremolo_marks: {exc}')
     if 'let_ring_sus' in note:
         span = note['let_ring_sus']
         if (type(span) not in (int, float) or not math.isfinite(span)

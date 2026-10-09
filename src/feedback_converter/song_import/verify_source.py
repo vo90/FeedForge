@@ -224,6 +224,7 @@ class Atom:
     explicit_hopo_origin: bool = False
     explicit_slide: str | None = None
     explicit_note_vibrato: bool = False
+    tremolo_rate: list | bool | None = None
 
 
 @dataclass
@@ -1108,6 +1109,8 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                                           bool(note.get("hp"))))
                         fact["notes"].append(atoms[-1])
                         atoms[-1].explicit_tie = note.get("tie") is True
+                        rate = beat.get('tremolo') or note.get('tremolo')
+                        atoms[-1].tremolo_rate = rate if rate else None
                         atoms[-1].explicit_hopo_origin = note.get("hp") is True
                         atoms[-1].explicit_slide = note.get("slide")
                         atoms[-1].explicit_note_vibrato = note.get("vibrato") is True

@@ -494,6 +494,8 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
                                 parsed.effects["pkd"] = 1 if strum_direction == "up" else 0
                             parsed.source_id, parsed.beat_id, parsed.voice_id = source_id, beat_id, str(vi)
                             parsed.attack_offset = offset
+                            value = beat.get("tremolo") or note.get("tremolo")
+                            parsed.tremolo_rate = value if value else None
                             if boundary_grace:
                                 parsed.effects["__leading_grace"] = True
                             if position < measures[bi].length:

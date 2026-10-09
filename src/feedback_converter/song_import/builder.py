@@ -87,6 +87,9 @@ def _retime_note(note: dict, alignment: dict, duration: float, *, chord_time: fl
                                              [p['score'] for p in alignment.get('anchors', [])])
         except ValueError as exc:
             raise ImportFailure("unsupported_score", str(exc)) from exc
+    if 'tremolo_marks' in note:
+        from .tremolo_detail import retime as retime_picking
+        result['tremolo_marks'] = retime_picking(note, alignment, original, start, sustain)
     if 'vibrato_marks' in note:
         from ..vibrato import validate_marks
         try:
@@ -266,6 +269,21 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         raise ImportFailure('unsupported_score', 'Measure-boundary playback requires the original tab and preservation contract 99.')
     finger_policy = source_model.get('fingerVibratoPolicy')
     contract = (recipe or {}).get('preservationContract', 0)
+    if compatibility is not None:
+        compatibility = deepcopy(compatibility)
+        if contract >= 111:
+            from .tremolo_detail import report_findings as report_picking
+            report_picking(performance, compatibility)
+        else:
+            from .compatibility import LIMITATIONS
+            for finding in compatibility.get('findings', []):
+                if finding['feature'] in ('note.tremolo','beat.tremolo') and finding['impact'] != 'blocking':
+                    finding['message'] = LIMITATIONS[tuple(finding['feature'].split('.'))]
+    if contract < 111:
+        performance = deepcopy(performance)
+        for track in performance.get('tracks', []):
+            for n in [*track.get('notes', []), *[n for c in track.get('chords', []) for n in c.get('notes', [])]]:
+                n.pop('tremolo_marks', None)
     if contract < 110:
         performance = deepcopy(performance)
         for track in performance.get('tracks', []):

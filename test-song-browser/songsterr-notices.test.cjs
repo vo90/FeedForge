@@ -13,6 +13,14 @@ const keySignature = { feature: 'measure.keySignature', category: 'game_limitati
 const letRing = { feature: 'beat.letRing', category: 'game_limitation', impact: 'display_or_expression', message: 'Let-ring instruction is not shown.' };
 const findings = rows => ({ version: 109, status: 'limitations', findingCount: rows.length, findings: rows });
 
+test('qualified picking rates are information, generic and historical detail remain visible', () => {
+  const f={feature:'note.tremolo',category:'game_limitation',impact:'display_or_expression',
+    message:'Tremolo picking rates and active spans are preserved for the updated highway and tab view. Trail spacing indicates speed within readable limits; individual picks are not scored separately.'};
+  assert.equal(classifyFinding(f),'info');
+  for(const message of ['Overlapping tremolo instructions disagree.', 'Exact subdivision and within-tie timing remain in the source.'])
+    assert.equal(classifyFinding({...f,message}),'warning');
+});
+
 test('supported let-ring spans are information while older missing-display reports remain warnings', () => {
   const supported = {...letRing, message: 'Let-ring instructions and source-derived ringing spans are preserved for the updated game. Written rhythm and scored note durations are unchanged.'};
   assert.equal(classifyFinding(supported), 'info');

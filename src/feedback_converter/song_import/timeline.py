@@ -63,7 +63,9 @@ def render(score: Score) -> dict:
     result = _render(score)
     result = project(score, result, _render) if score.source.get('format') == 'songsterr' else result
     from .let_ring import attach
-    return attach(score, result)
+    result = attach(score, result)
+    from .tremolo_detail import attach as picking
+    return picking(score, result)
 
 
 def _render(score: Score) -> dict:
