@@ -97,9 +97,12 @@ def materialize(plan, originals, options, source_hash, audio_hash, duration, gen
     # Keep guidance ownership until finalization can validate its digest and
     # regenerate the two generated fields from the completed selection.
     inherited_guidance = chart.get('ext', {}).get('chartGuidance')
+    inherited_provenance = chart.get('ext', {}).get('guidanceProvenance')
     chart.pop('ext', None)
     if inherited_guidance is not None:
         chart['ext'] = {'chartGuidance': inherited_guidance}
+    if inherited_provenance is not None:
+        chart.setdefault('ext', {})['guidanceProvenance'] = inherited_provenance
     # Resolve lineage through existing endpoint projection before selecting.
     for row in [*plan.get('mainEvents', []), *plan.get('removedMain', [])]:
         row['sourceIndex'] = row['index']
@@ -146,6 +149,11 @@ def materialize(plan, originals, options, source_hash, audio_hash, duration, gen
     # The base's generated positions no longer describe the completed Hybrid.
     # Regenerate only fields with intact ownership, before all final hashes.
     finalize_guidance(chart, regenerate=True)
+    from ..guidance_provenance import resolve, stamp
+    for key in ('chords', 'templates'):
+        state = resolve(chart, key)
+        if state['integrity'] != 'valid' or state['applicability'] != 'current':
+            stamp(chart, key, 'generated', producer='feedforge-hybrid-v1', policy='tab-chord-grouping-v1')
     if generate_difficulty:
         ensure_difficulty(chart, duration=duration)
     guidance_errors = check_guidance(chart, duration=duration)

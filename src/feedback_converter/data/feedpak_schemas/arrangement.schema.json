@@ -6,6 +6,7 @@
   "type": "object",
   "additionalProperties": true,
   "properties": {
+    "ext": { "$ref": "#/$defs/extensions" },
     "name": { "type": "string" },
     "tuning": { "type": "array", "items": { "type": "integer" } },
     "capo": { "type": "integer" },
@@ -32,6 +33,51 @@
     "sections": { "type": "array", "items": { "$ref": "#/$defs/section" } }
   },
   "$defs": {
+    "extensions": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "guidanceProvenance": {
+          "type": "object",
+          "required": ["version"],
+          "properties": { "version": { "type": "integer" } },
+          "if": { "properties": { "version": { "const": 1 } } },
+          "then": {
+            "required": ["fields"],
+            "properties": {
+              "fields": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "anchors": { "$ref": "#/$defs/guidanceRecord" },
+                  "handshapes": { "$ref": "#/$defs/guidanceRecord" },
+                  "chords": { "$ref": "#/$defs/guidanceRecord" },
+                  "templates": { "$ref": "#/$defs/guidanceRecord" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "guidanceRecord": {
+      "type": "object",
+      "required": ["origin", "producer", "sha256"],
+      "additionalProperties": true,
+      "allOf": [
+        { "if": { "properties": { "origin": { "const": "mixed" } } }, "then": { "required": ["rows", "policy", "inputSha256"] } },
+        { "if": { "properties": { "origin": { "const": "generated" } } }, "then": { "required": ["policy", "inputSha256"] } }
+      ],
+      "properties": {
+        "origin": { "enum": ["source", "user", "generated", "unknown", "mixed"] },
+        "producer": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "inputSha256": { "type": ["string", "null"] },
+        "policy": { "type": ["string", "null"] },
+        "intentionalEmpty": { "type": "boolean" },
+        "rows": { "type": "array", "items": { "type": "object", "required": ["origin", "sha256"] } }
+      }
+    },
     "note": {
       "type": "object",
       "required": ["t", "s", "f"],
@@ -138,7 +184,9 @@
         "start_time": { "type": "number" },
         "end_time": { "type": "number" },
         "max_difficulty": { "type": "integer" },
-        "levels": { "type": "array" }
+        "levels": { "type": "array", "items": {
+          "type": "object", "properties": { "ext": { "$ref": "#/$defs/extensions" } }
+        } }
       }
     },
     "tempoEvent": {

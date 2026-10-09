@@ -412,6 +412,7 @@ def test_open_only_chord_after_a_stretch_returns_to_four_context_cells():
 def test_explicit_regeneration_upgrades_old_owned_positions_without_changing_music():
     data = chart(chords=[chord(0,(5,7))],templates=[template((5,7))])
     finalize(data)
+    data["ext"].pop("guidanceProvenance")  # Simulate an actual legacy pack.
     data["ext"]["chartGuidance"].pop("positionPolicy")
     data["anchors"] = [{"time":0.,"fret":4,"width":4}]
     rehash(data)
