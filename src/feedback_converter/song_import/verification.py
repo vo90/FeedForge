@@ -22,12 +22,13 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 109
+VERSION = 110
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
 TECHNIQUES.add("fg")
 TECHNIQUES.add("slide_interval")
+TECHNIQUES.add("let_ring_sus")
 TUNINGS = {"guitar": {6: [40, 45, 50, 55, 59, 64], 7: [35, 40, 45, 50, 55, 59, 64], 8: [30, 35, 40, 45, 50, 55, 59, 64]},
            "bass": {4: [28, 33, 38, 43], 5: [23, 28, 33, 38, 43], 6: [23, 28, 33, 38, 43, 48]}}
 
@@ -178,8 +179,8 @@ def _notes(wanted, actual, check, part, duration):
                 check.fail("note_fingering", loc + "/fg", "Finger hints must be integers from 0 (thumb) to 4.")
             if wanted_value is None and (actual_value is None or actual_value is False):
                 continue
-            if key == "bn" and isinstance(wanted_value, (int, float)):
-                check.near("note_technique", loc + "/bn", wanted_value, actual_value, 1e-8)
+            if key in {"bn", "let_ring_sus"} and isinstance(wanted_value, (int, float)):
+                check.near("note_technique", loc + "/" + key, wanted_value, actual_value, TIME_TOLERANCE if key == "let_ring_sus" else 1e-8)
             else:
                 check.equal("note_technique", loc + "/" + key, wanted_value, actual_value)
         from .verify_vibrato import compare as compare_vibrato
@@ -1469,6 +1470,9 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             timeline = _json(z, manifest["song_timeline"], check)
             for key in ("beats", "sections", "time_signatures", "tempos"):
                 _timeline(wanted[key], timeline.get(key), check, "song_timeline/" + key)
+            if contract >= 110:
+                from .verify_let_ring import attach as verify_ringing
+                verify_ringing(source, wanted, alignment, duration)
             selected = [p for p in wanted["parts"] if p["notes"]]
             check.equal("arrangement_count", "manifest/arrangements", len(selected), len(arrangements))
             unmatched = list(arrangements)

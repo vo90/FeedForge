@@ -34,7 +34,7 @@ def test_only_active_guitar_bass_marks_get_located_nonblocking_warning(enabled, 
         assert f['category'] == 'game_limitation'
         assert (f['measure'], f['voice'], f['beat']) == (1,1,3)
         assert f['value'] is True and f['retained'] == 'original_source'
-        assert 'does not display' in f['message'] and 'durations' in f['message']
+        assert 'source-derived ringing spans' in f['message'] and 'scored note durations are unchanged' in f['message']
 
 
 @pytest.mark.parametrize('fault', [None, 'remove_warning', 'change_warning', 'remove_mark', 'change_pitch', 'extend_sustain'])

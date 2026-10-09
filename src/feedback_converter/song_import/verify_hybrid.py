@@ -7,6 +7,7 @@ It does not reproduce the producer's musical scoring. Regional policies also
 check conservative independently established solo-owner obligations.
 """
 from copy import deepcopy
+from bisect import bisect_right
 from dataclasses import asdict
 import hashlib
 import json
@@ -136,6 +137,21 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
     check.equal("hybrid_setup", "arrangement/tuning", main["tuning"], arr.get("tuning"))
     check.equal("hybrid_setup", "arrangement/capo", main["capo"], arr.get("capo", 0))
     expected_chart = deepcopy(main)
+    def ring_limit(event, edge):
+        children = event['notes'] if 'notes' in event else [event]
+        for child in children:
+            if 'let_ring_sus' not in child:
+                continue
+            limit = round(edge-child.get('t', event['t']), 6)
+            span = min(child['let_ring_sus'], limit)
+            if span <= child.get('sus', 0)+TOL:
+                del child['let_ring_sus']
+            else:
+                child['let_ring_sus'] = span
+    for event in [*expected_chart['notes'], *expected_chart['chords']]:
+        boundaries = [p['recordingStart'] for p in receipt.get('passages', [])
+                      if p['recordingStart'] > event['t']]
+        ring_limit(event, min(boundaries, default=manifest['duration']))
     expected_chart["name"] = "Hybrid Lead"
     expected_chart.pop("phrases", None)
     expected_chart.pop("ext", None)
@@ -281,6 +297,7 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
                 check.fail("hybrid_duplicate", "hybrid/passages", "A donor event was inserted twice.")
             used_refs.add(key)
             event = deepcopy(donor[ref["kind"]][ref["index"]])
+            ring_limit(event, passage['recordingEnd'])
             copied = [event] if ref["kind"] == "notes" else [{"t": event["t"], **n} for n in event["notes"]]
             matches = [n for n in parts[tid]["notes"] if any(abs(n["note"]["t"] - c["t"]) <= TOL and
                 n["note"]["s"] == c["s"] and n["note"]["f"] == c["f"] for c in copied)]
@@ -393,6 +410,18 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
     check.equal("hybrid_sources", "hybrid/sources", sorted(seen_sources), sorted(source_rows))
     for key in ("notes", "chords"):
         expected_chart[key].sort(key=lambda e: e["t"])
+    ring_notes = [(n, n['t']) for n in expected_chart['notes']]
+    ring_notes += [(n, n.get('t', c['t'])) for c in expected_chart['chords'] for n in c['notes']]
+    attacks = {}
+    for n, t in ring_notes:
+        attacks.setdefault(n['s'], set()).add(t)
+    attacks = {s: sorted(times) for s, times in attacks.items()}
+    for n, t in ring_notes:
+        if 'let_ring_sus' in n:
+            times = attacks[n['s']]
+            index = bisect_right(times, t+1e-8)
+            edge = times[index] if index < len(times) else manifest['duration']
+            ring_limit({'t':t,'notes':[n]}, edge)
     if primary_policy:
         referenced = {c['id'] for c in expected_chart['chords']}
         indices = [i for i,t in enumerate(expected_chart['templates']) if i in referenced or max(t['frets'], default=-1) <= 24]

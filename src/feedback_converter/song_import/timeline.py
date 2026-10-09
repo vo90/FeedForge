@@ -61,7 +61,9 @@ def playback_order(measures: list[Measure]) -> list[int]:
 def render(score: Score) -> dict:
     from .voices import project
     result = _render(score)
-    return project(score, result, _render) if score.source.get('format') == 'songsterr' else result
+    result = project(score, result, _render) if score.source.get('format') == 'songsterr' else result
+    from .let_ring import attach
+    return attach(score, result)
 
 
 def _render(score: Score) -> dict:

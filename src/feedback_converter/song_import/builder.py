@@ -179,6 +179,13 @@ def _retime_note(note: dict, alignment: dict, duration: float, *, chord_time: fl
             if "t" not in result:
                 adjusted.pop("t")
             result = adjusted
+    if 'let_ring_sus' in note:
+        ring_end = min(duration, map_time(alignment, original + note['let_ring_sus']))
+        span = round(ring_end - start, 6)
+        if span > result.get('sus', 0) + 0.0000011:
+            result['let_ring_sus'] = span
+        else:
+            result.pop('let_ring_sus', None)
     return result
 
 
@@ -259,6 +266,11 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         raise ImportFailure('unsupported_score', 'Measure-boundary playback requires the original tab and preservation contract 99.')
     finger_policy = source_model.get('fingerVibratoPolicy')
     contract = (recipe or {}).get('preservationContract', 0)
+    if contract < 110:
+        performance = deepcopy(performance)
+        for track in performance.get('tracks', []):
+            for n in [*track.get('notes', []), *[n for c in track.get('chords', []) for n in c.get('notes', [])]]:
+                n.pop('let_ring_sus', None)
     declared_finger_policy = (recipe or {}).get('fingerVibratoPolicy')
     if source_model.get('format') == 'songsterr':
         from .songsterr import NOTE_VIBRATO_POLICY

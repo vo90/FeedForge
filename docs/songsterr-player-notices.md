@@ -21,9 +21,15 @@ Historical FeedPaks and their reports are not rewritten.
   caveat retained. Suspected mismatches and explicit accepted-with-warning timing
   adjustments remain warnings. A timing pass is never described as proving every
   note correct. Missing/modified verification cannot become a success claim.
-- Let-ring stays a limitation: written and tied durations are preserved, but the
-  game does not fully convey the instruction. This change does not resolve that
-  separate capability gap.
+- Contract 110 retains `lr` and adds optional `let_ring_sus` in recording seconds.
+  Written rhythm and scored `sus` stay unchanged. The updated highway uses the
+  longer span only in its visual view, and tabview exports the let-ring marking.
+  Qualified runs close at the last nonempty beat, are clipped by a same-string
+  reattack, recording end and Hybrid Lead handover. Native pitch gestures keep
+  their own duration policy; staccato halves the ringing span in the source clock.
+  Muted notes do not get pitched ringing tails. Fresh imports report this as
+  information; older missing-display reports remain warnings. Existing packages
+  are not rewritten and need reimporting to acquire source-derived spans.
 - The app does not detect the target game version. Required consumer support is
   disclosed in import details, without claiming an installed version is supported.
 

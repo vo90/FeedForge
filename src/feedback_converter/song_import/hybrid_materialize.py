@@ -110,6 +110,11 @@ def materialize(plan, originals, options, source_hash, audio_hash, duration, gen
             wanted = {r['index'] for r in plan['mainEvents'] if r['kind'] == kind}
             chart[kind] = [e for i, e in enumerate(chart[kind]) if i in wanted]
     offsets = {plan["mainTrackId"]: 0}
+    from .let_ring import clip_event, clip_chart
+    for event in [*chart['notes'], *chart['chords']]:
+        boundary = min((p['recordingStart'] for p in plan['passages']
+                        if p['recordingStart'] > event['t']), default=duration)
+        clip_event(event, boundary)
     for p in plan["passages"]:
         original = originals[p["trackId"]]
         if p["trackId"] not in offsets:
@@ -125,11 +130,13 @@ def materialize(plan, originals, options, source_hash, audio_hash, duration, gen
             ref["sourceIndex"] = ref["index"]
             ref["index"] = index
             event = deepcopy(original["chart"][ref["kind"]][index])
+            clip_event(event, p['recordingEnd'])
             if ref["kind"] == "chords":
                 event["id"] += offsets[p["trackId"]]
             chart[ref["kind"]].append(event)
     for key in ("notes", "chords"):
         chart[key].sort(key=lambda e: e["t"])
+    clip_chart(chart)
     from .tone_timeline import hybrid as hybrid_tones
     tones = hybrid_tones(plan, originals, duration, passage_boundaries=tone_passage_boundaries)
     if tones is not None:

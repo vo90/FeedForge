@@ -150,6 +150,11 @@ def _validate_note(
 ) -> None:
     if timed:
         _nonnegative_number(note.get("t"), f"{path}/t", error)
+    if 'let_ring_sus' in note:
+        span = note['let_ring_sus']
+        if (type(span) not in (int, float) or not math.isfinite(span)
+                or span <= note.get('sus', 0) or note.get('mt')):
+            error(f'{path}/let_ring_sus: requires a finite ringing span beyond written sustain on a pitched note')
     string = note.get("s")
     if (
         isinstance(string, int)

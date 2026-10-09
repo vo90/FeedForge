@@ -15,7 +15,7 @@ from .songsterr_legacy_effects import (FIELDS as LEGACY_BEAT_EFFECTS, beat_effec
                                      retention as legacy_beat_effect_retention)
 from .model import ScoreImportError, integer, rational
 
-VERSION = 109
+VERSION = 110
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -57,7 +57,7 @@ LIMITATIONS = {
     ("beat", "tremoloBar"): "Whammy-bar pitch curves are preserved. Bar expression is optional; an updated game is required for the display and scoring policy.",
     ("beat", "vibratoWithTremoloBar"): "Slight/wide bar vibrato is preserved. These notes are visual only in the updated game because the source does not specify an exact pitch curve; they do not reduce accuracy or streaks.",
     ("note", "pickScrape"): "Pick scrapes: visual only, not scored. Direction, strings and timing are preserved; an updated game is required to display them.",
-    ("beat", "letRing"): "The let-ring marking is retained in the original source. Written and tied note durations are preserved; the game does not display this marking or extend ringing beyond those durations.",
+    ("beat", "letRing"): "Let-ring instructions and source-derived ringing spans are preserved for the updated game. Written rhythm and scored note durations are unchanged.",
     ("measure", "doubleBarline"): "The double barline is retained in the source; the game uses its ordinary measure display. Notes and timing are unchanged.",
     ("measure", "keySignature"): "The written key signature is retained in the source. Explicit pitches are converted unchanged.",
     ("tempo", "text"): "The descriptive tempo text is retained in the source. The explicit numeric tempo is converted unchanged.",

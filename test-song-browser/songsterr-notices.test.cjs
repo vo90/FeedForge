@@ -13,6 +13,15 @@ const keySignature = { feature: 'measure.keySignature', category: 'game_limitati
 const letRing = { feature: 'beat.letRing', category: 'game_limitation', impact: 'display_or_expression', message: 'Let-ring instruction is not shown.' };
 const findings = rows => ({ version: 109, status: 'limitations', findingCount: rows.length, findings: rows });
 
+test('supported let-ring spans are information while older missing-display reports remain warnings', () => {
+  const supported = {...letRing, message: 'Let-ring instructions and source-derived ringing spans are preserved for the updated game. Written rhythm and scored note durations are unchanged.'};
+  assert.equal(classifyFinding(supported), 'info');
+  assert.equal(classifyFinding(letRing), 'warning');
+  const result = playerNotices(completed, findings([supported, {...supported, measure: 2}]));
+  assert.equal(result.warnings.length, 0);
+  assert.ok(result.information.some(g => g.id === 'beat.letRing'));
+});
+
 test('thousands of routine records do not make an import a warning; source evidence is unchanged', () => {
   const report = findings(Array.from({ length: 2400 }, (_, i) => ({ ...keySignature, measure: i + 1 })));
   const job = { ...completed, warnings: report.findings.map(f => `Key signature in Guitar, measure ${f.measure}, is retained in source evidence only.`)

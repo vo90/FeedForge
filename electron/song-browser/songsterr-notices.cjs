@@ -6,6 +6,10 @@ const VERSION = 1;
 // Exact, qualified converter meanings only. A changed meaning is reviewed again.
 const informational = new Map([
   [
+    "beat.letRing",
+    "Let-ring instructions and source-derived ringing spans are preserved for the updated game. Written rhythm and scored note durations are unchanged."
+  ],
+  [
     "measure.keySignature",
     "The written key signature is retained in the source. Explicit pitches are converted unchanged."
   ],
@@ -61,7 +65,7 @@ const policies = new Map([
   ]
 ]);
 const titles = {
-  'beat.letRing': 'Let-ring instructions are not shown',
+  'beat.letRing': 'Let-ring instructions',
   'beat.wahwah': 'Wah-pedal instructions are not shown',
   'note.bend_timing': 'Some bend timing is uncertain',
   'note.fret_range': 'High-fret notes omitted',
