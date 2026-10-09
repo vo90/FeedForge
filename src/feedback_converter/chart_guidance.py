@@ -8,6 +8,7 @@ from copy import deepcopy
 import hashlib
 import json
 from .generated_hand_positions import POSITION_POLICY, PREVIOUS_POSITION_POLICIES, _members, generate_positions
+from .guidance_provenance import protected, record, resolve, stamp
 
 POLICY = "feedforge-chart-guidance-v2"
 FIELDS = ("anchors", "handshapes")
@@ -71,7 +72,28 @@ def finalize(chart, *, regenerate=False, window=None):
     """
     previous = chart.get("ext", {}).get("chartGuidance")
     input_hash = music_digest(chart)
-    if previous is not None:
+    # New per-field ownership takes precedence over the legacy aggregate receipt.
+    # Regeneration is explicit and may replace only intact generated fields.
+    owned = [k for k in FIELDS if record(chart, k) is not None]
+    if owned or "guidanceProvenance" in chart.get("ext", {}):
+        fields = []
+        for key in FIELDS:
+            state = resolve(chart, key)
+            proof = record(chart, key)
+            if regenerate and proof and state["origin"] == "generated" and (
+                    proof.get("producer") != POLICY or proof.get("policy") not in (*PREVIOUS_POSITION_POLICIES, POSITION_POLICY)):
+                raise ValueError("Unknown chart guidance policy; preserve it for review.")
+            if state["origin"] == "generated" and state["integrity"] != "valid":
+                raise ValueError("Generated chart guidance was edited; preserve it for review.")
+            if state["origin"] == "generated" and state["applicability"] == "stale" and not regenerate:
+                raise ValueError("The arrangement changed; regenerate its guidance explicitly.")
+            if regenerate and state["origin"] == "generated" and state["integrity"] == "valid":
+                fields.append(key)
+            elif not chart.get(key) and not protected(chart, key):
+                fields.append(key)
+        if not fields:
+            return deepcopy(previous)
+    elif previous is not None:
         if (previous.get("policy") != POLICY or previous.get("sourceAuthored") is not False
                 or previous.get("positionPolicy") not in (*PREVIOUS_POSITION_POLICIES, POSITION_POLICY)):
             raise ValueError("Unknown chart guidance provenance; preserve it for review.")
@@ -86,7 +108,7 @@ def finalize(chart, *, regenerate=False, window=None):
         if not regenerate:
             raise ValueError("The arrangement changed; regenerate its guidance explicitly.")
     else:
-        fields = [k for k in FIELDS if not chart.get(k)]
+        fields = [k for k in FIELDS if not chart.get(k) and not protected(chart, k)]
     if not fields:
         return None
     _, attacks = _members(chart)
@@ -119,4 +141,6 @@ def finalize(chart, *, regenerate=False, window=None):
     # Prepare everything before mutating the caller; musical keys are untouched.
     chart.update(additions)
     chart.setdefault("ext", {})["chartGuidance"] = receipt
+    for key in fields:
+        stamp(chart, key, "generated", producer=POLICY, policy=POSITION_POLICY)
     return deepcopy(receipt)

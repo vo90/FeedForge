@@ -3280,6 +3280,25 @@ def _song_to_arrangement(
     source_identity = _source_identity_for_arrangement(source_path, metadata)
     if source_identity:
         arrangement["ext"] = {"source": source_identity}
+    from .guidance_provenance import FIELDS, stamp
+    from .chart_guidance import finalize
+    # This converter has the source chart in hand; an old filename/tag alone
+    # is deliberately insufficient evidence for readers to make this claim.
+    scopes = [(arrangement, None), *((lv, (p["start_time"], p["end_time"]))
+              for p in arrangement.get("phrases", []) for lv in p["levels"])]
+    for scope, window in scopes:
+        for key in FIELDS:
+            if scope.get(key):
+                stamp(scope, key, "source", producer="feedforge-archive-converter-v1")
+        # An empty legacy source array is not an explicit request to suppress
+        # guidance. Complete only absent lanes/handshapes; actual supplied data
+        # above is protected independently. Explicit emptiness needs a receipt.
+        context = {k: arrangement[k] for k in ("tuning", "capo", "centOffset", "templates", "beats")}
+        context.update(scope)
+        finalize(context, window=window)
+        for key in ("anchors", "handshapes", "ext"):
+            if key in context:
+                scope[key] = context[key]
     if generate_difficulty and ensure_difficulty(arrangement, duration=getattr(song.metadata, "songLength", 0)):
         if conversion_details is not None:
             conversion_details.append(ConversionDetail(

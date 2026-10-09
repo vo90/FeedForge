@@ -521,6 +521,9 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             chart['wah'] = export_wah(track['wah'], alignment, attack_boundary)
         from .strum_groups import attach as attach_strum_groups
         attach_strum_groups(chart, track['id'], performance.get('strumEvidence', []), alignment)
+        from ..guidance_provenance import stamp
+        for key in ("chords", "templates"):
+            stamp(chart, key, "generated", producer="feedforge-song-import-v1", policy="tab-chord-grouping-v1")
         finalize_guidance(chart)
         if settings.get("generateDifficulty") is True:
             ensure_difficulty(chart, duration=duration)
