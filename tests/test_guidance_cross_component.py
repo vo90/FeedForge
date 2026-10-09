@@ -26,8 +26,10 @@ def test_songsterr_package_editor_save_reload_preserves_guidance(tmp_path, monke
     monkeypatch.syspath_prepend(str(editor_root))
     from lib.song import arrangement_from_wire, arrangement_to_wire, phrase_to_wire
     shared = Path(os.environ["GUIDANCE_CORE_ROOT"]) / "lib/guidance_provenance.py"
-    assert shared.read_bytes() == (editor_root / "guidance_provenance.py").read_bytes()
-    assert shared.read_bytes() == (Path(__file__).parents[1] / "src/feedback_converter/guidance_provenance.py").read_bytes()
+    # Git may check out the three repositories with different Windows EOL
+    # settings. Compare source exactly after universal newline decoding.
+    assert shared.read_text(encoding="utf-8") == (editor_root / "guidance_provenance.py").read_text(encoding="utf-8")
+    assert shared.read_text(encoding="utf-8") == (Path(__file__).parents[1] / "src/feedback_converter/guidance_provenance.py").read_text(encoding="utf-8")
     *_, archive, report = build(tmp_path, difficulty=True)
     assert report["status"] == "passed"
     with ZipFile(archive) as pack:
