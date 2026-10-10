@@ -16,7 +16,7 @@ import re
 
 from .verify_timeline import Clock, RecordingMap
 from fractions import Fraction
-from functools import lru_cache
+from .verify_inverse import inverse_clock
 
 POLICY = "hybrid-lead-v1"
 TOL = 0.0000011
@@ -166,20 +166,7 @@ def verify(z, manifest, originals, derived, facts, source, alignment, source_has
         # A flat opening has no unique inverse. The recording player enters
         # at the last shared boundary, never at the omitted first bar.
         first_quarter = float(clock.measure_starts[recording.collapsed_count])
-    @lru_cache(maxsize=100000)
-    def quarter_at(seconds):
-        low, high = first_quarter, float(clock.quarters)
-        for _ in range(45):
-            mid = (low + high) / 2
-            # Search the continuous clock. Serialized microsecond rounding
-            # creates plateaus whose left edge is not the inverse position,
-            # especially in short recording intervals. Keep `at` rounded only
-            # for checks against serialized timestamps; do not relax tolerances.
-            if float(recording.raw(clock.at(Fraction(str(mid))))) < seconds:
-                low = mid
-            else:
-                high = mid
-        return (low + high) / 2
+    quarter_at = inverse_clock(clock, recording, first_quarter)
     # Derive occupancy from independent written facts, including source notes
     # that the original chart legitimately omitted for high frets/endings.
     protected = [(b["time"], b["end"]) for b in parts[main_id]["notation_beats"] if not b["rest"]]
