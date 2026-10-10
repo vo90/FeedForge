@@ -91,7 +91,65 @@ def test_builder_rejects_invalid_zero_based_downbeats(tmp_path):
     performance["beats"][0]["measure"] = 0
     with pytest.raises(FeedpakValidationError, match="1-based downbeat"):
         build_feedpak(performance, audio, alignment, job, output_dir=tmp_path / "out")
-    assert not (job / "result.feedpak").exists()
+    assert not validate_feedpak(job / "result.feedpak").ok
+    assert not (tmp_path / "out").exists(), "invalid artifacts must remain private"
+
+
+def test_builder_returns_actual_archive_warnings_with_directory_parity(tmp_path, monkeypatch):
+    from feedback_converter.song_import import builder
+
+    performance, audio, alignment, job = inputs(tmp_path)
+    dump = yaml.safe_dump
+
+    def future_manifest(value, **kwargs):
+        return dump({**value, "feedpak_version": "2.0.0"}, **kwargs)
+
+    monkeypatch.setattr(builder.yaml, "safe_dump", future_manifest)
+    result = build_feedpak(performance, audio, alignment, job, output_dir=tmp_path / "out")
+    directory_report = validate_feedpak(job / "package")
+    archive_report = validate_feedpak(Path(result["stagingPath"]))
+    assert directory_report.to_dict() == archive_report.to_dict()
+    assert archive_report.ok and archive_report.warnings
+    assert result["warnings"] == archive_report.warnings
+
+
+@pytest.mark.parametrize("damage", ["manifest", "unsafe_path", "crc"])
+def test_builder_rejects_damage_introduced_during_archiving(tmp_path, monkeypatch, damage):
+    from feedback_converter.feedpak_validator import FeedpakValidationError
+    from feedback_converter.song_import import builder
+
+    performance, audio, alignment, job = inputs(tmp_path)
+    real_zip = zipfile.ZipFile
+
+    class DamagedZip(real_zip):
+        def writestr(self, entry, data, *args, **kwargs):
+            if self.mode == "x" and entry.filename == "manifest.yaml":
+                if damage == "manifest":
+                    data = yaml.safe_dump({**yaml.safe_load(data), "duration": "invalid"}).encode()
+                elif damage == "unsafe_path":
+                    entry.filename = "../outside.yaml"
+            return super().writestr(entry, data, *args, **kwargs)
+
+        def close(self):
+            corrupt = damage == "crc" and self.mode == "x" and self.fp is not None
+            if corrupt:
+                entry = self.getinfo("manifest.yaml")
+                position = entry.header_offset + 30 + len(entry.filename.encode()) + len(entry.extra)
+            super().close()
+            if corrupt:
+                with Path(self.filename).open("r+b") as stream:
+                    stream.seek(position)
+                    original = stream.read(1)
+                    stream.seek(position)
+                    stream.write(bytes([original[0] ^ 0xFF]))
+
+    monkeypatch.setattr(builder.zipfile, "ZipFile", DamagedZip)
+    with pytest.raises(FeedpakValidationError):
+        build_feedpak(performance, audio, alignment, job, output_dir=tmp_path / "out")
+    assert validate_feedpak(job / "package").ok, "the directory cannot detect archive damage"
+    assert not validate_feedpak(job / "result.feedpak").ok
+    assert not (job / "outside.yaml").exists()
+    assert not (tmp_path / "out").exists()
 
 
 @pytest.mark.parametrize("extension", ["png", "jpg"])
