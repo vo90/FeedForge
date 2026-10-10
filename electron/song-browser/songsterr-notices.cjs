@@ -2,9 +2,11 @@
 
 // Presentation only. Never rewrite the immutable compatibility report or use
 // these levels to authorize conversion, publication, scoring or timing changes.
-const VERSION = 1;
+const VERSION = 2;
 // Exact, qualified converter meanings only. A changed meaning is reviewed again.
 const informational = new Map([
+  ["note.harmonicFret", "Natural harmonic position 15 is displayed as 14.7, matching the source playback harmonic; the authored value is retained."],
+  ["tempo.visible", "Tempo-label visibility is retained in the source. The numeric tempo and playback timing are unchanged."],
   ["beat.wahwah", "Wah open/closed instructions are preserved as optional timed guidance in the updated highway and tab view. Audio and scoring are unchanged."],
   ["beat.tremolo", "Tremolo picking rates and active spans are preserved for the updated highway and tab view. Trail spacing indicates speed within readable limits; individual picks are not scored separately."],
   ["note.tremolo", "Tremolo picking rates and active spans are preserved for the updated highway and tab view. Trail spacing indicates speed within readable limits; individual picks are not scored separately."],
@@ -88,7 +90,7 @@ const titles = {
 const informationTitles = {
   'beat.tremolo': 'Tremolo picking', 'note.tremolo': 'Tremolo picking',
   'measure.keySignature': 'Key signatures retained', 'measure.doubleBarline': 'Barline appearance',
-  'tempo.text': 'Tempo descriptions', 'note.staccato': 'Staccato durations preserved',
+  'tempo.text': 'Tempo descriptions', 'tempo.visible': 'Tempo-label appearance', 'note.staccato': 'Staccato durations preserved',
   'beat.chord': 'Chord labels', 'notation.unpitched_mute': 'Standard notation for muted notes',
   'notation.written_rhythm': 'Standard notation for written rhythms',
   'note.pickScrape': 'Pick-scrape playing behavior', 'beat.tremoloBar': 'Optional whammy-bar expression',
@@ -139,7 +141,9 @@ function playerNotices(job, report, { reportUnavailable = false } = {}) {
     const level = classifyFinding(f);
     const id = f.feature === 'note.fret_range' ? 'high_frets' : f.feature || 'unknown_finding';
     add(id, level, level === 'warning' ? titles[f.feature] || 'Source feature needs review'
-      : informationTitles[f.feature] || 'Retained source information', f.message, location(f));
+      : level === 'info' && f.feature === 'note.harmonicFret' && f.message === informational.get(f.feature)
+        ? 'Natural-harmonic touch position'
+        : informationTitles[f.feature] || 'Retained source information', f.message, location(f));
   }
   if (report?.truncated) add('incomplete_report', 'warning', 'Compatibility report is incomplete', 'Some source findings could not be listed. Review the saved conversion report.');
   if (reportUnavailable || !report && job.compatibility?.status === 'limitations') {
@@ -236,8 +240,10 @@ function playerNotices(job, report, { reportUnavailable = false } = {}) {
       // Same omission already shown from the structured verification summary.
     } else if (/^\d+ lyric syllables follow the last available vocal note; retained in source only\.$/.test(message)) {
       add('lyrics', 'warning', 'Some lyrics could not be timed', message);
-    } else if (/^Timing remains uncertain, but the recording's pitch appears about /.test(message)) {
+    } else if (/^Timing (?:is supported|remains uncertain), but the recording's pitch appears about /.test(message)) {
       add('pitch', 'warning', 'Recording pitch differs from the tab tuning', message);
+    } else if (/^Equivalent section labels in measure [1-9]\d* use the authored label (?:'[^\r\n]*'|"[^\r\n]*"); all track labels are retained\.$/.test(message)) {
+      add('sections', 'diagnostic', 'Section labels', 'Equivalent section labels use an authored label; all original labels are retained.');
     } else if (/^Section label in measure \d+ uses guitar\/bass consensus; all track labels are retained\.$/.test(message)) {
       add('sections', 'diagnostic', 'Section labels', 'Section labels use guitar/bass consensus; all original labels are retained.');
     } else {

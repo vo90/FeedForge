@@ -48,6 +48,60 @@ const keySignature = { feature: 'measure.keySignature', category: 'game_limitati
 const letRing = { feature: 'beat.letRing', category: 'game_limitation', impact: 'display_or_expression', message: 'Let-ring instruction is not shown.' };
 const findings = rows => ({ version: 109, status: 'limitations', findingCount: rows.length, findings: rows });
 
+test('qualified harmonic position and tempo appearance are information, with omissions still visible', () => {
+  const harmonic = { feature: 'note.harmonicFret', category: 'game_limitation', impact: 'display_or_expression',
+    message: 'Natural harmonic position 15 is displayed as 14.7, matching the source playback harmonic; the authored value is retained.' };
+  const tempo = { ...harmonic, feature: 'tempo.visible',
+    message: 'Tempo-label visibility is retained in the source. The numeric tempo and playback timing are unchanged.' };
+  for (const f of [harmonic, tempo]) {
+    assert.equal(classifyFinding(f), 'info');
+    for (const changed of [{ impact: 'blocking' }, { impact: 'gameplay_omission' },
+      ...['unknown_semantics', 'source_structure', 'conversion_check', 'converter_gap'].map(category => ({ category })),
+      { message: f.message + ' Some expression is missing.' }, { message: 'Unknown source value.' }]) {
+      assert.equal(classifyFinding({ ...f, ...changed }), 'warning');
+    }
+  }
+  const omitted = { ...harmonic, message: 'A harmonic change is not represented.', measure: 8 };
+  const report = findings([harmonic, tempo, omitted]);
+  const original = JSON.stringify(report);
+  const result = playerNotices(completed, report);
+  assert.equal(result.warnings.length, 1);
+  assert.equal(result.warnings[0].message, omitted.message);
+  assert.match(result.warnings[0].locations[0], /Measure 8/);
+  assert.equal(result.information.find(g => g.id === harmonic.feature).title, 'Natural-harmonic touch position');
+  assert.equal(result.information.find(g => g.id === tempo.feature).title, 'Tempo-label appearance');
+  assert.equal(JSON.stringify(report), original);
+});
+
+test('only equivalent section label decisions become diagnostics; missing artwork still warns', () => {
+  const equivalent = "Equivalent section labels in measure 5 use the authored label 'Verse 1'; all track labels are retained.";
+  const job = { ...completed, artwork: { status: 'artist_ambiguous' }, warnings: [equivalent] };
+  const before = JSON.stringify(job);
+  const result = playerNotices(job, findings([]));
+  assert.deepEqual(result.warnings.map(g => g.id), ['artwork']);
+  assert.equal(result.diagnosticCount, 1);
+  assert.equal(JSON.stringify(job), before);
+  for (const message of [equivalent + ' Another issue.', equivalent.replace('Equivalent', 'Conflicting'),
+    equivalent.replace('all track labels are retained.', 'track labels were lost.'),
+    "Section names differ in measure 5; using 'Verse 1' based on source track order.",
+    'Unclassified Songsterr part field voices is retained in source evidence only.']) {
+    assert.equal(playerNotices({ ...completed, warnings: [message] }, findings([])).warnings[0].id, 'other');
+  }
+});
+
+test('supported and uncertain timing both preserve the separate recording pitch warning', () => {
+  for (const timing of ['Timing is supported', 'Timing remains uncertain']) {
+    const message = `${timing}, but the recording's pitch appears about 67 cents lower than the tab's tuning (100 cents is one semitone). Playing along may sound out of tune. No pitch correction was applied to the source tab or recording.`;
+    const job = { ...completed, warnings: [message], verification: { ...completed.verification,
+      timingAssessment: { version: 'local-recording-clock-v3', status: 'supported', supportedWindows: 10, windowCount: 10 } } };
+    const original = JSON.stringify(job);
+    const result = playerNotices(job, findings([]));
+    assert.deepEqual(result.warnings.map(g => g.id), ['pitch']);
+    assert.equal(result.warnings[0].message, message);
+    assert.equal(JSON.stringify(job), original);
+  }
+});
+
 test('qualified wah guidance is informational while historical omission remains a warning', () => {
   const f = {feature:'beat.wahwah',category:'game_limitation',impact:'display_or_expression',
     message:'Wah open/closed instructions are preserved as optional timed guidance in the updated highway and tab view. Audio and scoring are unchanged.'};
