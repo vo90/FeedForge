@@ -63,7 +63,7 @@ def select(candidates, baseline):
                              'pitchDifference': abs(cents) >= 20}
 
 
-def assess(tracks, path, duration, calibration, baseline):
+def assess(tracks, path, duration, calibration, baseline, *, feature_session=None):
     from .local_sync import assess_features
     # Too little independent material: retain the existing diagnostic.
     if (baseline['status'] == 'supported' and abs(calibration['cents']) < 20) or len(baseline['windows']) < 6:
@@ -72,6 +72,9 @@ def assess(tracks, path, duration, calibration, baseline):
     cents = calibration['cents']
     hypotheses = [0.0] + [round(cents + shift, 3) for shift in (-100, 0, 100)
                          if abs(cents + shift) <= 100 and abs(cents + shift) >= 5]
+    if feature_session is not None:
+        feature_session.prepare([(round(440 * 2 ** (value / 1200), 6), 28)
+                                 for value in hypotheses if value != cents])
     candidates = []
     for value in hypotheses:
         reference = round(440 * 2 ** (value / 1200), 6)
@@ -79,9 +82,12 @@ def assess(tracks, path, duration, calibration, baseline):
             report = baseline
             reference = calibration['referenceHz']
         else:
-            if hasattr(path, 'seek'):
-                path.seek(0)
-            pitch, flux, _ = rs.features(path, reference_hz=reference)
+            if feature_session is None:
+                if hasattr(path, 'seek'):
+                    path.seek(0)
+                pitch, flux, _ = rs.features(path, reference_hz=reference)
+            else:
+                pitch, flux, _ = feature_session.features(reference_hz=reference)
             report = assess_features(tracks, pitch, flux, duration)
         candidates.append({'cents': value, 'referenceHz': reference, 'report': report})
     return select(candidates, baseline)

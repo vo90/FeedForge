@@ -167,27 +167,24 @@ def assess(tracks, path, duration, map_hash, *, version='local-recording-clock-v
     if version not in (VERSION, pitch_clock.VERSION, timing_diagnostic.VERSION):
         raise ValueError('Unsupported timing diagnostic version.')
     calibration = tuning(path)
-    if hasattr(path, 'seek'):
-        path.seek(0)
-    pitch, flux, signal = rs.features(path, reference_hz=calibration['referenceHz'])
-    if abs(len(signal)/rs.RATE-duration) > .001:
-        raise ValueError('The recording duration does not match its timing evidence.')
-    report = assess_features(tracks, pitch, flux, duration)
-    if version in (pitch_clock.VERSION, timing_diagnostic.VERSION):
-        report, reference = pitch_clock.assess(tracks, path, duration, calibration, report)
-        if version == timing_diagnostic.VERSION:
-            # Select the reference using the established v2 evidence, before
-            # downgrading uncertain mismatches. This grants no new authority
-            # to select a tuning, repair an opening or shorten an ending.
-            if any(p['status'] == 'suspected_mismatch' for w in report['windows'] for p in w['parts']):
-                selected_hz = reference.get('referenceHz', calibration['referenceHz'])
-                if selected_hz != calibration['referenceHz']:
-                    if hasattr(path, 'seek'):
-                        path.seek(0)
-                    pitch, flux, _ = rs.features(path, reference_hz=selected_hz)
-                report = assess_features(tracks, pitch, flux, duration, corroborate_mismatch=True)
-            report.update(timing_diagnostic.summary(report))
-        report = {**report, 'version': version, 'pitchReference': reference}
+    with rs.FeatureSession(path) as session:
+        pitch, flux, signal = session.features(reference_hz=calibration['referenceHz'])
+        if abs(len(signal)/rs.RATE-duration) > .001:
+            raise ValueError('The recording duration does not match its timing evidence.')
+        report = assess_features(tracks, pitch, flux, duration)
+        if version in (pitch_clock.VERSION, timing_diagnostic.VERSION):
+            report, reference = pitch_clock.assess(tracks, path, duration, calibration, report, feature_session=session)
+            if version == timing_diagnostic.VERSION:
+                # Select the reference using the established v2 evidence, before
+                # downgrading uncertain mismatches. This grants no new authority
+                # to select a tuning, repair an opening or shorten an ending.
+                if any(p['status'] == 'suspected_mismatch' for w in report['windows'] for p in w['parts']):
+                    selected_hz = reference.get('referenceHz', calibration['referenceHz'])
+                    if selected_hz != calibration['referenceHz']:
+                        pitch, flux, _ = session.features(reference_hz=selected_hz)
+                    report = assess_features(tracks, pitch, flux, duration, corroborate_mismatch=True)
+                report.update(timing_diagnostic.summary(report))
+            report = {**report, 'version': version, 'pitchReference': reference}
     return {**report, 'tuning':calibration,
             'audioSha256': _hash(path), 'mapHash': map_hash, 'audioDuration':duration}
 

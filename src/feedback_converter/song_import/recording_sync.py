@@ -31,10 +31,7 @@ SPARSE_EXCLUSIONS = PITCH_EXCLUSIONS + ATTACK_EXCLUSIONS + (
     'harmonic_alias', 'pick_scrape_marks', 'slide_out', 'slide_out_marks', 'slide_in_marks', 'slide_interval', 'tr',
 )
 
-def features(path, *, reference_hz=440.0, midi_min=28):
-    if midi_min not in (21, 28):
-        raise ValueError('Unsupported recording pitch profile.')
-    midis = MIDIS if midi_min == 28 else np.arange(midi_min, 97)
+def _decode(path):
     with sf.SoundFile(path) as reader:
         if not 2 <= len(reader) / reader.samplerate <= 1202 or not 1 <= reader.channels <= 2:
             raise ValueError("The timing check needs a bounded mono or stereo recording.")
@@ -45,6 +42,13 @@ def features(path, *, reference_hz=440.0, midi_min=28):
     signal = np.interp(np.arange(round(len(mono) * RATE / rate)) * rate / RATE,
                        np.arange(len(mono)), mono).astype('float32')
     count = 1 + len(signal) // HOP
+    return signal, count
+
+
+def _pitch_bank(reference_hz, midi_min):
+    if midi_min not in (21, 28):
+        raise ValueError('Unsupported recording pitch profile.')
+    midis = MIDIS if midi_min == 28 else np.arange(midi_min, 97)
     # Harmonic pitch evidence, independent of the score. +/- 35 cent bands
     # accommodate modest detuning; neighbours supply local spectral contrast.
     n = 4096
@@ -62,14 +66,29 @@ def features(path, *, reference_hz=440.0, midi_min=28):
                      + np.exp(-.5 * ((freq - f * 2 ** (.7 / 12)) / width) ** 2)) * .5
             bank[i] += (centre / centre.sum() - flank / flank.sum()) / (harmonic ** .7)
     bank = bank.T
+    return bank
+
+
+def _pitches(signal, count, keys):
+    # Only a bounded block of spectra is live, irrespective of song length.
+    banks = {key: _pitch_bank(*key) for key in keys}
+    outputs = {key: np.zeros((count, bank.shape[1]), dtype='float32')
+               for key, bank in banks.items()}
+    n = 4096
     pad = np.pad(signal, (n // 2, n // 2))
     window = np.hanning(n).astype('float32')
-    pitches = np.zeros((count, len(midis)), dtype='float32')
     for begin in range(0, count, 128):
         frames = pad[(np.arange(begin, min(begin + 128, count)) * HOP)[:, None] + np.arange(n)]
         mag = abs(np.fft.rfft(frames * window, axis=1)).astype('float32')
-        pitches[begin:begin + len(frames)] = np.maximum(np.log1p(mag * 20) @ bank, 0)
-    pitches /= np.maximum(np.linalg.norm(pitches, axis=1, keepdims=True), 1e-7)
+        transformed = np.log1p(mag * 20)
+        for key, bank in banks.items():
+            outputs[key][begin:begin + len(frames)] = np.maximum(transformed @ bank, 0)
+    for pitches in outputs.values():
+        pitches /= np.maximum(np.linalg.norm(pitches, axis=1, keepdims=True), 1e-7)
+    return outputs
+
+
+def _onsets(signal, count):
     # Short FFT spectral changes measure transient attacks with ~10 ms hops.
     n = 1024
     freq = np.fft.rfftfreq(n, 1 / RATE)
@@ -93,7 +112,85 @@ def features(path, *, reference_hz=440.0, midi_min=28):
         avg = np.convolve(flux[:, i], np.ones(201) / 201, mode='same')
         flux[:, i] /= np.maximum(avg, np.quantile(avg, .3) * .4 + 1e-7)
         flux[:, i] = np.minimum(flux[:, i], 8)
-    return pitches, flux, signal
+    return flux
+
+
+def features(path, *, reference_hz=440.0, midi_min=28):
+    if midi_min not in (21, 28):
+        raise ValueError('Unsupported recording pitch profile.')
+    signal, count = _decode(path)
+    pitches = _pitches(signal, count, [(reference_hz, midi_min)])[reference_hz, midi_min]
+    return pitches, _onsets(signal, count), signal
+
+
+class FeatureSession:
+    """One independent assessment of one immutable recording.
+
+    Cache at most 64 MiB of compact pitch arrays, never whole-song spectra.
+    The bounded recording signal/onsets and FFT scratch are separate from that
+    budget. Long recordings fall back to sequential pitch computation and LRU
+    eviction. Producer and verifier create separate sessions; nothing is global.
+    """
+    def __init__(self, path, *, cache_bytes=64 * 1024 * 1024):
+        self.path = path
+        self.cache_bytes = max(0, cache_bytes)
+        self.cache = {}
+        self.signal = self.flux = None
+        self.count = 0
+        self.closed = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        self.close()
+
+    def close(self):
+        self.cache.clear()
+        self.signal = self.flux = self.path = None
+        self.closed = True
+
+    def _load(self):
+        if self.closed:
+            raise RuntimeError('Audio feature session is closed.')
+        if self.signal is None:
+            if hasattr(self.path, 'seek'):
+                self.path.seek(0)
+            self.signal, self.count = _decode(self.path)
+            self.flux = _onsets(self.signal, self.count)
+
+    @property
+    def cached_bytes(self):
+        return sum(p.nbytes for p in self.cache.values())
+
+    def prepare(self, keys):
+        """Share an FFT pass only when every requested output fits the budget."""
+        keys = list(dict.fromkeys(keys))
+        if any(midi not in (21, 28) for _, midi in keys):
+            raise ValueError('Unsupported recording pitch profile.')
+        self._load()
+        keys = [key for key in keys if key not in self.cache]
+        required = sum(self.count * (97 - midi) * 4 for _, midi in keys)
+        if keys and self.cached_bytes + required <= self.cache_bytes:
+            self.cache.update(_pitches(self.signal, self.count, keys))
+
+    def features(self, *, reference_hz=440.0, midi_min=28):
+        if midi_min not in (21, 28):
+            raise ValueError('Unsupported recording pitch profile.')
+        self._load()
+        key = reference_hz, midi_min
+        if key in self.cache:
+            pitches = self.cache.pop(key)
+            self.cache[key] = pitches
+        else:
+            required = self.count * (97 - midi_min) * 4
+            while self.cache and self.cached_bytes + required > self.cache_bytes:
+                self.cache.pop(next(iter(self.cache)))
+            pitches = _pitches(self.signal, self.count, [key])[key]
+            if required <= self.cache_bytes:
+                self.cache[key] = pitches
+        return pitches, self.flux, self.signal
+
 
 def samples(events, left, right):
     notes = [n for n in events if left <= n['t'] < right and n['midi'] is not None and 28 <= n['midi'] <= 96
