@@ -42,6 +42,15 @@ def test_a_reported_limitation_cannot_excuse_an_unrelated_wrong_note(tmp_path):
     assert "note_f" in {e["code"] for e in result["errors"]}
 
 
+def test_previous_let_ring_inventory_remains_independently_verifiable(tmp_path):
+    source, package = reported_fixture()
+    package["import/compatibility.json"]["version"] = 113
+    result = verify(tmp_path, source, package)
+    assert result["status"] == "passed", result
+    package["chart.json"]["notes"][0]["f"] = 10
+    assert "note_f" in {e["code"] for e in verify(tmp_path, source, package)["errors"]}
+
+
 def test_unrepresentable_notation_can_preserve_verified_playable_notes(tmp_path):
     source, package = reported_fixture()
     first = source["parts"][0]["measures"][0]["voices"][0]["beats"][0]

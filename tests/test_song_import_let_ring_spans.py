@@ -146,6 +146,32 @@ def test_nonlinear_recording_clock_preserves_ring_endpoint(tmp_path):
     assert ns[0]['let_ring_sus']==3 and ns[0]['sus']==.5
 
 
+@pytest.mark.parametrize('delta', [-.000001, .000001])
+def test_ring_checks_both_endpoints_with_existing_rounding_tolerance(tmp_path, delta):
+    notes, wanted = compare(tmp_path, source(), {'scale': 1, 'offset': 2})
+    # Each mapped endpoint may round on either side of a half microsecond.
+    # Opposite directions can change their difference by two microseconds.
+    notes[0]['t'] += delta
+    notes[0]['let_ring_sus'] -= 2 * delta
+    check = Check(); part = wanted['parts'][0]
+    _notes(part['notes'], [(n, str(i)) for i,n in enumerate(notes)], check, part['source'], 100)
+    assert not check.errors, check.errors
+
+
+@pytest.mark.parametrize('fault', ['start', 'end', 'both', 'missing', 'bool', 'nan', 'text'])
+def test_ring_endpoint_check_never_hides_real_changes(tmp_path, fault):
+    notes, wanted = compare(tmp_path, source(), {'scale': 1, 'offset': 2})
+    if fault in ('start', 'both'):
+        notes[0]['t'] += .000003
+        if fault == 'start': notes[0]['let_ring_sus'] -= .000003
+    elif fault == 'end': notes[0]['let_ring_sus'] += .000003
+    elif fault == 'missing': notes[0].pop('let_ring_sus')
+    else: notes[0]['let_ring_sus'] = {'bool': True, 'nan': float('nan'), 'text': '2'}[fault]
+    check = Check(); part = wanted['parts'][0]
+    _notes(part['notes'], [(n, str(i)) for i,n in enumerate(notes)], check, part['source'], 100)
+    assert check.errors
+
+
 def test_simultaneous_string_duplicates_do_not_hide_next_attack():
     from feedback_converter.song_import.let_ring import clip_chart
     first={'t':0,'s':0,'f':3,'sus':.5,'let_ring_sus':5}

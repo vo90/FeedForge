@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 113
+VERSION = 114
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -179,8 +179,19 @@ def _notes(wanted, actual, check, part, duration):
                 check.fail("note_fingering", loc + "/fg", "Finger hints must be integers from 0 (thumb) to 4.")
             if wanted_value is None and (actual_value is None or actual_value is False):
                 continue
-            if key in {"bn", "let_ring_sus"} and isinstance(wanted_value, (int, float)):
-                check.near("note_technique", loc + "/" + key, wanted_value, actual_value, TIME_TOLERANCE if key == "let_ring_sus" else 1e-8)
+            if key == "let_ring_sus" and isinstance(wanted_value, (int, float)):
+                # The onset was checked above. Ringing ends at a separately
+                # mapped/rounded endpoint (often the next string attack).
+                # Two valid opposite half-microsecond rounding choices can
+                # differ by 2 us in duration. Check the physical endpoint at
+                # the unchanged tolerance, rather than widening that gate.
+                onset = b.get('t')
+                valid = (type(actual_value) in (int, float) and math.isfinite(actual_value)
+                         and type(onset) in (int, float) and math.isfinite(onset))
+                check.near('note_technique', loc + '/let_ring_sus', a['t'] + wanted_value,
+                           onset + actual_value if valid else None)
+            elif key == "bn" and isinstance(wanted_value, (int, float)):
+                check.near("note_technique", loc + "/" + key, wanted_value, actual_value, 1e-8)
             else:
                 check.equal("note_technique", loc + "/" + key, wanted_value, actual_value)
         from .verify_tremolo import compare as compare_picking
@@ -350,7 +361,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, 89, 90, 91, 92, 93, 94, 98, 104, 105, 106, 107, 108, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, 89, 90, 91, 92, 93, 94, 98, 104, 105, 106, 107, 108, 113, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     reports_precedence = type(report.get('version')) is int and report['version'] >= 46
     if preservation_contract >= 46 and not reports_precedence:
