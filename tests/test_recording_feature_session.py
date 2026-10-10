@@ -76,3 +76,37 @@ def test_invalid_audio_is_still_rejected(seconds, channels, nonfinite):
         with rs.FeatureSession(stream) as session:
             session.features()
     assert session.closed and session.signal is None
+
+
+@pytest.mark.parametrize('fault', [None, 'duration', 'alternate'])
+def test_recording_assessment_owns_and_closes_its_session(monkeypatch, fault):
+    from feedback_converter.song_import import local_sync as ls
+    sessions = []
+
+    class TrackedSession(rs.FeatureSession):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            sessions.append(self)
+
+    monkeypatch.setattr(rs, 'FeatureSession', TrackedSession)
+    monkeypatch.setattr(ls, 'tuning', lambda _: {
+        'referenceHz': 450. if fault == 'alternate' else 440.,
+        'cents': 38.906 if fault == 'alternate' else 0., 'status': 'inconclusive'})
+    pitches = rs._pitches
+
+    def measure(signal, count, keys):
+        if fault == 'alternate' and keys == [(450., 28)]:
+            raise ValueError('alternate extraction failed')
+        return pitches(signal, count, keys)
+
+    monkeypatch.setattr(rs, '_pitches', measure)
+    for _ in range(2):
+        if fault:
+            with pytest.raises(ValueError, match='duration|alternate extraction'):
+                rs.assess([], recording(), 4. if fault == 'duration' else 3., 'map')
+        else:
+            assert rs.assess([], recording(), 3., 'map')['status'] == 'inconclusive'
+    assert len(sessions) == 2 and sessions[0] is not sessions[1]
+    for session in sessions:
+        assert session.closed and session.cached_bytes == 0
+        assert session.signal is session.flux is session.path is None

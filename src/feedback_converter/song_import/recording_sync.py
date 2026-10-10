@@ -259,26 +259,29 @@ def assess(tracks, audio_path, duration, map_hash, *, analysis_origin=0.0, legac
                 event['t']=round(event['t']-analysis_origin,6)
                 event['end']=round(event['end']-analysis_origin,6)
         duration-=analysis_origin
-    pitch, flux, signal = features(audio_path)
-    actual_duration = len(signal) / RATE
-    if abs(actual_duration - duration) > .001:
-        raise ValueError("The timing check audio duration does not match the recording.")
-    report = assess_features(tracks, pitch, flux, duration)
-    if base_version == LEGACY_VERSION:
-        report['version'] = LEGACY_VERSION
-    elif report['status'] != 'supported':
-        from .clock_evidence import assess as assess_clock
-        report = assess_clock(tracks, audio_path, duration, pitch, flux, report,
-                              phrases=base_version == VERSION)
-    else:
-        report.update(method='established-pitch-onset-check', referenceEvidence={'status':'default', 'referenceHz':440.0})
-    if version in (CUTOFF_VERSION, PADDING_VERSION):
-        from .low_bass_sync import supplement
-        report = supplement(tracks, audio_path, duration, report)
-        # Reports which never used the supplement retain their exact legacy
-        # version and schema, including historical receipt replay.
-        if 'lowBassEvidence' not in report:
-            version = base_version
+    # This cutoff assessment owns its features, independently of advisory
+    # diagnostics and producer/verifier assessments of the same recording.
+    with FeatureSession(audio_path) as session:
+        pitch, flux, signal = session.features()
+        actual_duration = len(signal) / RATE
+        if abs(actual_duration - duration) > .001:
+            raise ValueError("The timing check audio duration does not match the recording.")
+        report = assess_features(tracks, pitch, flux, duration)
+        if base_version == LEGACY_VERSION:
+            report['version'] = LEGACY_VERSION
+        elif report['status'] != 'supported':
+            from .clock_evidence import assess as assess_clock
+            report = assess_clock(tracks, audio_path, duration, pitch, flux, report,
+                                  phrases=base_version == VERSION, feature_session=session)
+        else:
+            report.update(method='established-pitch-onset-check', referenceEvidence={'status':'default', 'referenceHz':440.0})
+        if version in (CUTOFF_VERSION, PADDING_VERSION):
+            from .low_bass_sync import supplement
+            report = supplement(tracks, audio_path, duration, report, feature_session=session)
+            # Reports which never used the supplement retain their exact legacy
+            # version and schema, including historical receipt replay.
+            if 'lowBassEvidence' not in report:
+                version = base_version
     return {**report, 'version':version,
             "audioSha256": audio_hash, "audioDuration": original_duration, "mapHash": map_hash,
             **({'analysisOriginSeconds':analysis_origin} if analysis_origin else {})}

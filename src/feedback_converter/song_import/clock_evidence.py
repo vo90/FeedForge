@@ -85,7 +85,7 @@ def sparse_ending(tracks, pitch, flux, duration, left):
             'everyNoteVerified':False}
 
 
-def assess(tracks, path, duration, pitch, flux, original, *, phrases=True):
+def assess(tracks, path, duration, pitch, flux, original, *, phrases=True, feature_session=None):
     baseline=_joint(tracks,pitch,flux,duration,original)
     calibration=ls.tuning(path)
     reference={'status':'default','referenceHz':440.0,'hypothesis':calibration}
@@ -94,7 +94,8 @@ def assess(tracks, path, duration, pitch, flux, original, *, phrases=True):
     # never trusted alone; selection AND held-out body passages must support it.
     if math.isfinite(calibration['referenceHz']) and abs(calibration['cents'])<=50 and abs(calibration['cents'])>=5:
         if hasattr(path,'seek'):path.seek(0)
-        trial_pitch,trial_flux,_=rs.features(path,reference_hz=calibration['referenceHz'])
+        trial_pitch,trial_flux,_=(rs.features(path,reference_hz=calibration['referenceHz'])
+            if feature_session is None else feature_session.features(reference_hz=calibration['referenceHz']))
         trial=_joint(tracks,trial_pitch,trial_flux,duration,original)
         support=_reference_support(trial,duration)
         old_support=_reference_support(baseline,duration)
