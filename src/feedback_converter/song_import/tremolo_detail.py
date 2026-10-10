@@ -97,6 +97,12 @@ def retime(note, alignment, original, mapped_start, sustain):
     anchors = [a['score'] for a in alignment.get('anchors', [])] if alignment.get('mapping') == 'piecewise-linear' else []
     for m in validate(note['tremolo_marks'], note['sus']):
         a,b = original+m['start'], original+m['end']
+        # Relative marks are serialized to six decimals, while the source
+        # note keeps its full-precision endpoint. Reuse that endpoint when
+        # the mark reaches it instead of mapping a rounded value past the
+        # recording map's terminal boundary.
+        if m['end'] == round(note['sus'], 6):
+            b = original + note['sus']
         edges = sorted({a,b,*[t for t in anchors if a<t<b]})
         for left,right in zip(edges,edges[1:]):
             x,y = map_time(alignment,left),map_time(alignment,right)

@@ -121,6 +121,41 @@ def test_nonbinary_clock_rounding_does_not_lose_instruction_owners(tmp_path,bpm)
     assert len(marked)==2 and all(n['tremolo_marks'] for n in marked)
 
 
+@pytest.mark.parametrize('bpm', [108, 117, 133, 137, 193])
+@pytest.mark.parametrize('bars', [1, 18])
+def test_nonbinary_terminal_tremolo_uses_unrounded_source_endpoint(tmp_path, bpm, bars):
+    doc = raw_score([measure(beat()) for _ in range(bars-1)] +
+                    [measure(beat(tremolo=[1,16]))])
+    doc['parts'][0]['automations']['tempo'][0]['bpm'] = bpm
+    score_end = bars * 240 / bpm
+    mapping = {'mapping':'piecewise-linear', 'anchors':[
+        {'score':0, 'audio':2}, {'score':score_end, 'audio':2+score_end*1.13}]}
+    notes, _ = compare(tmp_path, doc, mapping)
+    note = notes[-1]
+    assert note['tremolo_marks'][-1]['end'] == pytest.approx(note['sus'], abs=1.1e-6)
+
+
+def test_real_out_of_map_tremolo_endpoint_is_still_rejected(tmp_path):
+    doc = raw_score([measure(beat(tremolo=[1,16]))])
+    mapping = {'mapping':'piecewise-linear', 'anchors':[
+        {'score':0, 'audio':2}, {'score':1.99999, 'audio':4}]}
+    with pytest.raises(ValueError, match='outside the supplied timing map'):
+        compare(tmp_path, doc, mapping)
+
+
+@pytest.mark.parametrize('period', [.0625, .25, 2])
+@pytest.mark.parametrize('seconds,passed', [(.0000005, True), (-.0000005, True),
+                                          (.000003, False), (-.000003, False)])
+def test_phase_precision_is_measured_in_time_across_cycle_boundary(period, seconds, passed):
+    from feedback_converter.song_import.verify_tremolo import compare as compare_marks
+    marks = [dict(start=0,end=2,rate=[1,16],period=period,phase=0,mode='specified')]
+    changed = deepcopy(marks)
+    changed[0]['phase'] = (seconds/period) % 1
+    check = Check()
+    compare_marks(marks, changed, 2, check, 'test')
+    assert (not check.errors) == passed
+
+
 def test_shared_reference_and_no_tremolo_do_not_recompute_full_score(tmp_path,monkeypatch):
     from feedback_converter.song_import import verify_tremolo
     from types import SimpleNamespace

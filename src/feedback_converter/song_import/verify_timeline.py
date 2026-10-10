@@ -899,7 +899,10 @@ def _expected(source, alignment, *, pending_hopo_ties=True, pending_slide_ties=T
                     curve.append(p)
                 row["bnv"] = [{"t": round(recording.at(p) - mapped_start, 6), "v": float(v)} for p, v in curve]
                 row["bn"] = float(max((v for _, v in curve), key=abs))
-            rendered.append({**({"_scoreStart": float(start), "_scoreEnd": float(end)} if recording.collapsed_count else {}), "note": row, "locations": n["locations"], "occurrence": n["occurrence"], "beat": n["beat"],
+            # Keep independent source endpoints before six-decimal output
+            # rounding. Expression verification must not reconstruct them by
+            # adding the rounded onset and sustain across a map boundary.
+            rendered.append({"_scoreStart": float(start), "_scoreEnd": float(end), "note": row, "locations": n["locations"], "occurrence": n["occurrence"], "beat": n["beat"],
                              **({'trill': True} if n.get('trill') else {})})
         notation_beats = []
         wah = []

@@ -29,8 +29,8 @@ def attach(source, result, alignment, duration, *, raw=None):
         for item in part['notes']:
             note=item['note']
             if not note.get('tr'):continue
-            base=originals[(tuple(item['locations']),item['occurrence'])]['note']
-            start,end=base['t'],base['t']+base['sus']
+            original=originals[(tuple(item['locations']),item['occurrence'])]
+            start,end=original['_scoreStart'],original['_scoreEnd']
             owners=[]
             for loc in item['locations']:
                 owners.extend(r for r in candidates.get(loc,[]) if start-1.1e-6<=r[0]<end-1.1e-6)
@@ -75,6 +75,13 @@ def compare(wanted, actual, sustain, check, location):
         return
     for i,(a,b) in enumerate(zip(wanted,actual)):
         for k in a:
-            if k in ('start','end','period','phase') and a[k] is not None and b[k] is not None:
+            if k == 'phase' and a.get('period') is not None:
+                # Phase is a fraction of a cycle, not seconds. Compare the
+                # shortest equivalent displacement using the independently
+                # reconstructed period and the usual time precision.
+                difference = abs(a[k]-b[k])
+                check.near('tremolo_marks',f'{location}/{i}/{k}',0,
+                           min(difference,1-difference)*a['period'],1.1e-6)
+            elif k in ('start','end','period','phase') and a[k] is not None and b[k] is not None:
                 check.near('tremolo_marks',f'{location}/{i}/{k}',a[k],b[k],1.1e-6)
             else:check.equal('tremolo_marks',f'{location}/{i}/{k}',a[k],b[k])
