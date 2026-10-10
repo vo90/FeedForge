@@ -13,7 +13,7 @@ MIDI_MIN = 21
 LEGACY_MIN = 28
 
 
-def supplement(tracks, path, duration, baseline):
+def supplement(tracks, path, duration, baseline, *, feature_session=None):
     if baseline['status'] == 'supported':
         return baseline
     bass = [t for t in tracks if t['instrument'] == 'bass' and any(
@@ -43,7 +43,8 @@ def supplement(tracks, path, duration, baseline):
     reference = baseline.get('referenceEvidence', {}).get('referenceHz', 440.0)
     if hasattr(path, 'seek'):
         path.seek(0)
-    pitch, flux, _ = rs.features(path, reference_hz=reference, midi_min=MIDI_MIN)
+    pitch, flux, _ = (rs.features(path, reference_hz=reference, midi_min=MIDI_MIN)
+        if feature_session is None else feature_session.features(reference_hz=reference, midi_min=MIDI_MIN))
     report = deepcopy(baseline)
     evidence = []
     for index, eligible in candidates:

@@ -80,6 +80,41 @@ def test_wrong_low_bass_recording_cannot_authorize_cutoff(tmp_path, mode):
     assert not any(w['status'] == 'supported' for w in report['lowBassEvidence']['windows'])
 
 
+@pytest.mark.parametrize('mode', ['aligned', 'delayed', 'wrong_pitch', 'noise'])
+@pytest.mark.parametrize('version', [rs.CUTOFF_VERSION, rs.PADDING_VERSION])
+def test_assessment_local_reuse_keeps_complete_authorization_receipt(tmp_path, monkeypatch, mode, version):
+    _, recording, tracks = fixture(tmp_path, mode=mode)
+    before = deepcopy(tracks)
+    # Exercise the bounded alternate-reference and low-bass paths together.
+    # Short body evidence cannot corroborate this reference hypothesis.
+    monkeypatch.setattr(ls, 'tuning', lambda _: {
+        'referenceHz': 450., 'cents': 38.906, 'status': 'inconclusive'})
+    decode = rs._decode
+    calls = []
+    monkeypatch.setattr(rs, '_decode', lambda p: (calls.append(p), decode(p))[1])
+    session_type = rs.FeatureSession
+
+    class RepeatedFeatures(session_type):
+        def features(self, **kwargs):
+            if hasattr(self.path, 'seek'):
+                self.path.seek(0)
+            return rs.features(self.path, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(rs, 'FeatureSession', RepeatedFeatures)
+        repeated = rs.assess(tracks, recording, 48.25, 'map', clock_version=version)
+    assert len(calls) == 3
+    calls.clear()
+    reused = rs.assess(tracks, recording, 48.25, 'map', clock_version=version)
+    assert len(calls) == 1
+    assert reused == repeated
+    assert rs.digest(reused) == rs.digest(repeated)
+    assert reused['referenceEvidence']['status'] == 'default'
+    assert reused['lowBassEvidence']['windows']
+    assert (reused['status'] == 'supported') == (mode == 'aligned')
+    assert tracks == before
+
+
 def test_no_low_material_keeps_exact_legacy_report(tmp_path):
     _, recording, tracks = fixture(tmp_path, lowest=40)
     duration = sf.info(recording).duration
