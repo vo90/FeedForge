@@ -1423,8 +1423,16 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             duration = manifest.get("duration")
             if isinstance(duration, bool) or not isinstance(duration, (int, float)) or not math.isfinite(duration) or duration <= 0:
                 raise ValueError("manifest/duration: invalid audio duration")
+            raw_expression = None
+            if (source.format == 'songsterr' and contract >= 110
+                    and (alignment.get('scale', 1) != 1 or alignment.get('offset', 0) or alignment.get('mapping'))):
+                # Let-ring already needs this independent, unshifted score
+                # clock. Current contracts use the same voice/tie rules for
+                # high-fret omissions; keep the raw reference unprojected.
+                raw_expression = expected(source, {'scale': 1, 'offset': 0})
             from .verify_high_frets import verify as verify_omissions
-            omissions = verify_omissions(source, wanted, score_path, recipe, z, check, _json, alignment)
+            omissions = verify_omissions(source, wanted, score_path, recipe, z, check, _json, alignment,
+                                         reference=raw_expression)
             if omissions:
                 report.setdefault("omissions", {}).update(omissions)
                 report["scope"].append("declared_high_fret_gameplay_omissions")
@@ -1486,12 +1494,12 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
             timeline = _json(z, manifest["song_timeline"], check)
             for key in ("beats", "sections", "time_signatures", "tempos"):
                 _timeline(wanted[key], timeline.get(key), check, "song_timeline/" + key)
-            raw_expression = None
             if contract >= 111 and any(item['note'].get('tr') for part in wanted['parts'] for item in part['notes']):
                 from .verify_tremolo import attach as verify_picking
                 # Both expression checks need the same independent score clock.
                 # Reuse that reconstruction, never render the full score twice.
-                raw_expression = expected(source, {'scale':1,'offset':0})
+                if raw_expression is None:
+                    raw_expression = expected(source, {'scale':1,'offset':0})
                 verify_picking(source, wanted, alignment, duration, raw=raw_expression)
             if contract >= 110:
                 from .verify_let_ring import attach as verify_ringing
