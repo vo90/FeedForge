@@ -912,7 +912,6 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         shutil.copyfile(artwork["path"], package / cover_name)
         manifest["cover"] = cover_name
     (package / "manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False, allow_unicode=True), encoding="utf-8")
-    validation = require_valid_feedpak(package)
     archive = directory / "result.feedpak"
     with zipfile.ZipFile(archive, "x", compression=zipfile.ZIP_DEFLATED) as output:
         for item in sorted(package.rglob("*")):
@@ -922,7 +921,10 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
                 entry.create_system = 3
                 entry.external_attr = 0o100644 << 16
                 output.writestr(entry, item.read_bytes(), compresslevel=6)
-    require_valid_feedpak(archive)
+    # Validate the finished archive, including the serialized assets and ZIP
+    # integrity. Repeating the same schema/semantic checks on its source
+    # directory adds no assurance about the artifact returned to the caller.
+    validation = require_valid_feedpak(archive)
     naming = {**manifest, "arrangement_names": {entry["id"]: entry["type"] for entry in arrangements}}
     # Network downloads have no meaningful source folder or copied-tab filename.
     source_path = Path(safe_path_segment(f"{artist} - {title}") + ".gp")
