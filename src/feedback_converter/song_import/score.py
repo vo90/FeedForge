@@ -27,12 +27,19 @@ def load_performance(path: Path | str, metadata: dict | None = None, *, composit
         report = inspect_songsterr(document)
         capability_blocked = report["status"] == "blocked"
         from .diagnostics import diagnose_arrangements
-        diagnose_arrangements(document, report)
         try:
             if capability_blocked:
+                diagnose_arrangements(document, report)
                 examples = ", ".join(dict.fromkeys(row["feature"] for row in report["findings"] if row["impact"] == "blocking"))
                 raise ScoreImportError("Conversion needs support for " + examples[:600] + ". See compatibility details.")
-            score = parse(document)
+            try:
+                score = parse(document)
+            except Exception:
+                # A failed complete parse must still report which individual
+                # arrangements are usable, with their original failure details.
+                diagnose_arrangements(document, report)
+                raise
+            diagnose_arrangements(document, report, parsed_score=score)
         except ScoreImportError as exc:
             if report["status"] != "blocked":
                 add_finding(report, feature="interpretation", category="conversion_check", impact="blocking", message=str(exc))

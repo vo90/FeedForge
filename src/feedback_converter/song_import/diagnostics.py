@@ -1,5 +1,6 @@
 """Per-arrangement diagnosis without changing source metadata or publishing parts."""
 import re
+from dataclasses import replace
 
 from .compatibility import add_finding, inspect_songsterr
 from .model import ScoreImportError
@@ -7,8 +8,13 @@ from .songsterr import _instrument, parse
 from .timeline import render
 
 
-def diagnose_arrangements(document, report):
-    """A score-ready part is not yet an aligned or verified FeedPak."""
+def diagnose_arrangements(document, report, *, parsed_score=None):
+    """A score-ready part is not yet an aligned or verified FeedPak.
+
+    ``parsed_score`` is the successful complete Songsterr parse of this exact
+    document. Each diagnostic still renders its own selected tracks; the
+    shared parsed source is read-only and is never used by the verifier.
+    """
     report["publicationPolicy"] = "all_requested_arrangements"
     report["arrangements"] = []
     metadata = document.get("tracks", []) if isinstance(document, dict) else []
@@ -27,7 +33,15 @@ def diagnose_arrangements(document, report):
             continue
         try:
             row["stage"] = "parse"
-            score = parse(document, track_indices={index})
+            if parsed_score is None:
+                score = parse(document, track_indices={index})
+            else:
+                # Keep the complete source's meter, tempos and repeat context.
+                # Source indices remain unambiguous even with duplicate IDs,
+                # which the complete render still checks before publication.
+                selected = [track for track in parsed_score.tracks
+                            if track.tone_source['sourcePartIndex'] == index]
+                score = replace(parsed_score, tracks=selected)
             row["stage"] = "timeline"
             performance = render(score)
             row["status"] = "score_ready"
