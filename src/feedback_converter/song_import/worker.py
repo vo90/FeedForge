@@ -1,6 +1,8 @@
 """File-based, staged-only Songsterr import worker shared by desktop and CLI."""
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 import json
 from pathlib import Path
 import tempfile
@@ -107,6 +109,9 @@ def run_import(request: dict, progress=None) -> dict:
     artwork = {"status": "unavailable", "message": "Album artwork was not looked up."}
     audit_root = None
     compatibility = None
+    artwork_executor = None
+    artwork_future = None
+    artwork_metadata = None
     try:
         if not isinstance(request, dict):
             raise ImportFailure("unsupported_score", "The import request must be an object.")
@@ -164,6 +169,27 @@ def run_import(request: dict, progress=None) -> dict:
             alignment=_choose_alignment(performance,audio,request,progress,allow_padding=False)
             alignment['endingPaddingDeclined']=exc.diagnostics
             audio,alignment=finalize(performance,audio,alignment,job)
+        if request.get("artworkLookup", True):
+            from .artwork import resolve_album_art
+            # Finalization may retry without ending padding and change the
+            # recording identity. Only now capture the same inputs previously
+            # read after assessment, detached from all mutable import state.
+            artwork_metadata = deepcopy({**metadata, "title": performance["title"], "artist": performance["artist"],
+                                         "album": performance.get("album"), "duration": audio["duration"],
+                                         "audioTitle": audio["source"].get("title", "") if alignment.get("method") == "songsterr-video-points-v1" else "",
+                                         "audioKind": audio["source"].get("kind")})
+            artwork_cache = Path(request.get("artworkCacheDir") or audit_root.parent / "artwork-cache")
+            try:
+                artwork_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="song-import-artwork")
+                artwork_future = artwork_executor.submit(resolve_album_art, artwork_metadata, job / "artwork",
+                                                         cache_dir=artwork_cache)
+            except (RuntimeError, OSError):
+                # Thread availability must not become an import requirement.
+                # A failed submit may have queued work before starting its
+                # thread, so drain/join it before the synchronous fallback.
+                if artwork_executor is not None:
+                    artwork_executor.shutdown(wait=True, cancel_futures=True)
+                artwork_executor = None
         if alignment.get('mapping')=='piecewise-linear':
             from .local_sync import assess
             from .ending_cutoff import mapped_tracks
@@ -205,15 +231,11 @@ def run_import(request: dict, progress=None) -> dict:
             features.update(key for key in ("slide_interval", "vibrato_marks", "tremolo_marks", "ghost", "slide_out", "slide_out_marks", "slide_in_marks", "hn", "hps", "pick_scrape_marks", "harmonic_target", "harmonic_changes", "whammy") if any(note.get(key) for note in notes))
         recipe["compatibility"] = {"version": 6, "extensions": sorted(features),
                                    "status": "requires_consumer_support" if features else "standard_fields"}
-        if request.get("artworkLookup", True):
+        if artwork_metadata is not None:
             if progress:
                 progress({"stage": "converting", "message": "Finding the album cover."})
-            from .artwork import resolve_album_art
-            artwork = resolve_album_art({**metadata, "title": performance["title"], "artist": performance["artist"],
-                                         "album": performance.get("album"), "duration": audio["duration"],
-                                         "audioTitle": audio["source"].get("title", "") if alignment.get("method") == "songsterr-video-points-v1" else "",
-                                         "audioKind": audio["source"].get("kind")}, job / "artwork",
-                                        cache_dir=Path(request.get("artworkCacheDir") or audit_root.parent / "artwork-cache"))
+            artwork = (artwork_future.result() if artwork_future is not None else
+                       resolve_album_art(artwork_metadata, job / "artwork", cache_dir=artwork_cache))
         recipe["artwork"] = {key: artwork[key] for key in ("status", "albumStatus", "album", "year", "provenance", "reason") if key in artwork}
         if progress:
             progress({"stage": "validating", "message": "Building and validating the FeedPak."})
@@ -308,6 +330,12 @@ def run_import(request: dict, progress=None) -> dict:
         compatibility = getattr(exc, "compatibility", None) or compatibility
     except (OSError, ValueError, TypeError, KeyError) as exc:
         failed = {"ok": False, "code": "unsupported_score", "error": str(exc)}
+    finally:
+        if artwork_executor is not None:
+            # The resolver retains its own request/time budget. Never abandon
+            # its thread: failure or cooperative cancellation must finish all
+            # job/cache writes before returning control to caller cleanup.
+            artwork_executor.shutdown(wait=True, cancel_futures=True)
     if audit_root and score.is_file():
         try:
             if compatibility is None:

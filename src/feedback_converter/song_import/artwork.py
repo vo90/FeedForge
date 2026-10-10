@@ -162,7 +162,11 @@ class _Client:
         # A shared cache also coordinates independent worker processes. Failure
         # to acquire its short-lived lock is nonblocking for song conversion.
         global _LAST_MB
-        with _RATE_LOCK:
+        # Waiting behind another import is part of this lookup's existing
+        # budget, including when its caller must join the artwork worker.
+        if not _RATE_LOCK.acquire(timeout=self._remaining()):
+            raise _LookupFailure("lookup_budget_exceeded", "ambiguous")
+        try:
             lock = self.cache / "musicbrainz.lock" if self.cache else None
             handle = None
             try:
@@ -202,6 +206,8 @@ class _Client:
             finally:
                 if handle is not None:
                     os.close(handle)
+        finally:
+            _RATE_LOCK.release()
 
     def get(self, url, kind, maximum=JSON_LIMIT):
         retries = 0
