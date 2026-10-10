@@ -78,7 +78,12 @@ def check_receipt(expected_receipt, actual, check):
                     check.fail("omission_receipt", location + "/" + field, "Omission event identity differs from the original source.")
 
 
-def verify(source, wanted, source_path, recipe, archive, check, read_json, alignment=None):
+def verify(source, wanted, source_path, recipe, archive, check, read_json, alignment=None, *, reference=None):
+    """Check omissions, optionally reading the caller's independent raw clock.
+
+    A supplied reference must use this contract's voice and pending-tie rules.
+    Reconstruction mutates only the mapped expectation, never that reference.
+    """
     if source.format != "songsterr":
         if recipe.get("highFretOmissionsFile") or recipe.get("omissions"):
             check.fail("omission_contract", "import", "The high-fret policy applies only to Songsterr imports.")
@@ -96,12 +101,13 @@ def verify(source, wanted, source_path, recipe, archive, check, read_json, align
     if recipe.get("preservationContract", 0) < 24:
         check.fail("omission_contract", "import", "This partial-chart policy requires Songsterr preservation contract 24.")
         return None
-    from .verify_timeline import expected
-    if recipe.get('preservationContract',0)<27 and not recipe.get('voicesFile'):
-        from .verify_timeline import _expected as expected
-    reference = expected(source, {"offset": 0, "scale": 1},
-                         pending_hopo_ties=recipe.get('preservationContract', 0) >= 95,
-                         pending_slide_ties=recipe.get('preservationContract', 0) >= 96)
+    if reference is None:
+        from .verify_timeline import expected
+        if recipe.get('preservationContract',0)<27 and not recipe.get('voicesFile'):
+            from .verify_timeline import _expected as expected
+        reference = expected(source, {"offset": 0, "scale": 1},
+                             pending_hopo_ties=recipe.get('preservationContract', 0) >= 95,
+                             pending_slide_ties=recipe.get('preservationContract', 0) >= 96)
     receipt = reconstruct(reference, mapped)
     if mapped is not wanted:
         from .verify_collapsed_opening import project
