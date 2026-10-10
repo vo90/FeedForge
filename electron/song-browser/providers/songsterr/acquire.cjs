@@ -3,9 +3,12 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const zlib = require('node:zlib');
-const { httpTransport, networkTransport } = require('../../songsterr-retry.cjs');
+const { httpTransport, networkTransport, transport } = require('../../songsterr-retry.cjs');
 const { validRevisionSelection, APPROVED } = require('./revision-policy.cjs');
 const { ORIGIN, MAX_SCORE_BYTES, MAX_TOTAL_BYTES, MAX_TRACKS, MAX_MEASURES, failure, check, clean, numeric, sourceFilename, publicAudio, bounded } = require('./policy.cjs');
+// Symbols cannot arrive through worker JSON or third-party response properties.
+const ACQUISITION_TRANSPORTS = Symbol('songsterr acquisition transport facts');
+const PART_READ_AHEAD = 2;
 
 // Metadata and parts must use the same selected revision. Tests inject a
 // transport; do not fall back to latest metadata or rotate hosts on failure.
@@ -20,7 +23,20 @@ function lyricsUrl(songId, revisionId, image) {
   const part = partUrl(songId, revisionId, image, 0);
   return image ? part.replace(/\/0\.json$/, '/lyrics.json') : part.replace(/\/part\/(\d+)\/0$/, '/lyrics/$1');
 }
-async function readJson(fetch, url, signal, budget, { array = false } = {}) {
+function decodeJson(bytes, budget, { array = false } = {}) {
+  if (bytes.length > MAX_SCORE_BYTES || bytes.length > budget.remaining) throw failure('score_too_large', 'This Songsterr score exceeds the supported size.');
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+    try { bytes = zlib.gunzipSync(bytes, { maxOutputLength: Math.min(MAX_SCORE_BYTES, budget.remaining) }); }
+    catch { throw failure('invalid_score', 'The compressed score is invalid or too large.'); }
+  }
+  if (!bytes.length || bytes.length > MAX_SCORE_BYTES || bytes.length > budget.remaining) throw failure('score_too_large', 'This Songsterr score is empty or too large.');
+  budget.remaining -= bytes.length;
+  let value;
+  try { value = JSON.parse(bytes.toString('utf8')); } catch { throw failure('invalid_score', 'Songsterr returned something other than a complete score.'); }
+  if (!value || typeof value !== 'object' || Array.isArray(value) !== array) throw failure('invalid_score', 'The score response has an unsupported format.');
+  return value;
+}
+async function readJson(fetch, url, signal, budget, { array = false, raw = false, onTransport = () => {} } = {}) {
   const operation = new URL(url).pathname.startsWith('/api/meta/') ? 'score_metadata' : 'score_part';
   check(signal);
   const controller = new AbortController();
@@ -31,8 +47,11 @@ async function readJson(fetch, url, signal, budget, { array = false } = {}) {
       const response = await fetch(url, { method: 'GET', credentials: 'omit', redirect: 'error', signal: controller.signal, headers: { Accept: 'application/json' } });
       if (response.status === 401) throw failure('needs_login', 'Songsterr requires sign-in to retrieve this score.');
       if (response.status === 403) throw failure('access_denied', 'Songsterr did not allow anonymous access to this score.');
-      if (!response.ok) throw Object.assign(failure(response.status === 429 ? 'rate_limited' : response.status === 404 ? 'unavailable' : 'network_error', 'The Songsterr score could not be retrieved.'),
-        { transport: httpTransport('score', operation, response.status, response.headers) });
+      if (!response.ok) {
+        const detail = httpTransport('score', operation, response.status, response.headers);
+        onTransport(detail);
+        throw Object.assign(failure(response.status === 429 ? 'rate_limited' : response.status === 404 ? 'unavailable' : 'network_error', 'The Songsterr score could not be retrieved.'), { transport: detail });
+      }
       if (response.url && response.url !== url) throw failure('access_denied', 'The score request changed destination.');
       const length = Number(response.headers?.get?.('content-length'));
       if (length > MAX_SCORE_BYTES || length > budget.remaining) throw failure('score_too_large', 'This Songsterr score exceeds the supported size.');
@@ -43,17 +62,9 @@ async function readJson(fetch, url, signal, budget, { array = false } = {}) {
         if (size > MAX_SCORE_BYTES || size > budget.remaining) { controller.abort(); throw failure('score_too_large', 'This Songsterr score exceeds the supported size.'); }
         chunks.push(chunk);
       }
-      let bytes = Buffer.concat(chunks);
-      if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
-        try { bytes = zlib.gunzipSync(bytes, { maxOutputLength: Math.min(MAX_SCORE_BYTES, budget.remaining) }); }
-        catch { throw failure('invalid_score', 'The compressed score is invalid or too large.'); }
-      }
-      if (!bytes.length || bytes.length > MAX_SCORE_BYTES || bytes.length > budget.remaining) throw failure('score_too_large', 'This Songsterr score is empty or too large.');
-      budget.remaining -= bytes.length;
-      let value;
-      try { value = JSON.parse(bytes.toString('utf8')); } catch { throw failure('invalid_score', 'Songsterr returned something other than a complete score.'); }
-      if (!value || typeof value !== 'object' || Array.isArray(value) !== array) throw failure('invalid_score', 'The score response has an unsupported format.');
-      return value;
+      const bytes = chunks.length === 1 ? chunks[0] : Buffer.concat(chunks);
+      chunks.length = 0;
+      return raw ? bytes : decodeJson(bytes, budget, { array });
     };
     const pending = request();
     // The fetch callback can abort synchronously before bounded attaches its
@@ -90,18 +101,76 @@ function validatePart(part, track, expectedMeasures) {
   if (Array.isArray(track.tuning) && (track.tuning.length < 1 || track.tuning.length > 16 || !track.tuning.every(Number.isFinite))) throw failure('invalid_score', 'A track tuning is invalid.');
   return part.measures.length;
 }
+async function readParts(meta, descriptor, fetch, signal, budget, onProgress) {
+  const parts = [];
+  let measures = Number.isInteger(meta.measureCount) && meta.measureCount > 0 ? meta.measureCount : null;
+  const accept = (part, index) => {
+    measures = validatePart(part, meta.tracks[index], measures);
+    parts.push(part); onProgress({ phase: 'score', completed: index + 1, total: meta.tracks.length });
+  };
+  // The first part establishes the measure count and preserves the early-failure
+  // gate. Only later parts have one speculative sibling request.
+  accept(await readJson(fetch, partUrl(descriptor.id, descriptor.revisionId, meta.image, 0), signal, budget), 0);
+  // At most 2 * MAX_SCORE_BYTES of raw read-ahead, in addition to the existing
+  // MAX_TOTAL_BYTES decoded-content cap. JSON objects/inflate scratch are not
+  // measured by either byte limit; decode and validation remain sequential.
+  const pending = new Map(), facts = [];
+  let next = 1, stopped = false, primaryError;
+  const start = (index) => {
+    check(signal);
+    const controller = new AbortController(), abort = () => controller.abort();
+    signal?.addEventListener('abort', abort, { once: true });
+    // A snapshot bounds each raw body. The shared decoded-byte budget is
+    // committed in index order below, never by racing response completions.
+    const slot = { controller };
+    slot.promise = readJson(fetch, partUrl(descriptor.id, descriptor.revisionId, meta.image, index),
+      controller.signal, { remaining: budget.remaining }, { raw: true, onTransport: value => {
+        stopped = true;
+        const detail = transport(value);
+        // Capture at receipt time: sibling cancellation must not hide an
+        // already observed Retry-After by replacing its rejection with abort.
+        if (facts.length < PART_READ_AHEAD && detail?.service === 'songsterr' && detail.phase === 'score'
+            && detail.operation === 'score_part' && detail.retryAfterAt) facts.push(Object.freeze(detail));
+      } })
+      .then(bytes => ({ bytes }), error => {
+        stopped = true;
+        for (const [other, entry] of pending) if (other > index) entry.controller.abort();
+        return { error };
+      }).finally(() => signal?.removeEventListener('abort', abort));
+    pending.set(index, slot);
+  };
+  try {
+    for (let index = 1; index < meta.tracks.length; index++) {
+      while (!stopped && pending.size < PART_READ_AHEAD && next < meta.tracks.length) start(next++);
+      check(signal);
+      const result = await pending.get(index).promise;
+      check(signal);
+      if (result.error) throw result.error;
+      accept(decodeJson(result.bytes, budget), index);
+      pending.delete(index);
+    }
+    return { parts, measures };
+  } catch (error) {
+    primaryError = error;
+    throw error;
+  } finally {
+    // Also covers progress-callback failures. Observe all request outcomes so
+    // cancellation cannot leave a late rejection or write a partial source.
+    for (const slot of pending.values()) slot.controller.abort();
+    await Promise.allSettled([...pending.values()].map(slot => slot.promise));
+    if (facts.length && primaryError && Object.isExtensible(primaryError)) {
+      primaryError[ACQUISITION_TRANSPORTS] = Object.freeze(facts.slice(0, PART_READ_AHEAD));
+    }
+    pending.clear();
+  }
+}
 async function acquireAnonymous(descriptor, { fetch, directory, signal, onProgress = () => {} } = {}) {
   if (typeof fetch !== 'function') throw failure('unavailable', 'Anonymous score retrieval is unavailable.');
   if (!numeric(descriptor?.id) || !validRevisionSelection(descriptor)) throw failure('revision_ineligible', 'A verified revision selection is required.');
   const budget = { remaining: MAX_TOTAL_BYTES };
   const meta = await readJson(fetch, `${ORIGIN}/api/meta/${descriptor.id}/${descriptor.revisionId}`, signal, budget);
   validateMeta(meta, descriptor);
-  const parts = []; let measures = Number.isInteger(meta.measureCount) && meta.measureCount > 0 ? meta.measureCount : null;
-  for (let index = 0; index < meta.tracks.length; index++) {
-    const part = await readJson(fetch, partUrl(descriptor.id, descriptor.revisionId, meta.image, index), signal, budget);
-    measures = validatePart(part, meta.tracks[index], measures);
-    parts.push(part); onProgress({ phase: 'score', completed: index + 1, total: meta.tracks.length });
-  }
+  const { parts, measures } = await readParts(meta, descriptor, fetch, signal, budget, onProgress);
   check(signal);
   const payload = { format: 'songsterr', songId: descriptor.id, revisionId: descriptor.revisionId,
     title: descriptor.title, artist: descriptor.artist, tracks: meta.tracks, parts };
@@ -128,4 +197,4 @@ async function acquireAnonymous(descriptor, { fetch, directory, signal, onProgre
     ...(audio ? { audio } : {}), sourceFilename: sourceFilename(descriptor.artist, descriptor.title) };
 }
 
-module.exports = { acquireAnonymous, partUrl, lyricsUrl, validateMeta, validatePart, readJson };
+module.exports = { acquireAnonymous, partUrl, lyricsUrl, validateMeta, validatePart, readJson, ACQUISITION_TRANSPORTS };
