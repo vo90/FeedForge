@@ -9,6 +9,7 @@ const { inspectEvidence, reportBundle, compatibilityReport, compatibilityBacklog
   CHART_GUIDANCE_POLICY, verifiedChartGuidance } = require('./songsterr-evidence.cjs');
 const { waitForSharedOperation } = require('./shared-operation.cjs');
 const { unavailableSynchronization, synchronizationSummary, audioVideo } = require('./providers/songsterr/synchronization.cjs');
+const { ACQUISITION_TRANSPORTS } = require('./providers/songsterr/acquire.cjs');
 const { transport, retryPlan } = require('./songsterr-retry.cjs');
 const { reportZip } = require('./songsterr-retry-report.cjs');
 const { normalizeHybridLead, matchesHybridRequest } = require('./hybrid-lead-options.cjs');
@@ -415,6 +416,16 @@ class SongsterrJobs {
   }
   async _scheduleFailure(job, error) {
     if (job.controller.signal.aborted || job.committed || this.disposed) return false;
+    // A speculative score sibling can receive Retry-After even when the
+    // earlier part fails semantically. Honor that cooldown without making the
+    // primary failure retryable. Only the in-process acquisition can set it.
+    const observed = error[ACQUISITION_TRANSPORTS];
+    if (Array.isArray(observed)) for (const fact of observed.slice(0, 2)) {
+      const seen = transport(fact);
+      if (seen?.service === 'songsterr' && seen.phase === 'score' && seen.operation === 'score_part' && seen.retryAfterAt) {
+        this.cooldowns.songsterr = Math.max(this.cooldowns.songsterr || 0, seen.retryAfterAt);
+      }
+    }
     const terminal = ['cancelled', 'alignment_failed', 'needs_attention', 'needs_login', 'unsupported_score', 'invalid_score', 'revision_unavailable', 'access_denied', 'dependency_missing', 'import_file_location'].includes(error.code);
     const detail = terminal ? null : transport(error.transport);
     if (detail?.retryAfterAt) this.cooldowns[detail.service] = Math.max(this.cooldowns[detail.service] || 0, detail.retryAfterAt);

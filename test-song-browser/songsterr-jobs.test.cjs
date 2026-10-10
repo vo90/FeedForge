@@ -1340,8 +1340,8 @@ test('cancelling timing retrieval never runs conversion or local fallback', asyn
   assert.deepEqual(fs.readdirSync(f.outputDir), []);
 });
 
-function retryClock() {
-  let now = 100000, serial = 0; const timers = new Map();
+function retryClock(initial = 100000) {
+  let now = initial, serial = 0; const timers = new Map();
   return { now: () => now, random: () => 0, setTimeout: (fn, delay) => { const id = ++serial; timers.set(id, { fn, at: now + delay }); return id; },
     clearTimeout: id => timers.delete(id), count: () => timers.size,
     advance: async (ms, jobs) => { now += ms; for (const [id, timer] of [...timers]) if (timer.at <= now) { timers.delete(id); timer.fn(); } await settle(jobs); } };
@@ -1440,6 +1440,29 @@ test('Retry-After cools down the service across jobs and long requests park', as
   await clock.advance(599999, f.jobs); assert.equal(calls, 1);
   await clock.advance(1, f.jobs); assert.equal(calls, 2);
   assert.equal(f.jobs.snapshot()[0].state, 'needs_attention');
+});
+
+test('an ordered semantic failure preserves only the speculative sibling cooldown for the next job', async t => {
+  const { acquireAnonymous } = require('../electron/song-browser/providers/songsterr/acquire.cjs');
+  const clock = retryClock(Date.now());
+  const f = await fixture(t, { clock, acquire: async (chart, ctx, normal) => {
+    if (chart.id !== CHART.id) return normal(chart, ctx);
+    return acquireAnonymous({ ...CHART, revisionId: '456', approval: 'approved' }, { ...ctx, fetch: async url => {
+      const value = url.includes('/api/meta/') ? { songId: 123, revisionId: 456, image: 'fixture', tracks: [{}, {}, {}] }
+        : url.endsWith('/0.json') ? { measures: [{}] } : {};
+      if (url.endsWith('/1.json')) await new Promise(resolve => setImmediate(resolve));
+      return new Response(JSON.stringify(value), { status: url.endsWith('/2.json') ? 429 : 200, headers: { 'retry-after': '60' } });
+    } });
+  } });
+  f.enqueue(); await settle(f.jobs);
+  assert.equal(f.jobs.snapshot()[0].state, 'failed'); assert.match(f.jobs.snapshot()[0].error, /missing or invalid measures/);
+  assert.equal(f.jobs.jobs[0].retry.used, 0);
+  assert.equal(f.jobs.jobs[0].retry.events.at(-1).decision, 'stop');
+  const remaining = f.jobs.cooldowns.songsterr - clock.now(); assert.ok(remaining >= 59000);
+  f.enqueue({ ...CHART, id: '124' }); await settle(f.jobs); assert.equal(f.acquisitions.length, 1);
+  await clock.advance(remaining - 1, f.jobs); assert.equal(f.acquisitions.length, 1);
+  await clock.advance(1, f.jobs); assert.equal(f.acquisitions.length, 2);
+  assert.equal(f.jobs.snapshot()[1].state, 'completed'); assert.equal(f.jobs.jobs[0].retry.used, 0);
 });
 
 test('automatic acquisition retries retain the descriptor even before a score file exists', async t => {
