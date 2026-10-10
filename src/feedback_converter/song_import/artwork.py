@@ -448,7 +448,13 @@ def _cover(client, group):
             # replacing the original release/track evidence or album year.
             from .album_match import _ids
             try:
-                full = client.json(f"https://musicbrainz.org/ws/2/release/{cover_release}?fmt=json&inc=artist-credits+release-groups", "mb")
+                # Album matching already fetched and verified this full edition
+                # (including its artist, group and track). Reuse that evidence
+                # within this lookup, not a second request for fewer fields.
+                # A different default edition still needs independent proof.
+                full = group["release"] if (group.get("releaseLookupFresh") is True
+                    and cover_release == group["release"]["id"]) else client.json(
+                    f"https://musicbrainz.org/ws/2/release/{cover_release}?fmt=json&inc=artist-credits+release-groups", "mb")
             except _LookupFailure as exc:
                 if exc.reason != "service_unavailable":
                     raise

@@ -359,7 +359,7 @@ def test_musicbrainz_rate_limit_and_single_bounded_retry(tmp_path):
     result = network.resolve(tmp_path)
     assert result["status"] == "matched"
     calls = [call for call in network.calls if "musicbrainz.org" in call["url"]]
-    assert len(calls) == 6  # Includes album-default edition verification.
+    assert len(calls) == 5  # Confirmed album-default edition is reused.
     assert all(b["time"] - a["time"] >= 1 for a, b in zip(calls, calls[1:]))
     assert 2 in network.clock.sleeps
 
@@ -558,7 +558,7 @@ def test_transient_transport_timeout_retries_once_within_budget(tmp_path):
     network.override = transient
     result = network.resolve(tmp_path)
     assert result["status"] == "matched"
-    assert len([call for call in network.calls if "musicbrainz.org" in call["url"]]) == 6
+    assert len([call for call in network.calls if "musicbrainz.org" in call["url"]]) == 5
 
 
 def test_transport_exception_and_invalid_input_are_nonblocking(tmp_path):
@@ -880,6 +880,50 @@ def test_album_default_priority_and_verified_edition_fallback(tmp_path, problem)
     again = network.resolve(tmp_path / 'again', cache=tmp_path / 'cache')
     assert len(network.calls) == count
     assert Path(again['path']).read_bytes() == Path(result['path']).read_bytes()
+
+
+def test_default_cover_reuses_confirmed_edition_without_duplicate_metadata_request(tmp_path):
+    network = Network()
+    redundant = f'https://musicbrainz.org/ws/2/release/{uid(3)}?fmt=json&inc=artist-credits+release-groups'
+    network.override = lambda url: response(status=503) if url == redundant else None
+    result = network.resolve(tmp_path)
+    assert result['status'] == 'matched'
+    assert redundant not in [c['url'] for c in network.calls]
+    assert result['provenance']['trackEvidence']['releaseId'] == uid(3)
+    assert result['provenance']['artworkReleaseId'] == uid(3)
+    assert sum('/ws/2/release/' + uid(3) in c['url'] for c in network.calls) == 1
+
+
+def test_confirmed_edition_reuse_leaves_request_budget_for_image(tmp_path, monkeypatch):
+    from feedback_converter.song_import import artwork
+    # Four identity/track requests, a cover index, then its image. A duplicate
+    # edition lookup would consume the last slot and leave no fetched cover.
+    monkeypatch.setattr(artwork, 'MAX_REQUESTS', 6)
+    network = Network()
+    result = network.resolve(tmp_path)
+    assert result['status'] == 'matched'
+    assert len(network.calls) == 6
+    assert network.calls[-1]['maximum'] == IMAGE_LIMIT
+
+
+def test_disk_cached_track_metadata_does_not_replace_cover_edition_check(tmp_path):
+    from feedback_converter.song_import.artwork import _Client, _cover
+    from feedback_converter.song_import.album_match import select_album
+    network = Network()
+    cache = tmp_path / 'cache'
+    cache.mkdir()
+    metadata = {'title': 'Example Song', 'artist': 'Example Artist'}
+    def client():
+        return _Client(network, cache, network.clock, network.clock.sleep, network.clock)
+    fresh = select_album(client(), metadata)
+    assert fresh['releaseLookupFresh'] is True
+    second = client()
+    cached = select_album(second, metadata)
+    assert cached['releaseLookupFresh'] is False
+    network.calls.clear()
+    _cover(second, cached)
+    assert any(c['url'] == f'https://musicbrainz.org/ws/2/release/{uid(3)}?fmt=json&inc=artist-credits+release-groups'
+               for c in network.calls)
 
 
 def test_previous_artwork_policy_is_refetched(tmp_path):
