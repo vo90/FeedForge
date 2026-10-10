@@ -31,17 +31,29 @@ SPARSE_EXCLUSIONS = PITCH_EXCLUSIONS + ATTACK_EXCLUSIONS + (
     'harmonic_alias', 'pick_scrape_marks', 'slide_out', 'slide_out_marks', 'slide_in_marks', 'slide_interval', 'tr',
 )
 
-def _decode(path):
+def _decode(path, *, hash_samples=False):
     with sf.SoundFile(path) as reader:
         if not 2 <= len(reader) / reader.samplerate <= 1202 or not 1 <= reader.channels <= 2:
             raise ValueError("The timing check needs a bounded mono or stereo recording.")
         rate = reader.samplerate
-        mono = reader.read(dtype='float32', always_2d=True).mean(axis=1)
+        if hash_samples:
+            # Same decoded identity as local_sync._hash, before mono/resampling.
+            # Bound the byte copy and release native channels before analysis.
+            digest = hashlib.sha256(b'decoded-float32-v1\0')
+            digest.update(f'{rate}:{reader.channels}:{reader.frames}\0'.encode('ascii'))
+        native = reader.read(dtype='float32', always_2d=True)
+        if hash_samples:
+            for begin in range(0, len(native), 32768):
+                digest.update(native[begin:begin + 32768].astype('<f4', copy=False).tobytes())
+        mono = native.mean(axis=1)
+        del native
     if not np.isfinite(mono).all():
         raise ValueError("The timing check recording contains invalid samples.")
     signal = np.interp(np.arange(round(len(mono) * RATE / rate)) * rate / RATE,
                        np.arange(len(mono)), mono).astype('float32')
     count = 1 + len(signal) // HOP
+    if hash_samples:
+        return signal, count, digest.hexdigest()
     return signal, count
 
 
@@ -130,12 +142,16 @@ class FeatureSession:
     The bounded recording signal/onsets and FFT scratch are separate from that
     budget. Long recordings fall back to sequential pitch computation and LRU
     eviction. Producer and verifier create separate sessions; nothing is global.
+    An optional decoded-sample hash binds this session's native audio snapshot,
+    not any later contents of the path. Later mutation guards must reread it.
     """
-    def __init__(self, path, *, cache_bytes=64 * 1024 * 1024):
+    def __init__(self, path, *, cache_bytes=64 * 1024 * 1024, hash_samples=False):
         self.path = path
         self.cache_bytes = max(0, cache_bytes)
         self.cache = {}
         self.signal = self.flux = None
+        self.hash_samples = hash_samples
+        self.sample_sha256 = None
         self.count = 0
         self.closed = False
 
@@ -148,6 +164,7 @@ class FeatureSession:
     def close(self):
         self.cache.clear()
         self.signal = self.flux = self.path = None
+        self.sample_sha256 = None
         self.closed = True
 
     def _load(self):
@@ -156,8 +173,14 @@ class FeatureSession:
         if self.signal is None:
             if hasattr(self.path, 'seek'):
                 self.path.seek(0)
-            self.signal, self.count = _decode(self.path)
-            self.flux = _onsets(self.signal, self.count)
+            sample_sha256 = None
+            if self.hash_samples:
+                signal, count, sample_sha256 = _decode(self.path, hash_samples=True)
+            else:
+                signal, count = _decode(self.path)
+            flux = _onsets(signal, count)
+            self.signal, self.count, self.flux = signal, count, flux
+            self.sample_sha256 = sample_sha256
 
     @property
     def cached_bytes(self):

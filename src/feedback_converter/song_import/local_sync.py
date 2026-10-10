@@ -167,7 +167,7 @@ def assess(tracks, path, duration, map_hash, *, version='local-recording-clock-v
     if version not in (VERSION, pitch_clock.VERSION, timing_diagnostic.VERSION):
         raise ValueError('Unsupported timing diagnostic version.')
     calibration = tuning(path)
-    with rs.FeatureSession(path) as session:
+    with rs.FeatureSession(path, hash_samples=True) as session:
         pitch, flux, signal = session.features(reference_hz=calibration['referenceHz'])
         if abs(len(signal)/rs.RATE-duration) > .001:
             raise ValueError('The recording duration does not match its timing evidence.')
@@ -185,8 +185,13 @@ def assess(tracks, path, duration, map_hash, *, version='local-recording-clock-v
                     report = assess_features(tracks, pitch, flux, duration, corroborate_mismatch=True)
                 report.update(timing_diagnostic.summary(report))
             report = {**report, 'version': version, 'pitchReference': reference}
+        sample_sha256 = session.sample_sha256
+    # Preserve the successful assessment's stream position without decoding it
+    # again. The digest belongs to the samples that produced this report.
+    if hasattr(path, 'seek'):
+        path.seek(0)
     return {**report, 'tuning':calibration,
-            'audioSha256': _hash(path), 'mapHash': map_hash, 'audioDuration':duration}
+            'audioSha256': sample_sha256, 'mapHash': map_hash, 'audioDuration':duration}
 
 
 _SOURCE_TIME_PATHS = (
