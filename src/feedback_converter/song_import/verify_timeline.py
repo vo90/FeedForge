@@ -11,6 +11,19 @@ from .verify_source import Source, fraction, unsupported
 MAX_EVENTS = 500_000
 
 
+def _direction_boundaries(spans):
+    """Independently compare exact coverage via signed direction boundaries."""
+    boundaries = Counter()
+    previous_end = None
+    for direction, left, right in spans:
+        if right <= left or previous_end is not None and left < previous_end:
+            return None
+        boundaries[(left, direction)] += 1
+        boundaries[(right, direction)] -= 1
+        previous_end = right
+    return {key: count for key, count in boundaries.items() if count}
+
+
 def _plain_bend_segment(atom):
     """A finger-bend segment carries no independent pitch controller."""
     onset = {'pkd', 'fg', 'ac', 'ghost'}
@@ -879,6 +892,13 @@ def _expected(source, alignment, *, pending_hopo_ties=True, pending_slide_ties=T
                 directions = {direction for direction, _, _ in n["slide_marks"]}
                 if len(directions) == 1:
                     row["slide_out"] = next(iter(directions))
+                # Independent rational boundary accounting cancels redundant
+                # tied partitions, but retains direction changes and real gaps.
+                audible_scrapes = [(d, left, min(right, sound_end)) for d, left, right in n['scrapes'] if left < sound_end]
+                scrape_boundaries = _direction_boundaries(audible_scrapes)
+                if scrape_boundaries and scrape_boundaries == _direction_boundaries(n['slide_marks']):
+                    row.pop('slide_out_marks')
+                    row.pop('slide_out', None)
             if n["incoming_marks"]:
                 row["slide_in_marks"] = [{"direction": direction,
                                           "time": round(recording.at(clock.at(destination)) - mapped_start, 6)}
