@@ -6,6 +6,24 @@ from .songsterr_legacy import validate_legacy_field
 from .songsterr_legacy_effects import validate_legacy_beat_effect
 
 
+def _matching_voice_count(part, value):
+    """A redundant count never selects or limits the actual musical voices."""
+    if type(value) is not int or value <= 0:
+        return False
+    measures = part.get("measures")
+    if not isinstance(measures, list) or not measures:
+        return False
+    maximum = 0
+    for measure in measures:
+        if not isinstance(measure, dict):
+            return False
+        voices = measure.get("voices")
+        if not isinstance(voices, list) or not voices or not all(isinstance(v, dict) for v in voices):
+            return False
+        maximum = max(maximum, len(voices))
+    return value == maximum
+
+
 class FeatureInventory:
     def __init__(self):
         self._entries = {}
@@ -31,6 +49,9 @@ class FeatureInventory:
             if scope == "Songsterr part" and key == "key" and isinstance(value, str):
                 self.record(scope, key, "source", where)
                 continue
+            if scope == "Songsterr part" and key == "voices" and _matching_voice_count(obj, value):
+                self.record(scope, key, "source", where)
+                continue
             if validate_legacy_beat_effect(scope, key, value, beat=obj):
                 self.record(scope, key, 'source', where, ['source'])
                 continue
@@ -48,7 +69,8 @@ class FeatureInventory:
                 handling = "source"
             elif key in layout:
                 handling = "layout"
-            elif (value is None or value is False or value == "" or value == [] or value == {}) and not (scope == "Songsterr part" and key == "key"):
+            elif (value is None or value is False or value == "" or value == [] or value == {}) and not (
+                    scope == "Songsterr part" and key in {"key", "voices"}):
                 handling = "inactive_unknown"
             else:
                 handling = "unclassified"
