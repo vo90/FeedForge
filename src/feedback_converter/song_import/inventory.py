@@ -26,6 +26,11 @@ class FeatureInventory:
             raise ScoreImportError(f"Malformed {scope} object at {path}.")
         for key, value in obj.items():
             where = f"{path}.{key}"
+            # The part-level opaque string is metadata, not a key signature.
+            # Check before inactive handling so malformed values stay visible.
+            if scope == "Songsterr part" and key == "key" and isinstance(value, str):
+                self.record(scope, key, "source", where)
+                continue
             if validate_legacy_beat_effect(scope, key, value, beat=obj):
                 self.record(scope, key, 'source', where, ['source'])
                 continue
@@ -43,7 +48,7 @@ class FeatureInventory:
                 handling = "source"
             elif key in layout:
                 handling = "layout"
-            elif value is None or value is False or value == "" or value == [] or value == {}:
+            elif (value is None or value is False or value == "" or value == [] or value == {}) and not (scope == "Songsterr part" and key == "key"):
                 handling = "inactive_unknown"
             else:
                 handling = "unclassified"
