@@ -558,6 +558,10 @@ def _cache_read(cache, key, now, *, max_age=None):
         # Successful covers and unrelated negative entries remain reusable.
         if result.get('reason') == 'incomplete_catalogue' and saved.get('recordingPaginationVersion') != 1:
             return None
+        # Old candidate-limit failures predate deferred EP verification. Actual
+        # ambiguity is rechecked once too, then retains the normal negative TTL.
+        if result.get('reason') == 'album_ambiguous' and saved.get('albumCandidateVersion') != 1:
+            return None
         raw = None
         if result["status"] == "matched":
             compact = result["provenance"].get("imageEncoding") == COVER_ENCODING
@@ -588,7 +592,8 @@ def _cache_write(cache, key, result, raw, now):
                 os.replace(temporary, cache / f"{key}.jpg")
             finally:
                 temporary.unlink(missing_ok=True)
-        _atomic_json(cache / f"{key}.json", {"version": POLICY_VERSION, "recordingPaginationVersion": 1, "createdAt": now(),
+        _atomic_json(cache / f"{key}.json", {"version": POLICY_VERSION, "recordingPaginationVersion": 1,
+                                           "albumCandidateVersion": 1, "createdAt": now(),
                                            "ttl": 30 * 86400 if raw else (300 if result.get('reason') in {'service_unavailable', 'lookup_budget_exceeded'} else 86400), "result": result})
     except OSError:
         pass  # A cache is optional; never lose a fetched cover because it is unwritable.

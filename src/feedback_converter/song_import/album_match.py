@@ -218,7 +218,8 @@ def _eligible(release, versions, artist_ids, supplied_album):
     return True
 
 
-def _group_candidates(client, records, metadata, versions):
+def _group_nominations(client, records, metadata, versions):
+    """Collect once, retaining EPs for a possible later verification phase."""
     groups = {}
     for record in records:
         # Search embeds linked releases but no completeness promise. They only
@@ -233,21 +234,33 @@ def _group_candidates(client, records, metadata, versions):
             if not isinstance(release, dict) or not _eligible(release, versions, _ids(record), metadata.get('album')):
                 continue
             group = release['release-group']
-            entry = groups.setdefault(group['id'], {'id': group['id'], 'releases': {}, 'records': {}, 'artistIds': _ids(record)})
+            release_type = 'Album' if group['primary-type'].lower() == 'album' else 'EP'
+            entry = groups.setdefault(group['id'], {'id': group['id'], 'releases': {}, 'records': {},
+                                                   'artistIds': _ids(record), 'releaseType': release_type})
+            if entry['releaseType'] != release_type or entry['artistIds'] != _ids(record):
+                raise _LookupFailure('album_identity_unconfirmed', 'ambiguous')
             entry['releases'][release['id']] = release
             entry['records'][record['id']] = record
+    return list(groups.values())
+
+
+def _verify_groups(client, groups, metadata, versions):
+    # The cap applies to candidates needed for this phase. EP nominations do
+    # not consume album slots, but share the same overall HTTP/time budget.
     if len(groups) > MAX_GROUPS:
         raise _LookupFailure('album_ambiguous', 'ambiguous')
     result = []
-    for group in groups.values():
+    for group in groups:
         full = client.json(f"https://musicbrainz.org/ws/2/release-group/{group['id']}?fmt=json&inc=artist-credits", 'mb')
         if not full or full.get('id') != group['id'] or _ids(full) != group['artistIds']:
+            raise _LookupFailure('album_identity_unconfirmed', 'ambiguous')
+        if str(full.get('primary-type', '')).lower() != group['releaseType'].lower():
             raise _LookupFailure('album_identity_unconfirmed', 'ambiguous')
         probe = {'status': 'Official', 'release-group': full, 'artist-credit': full.get('artist-credit')}
         if not _eligible(probe, versions, group['artistIds'], metadata.get('album')):
             continue
         group.update(album=full['title'], interval=_interval(full.get('first-release-date')),
-                     dates={full['first-release-date']}, releaseType=full['primary-type'])
+                     dates={full['first-release-date']})
         result.append(group)
     return result
 
@@ -406,7 +419,16 @@ def select_album(client, metadata, *, album_hint=None):
     records, title, versions, audio, credit_resolution = _recordings(client, metadata)
     if not records:
         raise _LookupFailure('recording_not_found')
-    groups = _group_candidates(client, records, metadata, versions)
+    nominations = _group_nominations(client, records, metadata, versions)
+    # Explicit names/labels must still compare all matching release types.
+    # Otherwise apply the existing Album-before-EP ranking before HTTP work.
+    staged = not metadata.get('album') and album_hint is None
+    deferred_eps = [g for g in nominations if g['releaseType'] == 'EP'] if staged else []
+    first = [g for g in nominations if g['releaseType'] == 'Album'] if staged else nominations
+    groups = _verify_groups(client, first, metadata, versions)
+    if staged and not groups:
+        groups = _verify_groups(client, deferred_eps, metadata, versions)
+        deferred_eps = []
     if album_hint is not None:
         groups = [g for g in groups if _norm(g['album']) == _norm(album_hint)]
         # A label cannot choose between multiple independently verified groups
@@ -421,8 +443,11 @@ def select_album(client, metadata, *, album_hint=None):
         # original-album checks do not prove absence from every edition. They
         # permit a positively verified EP fallback, never an unverified album
         # guess. Explicit album requests and live-session ambiguity stay strict.
-        eps = [candidate for candidate in groups if candidate['releaseType'] == 'EP']
-        if metadata.get('album') or 'live' in versions or group['releaseType'] != 'Album' or not eps:
+        if metadata.get('album') or 'live' in versions or group['releaseType'] != 'Album':
+            raise
+        eps = (_verify_groups(client, deferred_eps, metadata, versions) if staged else
+               [candidate for candidate in groups if candidate['releaseType'] == 'EP'])
+        if not eps:
             raise
         group = _choose(eps, metadata, versions, audio)
         _confirm_track(client, group, metadata, title, versions)
