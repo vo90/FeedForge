@@ -144,6 +144,7 @@ def _artist_lookup(client, artist):
 
 def _recordings(client, metadata):
     credit_resolution = None
+    video_resolution = None
     names = [metadata['artist']]
     title = _lookup_title(metadata, names)
     audio = _audio_context(metadata, names, _search_title(title))
@@ -170,14 +171,25 @@ def _recordings(client, metadata):
     matches = [r for r in records if _matches(r, metadata, title, versions, details)]
     identities = {_ids(r) for r in matches}
     if len(identities) > 1:
-        raise _LookupFailure('artist_ambiguous', 'ambiguous')
+        from .video_artist_match import resolve
+        resolved = resolve(client, metadata, matches, title, versions, details)
+        if resolved is None:
+            raise _LookupFailure('artist_ambiguous', 'ambiguous')
+        # The link corroborates the artist, not an exact audio master. Search
+        # the complete artist-specific catalogue before ordinary album checks.
+        records = _search(client, title, metadata['artist'], versions, resolved['artistIds'])
+        matches = [r for r in records if _matches(r, metadata, title, versions, details, resolved['artistIds'])]
+        if not matches:
+            raise _LookupFailure('artist_ambiguous', 'ambiguous')
+        identities = {resolved['artistIds']}
+        video_resolution = resolved['proof']
     artist_ids = next(iter(identities), ())
     if matches:
         names += [c['artist']['name'] for r in matches for c in r['artist-credit']]
     # A credited alias can produce an incomplete subset of that artist's songs.
     # Repeat by its verified ID instead of dropping an article or fuzzy matching.
     alias = matches and any(_norm(c['artist']['name']) != _norm(metadata['artist']) for r in matches for c in r['artist-credit'])
-    if not identifier and (alias or (not records)):
+    if not identifier and not video_resolution and (alias or (not records)):
         if not artist_ids:
             artist_ids, names = _artist_lookup(client, metadata['artist'])
         title = _lookup_title(metadata, names)
@@ -198,7 +210,7 @@ def _recordings(client, metadata):
             # might return only part of the catalogue. Keep input metadata intact.
             records = _search(client, title, metadata['artist'], versions, artist_ids)
             matches = [r for r in records if _matches(r, metadata, title, versions, details, artist_ids)]
-    return matches, title, versions, audio, credit_resolution
+    return matches, title, versions, audio, credit_resolution, video_resolution
 
 
 def _eligible(release, versions, artist_ids, supplied_album):
@@ -493,7 +505,7 @@ def select_album_with_label(client, metadata):
 
 
 def select_album(client, metadata, *, album_hint=None):
-    records, title, versions, audio, credit_resolution = _recordings(client, metadata)
+    records, title, versions, audio, credit_resolution, video_resolution = _recordings(client, metadata)
     if not records:
         raise _LookupFailure('recording_not_found')
     nominations = _group_nominations(client, records, metadata, versions)
@@ -533,4 +545,6 @@ def select_album(client, metadata, *, album_hint=None):
     group['versions'] = sorted(versions)
     if credit_resolution:
         group['artistCreditResolution'] = credit_resolution['proof']
+    if video_resolution:
+        group['artistVideoResolution'] = video_resolution
     return group

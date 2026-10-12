@@ -178,6 +178,12 @@ def run_import(request: dict, progress=None) -> dict:
                                          "album": performance.get("album"), "duration": audio["duration"],
                                          "audioTitle": audio["source"].get("title", "") if alignment.get("method") == "songsterr-video-points-v1" else "",
                                          "audioKind": audio["source"].get("kind")})
+            # Use the finalized selected source, never a requested/preparation
+            # video that may have changed when finalization retried.
+            artwork_metadata.pop('audioVideoId', None)
+            if (alignment.get('method') == 'songsterr-video-points-v1'
+                    and audio['source'].get('kind') == 'youtube' and audio['source'].get('videoId')):
+                artwork_metadata['audioVideoId'] = audio['source']['videoId']
             artwork_cache = Path(request.get("artworkCacheDir") or audit_root.parent / "artwork-cache")
             try:
                 artwork_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="song-import-artwork")

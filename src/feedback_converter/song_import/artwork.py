@@ -661,6 +661,11 @@ def resolve_album_art(metadata: dict, directory: Path, cache_dir: Path | None = 
             values["musicbrainzRecordingId"] = identifier
         if len(values["album"]) > 300 or len(values["audioTitle"]) > 1000:
             return _result("unavailable", "metadata_invalid")
+        legacy_key = hashlib.sha256(json.dumps([POLICY_VERSION, values], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+        video = metadata.get('audioVideoId')
+        if (not values.get('musicbrainzRecordingId') and isinstance(video, str)
+                and re.fullmatch(r'[A-Za-z0-9_-]{11}', video)):
+            values['audioVideoId'] = video
         key = hashlib.sha256(json.dumps([POLICY_VERSION, values], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
         cache = None
         if cache_dir:
@@ -670,6 +675,15 @@ def resolve_album_art(metadata: dict, directory: Path, cache_dir: Path | None = 
             except OSError:
                 cache = None
         cached = _cache_read(cache, key, now)
+        if not cached and key != legacy_key:
+            # Old successful matches did not depend on video identity. Keep
+            # their validated cover bytes; old ambiguous negatives must not
+            # prevent trying the newly available evidence. New video-dependent
+            # outcomes are stored only under the video-specific key.
+            legacy = _cache_read(cache, legacy_key, now)
+            if (legacy and legacy[0].get('status') == 'matched'
+                    and not legacy[0].get('provenance', {}).get('artistVideoResolution')):
+                cached = legacy
         raw = None
         if cached:
             result, raw = cached
@@ -720,6 +734,8 @@ def _matched_album_cover(client, group, values, cache, now):
                   "versions": group["versions"], "trackEvidence": group["trackEvidence"]}
     if group.get("artistCreditResolution"):
         provenance["artistCreditResolution"] = group["artistCreditResolution"]
+    if group.get("artistVideoResolution"):
+        provenance["artistVideoResolution"] = group["artistVideoResolution"]
     if group.get("albumCandidateChecks"):
         provenance["albumCandidateChecks"] = group["albumCandidateChecks"]
     if group.get("albumLabelResolution"):

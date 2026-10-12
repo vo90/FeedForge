@@ -239,6 +239,31 @@ class DeferredExecutor:
         pass
 
 
+@pytest.mark.parametrize('kind,method,expected', [
+    ('youtube', 'songsterr-video-points-v1', 'newvideo123'),
+    ('local', 'songsterr-video-points-v1', None),
+    ('youtube', 'affine-chroma-v2', None),
+])
+def test_artwork_video_identity_comes_from_final_selected_source(
+        import_job, monkeypatch, kind, method, expected):
+    request, _, audio, alignment, _, _ = import_job
+    request['metadata']['audioVideoId'] = 'staleinput1'
+    audio['source']['videoId'] = 'oldvideo123'
+    captured = []
+    def finalize(*args):
+        audio['source'].update(kind=kind, videoId='newvideo123')
+        alignment['method'] = method
+        return audio, alignment
+    def lookup(metadata, *args, **kwargs):
+        captured.append(metadata)
+        return {'status': 'unavailable', 'message': 'No artwork.'}
+    monkeypatch.setattr('feedback_converter.song_import.preparation.finalize', finalize)
+    monkeypatch.setattr(artwork, 'resolve_album_art', lookup)
+    monkeypatch.setattr(worker, 'ThreadPoolExecutor', DeferredExecutor)
+    assert worker.run_import(request)['ok']
+    assert captured[0].get('audioVideoId') == expected
+
+
 @pytest.mark.parametrize('mode', ['miss', 'hit', 'ambiguous', 'timeout', 'transport-error'])
 @pytest.mark.parametrize('source_timing', [True, False])
 def test_real_resolver_matches_sequential_bytes_metadata_warnings_and_candidate_order(
