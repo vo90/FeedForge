@@ -361,7 +361,7 @@ def _query_url(entity, values):
     return "https://musicbrainz.org/ws/2/" + entity + "/?" + urlencode({**values, "fmt": "json"})
 
 
-def _pages(client, entity, values, list_key, count_key, cap):
+def _pages(client, entity, values, list_key, count_key, cap, *, recover_recording_overlap=False):
     found, ids, expected = [], set(), None
     offset = 0
     while True:
@@ -376,6 +376,17 @@ def _pages(client, entity, values, list_key, count_key, cap):
         expected = count
         if not items and offset < count:
             raise _LookupFailure("incomplete_catalogue", "ambiguous")
+        if recover_recording_overlap and entity == 'recording' and 'query' in values:
+            # Only valid overlapping pages are recoverable. Malformed data,
+            # changing counts and duplicates within a page remain failures.
+            page_ids = [str(item.get('id') or '').lower() if isinstance(item, dict) else '' for item in items]
+            if (page.get('offset', offset) != offset or len(items) > 100 or offset + len(items) > count
+                    or any(not _UUID.fullmatch(i) for i in page_ids) or len(set(page_ids)) != len(items)):
+                raise _LookupFailure('incomplete_catalogue', 'ambiguous')
+            seen = {i.lower() for i in ids}
+            if seen.intersection(page_ids):
+                from .recording_pages import recover_recording_pages
+                return recover_recording_pages(client, values, count, seen.union(page_ids), cap)
         for item in items:
             if not isinstance(item, dict) or not _UUID.fullmatch(str(item.get("id") or "")) or item["id"] in ids:
                 raise _LookupFailure("incomplete_catalogue", "ambiguous")
@@ -543,6 +554,10 @@ def _cache_read(cache, key, now, *, max_age=None):
         result = saved["result"]
         if result.get("status") not in {"matched", "ambiguous", "unavailable"}:
             return None
+        # Retry only old incomplete searches after introducing overlap recovery.
+        # Successful covers and unrelated negative entries remain reusable.
+        if result.get('reason') == 'incomplete_catalogue' and saved.get('recordingPaginationVersion') != 1:
+            return None
         raw = None
         if result["status"] == "matched":
             compact = result["provenance"].get("imageEncoding") == COVER_ENCODING
@@ -573,7 +588,7 @@ def _cache_write(cache, key, result, raw, now):
                 os.replace(temporary, cache / f"{key}.jpg")
             finally:
                 temporary.unlink(missing_ok=True)
-        _atomic_json(cache / f"{key}.json", {"version": POLICY_VERSION, "createdAt": now(),
+        _atomic_json(cache / f"{key}.json", {"version": POLICY_VERSION, "recordingPaginationVersion": 1, "createdAt": now(),
                                            "ttl": 30 * 86400 if raw else (300 if result.get('reason') in {'service_unavailable', 'lookup_budget_exceeded'} else 86400), "result": result})
     except OSError:
         pass  # A cache is optional; never lose a fetched cover because it is unwritable.

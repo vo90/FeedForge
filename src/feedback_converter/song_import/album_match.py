@@ -97,7 +97,8 @@ def _search(client, title, artist, versions, artist_ids=()):
     for tag in ('live', 'demo', 'remix'):
         if tag not in versions:
             query += ' AND -comment:' + tag
-    return _pages(client, 'recording', {'query': query}, 'recordings', 'count', MAX_RECORDINGS)
+    return _pages(client, 'recording', {'query': query}, 'recordings', 'count', MAX_RECORDINGS,
+                  recover_recording_overlap=True)
 
 
 def _matches(record, metadata, title, versions, details, artist_ids=()):
