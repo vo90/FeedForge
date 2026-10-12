@@ -100,12 +100,18 @@ class Network:
                 offset = int(params["offset"][0])
                 return response({"count": len(self.records), "recordings": self.records[offset:offset + 100]})
             if parts.path == "/ws/2/release/":
+                if 'release-group' in params:
+                    rows = list({r['id']: r for r in all_releases
+                                 if r['release-group']['id'] == params['release-group'][0]}.values())
+                    offset = int(params['offset'][0])
+                    return response({'release-count': len(rows), 'releases': rows[offset:offset + 100]})
                 if 'query' in params:
                     import re
                     query = params['query'][0]
                     group = re.search(r'rgid:([\w-]+)', query).group(1)
                     year = re.search(r'date:\[(\d{4})', query)
                     rows = list({r['id']: r for r in all_releases if r['release-group']['id'] == group
+                                 and ('status:official' not in query or r.get('status') == 'Official')
                                  and (not year or r['date'].startswith(year.group(1)))}.values())
                     return response({'count': len(rows), 'releases': rows})
                 records = self.releases.get(params["recording"][0], [])

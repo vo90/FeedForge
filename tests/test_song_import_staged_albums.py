@@ -149,6 +149,7 @@ def test_staged_lookup_keeps_global_budget(tmp_path, monkeypatch, budget):
 def test_only_old_ambiguous_candidate_results_retry_once(tmp_path):
     for reason in ('album_ambiguous', 'artist_ambiguous', 'album_track_unconfirmed'):
         saved = {'version': artwork.POLICY_VERSION, 'createdAt': 1000, 'ttl': 86400,
+                 'officialReleaseDateVersion': 1,
                  'result': artwork._result('ambiguous', reason)}
         (tmp_path / 'key.json').write_text(json.dumps(saved))
         assert (artwork._cache_read(tmp_path, 'key', lambda: 1001) is None) == (reason == 'album_ambiguous')

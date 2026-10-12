@@ -317,9 +317,67 @@ def _complete_tracklist(release):
     return True
 
 
-def _confirm_track(client, group, metadata, title, versions):
+def _reconcile_official_editions(client, group, versions):
+    # Browse the whole group, never just editions linked to this song: the
+    # latter could all be bonus reissues. Unknown-status dates do not establish
+    # the first Official release; undated Official editions prevent certainty.
+    releases = _pages(client, 'release', {'release-group': group['id'],
+                      'inc': 'artist-credits+release-groups'}, 'releases', 'release-count', MAX_RELEASES)
+    official = []
+    for release in releases:
+        linked = release.get('release-group') or {}
+        if linked.get('id') != group['id']:
+            raise _LookupFailure('album_identity_unconfirmed', 'ambiguous')
+        if release.get('status') != 'Official':
+            continue
+        if (_ids(release) != group['artistIds'] or
+                str(linked.get('primary-type', '')).lower() != group['releaseType'].lower() or
+                not _eligible(release, versions, group['artistIds'], None)):
+            raise _LookupFailure('album_identity_unconfirmed', 'ambiguous')
+        try:
+            interval = _interval(release.get('date'))
+        except _LookupFailure:
+            raise _LookupFailure('album_track_unconfirmed', 'ambiguous') from None
+        official.append((interval, release))
+    if not official:
+        raise _LookupFailure('album_track_unconfirmed', 'ambiguous')
+    interval = (min(i[0] for i, r in official), min(i[1] for i, r in official))
+    if interval[0].year > group['interval'][0].year:
+        # A catalogue containing only a later reissue is not proof that its
+        # bonus tracks were original. Explain the earlier summary date with a
+        # listed non-Official edition before advancing to the Official year.
+        explained = False
+        for release in releases:
+            if release.get('status') == 'Official':
+                continue
+            try:
+                observed = _interval(release.get('date'))
+            except _LookupFailure:
+                continue
+            if observed == group['interval']:
+                explained = True
+        if not explained:
+            raise _LookupFailure('album_track_unconfirmed', 'ambiguous')
+    editions = [r for i, r in official if i[0].year == interval[0].year]
+    group['releaseDateResolution'] = {
+        'basis': 'complete-group-earliest-official-year',
+        'reportedFirstReleaseDate': sorted(group['dates'])[0],
+        'officialDateInterval': [d.isoformat() for d in interval],
+        'officialYear': interval[0].year, 'releaseCount': len(releases),
+        'officialReleaseCount': len(official), 'earliestYearReleaseIds': [r['id'] for r in editions],
+    }
+    group['interval'] = interval
+    group['officialEditions'] = editions
+    # Reconciled editions can also supply artwork, without changing track proof.
+    group['releases'].update({r['id']: r for r in editions})
+    return editions
+
+
+def _track_editions(client, group, metadata, versions):
     # An original-year edition avoids mistaking a later bonus track for a song
     # originally on this album. Supplied albums may intentionally be reissues.
+    if 'officialEditions' in group:
+        return group['officialEditions']
     year = group['interval'][0].year
     editions = list(group['releases'].values())
     if not metadata.get('album'):
@@ -329,6 +387,25 @@ def _confirm_track(client, group, metadata, title, versions):
         if not metadata.get('album'):
             query += f' AND date:[{year}-01-01 TO {year}-12-31]'
         editions = _pages(client, 'release', {'query': query}, 'releases', 'count', 100)
+    if not editions and not metadata.get('album'):
+        editions = _reconcile_official_editions(client, group, versions)
+    return editions
+
+
+def _choose_track_editions(client, groups, metadata, versions, audio):
+    # A corrected date can change which group is earliest. Re-rank before
+    # accepting its track or cover; each group can be reconciled only once.
+    for _ in range(len(groups) + 1):
+        group = _choose(groups, metadata, versions, audio)
+        previous = group['interval']
+        editions = _track_editions(client, group, metadata, versions)
+        if group['interval'] == previous:
+            return group, editions
+    raise _LookupFailure('album_ambiguous', 'ambiguous')
+
+
+def _confirm_track(client, group, metadata, title, versions, editions):
+    year = group['interval'][0].year
     editions = sorted(editions, key=lambda r: (str(r.get('date') or '9999'), r['id']))
     checked = []
     inconclusive = False
@@ -435,9 +512,9 @@ def select_album(client, metadata, *, album_hint=None):
         # sharing a name. Never use date ordering to resolve that uncertainty.
         if len(groups) > 1:
             raise _LookupFailure('album_ambiguous', 'ambiguous')
-    group = _choose(groups, metadata, versions, audio)
+    group, editions = _choose_track_editions(client, groups, metadata, versions, audio)
     try:
-        _confirm_track(client, group, metadata, title, versions)
+        _confirm_track(client, group, metadata, title, versions, editions)
     except _CheckedTrackMismatch as exc:
         # A later deluxe edition may nominate an album for an EP song. Bounded
         # original-album checks do not prove absence from every edition. They
@@ -449,8 +526,8 @@ def select_album(client, metadata, *, album_hint=None):
                [candidate for candidate in groups if candidate['releaseType'] == 'EP'])
         if not eps:
             raise
-        group = _choose(eps, metadata, versions, audio)
-        _confirm_track(client, group, metadata, title, versions)
+        group, editions = _choose_track_editions(client, eps, metadata, versions, audio)
+        _confirm_track(client, group, metadata, title, versions, editions)
         group['albumCandidateChecks'] = [exc.evidence]
     group['lookupTitle'] = title
     group['versions'] = sorted(versions)

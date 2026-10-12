@@ -562,6 +562,8 @@ def _cache_read(cache, key, now, *, max_age=None):
         # ambiguity is rechecked once too, then retains the normal negative TTL.
         if result.get('reason') == 'album_ambiguous' and saved.get('albumCandidateVersion') != 1:
             return None
+        if result.get('reason') == 'album_track_unconfirmed' and saved.get('officialReleaseDateVersion') != 1:
+            return None
         raw = None
         if result["status"] == "matched":
             compact = result["provenance"].get("imageEncoding") == COVER_ENCODING
@@ -593,7 +595,7 @@ def _cache_write(cache, key, result, raw, now):
             finally:
                 temporary.unlink(missing_ok=True)
         _atomic_json(cache / f"{key}.json", {"version": POLICY_VERSION, "recordingPaginationVersion": 1,
-                                           "albumCandidateVersion": 1, "createdAt": now(),
+                                           "albumCandidateVersion": 1, "officialReleaseDateVersion": 1, "createdAt": now(),
                                            "ttl": 30 * 86400 if raw else (300 if result.get('reason') in {'service_unavailable', 'lookup_budget_exceeded'} else 86400), "result": result})
     except OSError:
         pass  # A cache is optional; never lose a fetched cover because it is unwritable.
@@ -722,6 +724,8 @@ def _matched_album_cover(client, group, values, cache, now):
         provenance["albumCandidateChecks"] = group["albumCandidateChecks"]
     if group.get("albumLabelResolution"):
         provenance["albumLabelResolution"] = group["albumLabelResolution"]
+    if group.get("releaseDateResolution"):
+        provenance["releaseDateResolution"] = group["releaseDateResolution"]
     enrichment = {"albumStatus": "matched", "album": group["album"], "year": group["interval"][0].year,
                   "provenance": provenance}
     raw = None
