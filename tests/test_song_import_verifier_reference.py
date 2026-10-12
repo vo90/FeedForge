@@ -16,7 +16,7 @@ from test_song_import_builder import inputs
 from test_song_import_score import beat, measure, raw_score, write_gp
 
 
-def package(tmp_path, *, contract=115, high=True, expression=True, identity=False, gp=False, document=None):
+def package(tmp_path, *, contract=verification.VERSION, high=True, expression=True, identity=False, gp=False, document=None):
     rows = [beat(26 if high else 3, duration=(1, 4)), beat(5, string=1, duration=(1, 4)),
             beat(7, string=2, duration=(1, 4)), beat(9, string=3, duration=(1, 4))]
     if expression:
@@ -33,7 +33,21 @@ def package(tmp_path, *, contract=115, high=True, expression=True, identity=Fals
     built = build_feedpak(performance, audio, alignment, job, output_dir=tmp_path / 'out',
                          recipe={'preservationContract': contract}, source_path=source,
                          compatibility=performance.get('compatibilityReport') or new_report())
-    return source, Path(built['stagingPath']), alignment
+    archive = Path(built['stagingPath'])
+    if not gp and 109 <= contract < 117:
+        # These historical clock fixtures have no authored lyrics. Give their
+        # absent lyric receipt the policy actually required by that contract.
+        with ZipFile(archive) as z:
+            files = {name: z.read(name) for name in z.namelist()}
+        manifest = yaml.safe_load(files['manifest.yaml'])
+        proof = json.loads(files['import/lyrics.json'])
+        assert proof['status'] == 'absent'
+        manifest['song_import']['lyricsPolicy'] = proof['policy'] = 'songsterr-authored-lyrics-v2'
+        files['manifest.yaml'] = yaml.safe_dump(manifest).encode()
+        files['import/lyrics.json'] = json.dumps(proof).encode()
+        with ZipFile(archive, 'w') as z:
+            for name, content in files.items(): z.writestr(name, content)
+    return source, archive, alignment
 
 
 def watch_reconstructions(monkeypatch):
@@ -203,7 +217,7 @@ def test_collapsed_opening_shares_complete_unshifted_reference(tmp_path, monkeyp
     audio, alignment = finalize(performance, audio, alignment, job)
     built = build_feedpak(performance, audio, alignment, job, output_dir=tmp_path / 'out',
                          source_path=source, compatibility=performance['compatibilityReport'],
-                         recipe={'preservationContract': 115, 'scoreHash': hashlib.sha256(source.read_bytes()).hexdigest(),
+                         recipe={'preservationContract': 117, 'scoreHash': hashlib.sha256(source.read_bytes()).hexdigest(),
                                  'audioHash': audio['hash'],
                                  'audioSource': audio['source'], 'preparation': alignment['preparation'],
                                  'alignment': {'provenance': alignment['provenance']}})

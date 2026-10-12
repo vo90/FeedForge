@@ -691,7 +691,7 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
                                            'lyrics_source': 'authored', 'stem': 'full',
                                            'name': lyric_report.get('trackName', 'Original lyrics')}])
         if lyric_report['status'] in ('unsupported', 'unavailable'):
-            lyric_warnings.append('Lyrics were not imported: ' + lyric_report.get('reason', 'source unavailable') + '.')
+            lyric_warnings.append('Lyrics were not imported: ' + lyric_report.get('reason', 'source unavailable').rstrip('. ') + '.')
         lyric_warnings.extend(lyric_report.get('warnings', []))
         coverage['lyrics'] = {'status': lyric_report['status'], 'events': len(lyrics)}
     if omissions and omissions["notes"]:

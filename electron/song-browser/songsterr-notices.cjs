@@ -238,8 +238,10 @@ function playerNotices(job, report, { reportUnavailable = false } = {}) {
       add('combined_voices', 'info', 'Compatible voices combined', 'Equivalent or compatible attacks share a playable event; original voices remain in the source.');
     } else if (completed && v.omissions?.omittedNotes && message === `Completed with omitted notes: ${v.omissions.omittedNotes} unsupported high-fret or connected slide events are not displayed or scored. Original tab retained. Staff notation for affected arrangements is retained in the source only.`) {
       // Same omission already shown from the structured verification summary.
-    } else if (/^\d+ lyric syllables follow the last available vocal note; retained in source only\.$/.test(message)) {
-      add('lyrics', 'warning', 'Some lyrics could not be timed', message);
+    } else if (/^\d+ lyric syllables follow the last available vocal note; retained in source only\.$/.test(message)
+        || message === 'Lyrics use the public player text limit; text beyond that limit remains in the saved source only.'
+        || /^Lyrics were not imported: .+\.$/.test(message)) {
+      add('lyrics', 'warning', 'Lyrics', message);
     } else if (/^Timing (?:is supported|remains uncertain), but the recording's pitch appears about /.test(message)) {
       add('pitch', 'warning', 'Recording pitch differs from the tab tuning', message);
     } else if (/^Equivalent section labels in measure [1-9]\d* use the authored label (?:'[^\r\n]*'|"[^\r\n]*"); all track labels are retained\.$/.test(message)) {

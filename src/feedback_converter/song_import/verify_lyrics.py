@@ -7,8 +7,9 @@ function is used here. This is conversion verification, not acoustic alignment.
 """
 import hashlib
 import json
+import re
 
-from .songsterr_lyrics import POLICY, LEGACY_POLICY, MAX_EVENTS, written
+from .songsterr_lyrics import POLICY, LEGACY_POLICY, GRACE_POLICY, MAX_EVENTS, written
 from .lyric_timeline import phrases
 from .tone_timeline import clock_parameters, digest
 from .verify_timeline import Clock, RecordingMap, visits
@@ -73,13 +74,45 @@ def expected(document, source, alignment, duration, *, policy=POLICY):
     return phrases(events), {**plan, 'status': 'imported' if events else 'outside_recording'}, ledger
 
 
+def text_limit_evidence(text, row_index):
+    """Reconstruct the prefix receipt using UTF-16 bytes, not the importer."""
+    head = text[:20001].encode('utf-16-le', errors='surrogatepass')[:40000]
+    prefix = head.decode('utf-16-le', errors='surrogatepass')
+    reason = 'utf16_limit'
+    for count, match in enumerate(re.finditer(r'\r\n|\r|\n', prefix), 1):
+        if count == 500:
+            prefix, reason = prefix[:match.start()], 'line_limit'
+            break
+    # A cut high surrogate or CR is not a complete boundary.
+    units = len(prefix.encode('utf-16-le', errors='surrogatepass')) // 2
+    boundary = text[:20001].encode('utf-16-le', errors='surrogatepass')[units * 2:units * 2 + 2]
+    after = int.from_bytes(boundary, 'little') if boundary else None
+    if prefix and after is not None and (
+        0xd800 <= ord(prefix[-1]) <= 0xdbff and 0xdc00 <= after <= 0xdfff
+        or prefix[-1] == '\r' and after == 10
+    ):
+        prefix = prefix[:-1]
+    def size(value):
+        return sum(len(value[i:i+4096].encode('utf-16-le', errors='surrogatepass')) // 2
+                   for i in range(0, len(value), 4096))
+    original, retained = size(text), size(prefix)
+    if original == retained:
+        return None
+    return {'policy': POLICY, 'reason': reason, 'rowIndex': row_index,
+            'originalUtf16Units': original, 'retainedUtf16Units': retained,
+            'originalLineBreaks': sum(1 for _ in re.finditer(r'\r\n|\r|\n', text)),
+            'retainedLineBreaks': sum(1 for _ in re.finditer(r'\r\n|\r|\n', prefix))}
+
+
 def verify(archive, recipe, manifest, source_path, source, alignment, duration, check, read_json):
     policy = recipe.get('lyricsPolicy')
-    if policy not in (LEGACY_POLICY, POLICY):
+    if policy not in (LEGACY_POLICY, GRACE_POLICY, POLICY):
         check.fail('lyrics_policy', 'song_import', 'Unknown authored lyric policy.')
         return
-    if recipe.get('preservationContract', 0) >= 109:
+    if recipe.get('preservationContract', 0) >= 117:
         check.equal('lyrics_policy', 'song_import', POLICY, policy)
+    elif recipe.get('preservationContract', 0) >= 109:
+        check.equal('lyrics_policy', 'song_import', GRACE_POLICY, policy)
     check.equal('lyrics_report_path', 'song_import', 'import/lyrics.json', recipe.get('lyricsFile'))
     if recipe.get('preservationContract', 0) < 79:
         check.fail('lyrics_contract', 'song_import', 'Lyrics require preservation contract 79.')
@@ -95,6 +128,13 @@ def verify(archive, recipe, manifest, source_path, source, alignment, duration, 
         check.equal('lyrics_provenance', f'import/lyrics.json/{key}', value, proof.get(key))
     for key in ('trackIndex', 'trackName', 'sourceKind', 'selection', 'candidates', 'unassignedSyllables'):
         check.equal('lyrics_selection', f'import/lyrics.json/{key}', plan.get(key), proof.get(key))
+    limit = plan.get('sourceTextLimit')
+    if limit is not None:
+        rows = document['parts'][plan['trackIndex']]['newLyrics']
+        index = 0 if len(rows) <= 5 else 5
+        limit = text_limit_evidence(rows[index]['text'], index)
+        check.equal('lyrics_text_limit', 'sourceTextLimit/interpretation', limit, plan.get('sourceTextLimit'))
+    check.equal('lyrics_text_limit', 'import/lyrics.json/sourceTextLimit', limit, proof.get('sourceTextLimit'))
     check.equal('lyrics_status', 'song_import', plan['status'], recipe.get('lyricsStatus'))
     if plan['status'] in ('imported', 'outside_recording'):
         actual_ledger = proof.get('events', [])

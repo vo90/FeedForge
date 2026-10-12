@@ -239,3 +239,19 @@ test('job manager reads full hash-checked evidence, caches it and prioritizes de
   job.verification = { ...job.verification }; // New assessment invalidates projection cache.
   assert.ok(jobs.public(job).playerNotices.warnings.some(n => n.id === 'unavailable_report'));
 });
+
+test('lyric limits, remaining syllables and export failures share one visible group', () => {
+  const warnings = [
+    'Lyrics use the public player text limit; text beyond that limit remains in the saved source only.',
+    '2530 lyric syllables follow the last available vocal note; retained in source only.',
+    'Lyrics were not imported: Lyrics exceed the public player text limit; source retained..',
+    'Unknown new problem',
+  ];
+  const notices = playerNotices({ warnings }, null);
+  const group = notices.warnings.find(row => row.id === 'lyrics');
+  assert.equal(group.title, 'Lyrics');
+  assert.equal(group.occurrences, 3);
+  assert.equal(group.examples.length, 2);
+  assert.equal(notices.warnings.length, 2);
+  assert.equal(notices.rawWarningCount, 4);
+});

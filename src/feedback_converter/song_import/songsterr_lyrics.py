@@ -12,7 +12,9 @@ from .model import ScoreImportError, integer, rational
 from .songsterr_timing import part_timing
 
 LEGACY_POLICY = 'songsterr-authored-lyrics-v1'
-POLICY = 'songsterr-authored-lyrics-v2'
+GRACE_POLICY = 'songsterr-authored-lyrics-v2'
+POLICY = 'songsterr-authored-lyrics-v3'
+PREFIX_WARNING = 'Lyrics use the public player text limit; text beyond that limit remains in the saved source only.'
 MAX_TEXT = 20_000
 MAX_EVENTS = 100_000
 _SEPARATORS = re.compile(r'(\[.*?\]|\s?-\s?)|\r\n|\n|\s')
@@ -30,9 +32,48 @@ def primary_row(part):
     return row
 
 
-def tokens(text):
+def bounded_text(text):
+    """Match pinned player Ws: 20k UTF-16 units and at most 499 breaks.
+
+    Only the bounded prefix is copied/tokenized. Full-source metrics use
+    constant auxiliary space; whitespace and partial final words are retained.
+    """
+    end, units = 0, 0
+    for char in text:
+        width = 2 if ord(char) > 0xffff else 1
+        if units + width > MAX_TEXT:
+            break
+        units += width
+        end += 1
+    reason = 'utf16_limit' if end < len(text) else None
+    for count, match in enumerate(re.finditer(r'\r\n|\r|\n', text[:end]), 1):
+        if count == 500:
+            end, reason = match.start(), 'line_limit'
+            break
+    if 0 < end < len(text) and (
+        0xd800 <= ord(text[end - 1]) <= 0xdbff and 0xdc00 <= ord(text[end]) <= 0xdfff
+        or text[end - 1:end + 1] == '\r\n'
+    ):
+        end -= 1
+    prefix = text[:end]
+    if end == len(text):
+        return prefix, None
+    return prefix, {
+        'policy': POLICY, 'reason': reason,
+        'originalUtf16Units': sum(2 if ord(c) > 0xffff else 1 for c in text),
+        'retainedUtf16Units': sum(2 if ord(c) > 0xffff else 1 for c in prefix),
+        'originalLineBreaks': sum(1 for _ in re.finditer(r'\r\n|\r|\n', text)),
+        'retainedLineBreaks': sum(1 for _ in re.finditer(r'\r\n|\r|\n', prefix)),
+    }
+
+
+def tokens(text, *, policy=POLICY):
     """Keep separators: collapsing whitespace moves lyrics onto different notes."""
-    if len(text.encode('utf-16-le')) // 2 > MAX_TEXT or len(re.findall(r'\r\n|\r|\n', text)) >= 500:
+    if policy == POLICY:
+        text, _ = bounded_text(text)
+    elif policy not in (LEGACY_POLICY, GRACE_POLICY):
+        raise ValueError('Unknown authored lyric policy.')
+    elif len(text.encode('utf-16-le')) // 2 > MAX_TEXT or len(re.findall(r'\r\n|\r|\n', text)) >= 500:
         raise ValueError('Lyrics exceed the public player text limit; source retained.')
     text = text.replace('\t', ' ').replace('-—–', '-')
     original_length = len(text)
@@ -61,9 +102,9 @@ def tokens(text):
     return result
 
 
-def assign(part, text, offset):
+def assign(part, text, offset, *, policy=POLICY):
     """Return one textual slot per *source* beat; no seconds or repeats yet."""
-    stream = tokens(text)
+    stream = tokens(text, policy=policy)
     cursor, previous = 0, None
     rows = []
     for measure_index, measure in enumerate(part['measures']):
@@ -174,7 +215,7 @@ def legacy_assign(part, measures):
 
 
 def written(document, lengths, *, policy=POLICY):
-    if policy not in (LEGACY_POLICY, POLICY):
+    if policy not in (LEGACY_POLICY, GRACE_POLICY, POLICY):
         raise ValueError('Unknown authored lyric policy.')
     try:
         chosen, report = select(document)
@@ -195,7 +236,14 @@ def written(document, lengths, *, policy=POLICY):
             offset = integer(row.get('offset', 1), 'lyric start measure')
             if not 1 <= offset <= len(lengths):
                 raise ValueError('Invalid lyric start measure.')
-            assigned, remaining = assign(part, row['text'], offset)
+            text = row['text']
+            if policy == POLICY:
+                text, limit = bounded_text(text)
+                if limit is not None:
+                    limit['rowIndex'] = 0 if len(part['newLyrics']) <= 5 else 5
+                    report['sourceTextLimit'] = limit
+                    report['warnings'].append(PREFIX_WARNING)
+            assigned, remaining = assign(part, text, offset, policy=policy)
         if remaining:
             report['warnings'].append(f'{remaining} lyric syllables follow the last available vocal note; retained in source only.')
         for bi, slots in enumerate(assigned):
@@ -209,7 +257,7 @@ def written(document, lengths, *, policy=POLICY):
                 # Assignment/playback skip them; they are not lyric intervals.
                 # Keep their clock calculation above so the borrowed time is
                 # still removed from the neighbouring ordinary beat.
-                skipped_grace = policy == POLICY and beat.get('graceNote') in ('beforeBeat', 'onBeat')
+                skipped_grace = policy != LEGACY_POLICY and beat.get('graceNote') in ('beforeBeat', 'onBeat')
                 if not skipped_grace and (q < 0 or q + length > lengths[bi]):
                     raise ValueError('Lyric beat crosses a written measure boundary.')
                 # Slots remain explicit so a repeat jump can never extend a

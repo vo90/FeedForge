@@ -125,7 +125,7 @@ def test_package_and_independent_verification_keep_scrape_and_reject_duplicate_r
     p = load_performance(source)
     alignment = {'status': 'validated', 'offset': 0, 'scale': 1}
     built = build_feedpak(p, audio, alignment, job, output_dir=tmp_path/'out', source_path=source,
-                         compatibility=p['compatibilityReport'], recipe={'preservationContract': 116})
+                         compatibility=p['compatibilityReport'], recipe={'preservationContract': 117})
     archive = Path(built['stagingPath'])
     assert validate_feedpak(archive).ok
     assert verify_import(source, archive, alignment)['status'] == 'passed'

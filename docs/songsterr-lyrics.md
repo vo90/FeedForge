@@ -20,8 +20,16 @@ consume the next syllable; consecutive spaces can consume empty note slots.
 Hyphens join syllables, underscores extend a preceding contiguous syllable, and
 source `+` characters become spaces. Comments in brackets and parentheses follow
 the public player's lexical rules. Explicit line endings are retained as phrase
-hints. Lyrics that exceed the public player's text limits are omitted with a
-reason rather than silently truncated.
+hints. Policy v3 applies the pinned player's bounded prefix before tokenization:
+at most 20,000 UTF-16 code units and 499 line breaks (500 lines). CRLF counts as
+one break; a boundary cannot split a surrogate pair or CRLF. Whitespace and a
+partial final word are kept exactly as in that prefix, without guessing repairs.
+Only the prefix is tokenized. Full original text remains in the archived source.
+When clipping occurs, `sourceTextLimit` records original/retained UTF-16 sizes
+and break counts, selected row, reason and policy. The verifier reconstructs
+these metrics independently. `unassignedSyllables` counts only unused syllables
+within the prefix, not words in the unprocessed tail. Both notices share one
+visible Lyrics warning group, as do optional lyric-export failures.
 
 When revision metadata advertises legacy lyrics and a designated part lacks
 modern text, acquisition also attempts the revision's `lyrics.json` sidecar.
@@ -50,11 +58,12 @@ place, including the shortened preceding beat. Skipping this slot does not
 move sung syllables or permit out-of-bar ordinary lyric beats. Unknown grace
 types and malformed clocks remain unsupported.
 
-New imports use preservation contract 109 and policy v2. Historical v1 receipts
-are rechecked with their original strict boundary rule, including streams
-previously recorded as unsupported. Contract 109 requires v2; older lyric
-contracts can still verify an explicitly identified v1 or v2 stream. The
-manifest policy and retained lyric receipt must agree.
+New imports use preservation contract 117 and policy v3, retaining v2's grace
+handling. Historical v1/v2 receipts keep the original whole-stream text-limit
+rejection, and v1 keeps its strict grace-boundary rule. Contracts 109–116 require
+v2; contract 117 requires v3. Older lyric contracts continue to use their explicit
+policy. The manifest policy and retained lyric receipt must agree. Existing
+FeedPaks are not rewritten; recovered lyrics require a fresh import.
 
 Events are clipped to the recording bounds. The importer does not extrapolate
 beyond an available alignment map or invent timestamps from character counts.
