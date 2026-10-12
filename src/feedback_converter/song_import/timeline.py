@@ -12,6 +12,19 @@ from .link_diagnostics import LinkDiagnostics
 from .plain_ties import BEND_RULE, admitted as plain_tie_admitted, record as record_plain_tie
 
 
+def _directional_coverage(spans):
+    """Canonicalize exact score-time spans without bridging gaps or overlaps."""
+    merged = []
+    for direction, left, right in spans:
+        if right <= left or merged and left < merged[-1][2]:
+            return None
+        if merged and merged[-1][0] == direction and merged[-1][2] == left:
+            merged[-1] = (direction, merged[-1][1], right)
+        else:
+            merged.append((direction, left, right))
+    return merged
+
+
 def playback_order(measures: list[Measure]) -> list[int]:
     """Walk nested brackets; retain final pass for endings after the close bar."""
     opens: list[int] = []
@@ -402,6 +415,8 @@ def _render(score: Score) -> dict:
                 if scrape:
                     if not output.get("mt"):
                         raise ScoreImportError("A pick scrape cannot target a pitched note.")
+                    articulation.setdefault('scrape_spans', []).append(
+                        (scrape, max(position, articulation['start']), end))
                     marks = output.setdefault("pick_scrape_marks", [])
                     left, right = max(0., at(position) - output["t"]), at(end) - output["t"]
                     if marks and marks[-1]["direction"] == scrape and abs(marks[-1]["end"] - left) < 1e-9:
@@ -476,6 +491,8 @@ def _render(score: Score) -> dict:
                     # final written segment. Keep each interval before merging
                     # loses that boundary; it does not describe slide speed.
                     marks = output.setdefault("slide_out_marks", [])
+                    articulation.setdefault('slide_out_spans', []).append(
+                        ('down' if note.slide == 'out_down' else 'up', position, position + gesture_duration))
                     marks.append({"direction": "down" if note.slide == "out_down" else "up",
                                   "start": at(position) - output["t"], "end": at(position + gesture_duration) - output["t"]})
                     directions = {mark["direction"] for mark in marks}
@@ -544,6 +561,17 @@ def _render(score: Score) -> dict:
                     for m in output["pick_scrape_marks"] if m["start"] < output["sus"]]
                 if not output["pick_scrape_marks"]:
                     output.pop("pick_scrape_marks")
+            if output.get('pick_scrape_marks') and output.get('slide_out_marks'):
+                # Compare rational score-time coverage, not rounded recording
+                # times or tied-segment partitions. Keep genuinely distinct cues.
+                articulation = articulations[id(output)]
+                stop = articulation['end']
+                scrapes = _directional_coverage([
+                    (d, a, min(b, stop)) for d, a, b in articulation['scrape_spans'] if a < stop])
+                slides = _directional_coverage(articulation['slide_out_spans'])
+                if scrapes and scrapes == slides:
+                    output.pop('slide_out_marks')
+                    output.pop('slide_out', None)
         if any(n["sus"] <= 0 for n in rendered):
             raise ScoreImportError(f"An authored strum consumes a sounding note in {track.name}; no duration was repaired.")
         # A written leading grace may sound in the preceding measure. Voices
