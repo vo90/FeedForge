@@ -127,6 +127,15 @@ function prioritizeFindings(findings) {
   return buckets.flatMap(bucket => [...bucket.first, ...bucket.rest]);
 }
 
+function isValidatedEmptyWarning(message, report) {
+  const matches = (report?.arrangements || []).filter(row => typeof row.name === 'string'
+    && message === `Skipped empty arrangement: ${row.name}.`);
+  // The warning text alone cannot distinguish authored rests from omissions.
+  // Duplicate names must all agree before treating the message as routine.
+  return matches.length > 0 && matches.every(row => row.status === 'skipped_empty'
+    && row.noteCount === 0 && !row.blockingFeatures?.length);
+}
+
 function playerNotices(job, report, { reportUnavailable = false } = {}) {
   const groups = new Map();
   function add(id, level, title, message, at = '', count = 1) {
@@ -222,6 +231,8 @@ function playerNotices(job, report, { reportUnavailable = false } = {}) {
       add('key_signatures', 'diagnostic', 'Key signatures retained', 'Key signatures were retained in the source; explicit frets and pitches are unchanged.');
     } else if (/^Excluded non-guitar\/bass track:/.test(message)) {
       add('excluded_instruments', 'diagnostic', 'Other instruments excluded', 'The requested guitar and bass arrangements were selected.');
+    } else if (isValidatedEmptyWarning(message, report)) {
+      add('empty_tracks', 'diagnostic', 'Empty tracks skipped', 'Tracks with no playable notes were skipped; original source annotations are retained.');
     } else if (message === 'Timing was imported from Songsterr for this tab revision and recording.') {
       add('timing_source', 'diagnostic', 'Timing source', message);
     } else if (/^Unclassified Songsterr part field (title|clef|grandStaffGroup) is retained in source evidence only\.$/.test(message)) {

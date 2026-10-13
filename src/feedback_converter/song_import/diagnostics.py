@@ -3,7 +3,7 @@ import re
 from dataclasses import replace
 
 from .compatibility import add_finding, inspect_songsterr
-from .model import ScoreImportError
+from .model import EmptyScoreError, ScoreImportError
 from .songsterr import _instrument, parse
 from .timeline import render
 
@@ -54,6 +54,11 @@ def diagnose_arrangements(document, report, *, parsed_score=None):
             if omissions["notes"]:
                 row["omissions"] = summary(omissions)
                 row["message"] = f"{len(omissions['notes'])} high-fret or connected slide events will be omitted from gameplay and scoring."
+        except EmptyScoreError:
+            # The renderer validates the complete timeline before declaring
+            # structural emptiness. Never infer this from metadata or a name.
+            row.update(status="skipped_empty", noteCount=0, blockingFeatures=[],
+                       message="No playable notes; original source annotations retained.")
         except (ScoreImportError, ValueError, TypeError, KeyError, IndexError) as exc:
             row["message"] = str(exc)[:1000]
             feature = getattr(exc, 'source_feature', "arrangement." + row["stage"])
@@ -68,4 +73,5 @@ def diagnose_arrangements(document, report, *, parsed_score=None):
                         message=row["message"], location=location, value=getattr(exc, 'source_value', None), **coordinates)
     report["arrangementSummary"] = {"requested": len(report["arrangements"]),
         "scoreReady": sum(r["status"] == "score_ready" for r in report["arrangements"]),
+        "skippedEmpty": sum(r["status"] == "skipped_empty" for r in report["arrangements"]),
         "packageVerified": False}

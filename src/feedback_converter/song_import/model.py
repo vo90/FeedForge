@@ -10,6 +10,15 @@ class ScoreImportError(ValueError):
     """Input cannot be imported without losing musical information."""
 
 
+class EmptyScoreError(ScoreImportError):
+    """Validated selected tracks contain no authored playable notes.
+
+    A complete import still fails; per-track diagnostics may record a neutral
+    skip when other tracks contain music. Nonempty tracks whose notes disappear
+    during projection or playback are not structurally empty.
+    """
+
+
 def rational(value: Any, label: str = "musical value") -> Fraction:
     try:
         if isinstance(value, bool):
@@ -108,6 +117,7 @@ class Track:
     clefs: list[str | None] = field(default_factory=list)
     tone_source: dict | None = None
     boundary_adjustments: list[dict] = field(default_factory=list)
+    authored_note_count: int | None = None  # Before parser boundary omissions; None for adapters without omissions.
 
 
 @dataclass

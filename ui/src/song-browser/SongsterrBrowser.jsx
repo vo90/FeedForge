@@ -78,12 +78,15 @@ const CATEGORY = { unknown_semantics: 'Needs interpretation', source_interpretat
 const WORK = { decision_required: 'Design decision needed', technical_work: 'Conversion work needed', source_retained: 'Preserved source information', display_limitation: 'Display limitation', gameplay_omission: 'Omitted from gameplay and scoring', fixed_verified: 'Resolved and verified' };
 const categoryLabel = item => item.impact === 'source_retained' && item.category === 'source_interpretation'
   ? 'Source interpretation' : CATEGORY[item.category] || item.category;
+const arrangementStatusLabel = status => status === 'score_ready' ? 'Score check passed'
+  : status === 'skipped_empty' ? 'Skipped — empty track' : 'Needs attention';
 export function CompatibilityDetails({ report }) {
   if (!report) return null;
   return <div className="st-compatibility"><p>{report.findingCount || 0} compatibility findings. Original information is retained; retention does not mean the game displays or scores it.</p>
     {report.arrangements?.length ? <details open><summary>Arrangement checks</summary>
       <p>Every requested arrangement is checked before saving. Unsupported high-fret events can be omitted with a recorded limitation. A passed score check still needs audio alignment and final file verification.</p>
-      <ul>{report.arrangements.map(item => <li key={item.trackIndex}><strong>{item.name}</strong> · {item.status === 'score_ready' ? 'Score check passed' : 'Needs attention'}
+      {report.arrangementSummary ? <p>Score checks passed: {report.arrangementSummary.scoreReady ?? 0} · Empty tracks skipped: {report.arrangementSummary.skippedEmpty ?? 0}</p> : null}
+      <ul>{report.arrangements.map(item => <li key={item.trackIndex}><strong>{item.name}</strong> · {arrangementStatusLabel(item.status)}
         {item.message ? <p>{item.message}</p> : item.blockingFeatures?.length ? <p>{item.blockingFeatures.join(', ')}</p> : null}</li>)}</ul>
     </details> : null}
     <ul>{report.findings.map((item, i) => <li key={i}><strong>{item.feature}</strong> · {categoryLabel(item)}

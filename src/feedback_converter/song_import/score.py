@@ -40,6 +40,10 @@ def load_performance(path: Path | str, metadata: dict | None = None, *, composit
                 diagnose_arrangements(document, report)
                 raise
             diagnose_arrangements(document, report, parsed_score=score)
+            if report["status"] == "blocked":
+                failure = next(row for row in report["arrangements"] if row["status"] == "blocked")
+                raise ScoreImportError(failure.get("message") or
+                                       "An arrangement could not be converted. See compatibility details.")
         except ScoreImportError as exc:
             if report["status"] != "blocked":
                 add_finding(report, feature="interpretation", category="conversion_check", impact="blocking", message=str(exc))

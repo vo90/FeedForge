@@ -89,6 +89,48 @@ test('only equivalent section label decisions become diagnostics; missing artwor
   }
 });
 
+test('validated empty-track warnings are routine while raw source evidence stays unchanged', () => {
+  const row = { trackIndex: 1, name: 'Reference. Chords', status: 'skipped_empty', noteCount: 0, blockingFeatures: [] };
+  const report = { ...findings([]), status: 'compatible', arrangements: [row] };
+  const job = { ...completed, warnings: [`Skipped empty arrangement: ${row.name}.`] };
+  const before = JSON.stringify({ report, job });
+  const result = playerNotices(job, report);
+  assert.equal(result.warnings.length, 0);
+  assert.equal(result.diagnosticCount, 1);
+  assert.equal(result.rawWarningCount, 1);
+  assert.equal(JSON.stringify({ report, job }), before);
+
+  const blocked = { feature: 'arrangement.timeline', impact: 'blocking', message: 'Unresolved tie.' };
+  const mixed = playerNotices(job, { ...report, status: 'blocked', findings: [blocked] });
+  assert.deepEqual(mixed.warnings.map(item => item.id), ['arrangement.timeline']);
+  assert.equal(mixed.diagnosticCount, 1);
+});
+
+test('empty-track text cannot quiet unknown, blocked, omitted or ambiguous arrangements', () => {
+  const row = { trackIndex: 0, name: 'CHORDS', status: 'skipped_empty', noteCount: 0, blockingFeatures: [] };
+  const message = 'Skipped empty arrangement: CHORDS.';
+  const job = { ...completed, warnings: [message] };
+  for (const report of [null, findings([]), { ...findings([]), arrangements: [] },
+    ...[{ name: 'Other' }, { status: 'blocked' }, { status: 'unknown' }, { status: 'score_ready' },
+      { noteCount: 1 }, { noteCount: undefined }, { blockingFeatures: ['arrangement.timeline'] }]
+      .map(change => ({ ...findings([]), arrangements: [{ ...row, ...change }] })),
+    { ...findings([]), arrangements: [row, { ...row, trackIndex: 1, status: 'blocked' }] },
+  ]) {
+    const result = playerNotices(job, report);
+    assert.equal(result.warnings[0].id, 'other');
+    assert.equal(result.diagnosticCount, 0);
+  }
+  const report = { ...findings([]), arrangements: [row] };
+  for (const warning of [message + ' Another issue.', 'Skipped empty arrangement: CHORDS', 'Skipped empty arrangement: Lead.']) {
+    assert.equal(playerNotices({ ...job, warnings: [warning] }, report).warnings[0].id, 'other');
+  }
+  const omitted = playerNotices({ ...job, verification: { ...completed.verification,
+    omissions: { omittedNotes: 4, excludedTracks: ['lead'] } } }, report);
+  assert.deepEqual(omitted.warnings.map(item => item.id), ['high_frets']);
+  assert.match(omitted.warnings[0].message, /4 high-fret or connected slide events/);
+  assert.equal(omitted.diagnosticCount, 1);
+});
+
 test('supported and uncertain timing both preserve the separate recording pitch warning', () => {
   for (const timing of ['Timing is supported', 'Timing remains uncertain']) {
     const message = `${timing}, but the recording's pitch appears about 67 cents lower than the tab's tuning (100 cents is one semitone). Playing along may sound out of tune. No pitch correction was applied to the source tab or recording.`;

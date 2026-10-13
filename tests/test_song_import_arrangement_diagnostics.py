@@ -25,7 +25,7 @@ def test_all_reachable_parts_are_diagnosed_without_rewriting_ids_or_music():
     assert [(r["trackId"], r["status"], r["stage"]) for r in report["arrangements"]] == [
         ("authored-lead", "blocked", "compatibility"), ("authored-Bass", "score_ready", "timeline"),
         ("authored-Rhythm", "blocked", "timeline")]
-    assert report["arrangementSummary"] == {"requested": 3, "scoreReady": 1, "packageVerified": False}
+    assert report["arrangementSummary"] == {"requested": 3, "scoreReady": 1, "skippedEmpty": 0, "packageVerified": False}
     assert report["findings"][0]["workStatus"] == "decision_required"
     assert report["findings"][0]["decisionId"] == "D1"
     assert report["findings"][-1]["measure"] == 1

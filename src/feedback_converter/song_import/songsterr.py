@@ -392,6 +392,7 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
         name = str(meta.get("name") or meta.get("title") or meta.get("instrument") or f"Track {index + 1}")
         track_bars = []
         written_bars = []
+        authored_note_count = 0
         feel = "off"
         from .songsterr_trills import resolution
         trill_clock = resolution(part["measures"])
@@ -501,6 +502,7 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
                                 parsed.effects["__leading_grace"] = True
                             if position < measures[bi].length:
                                 bar_notes.append(parsed)
+                            authored_note_count += 1
                             written_beat.notes.append(parsed)
                     written_beat.rest = not written_beat.notes
                     if position < measures[bi].length:
@@ -511,7 +513,8 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
         role = "bass" if instrument == "bass" else (
             "rhythm" if "rhythm" in name.lower() else "lead" if any(w in name.lower() for w in ("lead", "solo")) else "guitar")
         tracks.append(Track(str(meta.get("id", index)), name, instrument, tuning, track_bars,
-                            integer(part.get("capo", meta.get("capo", 0)), "capo"), role, written_bars))
+                            integer(part.get("capo", meta.get("capo", 0)), "capo"), role, written_bars,
+                            authored_note_count=authored_note_count))
         tracks[-1].boundary_adjustments = [{'trackId': tracks[-1].id,
             'location': f"parts/{index}/measures/{r['measure'] - 1}/voices/{r['voice'] - 1}/beats/{r['beat'] - 1}",
             **r} for r in boundary_rows]

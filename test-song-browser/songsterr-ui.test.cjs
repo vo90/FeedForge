@@ -263,6 +263,43 @@ test('arrangement diagnostics do not imply a completed or partial import', () =>
   assert.doesNotMatch(html, /FeedPak ready|Download usable parts/);
 });
 
+test('validated empty tracks have a neutral label and are counted separately from score checks', () => {
+  const report = { status: 'compatible', findingCount: 0, findings: [],
+    arrangementSummary: { requested: 2, scoreReady: 1, skippedEmpty: 1, packageVerified: false },
+    arrangements: [{ trackIndex: 0, name: 'Guitar', status: 'score_ready', noteCount: 10 },
+      { trackIndex: 1, name: 'CHORDS', status: 'skipped_empty', noteCount: 0,
+        message: 'No playable notes; original source annotations retained.' }] };
+  const html = render(compiled.exports.CompatibilityDetails, { report });
+  assert.match(html, /Score checks passed: 1 · Empty tracks skipped: 1/);
+  assert.match(html, /<strong>Guitar<\/strong> · Score check passed/);
+  assert.match(html, /<strong>CHORDS<\/strong> · Skipped — empty track/);
+  assert.match(html, /original source annotations retained/);
+  assert.doesNotMatch(html, /Needs attention|FeedPak ready/);
+
+  const completed = job({ state: 'completed', report, compatibility: { status: 'compatible' },
+    warnings: ['Skipped empty arrangement: CHORDS.'] });
+  assert.match(completed, /FeedPak ready/);
+  assert.doesNotMatch(completed, /Needs attention|review import notes|information needs review|omitted notes/);
+});
+
+test('empty-track handling preserves blocked, unknown and failed outcomes', () => {
+  const report = { status: 'blocked', findingCount: 0, findings: [], arrangements: [
+    { trackIndex: 0, name: 'Reference', status: 'skipped_empty', noteCount: 0 },
+    { trackIndex: 1, name: 'Lead', status: 'blocked', message: 'Unresolved tie.' },
+    { trackIndex: 2, name: 'Bass', status: 'future_status', blockingFeatures: ['unknown.feature'] },
+    { trackIndex: 3, name: 'Rhythm' },
+  ] };
+  const html = render(compiled.exports.CompatibilityDetails, { report });
+  assert.match(html, /<strong>Reference<\/strong> · Skipped — empty track/);
+  assert.equal((html.match(/Needs attention/g) || []).length, 3);
+  assert.match(html, /Unresolved tie/);
+  assert.match(html, /unknown.feature/);
+  const failed = job({ state: 'failed', report, error: 'Arrangement check failed: Unresolved tie.' });
+  assert.match(failed, />Failed</);
+  assert.match(failed, /Arrangement check failed: Unresolved tie/);
+  assert.doesNotMatch(failed, /FeedPak ready|Ready — review import notes/);
+});
+
 test('retained old metadata and tempo origins are neutral details rather than missing support', () => {
   const report = { findingCount: 2, findings: [
     { feature: 'note.grace', category: 'source_metadata', impact: 'source_retained', workStatus: 'source_retained',

@@ -3,7 +3,7 @@
 from bisect import bisect_left, bisect_right
 from fractions import Fraction
 
-from .model import Measure, Score, ScoreImportError, validate_score
+from .model import EmptyScoreError, Measure, Score, ScoreImportError, validate_score
 from .notation import render_notation
 from .songsterr_whammy import append_segment
 from .repeat_regions import repeat_regions
@@ -619,6 +619,9 @@ def _render(score: Score) -> dict:
                         "chords": chords, "templates": templates, **({"notation": notation} if notation else {}),
                         **({"toneTimeline": tone_timeline} if tone_timeline is not None else {})})
     if not outputs:
+        if score.tracks and all(track.authored_note_count in (None, 0) and not any(track.bars)
+                                for track in score.tracks):
+            raise EmptyScoreError("No playable notes were found.")
         raise ScoreImportError("No playable notes were found.")
     source["playableTrackCount"] = len(outputs)
     # Retain the written-to-performed relationship for independently supplied
