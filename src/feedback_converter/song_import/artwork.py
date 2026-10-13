@@ -431,7 +431,7 @@ def _cover_indexes(client, group):
 
 def _cover(client, group):
     unavailable = None
-    attempted = set()
+    attempted = group.get('_attemptedCoverImages', set())
     for kind, identifier in _cover_indexes(client, group):
         index_url = f"https://coverartarchive.org/{kind}/{identifier}"
         try:
@@ -564,6 +564,12 @@ def _cache_read(cache, key, now, *, max_age=None):
             return None
         if result.get('reason') == 'album_track_unconfirmed' and saved.get('officialReleaseDateVersion') != 1:
             return None
+        # Recheck only misses eligible for the new artwork-only policy. Keep
+        # successful covers and unsafe/unrelated negative outcomes reusable.
+        from .compilation_artwork import compilation_cache_miss_eligible
+        if (saved.get('compilationArtworkVersion') != 1
+                and compilation_cache_miss_eligible(result)):
+            return None
         raw = None
         if result["status"] == "matched":
             compact = result["provenance"].get("imageEncoding") == COVER_ENCODING
@@ -595,7 +601,8 @@ def _cache_write(cache, key, result, raw, now):
             finally:
                 temporary.unlink(missing_ok=True)
         _atomic_json(cache / f"{key}.json", {"version": POLICY_VERSION, "recordingPaginationVersion": 1,
-                                           "albumCandidateVersion": 1, "officialReleaseDateVersion": 1, "createdAt": now(),
+                                           "albumCandidateVersion": 1, "officialReleaseDateVersion": 1,
+                                           "compilationArtworkVersion": 1, "createdAt": now(),
                                            "ttl": 30 * 86400 if raw else (300 if result.get('reason') in {'service_unavailable', 'lookup_budget_exceeded'} else 86400), "result": result})
     except OSError:
         pass  # A cache is optional; never lose a fetched cover because it is unwritable.
@@ -701,6 +708,9 @@ def resolve_album_art(metadata: dict, directory: Path, cache_dir: Path | None = 
             from .artwork_fallback import original_song_cover
             if raw is None:
                 result, raw = original_song_cover(client, values, result, cache, now)
+            if raw is None:
+                from .compilation_artwork import compilation_cover
+                result, raw = compilation_cover(client, values, result, cache, now)
             enrichment = {k: result[k] for k in ('albumStatus', 'album', 'year', 'provenance') if k in result}
             _cache_write(cache, key, result, raw, now)
         if raw is not None:

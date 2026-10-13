@@ -146,7 +146,8 @@ export function SongsterrJob({ job, api, action, busy }) {
       {job.revisionId ? <small>{job.revisionLabel || 'Selected revision'} · {job.revisionId}</small> : null}
       {job.state === 'completed' && job.verification?.status === 'passed' ? <p>Conversion checked against the source tab and recorded {job.verification.adjustments?.omittedEndingNotes ? 'ending adjustments' : 'adjustments'}.</p> : null}
       <NoticeGroups groups={notices?.information || []} />
-      {job.artwork?.status === 'matched' ? <p>Album cover: {job.artwork.album || 'matched album'}.</p> : null}
+      {job.artwork?.status === 'matched' ? <p>{job.artwork.reason === 'compilation_album_cover'
+        ? 'Cover art: compilation fallback.' : `Album cover: ${job.artwork.album || 'matched album'}.`}</p> : null}
       {job.state === 'completed' ? <HybridResult result={job.verification?.hybridLead} /> : null}
       {notices?.diagnosticCount > 0 ? <p>Routine source and conversion details are retained in the saved report.</p> : null}
     </details> : null}

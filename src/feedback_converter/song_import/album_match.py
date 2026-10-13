@@ -143,6 +143,19 @@ def _artist_lookup(client, artist):
 
 
 def _recordings(client, metadata):
+    # Fallbacks share a single lookup budget and exactly the same validated
+    # recording evidence. Album constraints do not affect recording identity.
+    key = tuple(metadata.get(k, '') for k in ('artist', 'title', 'audioTitle',
+                'musicbrainzRecordingId', 'audioVideoId'))
+    saved = getattr(client, 'recording_matches', None)
+    if saved is None:
+        saved = client.recording_matches = {}
+    if key not in saved:
+        saved[key] = _lookup_recordings(client, metadata)
+    return saved[key]
+
+
+def _lookup_recordings(client, metadata):
     credit_resolution = None
     video_resolution = None
     names = [metadata['artist']]
@@ -230,18 +243,31 @@ def _eligible(release, versions, artist_ids, supplied_album):
     return True
 
 
+def _recording_releases(client, record, *, complete=False):
+    saved = getattr(client, 'recording_releases', None)
+    if saved is None:
+        saved = client.recording_releases = {}
+    cached = saved.get(record['id'])
+    if cached is not None and (cached[1] or not complete):
+        return cached[0]
+    releases = record.get('releases') if cached is None else cached[0]
+    browsed = complete or releases is None
+    if browsed:
+        releases = _pages(client, 'release', {'recording': record['id'], 'inc': 'release-groups+artist-credits',
+                         'status': 'official', 'type': 'album|ep'}, 'releases', 'release-count', MAX_RELEASES)
+    if not isinstance(releases, list):
+        raise _LookupFailure('incomplete_catalogue', 'ambiguous')
+    saved[record['id']] = (releases, browsed)
+    return releases
+
+
 def _group_nominations(client, records, metadata, versions):
     """Collect once, retaining EPs for a possible later verification phase."""
     groups = {}
     for record in records:
         # Search embeds linked releases but no completeness promise. They only
         # nominate albums; a selected original edition is independently checked.
-        releases = record.get('releases')
-        if releases is None:
-            releases = _pages(client, 'release', {'recording': record['id'], 'inc': 'release-groups+artist-credits',
-                                                'status': 'official', 'type': 'album|ep'}, 'releases', 'release-count', MAX_RELEASES)
-        if not isinstance(releases, list):
-            raise _LookupFailure('incomplete_catalogue', 'ambiguous')
+        releases = _recording_releases(client, record)
         for release in releases:
             if not isinstance(release, dict) or not _eligible(release, versions, _ids(record), metadata.get('album')):
                 continue

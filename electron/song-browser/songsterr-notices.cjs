@@ -296,6 +296,11 @@ function playerNotices(job, report, { reportUnavailable = false, noteOwnedFinger
   if (verified && v.endingTiming?.status === 'supported') add('ending_timing', 'info', 'Ending timing checks', 'Recording timing supported through the ending. This does not verify every transcribed note.');
   if (v.compatibility?.status === 'requires_consumer_support') add('game_version', 'info', 'Game compatibility', 'Ghost-note or directional-slide symbols need a FeedBack version that supports them. This import does not detect the game version.');
   if (completed && job.artwork && job.artwork.status !== 'matched') add('artwork', 'warning', 'Album cover unavailable or uncertain', 'You can add an image in Edit FeedPaks. This does not affect the playable tab.');
+  if (verified && job.artwork?.status === 'matched' && job.artwork.reason === 'compilation_album_cover') {
+    const explanation = typeof job.artwork.message === 'string' && job.artwork.message.trim()
+      ? job.artwork.message.slice(0, 600) : 'Using a compilation cover by the same artist; artwork for this version was not found.';
+    add('artwork_fallback', 'info', 'Using compilation artwork', `${explanation} This does not identify the audio recording's album.`);
+  }
   if (completed && v.status !== 'passed') add('verification', 'warning', 'Source verification unavailable', v.status === 'modified' ? 'This file has changed since conversion. The report describes the original import.' : 'Source verification is unavailable for this file.');
 
   const hybrid = v.hybridLead;

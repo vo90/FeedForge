@@ -20,6 +20,15 @@ const { playerNotices } = require('../electron/song-browser/songsterr-notices.cj
 const job = (change) => { const value = { ...base, verification: { status: 'passed' }, ...change }; return render(SongsterrJob, {
   job: { ...value, playerNotices: playerNotices(value, change.report || null) }, api: {}, action() {}, busy: false }); };
 
+test('compilation artwork is informational and does not claim a matched song album', () => {
+  const html = job({ state: 'completed', artwork: { status: 'matched', reason: 'compilation_album_cover',
+    message: 'Using compilation artwork from The Collection; artwork for this version was not found.' } });
+  assert.match(html, /Using compilation artwork/);
+  assert.match(html, /The Collection/);
+  assert.match(html, /Cover art: compilation fallback\./);
+  assert.doesNotMatch(html, /Album cover: matched album|Album cover unavailable|Ready with limitations/);
+});
+
 test('hybrid limitation details show omitted recording ranges, not quarter-beat values', () => {
   const html = job({ state: 'completed', verification: { status: 'passed', hybridLead: {
     status: 'created', mainName: 'Lead', coverageStatus: 'limited', passageCount: 1, contributors: [],

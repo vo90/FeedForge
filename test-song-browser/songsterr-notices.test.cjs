@@ -611,3 +611,32 @@ test('qualified vibrato does not conceal a same-feature historical warning or ot
   assert.equal(classifyFinding(bar), classifyFinding(bar, noteOwnedContext));
   assert.equal(classifyFinding(missingBar), classifyFinding(missingBar, noteOwnedContext));
 });
+
+test('verified compilation artwork is explained once as information without an unavailable-cover warning', () => {
+  const artwork = { status: 'matched', reason: 'compilation_album_cover',
+    message: 'Using compilation artwork from Example Collection; artwork for this version was not found.' };
+  const result = playerNotices({ ...completed, artwork }, findings([]));
+  assert.equal(result.warnings.length, 0);
+  const notice = result.information.find(n => n.id === 'artwork_fallback');
+  assert.equal(notice.title, 'Using compilation artwork');
+  assert.equal(notice.occurrences, 1);
+  assert.ok(notice.message.includes(artwork.message));
+  assert.ok(notice.message.includes("does not identify the audio recording's album"));
+  for (const reason of ['album_cover', 'original_song_album_cover', 'future_unknown_cover']) {
+    assert.ok(!playerNotices({ ...completed, artwork: { ...artwork, reason } }, findings([]))
+      .information.some(n => n.id === 'artwork_fallback'));
+  }
+});
+
+test('failed, incomplete and modified artwork imports do not claim verified compilation artwork', () => {
+  const artwork = { status: 'matched', reason: 'compilation_album_cover' };
+  for (const job of [{ ...completed, state: 'running', artwork },
+    { ...completed, verification: { status: 'modified' }, artwork },
+    { ...completed, artwork: { ...artwork, status: 'unavailable' } }]) {
+    assert.ok(!playerNotices(job, findings([])).information.some(n => n.id === 'artwork_fallback'));
+  }
+  assert.ok(playerNotices({ ...completed, artwork: { ...artwork, status: 'unavailable' } }, findings([]))
+    .warnings.some(n => n.id === 'artwork'));
+  assert.match(playerNotices({ ...completed, artwork }, findings([])).information
+    .find(n => n.id === 'artwork_fallback').message, /same artist/);
+});

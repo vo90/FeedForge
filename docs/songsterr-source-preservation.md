@@ -213,3 +213,18 @@ retries. Images are decoded, size-limited and normalized with aspect ratio intac
 Matched art is embedded for offline playback; its database IDs and hash are saved
 in provenance. Missing album/year may be filled from a confident match, without
 changing original musical content or overwriting conflicting source metadata.
+
+If preferred version and original-song artwork are unavailable, an official
+compilation by the same verified artist can provide artwork only. The selected
+release must independently contain the matching song/version. Ordinary album
+and EP artwork keeps priority; ambiguous artist identities, unconfirmed tracks,
+unofficial releases and unrelated performances cannot justify a fallback.
+Candidates share the existing request/time budget. A missing or invalid image
+can allow another independently qualified compilation candidate to be tried.
+
+Compilation title/year and matching evidence remain under artwork provenance,
+with `matchingScope: compilation-artwork` and `audioRecordingVerified: false`.
+They never fill missing song album/year fields. Independently established source
+or preferred-album metadata is preserved. Import information explains when
+compilation artwork was used; it does not claim that the selected audio came
+from that release. Existing FeedPaks are not rewritten.
