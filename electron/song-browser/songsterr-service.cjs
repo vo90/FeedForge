@@ -4,6 +4,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { SongsterrProvider } = require('./providers/songsterr/index.cjs');
 const { SongsterrJobs } = require('./songsterr-jobs.cjs');
+const { sanitizeAudioDiscoveryEvent } = require('./songsterr-audio-diagnostics.cjs');
 
 function registerSongsterr({ app, BrowserWindow, session, ipcMain, dialog, shell, getMainWindow, runConverter, getConverterRecipe, getSettings, validateOutput, onCompleted }) {
   let provider, jobs, searching;
@@ -20,21 +21,11 @@ function registerSongsterr({ app, BrowserWindow, session, ipcMain, dialog, shell
     // Local bounded diagnostics contain enums only, never page text, song IDs,
     // URLs, credentials or account state. They distinguish a missing control
     // from a Play action that failed to materialize the linked iframe.
-    const trace = [], codes = new Set(['audio_probe_started', 'audio_probe_found', 'audio_probe_play_requested', 'audio_probe_play', 'audio_probe_pause',
-      'audio_probe_original_unavailable', 'audio_probe_original_action_failed', 'audio_probe_original_selection_timeout',
-      'audio_probe_full_mix_unavailable', 'audio_probe_full_mix_action_failed', 'audio_probe_full_mix_selection_timeout',
-      'audio_probe_play_unavailable', 'audio_probe_play_action_failed', 'audio_probe_stale_mix_timeout', 'audio_probe_iframe_timeout',
-      'audio_probe_original_control', 'audio_probe_original_selected', 'audio_probe_full_mix', 'audio_probe_play_control', 'audio_probe_iframe',
-      'audio_probe_unsupported_source_control', 'audio_probe_mix_menu_action_failed', 'audio_probe_mix_menu_timeout',
-      'audio_probe_unverified_full_mix', 'audio_probe_mix_unavailable', 'audio_probe_ambiguous_iframes',
-      'audio_probe_primary_check', 'audio_probe_primary_unverified', 'audio_probe_primary_verified', 'audio_probe_primary_page_changed',
-      ...['source', 'mix'].flatMap(control => ['original', 'synth', 'main', 'backing', 'solo', 'absent', 'loading', 'unknown']
-        .map(state => `audio_probe_${control}_${state}`)),
-      'audio_probe_play_enabled', 'audio_probe_play_attribute_true', 'audio_probe_play_attribute_false', 'audio_probe_play_attribute_missing', 'audio_probe_play_attribute_other']);
-    const outcomes = new Set(['started', 'success', 'ready', 'unavailable']);
+    const trace = [];
     const onDiagnostic = (event) => {
-      if (!codes.has(event?.code) || !outcomes.has(event?.outcome)) return;
-      trace.push({ at: new Date().toISOString(), code: event.code, outcome: event.outcome });
+      const safe = sanitizeAudioDiscoveryEvent(event);
+      if (!safe) return;
+      trace.push({ at: new Date().toISOString(), ...safe });
       if (trace.length > 200) trace.shift();
       const temporary = path.join(root, `audio-diagnostics-${crypto.randomUUID()}.tmp`);
       try {

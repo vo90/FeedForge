@@ -11,6 +11,7 @@ const { resolveRevision, loadCatalogue, chooseRevision, revalidateRevision, MAX_
 const { validRevisionSelection } = require('./revision-policy.cjs');
 const { retrieveSynchronization, primaryRecordingEvidence, unavailableSynchronization, audioVideo } = require('./synchronization.cjs');
 const { networkTransport } = require('../../songsterr-retry.cjs');
+const { createAudioDiscoveryTrace, audioDiscoveryErrorReason } = require('../../songsterr-audio-diagnostics.cjs');
 
 class SongsterrProvider {
   constructor({ BrowserWindow, session, profilePath, onConnection = () => {}, onDiagnostic = () => {}, parent }) {
@@ -116,8 +117,11 @@ class SongsterrProvider {
       throw error;
     }
   }
-  async _discoverAudio(win, identity, initialPage, signal, timeout = 8000, excludedVideoIds = []) {
+  async _discoverAudio(win, identity, initialPage, signal, timeout = 8000, excludedVideoIds = [], onAudioDiscovery) {
     let page = initialPage, pauseNeeded = false;
+    const trace = createAudioDiscoveryTrace();
+    let discoveryOutcome = 'failed', discoveryReason;
+    const diagnostic = (code, outcome) => { trace.record(code, outcome); this.diagnostic(code, outcome); };
     const staleMixVideos = new Set(excludedVideoIds);
     const until = Date.now() + timeout;
     const validate = (value) => {
@@ -144,26 +148,32 @@ class SongsterrProvider {
       return staleMixVideos.has(candidate.videoId) ? null : candidate;
     };
     const absent = (reason) => {
-      this.diagnostic('audio_probe_' + reason, 'unavailable');
-      this.diagnostic('audio_probe_original_control', page.originalAvailable ? 'ready' : 'unavailable');
-      this.diagnostic('audio_probe_original_selected', page.originalSelected ? 'ready' : 'unavailable');
-      this.diagnostic('audio_probe_full_mix', page.audioMix === 'main' ? 'ready' : 'unavailable');
+      discoveryOutcome = 'not_found';
+      // A generic caller fallback must not replace the concrete control failure.
+      discoveryReason ||= 'audio_probe_' + reason;
+      diagnostic('audio_probe_' + reason, 'unavailable');
+      diagnostic('audio_probe_original_control', page.originalAvailable ? 'ready' : 'unavailable');
+      diagnostic('audio_probe_original_selected', page.originalSelected ? 'ready' : 'unavailable');
+      diagnostic('audio_probe_full_mix', page.audioMix === 'main' ? 'ready' : 'unavailable');
       for (const [name, value] of [['source', page.sourceControlState], ['mix', page.mixControlState]]) {
         const state = ['original', 'synth', 'main', 'backing', 'solo', 'absent', 'loading', 'unknown'].includes(value) ? value : 'unknown';
-        this.diagnostic('audio_probe_' + name + '_' + state, 'unavailable');
+        diagnostic('audio_probe_' + name + '_' + state, 'unavailable');
       }
-      this.diagnostic('audio_probe_play_control', page.canPlay ? 'ready' : 'unavailable');
-      this.diagnostic('audio_probe_play_enabled', page.playEnabled ? 'ready' : 'unavailable');
+      diagnostic('audio_probe_play_control', page.canPlay ? 'ready' : 'unavailable');
+      diagnostic('audio_probe_play_enabled', page.playEnabled ? 'ready' : 'unavailable');
       const eligibility = ['true', 'false', 'missing', 'other'].includes(page.playEligibility) ? page.playEligibility : 'missing';
-      this.diagnostic('audio_probe_play_attribute_' + eligibility, 'ready');
-      this.diagnostic('audio_probe_iframe', (page.audio || []).length ? 'ready' : 'unavailable');
+      diagnostic('audio_probe_play_attribute_' + eligibility, 'ready');
+      diagnostic('audio_probe_iframe', (page.audio || []).length ? 'ready' : 'unavailable');
       if (['original_selection_timeout', 'full_mix_selection_timeout', 'mix_menu_timeout', 'iframe_timeout'].includes(reason)) {
         throw Object.assign(failure('needs_audio', 'The original recording player did not become ready. Please retry.'),
           { transport: { version: 1, phase: 'audio', operation: 'audio_probe', service: 'songsterr', reason: 'player_timeout' } });
       }
       return null;
     };
-    const found = () => { this.diagnostic('audio_probe_found', 'success'); return audio(); };
+    const found = () => {
+      discoveryOutcome = 'found'; discoveryReason = 'audio_probe_found';
+      diagnostic('audio_probe_found', 'success'); return audio();
+    };
     const act = async (action) => {
       const outcome = await this._act(win, action, signal, identity);
       if (!outcome.ok) { page = await this._read(win, signal); validate(page); }
@@ -204,7 +214,7 @@ class SongsterrProvider {
       };
       const video = candidate();
       if (!video) return absent('mix_unavailable');
-      this.diagnostic('audio_probe_primary_check', 'started');
+      diagnostic('audio_probe_primary_check', 'started');
       const sync = await retrieveSynchronization({ ...identity, videoId: video.videoId }, {
         fetch: this.anonymousSession.fetch.bind(this.anonymousSession), signal,
       });
@@ -214,17 +224,19 @@ class SongsterrProvider {
       if (candidate()?.videoId !== video.videoId) return absent('primary_page_changed');
       const evidence = primaryRecordingEvidence(sync, { ...identity, videoId: video.videoId });
       if (!evidence) {
-        this.diagnostic('audio_probe_primary_unverified', 'unavailable');
+        discoveryOutcome = 'not_found'; discoveryReason = 'audio_probe_primary_unverified';
+        diagnostic('audio_probe_primary_unverified', 'unavailable');
         if (sync.transport && ['timeout', 'network_error', 'rate_limited'].includes(sync.reasonCode)) {
           throw Object.assign(failure('needs_audio', 'The original recording could not be checked. Please retry.'), { transport: sync.transport });
         }
         return null;
       }
-      this.diagnostic('audio_probe_primary_verified', 'success');
+      discoveryOutcome = 'found'; discoveryReason = 'audio_probe_primary_verified';
+      diagnostic('audio_probe_primary_verified', 'success');
       return { ...video, primaryRecordingEvidence: evidence };
     };
     try {
-      this.diagnostic('audio_probe_started', 'started');
+      diagnostic('audio_probe_started', 'started');
       validate(page); pauseNeeded = page.playing === true;
       // The track mixer can become ready before the independent audio
       // controls. Give those controls the same bounded discovery window.
@@ -243,9 +255,9 @@ class SongsterrProvider {
       // Play is an ordinary, muted page action that materializes the linked
       // iframe. Mark cleanup before the click, including ambiguous responses.
       pauseNeeded = true;
-      this.diagnostic('audio_probe_play_requested', 'started');
+      diagnostic('audio_probe_play_requested', 'started');
       if (!await act('play')) return absent('play_action_failed');
-      this.diagnostic('audio_probe_play', 'success');
+      diagnostic('audio_probe_play', 'success');
       // Some pages create the selector only after Play. Its absence is never
       // proof of a full recording, even if an iframe has already appeared.
       if (page.mixControlState === 'absent'
@@ -253,15 +265,23 @@ class SongsterrProvider {
       if (!await ensureFullMix()) return absent('unverified_full_mix');
       return await poll(() => Boolean(audio())) ? found() : absent(recordings().size > 1 ? 'ambiguous_iframes'
         : staleMixVideos.size ? 'stale_mix_timeout' : 'iframe_timeout');
+    } catch (error) {
+      const reason = audioDiscoveryErrorReason(error);
+      discoveryOutcome = reason === 'cancelled' ? 'cancelled' : 'failed';
+      discoveryReason = reason === 'cancelled' ? reason : discoveryReason || reason;
+      throw error;
     } finally {
       if (pauseNeeded && !this.disposed && !win.isDestroyed()) {
         // Cleanup must still run after cancellation; the guarded page action
         // can only pause the exact pinned tab and never starts playback.
         try {
           const paused = await this._act(win, 'pause', undefined, identity, 2000);
-          if (!paused.ok) this.diagnostic('audio_probe_pause', 'unavailable');
-        } catch { this.diagnostic('audio_probe_pause', 'unavailable'); }
+          if (!paused.ok) diagnostic('audio_probe_pause', 'unavailable');
+        } catch { diagnostic('audio_probe_pause', 'unavailable'); }
       }
+      // Bind the summary to this operation, after cleanup and before the caller
+      // advances its job. Persistence errors intentionally propagate.
+      if (onAudioDiscovery) await onAudioDiscovery(trace.finish(discoveryOutcome, discoveryReason || 'failed'));
     }
   }
   async signIn() {
@@ -388,7 +408,7 @@ class SongsterrProvider {
       { fetch: this.anonymousSession.fetch.bind(this.anonymousSession), signal: operation.signal }); }
     finally { operation.release(); }
   }
-  async resolve(result, { signal, onPinned = () => {}, requestedRevisionId } = {}) {
+  async resolve(result, { signal, onPinned = () => {}, requestedRevisionId, onAudioDiscovery } = {}) {
     if (this.searching || this.resolving) throw failure('busy', 'The Songsterr catalogue is already being read.');
     const id = numeric(result?.id ?? result?.songId);
     const registered = id && this.results.get(id);
@@ -405,7 +425,7 @@ class SongsterrProvider {
       page = await this._readyPinnedPage(win, id, revisionId, operation.signal);
       const pinned = { ...registered, revisionId, approval, revisionEvidence, pinnedUrl: url, audioProbePending: true };
       await onPinned(pinned);
-      const audio = await this._discoverAudio(win, { songId: id, revisionId }, page, operation.signal);
+      const audio = await this._discoverAudio(win, { songId: id, revisionId }, page, operation.signal, 8000, [], onAudioDiscovery);
       const descriptor = { ...registered, revisionId, approval, revisionEvidence, pinnedUrl: url, ...(audio ? { audio } : {}) };
       await onPinned(descriptor);
       this.resolved.set(`${id}:${revisionId}`, descriptor);
@@ -414,7 +434,7 @@ class SongsterrProvider {
   }
   // A cached, verified score must retain its original revision when retrying
   // linked audio. No history lookup, account copy or score request is needed.
-  async findAudio(result, { revisionId, signal, excludedVideoIds = [] } = {}) {
+  async findAudio(result, { revisionId, signal, excludedVideoIds = [], onAudioDiscovery } = {}) {
     if (this.searching || this.resolving) throw failure('busy', 'The Songsterr catalogue is already being read.');
     const id = numeric(result?.id ?? result?.songId), revision = numeric(revisionId);
     const registered = id && this.results.get(id);
@@ -430,7 +450,7 @@ class SongsterrProvider {
       await this._navigate(win, `${registered.url}/r${revision}`, operation.signal);
       const page = await this._readyPinnedPage(win, id, revision, operation.signal);
       return await this._discoverAudio(win, { songId: id, revisionId: revision }, page, operation.signal,
-        excludedVideoIds.length ? 15000 : 8000, excludedVideoIds);
+        excludedVideoIds.length ? 15000 : 8000, excludedVideoIds, onAudioDiscovery);
     } finally { this.resolving = false; operation.release(); }
   }
   // The trusted queue supplies the revision from its verified score receipt.
@@ -451,7 +471,7 @@ class SongsterrProvider {
       return sync;
     } finally { operation.release(); }
   }
-  async acquire(result, { directory, signal, onProgress = () => {}, allowAccount = false, pinnedDescriptor, onPinned = () => {}, requestedRevisionId } = {}) {
+  async acquire(result, { directory, signal, onProgress = () => {}, allowAccount = false, pinnedDescriptor, onPinned = () => {}, requestedRevisionId, onAudioDiscovery } = {}) {
     if (this.acquiring) throw failure('busy', 'Another Songsterr tab is being acquired.');
     if (!path.isAbsolute(directory || '')) throw failure('invalid_directory', 'Songsterr needs an absolute job folder.');
     const stat = await fsp.lstat(directory);
@@ -465,11 +485,11 @@ class SongsterrProvider {
         throw failure('invalid_result', 'The saved revision selection changed. Search again.');
       }
       if (descriptor.audioProbePending) {
-        const audio = await this.findAudio(result, { revisionId: descriptor.revisionId, signal });
+        const audio = await this.findAudio(result, { revisionId: descriptor.revisionId, signal, onAudioDiscovery });
         descriptor = { ...descriptor, audioProbePending: false, ...(audio ? { audio } : {}) };
       }
       await onPinned(descriptor);
-    } else descriptor = await this.resolve(result, { signal, onPinned, requestedRevisionId });
+    } else descriptor = await this.resolve(result, { signal, onPinned, requestedRevisionId, onAudioDiscovery });
     const operation = this._controller(signal); this.acquiring = true;
     try {
       // The UI explicitly chooses the account retry. Never silently create an

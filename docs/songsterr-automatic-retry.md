@@ -50,6 +50,28 @@ from disposable media folders. The ledger retains the current cycle and up to
 wrap the unchanged canonical conversion report with `attempt-history.json`.
 No recording cache or expanded cleanup policy is introduced.
 
+Each actual audio-discovery probe now saves one `audio_discovery` event in that
+job's attempt history before acquisition or conversion continues. Its
+`audioDiscovery` field records version 1, terminal outcome/reason, start/end
+timestamps and at most 16 allowlisted control/action events. A `truncated` flag
+marks omitted events; the terminal reason is stored separately. A concrete
+failure reason survives generic fallback and player-pause cleanup diagnostics.
+Cancellation and thrown probe failures are recorded too.
+
+The summary is operation-scoped: a new song or a retry cannot borrow another
+job's browser trace. Initial discovery, cached-score audio detection and full-mix
+recovery use the same callback. Jobs that reuse known or user-supplied audio do
+not invent a discovery event. The existing bounded app-session trace remains a
+debugging aid; durable evidence is in `attempt-history.json` in the job's report.
+Older jobs without this evidence remain valid; past reasons cannot be recreated.
+
+Summaries contain only fixed enums and numeric timestamps, never page text,
+URLs, credentials, raw errors or account details. They are sanitized before
+saving and again during restoration/report export. Saving uses the existing
+history failure handling, so disk or access failures pause imports rather than
+silently losing the attempt. This does not add player warnings, automatic
+retries, recording fallbacks or changes to converter verification.
+
 Regression tests use an injected queue clock, provider failures and both
 downloader routes. Packaged tests inject faults from an external test harness;
 there is no production fault-injection switch.

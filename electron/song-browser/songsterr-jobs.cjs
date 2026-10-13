@@ -18,6 +18,7 @@ const { validRevisionSelection, revisionLabel } = require('./providers/songsterr
 const { numeric } = require('./providers/songsterr/policy.cjs');
 const { HistoryWriter, after } = require('./history-writer.cjs');
 const { playerNotices, prioritizeFindings } = require('./songsterr-notices.cjs');
+const { sanitizeAudioDiscovery } = require('./songsterr-audio-diagnostics.cjs');
 const WAITING = new Set(['needs_audio', 'needs_login', 'needs_attention', 'alignment_failed', 'awaiting_main_choice']);
 const ACTIVE = new Set(['queued', 'resolving', 'downloading', 'converting', 'audio', 'aligning', 'validating', 'saving']);
 const PENDING = (job) => ACTIVE.has(job.state) || WAITING.has(job.state) || job.state === 'retry_wait';
@@ -38,6 +39,14 @@ const defaultClock = { now: () => Date.now(), setTimeout, clearTimeout, random: 
 function retryCycle(previous) { return { version: 1, cycle: crypto.randomUUID(), used: 0, events: [], cycles: [...(previous?.cycles || []), ...(previous?.cycle ? [previous.cycle] : [])].slice(-20) }; }
 function validRetry(retry) { return retry?.version === 1 && UUID.test(retry.cycle) && Number.isInteger(retry.used) && retry.used >= 0 && retry.used <= 2
   && Array.isArray(retry.events) && retry.events.length <= 30 && Array.isArray(retry.cycles) && retry.cycles.length <= 20 && retry.cycles.every(id => UUID.test(id)); }
+function cleanDiscoveryEvents(events) {
+  return events.map(event => {
+    if (!event || typeof event !== 'object' || !Object.hasOwn(event, 'audioDiscovery')) return event;
+    const { audioDiscovery, ...saved } = event;
+    const diagnostic = sanitizeAudioDiscovery(audioDiscovery);
+    return diagnostic ? { ...saved, audioDiscovery: diagnostic } : saved;
+  });
+}
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 function clean(value) { return String(value || '').replace(/https?:\/\/[^\s]+/g, '[link]').slice(0, 1200); }
 function check(job) { if (job.controller.signal.aborted) throw Object.assign(new Error('Cancelled.'), { code: 'cancelled' }); }
@@ -113,6 +122,7 @@ class SongsterrJobs {
           job.state = 'needs_attention'; job.message = 'Saved retry information is invalid. Retry manually.';
         }
         if (job.retry && !validRetry(job.retry)) delete job.retry;
+        if (job.retry) job.retry.events = cleanDiscoveryEvents(job.retry.events);
         if (job.recordingRecovery && !validRecovery(job.recordingRecovery)) {
           delete job.recordingRecovery;
           if (job.state !== 'completed') { job.state = 'needs_attention'; job.message = 'Saved recording recovery is invalid. Check Songsterr audio again.'; }
@@ -140,6 +150,7 @@ class SongsterrJobs {
           }
           Object.assign(job, saved, { retry: job.retry || saved.retry, outputPath: output.path, state: 'completed', committed: true, message: 'FeedPak ready.',
             error: '', pathValidation: undefined, outputVerification: saved.verification?.version === CURRENT_PRESERVATION_CONTRACT && saved.verification.status === 'passed' ? 'passed' : 'not_checked', controller: new AbortController() });
+          if (validRetry(job.retry)) job.retry.events = cleanDiscoveryEvents(job.retry.events);
         }
       } catch { /* Preserve interrupted job and files for an explicit retry. */ }
     }
@@ -174,7 +185,9 @@ class SongsterrJobs {
     for (const cycle of cycles) {
       const file = containedFile(this.retryHistoryRoot, path.join(this.retryHistoryRoot, job.id, `${cycle}.json`));
       if (!file.path || fs.statSync(file.path).size > 128 * 1024) throw new Error('The saved attempt history is unavailable.');
-      history.push(JSON.parse(fs.readFileSync(file.path, 'utf8')));
+      const saved = JSON.parse(fs.readFileSync(file.path, 'utf8'));
+      if (Array.isArray(saved.events)) saved.events = cleanDiscoveryEvents(saved.events);
+      history.push(saved);
     }
     entries.push(['attempt-history.json', Buffer.from(JSON.stringify({ version: 1, jobId: job.id, retainedCycles: history }, null, 2))]);
     const output = path.join(this.retryHistoryRoot, job.id, 'report.zip');
@@ -400,6 +413,14 @@ class SongsterrJobs {
     if (fs.lstatSync(this.retryHistoryRoot).isSymbolicLink() || fs.lstatSync(directory).isSymbolicLink()) throw new Error('Import history folder changed.');
     return this._writeHistory(path.join(directory, `${job.retry.cycle}.json`), { version: 1, jobId: job.id, cycle: job.retry.cycle, events: job.retry.events });
   }
+  async _audioDiscovery(job, summary) {
+    const diagnostic = sanitizeAudioDiscovery(summary);
+    if (!diagnostic) return;
+    // One bounded record per completed probe, never per polling tick. Keep it
+    // in durable attempt history before score retrieval/conversion continues.
+    await this._event(job, 'audio_discovery', { audioDiscovery: diagnostic });
+    await this._save();
+  }
   _cooldown(job) {
     const services = ['songsterr'];
     if (job.audio?.kind === 'url') services.push(audioVideo(job.audio) ? 'youtube' : 'audio_host');
@@ -547,6 +568,7 @@ class SongsterrJobs {
       // A fresh acquisition folder makes retry safe without overwriting that file.
       const acquisition = fs.mkdtempSync(path.join(directory, 'source-'));
       const acquired = await this.provider.acquire(job.chart, { directory: acquisition, signal: job.controller.signal, allowAccount: job.allowAccount === true,
+        onAudioDiscovery: summary => this._audioDiscovery(job, summary),
         requestedRevisionId: job.requestedRevisionId, pinnedDescriptor: job.pinnedDescriptor, onPinned: async (descriptor) => {
           check(job);
           if (!validRevisionSelection(descriptor) || (job.requestedRevisionId && descriptor.revisionId !== job.requestedRevisionId)) throw new Error('The revision selection is invalid.');
@@ -580,7 +602,8 @@ class SongsterrJobs {
       await this._set(job, 'audio', { message: 'Checking Songsterr for another full-song recording…' });
       const previousVideoId = audioVideo(job.audio)?.videoId;
       const audio = await this.provider.findAudio(job.chart, { revisionId: String(job.metadata.revisionId),
-        excludedVideoIds: [...job.recordingRecovery.failedVideoIds], signal: job.controller.signal });
+        excludedVideoIds: [...job.recordingRecovery.failedVideoIds], signal: job.controller.signal,
+        onAudioDiscovery: summary => this._audioDiscovery(job, summary) });
       check(job);
       const candidate = audioVideo(audio);
       if (!candidate || job.recordingRecovery.failedVideoIds.includes(candidate.videoId)) {
@@ -593,7 +616,8 @@ class SongsterrJobs {
     if ((retryAudioDetection || job.audioDiscoveryPending || job.retry.reason === 'player_timeout') && !job.audio) {
       job.audioDiscoveryPending = true; await this._save();
       await this._set(job, 'audio', { message: 'Checking Songsterr for the recording…' });
-      const audio = await this.provider.findAudio(job.chart, { revisionId: String(job.metadata.revisionId), signal: job.controller.signal });
+      const audio = await this.provider.findAudio(job.chart, { revisionId: String(job.metadata.revisionId), signal: job.controller.signal,
+        onAudioDiscovery: summary => this._audioDiscovery(job, summary) });
       check(job);
       if (audio) selectSiteAudio(job, audio);
       job.audioDiscoveryPending = false; await this._save();
