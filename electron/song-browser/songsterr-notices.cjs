@@ -346,8 +346,8 @@ function playerNotices(job, report, { reportUnavailable = false, noteOwnedFinger
       add('empty_tracks', 'diagnostic', 'Empty tracks skipped', 'Tracks with no playable notes were skipped; original source annotations are retained.');
     } else if (message === 'Timing was imported from Songsterr for this tab revision and recording.') {
       add('timing_source', 'diagnostic', 'Timing source', message);
-    } else if (/^Unclassified Songsterr part field (title|clef|grandStaffGroup) is retained in source evidence only\.$/.test(message)) {
-      add('staff_metadata', 'diagnostic', 'Staff metadata retained', 'Staff layout and part metadata remain in the saved source.');
+    } else if (typeof item === 'string' && /^Excluded arrangement notation: Songsterr part field (clef|grandStaffGroup) is retained in source evidence only\.$/.test(message)) {
+      add('excluded_notation', 'diagnostic', 'Notation on excluded arrangements', 'Notation for parts outside the selected guitar and bass arrangements remains in the saved source.');
     } else if (verified && /^Timing not fully verified\. Automatic checks supported timing in \d+ of \d+ passages\./.test(message) && timing) {
       // Already presented once from structured timing evidence above.
     } else if (verified && warning?.status === 'accepted_with_warning' && (message === warning.message || message === 'Ending sync not independently confirmed. Songsterr timing retained; short ending silence added.')) {

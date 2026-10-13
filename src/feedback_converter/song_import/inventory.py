@@ -14,6 +14,14 @@ def _retained_part_index(value):
                              and value == int(value))
 
 
+def _known_part_notation(field, value):
+    """Qualify only familiar part-local notation for excluded arrangements."""
+    if field == "clef":
+        return isinstance(value, str) and value in {"G2", "F4", "C3", "C4", "neutral"}
+    return (field == "grandStaffGroup" and type(value) in (int, float)
+            and 0 <= value <= 9_007_199_254_740_991 and value == int(value))
+
+
 def _matching_voice_count(part, value):
     """A redundant count never selects or limits the actual musical voices."""
     if type(value) is not int or value <= 0:
@@ -36,18 +44,23 @@ class FeatureInventory:
     def __init__(self):
         self._entries = {}
 
-    def record(self, scope, field, handling, path, representations=None):
-        key = (scope, field, handling)
+    def record(self, scope, field, handling, path, representations=None, *, relevance=None):
+        # Keep excluded occurrences separate: the bounded examples cannot prove
+        # that every occurrence of a field belongs to an excluded arrangement.
+        key = (scope, field, handling, relevance or "")
         entry = self._entries.setdefault(key, {"scope": scope, "field": field,
                                               "handling": handling, "count": 0, "examples": [],
                                               "representations": ["source"]})
+        if relevance:
+            entry["relevance"] = relevance
         defaults = [handling] if handling in {"playable", "notation", "layout"} else []
         entry["representations"] = sorted(set(entry["representations"]) | set(representations or defaults))
         entry["count"] += 1
         if len(entry["examples"]) < 3:
             entry["examples"].append(path)
 
-    def inspect(self, obj, scope, path, *, playable=(), notation=(), retained=(), layout=(), strict=False):
+    def inspect(self, obj, scope, path, *, playable=(), notation=(), retained=(), layout=(), strict=False,
+                excluded_part=False):
         if not isinstance(obj, dict):
             raise ScoreImportError(f"Malformed {scope} object at {path}.")
         for key, value in obj.items():
@@ -92,12 +105,17 @@ class FeatureInventory:
                 handling = "source"
             elif key in layout:
                 handling = "layout"
+            # Optional notation may be absent/null, but malformed falsy values
+            # must not disappear before excluded-part qualification is checked.
             elif (value is None or value is False or value == "" or value == [] or value == {}) and not (
-                    scope == "Songsterr part" and key in {"key", "voices", "index", "title"}):
+                    scope == "Songsterr part" and (key in {"key", "voices", "index", "title"}
+                                                  or key in {"clef", "grandStaffGroup"} and value is not None)):
                 handling = "inactive_unknown"
             else:
                 handling = "unclassified"
-                self.record(scope, key, handling, where)
+                relevance = ("excluded_arrangement" if excluded_part and scope == "Songsterr part"
+                             and _known_part_notation(key, value) else None)
+                self.record(scope, key, handling, where, relevance=relevance)
                 if strict:
                     raise ScoreImportError(f"Unsupported {scope} field at {where}; its musical meaning is not implemented.")
                 continue
@@ -114,5 +132,7 @@ class FeatureInventory:
         return [deepcopy(entry) for _, entry in sorted(self._entries.items())]
 
     def warnings(self):
-        return [f"Unclassified {entry['scope']} field {entry['field']} is retained in source evidence only."
+        return [(f"Excluded arrangement notation: {entry['scope']} field {entry['field']} is retained in source evidence only."
+                 if entry.get("relevance") == "excluded_arrangement" else
+                 f"Unclassified {entry['scope']} field {entry['field']} is retained in source evidence only.")
                 for entry in self._entries.values() if entry["handling"] == "unclassified"]

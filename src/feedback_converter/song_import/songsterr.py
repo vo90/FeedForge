@@ -401,11 +401,13 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
         if not isinstance(meta, dict):
             raise ScoreImportError("Invalid track metadata.")
         instrument = instruments[index]
+        selected = bool(instrument) and (track_indices is None or index in track_indices)
         inventory.inspect(meta, "Songsterr track", f"$.tracks[{index}]", playable={"id", "instrumentId", "midiProgram", "name", "instrument", "title", "type", "tuning", "capo", "isVocalTrack"},
                           retained={"views", "difficulty", "hash", "isEmpty"})
         inventory.inspect(part, "Songsterr part", f"$.parts[{index}]", playable={"measures", "tuning", "automations", "capo", "anacrusis", "sounds", "trackAutomations"},
-                          retained={"name", "balance", "volume", "frets", "strings", "instrumentId", "instrument", "newLyrics", "withLyrics", "tuningFlat", "partId", "version", "songId", "revisionId"})
-        if not instrument or track_indices is not None and index not in track_indices:
+                          retained={"name", "balance", "volume", "frets", "strings", "instrumentId", "instrument", "newLyrics", "withLyrics", "tuningFlat", "partId", "version", "songId", "revisionId"},
+                          excluded_part=not selected)
+        if not selected:
             warnings.append(f"Excluded non-guitar/bass track: {meta.get('name') or meta.get('instrument') or index}.")
             excluded.append({"id": str(meta.get("id", index)),
                              "name": str(meta.get("name") or meta.get("title") or meta.get("instrument") or f"Track {index + 1}"),
