@@ -7,7 +7,7 @@ artist, revision or arrangement. Unknown positions are never rounded to a
 nearby known node: that could change the intended partial.
 """
 import math
-from ..harmonic_target import target_for, ALIAS
+from ..harmonic_target import target_for, ALIAS, PLAYBACK_FALLBACK
 
 
 # Semitones above the open string, agreeing with source playback and its
@@ -41,7 +41,25 @@ def exact_natural(note):
 def source_target(note):
     if note.get("harmonicData") is not None:
         return None
-    return target_for(note.get("harmonic"), note.get("harmonicFret"))
+    target = target_for(note.get("harmonic"), note.get("harmonicFret"))
+    if target is not None:
+        return target
+    if artificial_playback_fallback(note):
+        return dict(PLAYBACK_FALLBACK)
+    return None
+
+
+def artificial_playback_fallback(note):
+    """Verified synth pitch, explicitly without a known physical contact node.
+
+    Songsterr uses +24 when its lookup finds no node. Its tolerance is wider
+    than our exact contact mapping: near-node values must not take this path.
+    Missing/null/string nodes and opaque harmonicData remain unqualified.
+    """
+    touch = note.get('harmonicFret')
+    return (note.get('harmonic') == 'artificial' and note.get('harmonicData') is None
+            and type(touch) in (int, float) and math.isfinite(touch) and touch >= 0
+            and all(abs(touch - node) > .001 for node in NATURAL_PITCH))
 
 
 def natural_alias(note):

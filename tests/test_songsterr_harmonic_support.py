@@ -72,7 +72,7 @@ def test_ties_do_not_create_extra_harmonic_attacks(kind):
     assert kept['harmonicTieEvidence'][0]['authored']['harmonic_target']['node']==7
 
 
-@pytest.mark.parametrize('kind,node', [('natural',15.1),('artificial',15),('semi',None),('feedback',3.1)])
+@pytest.mark.parametrize('kind,node', [('natural',15.1),('artificial',7.0001),('semi',None),('feedback',3.1)])
 def test_unverified_positions_are_not_guessed(kind,node):
     source=raw_score([measure(beat(fret=15,harmonic=kind,harmonicFret=node))])
     with pytest.raises(ValueError): parse(source)

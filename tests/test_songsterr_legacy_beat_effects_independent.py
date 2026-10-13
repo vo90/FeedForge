@@ -21,6 +21,9 @@ def first(document, part=0):
 def played(document):
     producer = render(parse(document))
     oracle = expected(songsterr(document), {'offset': 0, 'scale': 1})
+    # Retained flags affect source eligibility (e.g. rest-tie qualification),
+    # while this test compares performed notes, timing and written notation.
+    oracle['parts'] = [{k: v for k, v in part.items() if k != 'source'} for part in oracle['parts']]
     return producer['tracks'], producer['duration'], oracle
 
 

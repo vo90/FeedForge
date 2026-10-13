@@ -33,6 +33,7 @@ def retain(output, effects, note, track, occurrence, position, end, at, records,
     target = authored.get('harmonic_target', {})
     timed = (not used and not state.get('harmonic_conflict') and not output.get('mt')
              and target.get('kind') == 'artificial' and at(position) > output['t']
+             and type(target.get('node')) in (int, float)
              and not note.slide and not note.slide_in)
     if timed:
         output['harmonic_changes'] = {'version':1, 'events':[{

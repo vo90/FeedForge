@@ -245,8 +245,11 @@ function playerNotices(job, report, { reportUnavailable = false, noteOwnedFinger
   for (const f of report?.findings || []) {
     if (boundary && f.feature === 'beat.measure_boundary') continue;
     const level = classifyFinding(f, context);
-    const id = f.feature === 'note.fret_range' ? 'high_frets' : f.feature || 'unknown_finding';
-    add(id, level, level === 'warning' ? titles[f.feature] || 'Source feature needs review'
+    const fallbackHarmonic = f.feature === 'note.harmonicFret'
+      && f.message?.startsWith('Artificial harmonic:');
+    const id = fallbackHarmonic ? 'artificial_harmonic_contact' : f.feature === 'note.fret_range' ? 'high_frets' : f.feature || 'unknown_finding';
+    add(id, level, fallbackHarmonic ? 'Artificial-harmonic touch position unspecified'
+      : level === 'warning' ? titles[f.feature] || 'Source feature needs review'
       : level === 'info' && f.feature === 'note.harmonicFret' && f.message === informational.get(f.feature)
         ? 'Natural-harmonic touch position'
         : informationTitles[f.feature] || 'Retained source information', f.message, location(f));

@@ -9,6 +9,19 @@ const { playerNotices, classifyFinding, prioritizeFindings } = require('../elect
 const { SongsterrJobs } = require('../electron/song-browser/songsterr-jobs.cjs');
 const completed = { state: 'completed', verification: { status: 'passed', timing: 'source_map' } };
 
+test('unknown artificial contact is one warning, redundant beat flags are diagnostic', () => {
+  const findings = [0, 1].map(n => ({ feature: 'note.harmonicFret', category: 'game_limitation',
+    impact: 'display_or_expression', workStatus: 'display_limitation', location: `notes/${n}`,
+    message: 'Artificial harmonic: the tab does not specify a recognised touch position.' }));
+  findings.push({ feature: 'beat.artificialHarmonic', category: 'source_metadata',
+    impact: 'source_retained', message: 'Explicit note harmonics determine playback.' });
+  const result = playerNotices(completed, { findings });
+  assert.equal(result.warnings.length, 1);
+  assert.equal(result.warnings[0].id, 'artificial_harmonic_contact');
+  assert.equal(result.warnings[0].occurrences, 2);
+  assert.equal(result.warnings[0].title, 'Artificial-harmonic touch position unspecified');
+});
+
 test('retained octave notation stays diagnostic while invalid octave data warns', () => {
   const finding = { feature: 'beat.octaveClef', category: 'source_metadata', impact: 'source_retained',
     message: 'Explicit tab pitches are preserved; the octave notation remains in the source.' };

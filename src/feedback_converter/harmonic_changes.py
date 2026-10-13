@@ -23,6 +23,7 @@ def validate_changes(note):
             or abs(event['end'] - note['sus']) > .0000011
             or not isinstance(event['source_id'], str) or not 0 < len(event['source_id']) <= 512
             or not isinstance(event['target'], dict) or event['target'].get('kind') != 'artificial'
+            or not finite(event['target'].get('node'))
             or not valid_note_target({'f':note.get('f'), 'harmonic_target':event['target']})):
         raise ValueError('Invalid delayed harmonic interval or target')
     return deepcopy(value)

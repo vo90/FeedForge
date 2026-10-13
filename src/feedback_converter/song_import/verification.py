@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 122
+VERSION = 123
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -353,7 +353,7 @@ def _chords(wanted, chart, check, part):
 
 def _compatibility_report(report, score_path, source, check, harmonic_ties=(), tied_mutes=(), projected_parts=None, muted_slides=(), preservation_contract=0, consumed_strums=(), scrape_entries=(), undefined_slides=(), finger_bends=(), pending_hopo_ties=(), rest_ties=()):
     """Verify retained limitations from source facts, not the producer's inventory."""
-    from .verify_source import _boolean_bar_beats, _legacy_beat_effect_beats, _legacy_beat_effects, _legacy_rhythm_voices, _legacy_voice_rhythm, _octave_clef, _octave_clef_beats, _program_instrument, effective_tempo_entries, fraction, inactive, integer
+    from .verify_source import _artificial_playback_fallback, _boolean_bar_beats, _legacy_beat_effect_beats, _legacy_beat_effects, _legacy_rhythm_voices, _legacy_voice_rhythm, _octave_clef, _octave_clef_beats, _program_instrument, effective_tempo_entries, fraction, inactive, integer
     rows = report.get("findings")
     if not isinstance(rows, list) or report.get("truncated") is not False:
         check.fail("compatibility", "import/compatibility", "The compatibility report is incomplete.")
@@ -399,6 +399,9 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     if preservation_contract >= 122 and (type(report.get('version')) is not int or report['version'] < 122):
         check.fail('compatibility_version', 'import/compatibility',
                    'This preservation contract requires rest-spanning tie accounting.')
+    if preservation_contract >= 123 and (type(report.get('version')) is not int or report['version'] < 123):
+        check.fail('compatibility_version', 'import/compatibility',
+                   'This preservation contract requires artificial-harmonic fallback accounting.')
     check.equal("compatibility_status", "import/compatibility", "limitations" if any(
         row.get('impact') != 'source_retained' for row in rows) else "compatible", report.get("status"))
     target = report.get("target", {})
@@ -492,9 +495,12 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
                 if not reports_beat_effects or preservation_contract < 91:
                     check.fail('compatibility_version', where + '/' + key,
                                'Legacy beat effects need preservation contract and inventory version 91.')
+                if key == 'artificialHarmonic' and (preservation_contract < 123 or report.get('version', 0) < 123):
+                    check.fail('compatibility_version', where + '/' + key,
+                               'Artificial beat-harmonic retention needs preservation contract and inventory 123.')
                 item = ('beat.' + key, where + '/' + key)
                 expected[item] = beat[key]
-                if key == 'harmonic' or beat[key] is not True or not selected:
+                if key in ('harmonic', 'artificialHarmonic') or beat[key] is not True or not selected:
                     legacy_effect_retained.add(item)
         # These marks describe staff notation; explicit tuning and fret still
         # define the pitch. Include excluded parts and explicit nulls so every
@@ -562,6 +568,10 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
                         # even when their playback timing is unconfirmed.
                         remember(beat, ("chord", "wahwah", "letRing", "tremolo", "tremoloBar", "vibratoWithTremoloBar", "vibrato", "wideVibrato", "hasRasgueado", "sustainPedal"), "beat", where)
                         for ni, note in enumerate(beat["notes"]):
+                            fallback = _artificial_playback_fallback(note)
+                            if fallback and (preservation_contract < 123 or report.get('version', 0) < 123):
+                                check.fail('compatibility_version', where + f'/notes/{ni}/harmonicFret',
+                                           'Artificial harmonic playback fallback needs preservation contract and inventory 123.')
                             retained_metadata(note, 'grace', 'note', where + f'/notes/{ni}')
                             if (not note.get("rest") and type(note.get("fret")) is int and 24 < note["fret"] <= 48
                                     and not (note.get("dead") is True and note.get("pickScrape") in ("up", "down"))):
@@ -569,7 +579,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
                             remember(note, ("staccato", "pickScrape", "tremolo", "rightFingering"), "note", where + f"/notes/{ni}")
                             if note.get("tie") or note.get("leftFingering") == "0" and note.get("fret") != 0:
                                 remember(note, ("leftFingering",), "note", where + f"/notes/{ni}")
-                            if (note.get('harmonic') in ('semi', 'feedback') and note.get('harmonicFret') is not None
+                            if (fallback or note.get('harmonic') in ('semi', 'feedback') and note.get('harmonicFret') is not None
                                     or note.get('harmonic') == 'natural' and note.get('fret') == 15
                                     and note.get('harmonicFret') == 15 and note.get('harmonicData') is None):
                                 remember(note, ('harmonicFret',), 'note', where + f'/notes/{ni}')

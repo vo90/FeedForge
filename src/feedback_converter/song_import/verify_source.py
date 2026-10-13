@@ -130,6 +130,15 @@ def _legacy_beat_tempo(beat, location):
         raise ValueError(location + "/tempo: invalid retained beat tempo value")
 
 
+def _artificial_playback_fallback(note):
+    """Independent qualification of the source's failed-node +24 default."""
+    touch = note.get('harmonicFret')
+    nodes = (2.4, 2.7, 3.2, 4, 5, 5.8, 7, 8.2, 9, 9.6, 12, 14.7, 16, 17, 19, 21.7, 24)
+    return (note.get('harmonic') == 'artificial' and note.get('harmonicData') is None
+            and _finite_number(touch) and touch >= 0
+            and all(abs(touch - node) > .001 for node in nodes))
+
+
 def _legacy_beat_effects(beat, location, *, qualify_harmonics=True):
     """Validate retained flags independently; never derive note effects.
 
@@ -137,11 +146,12 @@ def _legacy_beat_effects(beat, location, *, qualify_harmonics=True):
     source accounting. Active beat harmonics only restate already qualified
     explicit natural note targets. Fade-in remains a retained expression mark.
     """
-    present = {key for key in ("harmonic", "fadeIn") if key in beat}
+    present = {key for key in ("harmonic", "artificialHarmonic", "fadeIn") if key in beat}
     for key in present:
         if beat[key] is not None and type(beat[key]) is not bool:
             raise ValueError(location + "/" + key + ": expected a retained boolean or null")
-    if not qualify_harmonics or beat.get("harmonic") is not True:
+    active = [key for key in ('harmonic', 'artificialHarmonic') if beat.get(key) is True]
+    if not qualify_harmonics or not active:
         return present
     notes = beat.get("notes")
     if beat.get("rest") or not isinstance(notes, list) or any(not isinstance(n, dict) for n in notes):
@@ -150,20 +160,25 @@ def _legacy_beat_effects(beat, location, *, qualify_harmonics=True):
     if not sounding:
         unsupported(location + "/harmonic", "A legacy beat harmonic cannot apply to an empty or silent beat.")
     nodes = (2.4, 2.7, 3.2, 4, 5, 5.8, 7, 8.2, 9, 9.6, 12, 14.7, 16, 17, 19, 21.7, 24)
-    for note in sounding:
-        fret = note.get("fret")
-        touch = note.get("harmonicFret")
-        if touch is None:
-            touch = fret
-        valid = (note.get("harmonic") == "natural" and note.get("harmonicData") is None
-                 and not note.get("dead") and not note.get("pickScrape")
-                 and _finite_number(fret) and _finite_number(touch))
-        if valid:
-            alias = fret == 15 and touch == 15 and note.get("harmonicFret") is not None
-            node = next((n for n in nodes if abs(fraction(touch, location) - F(str(n))) <= F(1, 10**9)), None)
-            valid = alias or node is not None and fret == round(node)
-        if not valid:
-            unsupported(location + "/harmonic", "Every sounding note needs an independently valid explicit natural harmonic.")
+    for field in active:
+        kind = 'natural' if field == 'harmonic' else 'artificial'
+        for note in sounding:
+            fret = note.get("fret")
+            touch = note.get("harmonicFret")
+            if touch is None and kind == 'natural':
+                touch = fret
+            valid = (note.get("harmonic") == kind and note.get("harmonicData") is None
+                     and not note.get("dead") and not note.get("pickScrape")
+                     and _finite_number(fret) and _finite_number(touch))
+            if valid:
+                node = next((n for n in nodes if abs(fraction(touch, location) - F(str(n))) <= F(1, 10**9)), None)
+                if kind == 'natural':
+                    alias = fret == 15 and touch == 15 and note.get("harmonicFret") is not None
+                    valid = alias or node is not None and fret == round(node)
+                else:
+                    valid = node is not None or _artificial_playback_fallback(note)
+            if not valid:
+                unsupported(location + '/' + field, f'Every sounding note needs an independently valid explicit {kind} harmonic.')
     return present
 
 
@@ -214,7 +229,7 @@ def _retained_field_beats(parts, fields):
 
 
 def _legacy_beat_effect_beats(parts):
-    return _retained_field_beats(parts, ("harmonic", "fadeIn"))
+    return _retained_field_beats(parts, ("harmonic", "artificialHarmonic", "fadeIn"))
 
 
 def _octave_clef_beats(parts):
@@ -940,7 +955,7 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                     loc = f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}"
                     _legacy_beat_tempo(beat, loc)
                     _legacy_beat_effects(beat, loc)
-                    _active_unknown(beat, beat_keys, {"beamStart", "beamStop", "id", "hasRasgueado", "sustainPedal", "tempo", "harmonic", "fadeIn", "octaveClef"}, loc, ignored)
+                    _active_unknown(beat, beat_keys, {"beamStart", "beamStop", "id", "hasRasgueado", "sustainPedal", "tempo", "harmonic", "artificialHarmonic", "fadeIn", "octaveClef"}, loc, ignored)
                     # Independent validation; MIDI pedal control cannot become
                     # longer game trails, more attacks or a let-ring instruction.
                     if beat.get("sustainPedal") is not None and type(beat["sustainPedal"]) is not bool:
@@ -1093,7 +1108,8 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                                     'semi': 'mixed', 'feedback': 'attack_either'}
                         explicit = (isinstance(harmonic, str) and harmonic in policies
                                     and touch is not None and node is not None and note.get('harmonicData') is None)
-                        if touch and harmonic is not None and not (natural or explicit):
+                        fallback = _artificial_playback_fallback(note)
+                        if touch and harmonic is not None and not (natural or explicit or fallback):
                             unsupported(nloc, "Harmonic-fret pitch interpretation is not independently verified.")
                         if harmonic:
                             if harmonic == 'natural':
@@ -1109,6 +1125,10 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                                                          'interval': nodes[node], 'policy': policies[harmonic]}
                                 if harmonic in ('pinch', 'semi'):
                                     fx['hp'] = True
+                            elif fallback:
+                                harmonic_shift = 24
+                                fx['harmonic_target'] = {'kind': 'artificial', 'node': None,
+                                    'interval': 24, 'policy': 'harmonic', 'basis': 'source-playback-fallback'}
                             elif harmonic == 'pinch':
                                 fx['hp'] = True
                             else:

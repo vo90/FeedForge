@@ -269,6 +269,22 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         raise ImportFailure('unsupported_score', 'Measure-boundary playback requires the original tab and preservation contract 99.')
     finger_policy = source_model.get('fingerVibratoPolicy')
     contract = (recipe or {}).get('preservationContract', 0)
+    fallback_targets = any(n.get('harmonic_target', {}).get('basis') == 'source-playback-fallback'
+                           for track in performance.get('tracks', [])
+                           for n in [*track.get('notes', []), *[n for c in track.get('chords', []) for n in c.get('notes', [])]])
+    artificial_flags = any(row.get('scope') == 'Songsterr beat' and row.get('field') == 'artificialHarmonic'
+                           for row in performance.get('featureInventory', []))
+    # Findings also cover fallback metadata on continuations and excluded parts.
+    fallback_findings = any(row.get('feature') == 'beat.artificialHarmonic'
+                            or row.get('feature') == 'note.harmonicFret' and
+                            str(row.get('message', '')).startswith('Artificial harmonic:')
+                            for row in (compatibility or {}).get('findings', []))
+    if fallback_targets or artificial_flags or fallback_findings:
+        inventory = (compatibility or {}).get('version')
+        if (source_path is None or type(contract) is not int or contract < 123
+                or type(inventory) is not int or inventory < 123):
+            raise ImportFailure('unsupported_score',
+                                'Artificial harmonic fallback requires the original tab, preservation contract and inventory 123.')
     if compatibility is not None:
         compatibility = deepcopy(compatibility)
         if contract >= 111:

@@ -7,6 +7,8 @@ NODES = {12: 12, 7: 19, 19: 19, 5: 24, 24: 24, 4: 28, 9: 28, 16: 28,
 POLICIES = {"pinch": "harmonic", "artificial": "harmonic", "tapped": "harmonic",
             "semi": "mixed", "feedback": "attack_either"}
 ALIAS = "songsterr-natural-15"
+PLAYBACK_FALLBACK = {"kind": "artificial", "node": None, "interval": 24,
+                     "policy": "harmonic", "basis": "source-playback-fallback"}
 
 
 def target_for(kind, node):
@@ -19,6 +21,8 @@ def target_for(kind, node):
 
 
 def valid_target(value):
+    if isinstance(value, dict) and set(value) == set(PLAYBACK_FALLBACK):
+        return value == PLAYBACK_FALLBACK and type(value.get("interval")) is int
     if not isinstance(value, dict) or set(value) != {"kind", "node", "interval", "policy"}:
         return False
     expected = target_for(value["kind"], value["node"])

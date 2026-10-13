@@ -6,7 +6,7 @@ parser and independent verifier still validate every supported representation.
 from copy import deepcopy
 import json
 import math
-from .songsterr_harmonics import exact_natural, natural_alias, source_target
+from .songsterr_harmonics import exact_natural, natural_alias, source_target, artificial_playback_fallback
 from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
 from .songsterr_fields import validate_sustain_pedal, effective_dots, validate_bend_point_vibrato, validate_octave_clef
@@ -17,7 +17,7 @@ from .songsterr_legacy_effects import (FIELDS as LEGACY_BEAT_EFFECTS, beat_effec
                                      retention as legacy_beat_effect_retention)
 from .model import ScoreImportError, integer, rational
 
-VERSION = 122
+VERSION = 123
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -250,7 +250,11 @@ def inspect_songsterr(document, *, track_indices=None, note_owned_vibrato=True):
                             location=path + "/" + key, value=value, **coordinates)
                 continue
             if scope == "note" and key == "harmonicFret" and (exact_natural(obj) or source_target(obj)):
-                interpretation = ("Natural harmonic position 15 is displayed as 14.7, matching the source playback harmonic; the authored value is retained."
+                interpretation = ("Artificial harmonic: the tab does not specify a recognised touch position. "
+                                  "Songsterr's fallback pitch is two octaves above the fretted note; "
+                                  "no touch-position number can be shown. The original value is retained."
+                                  if artificial_playback_fallback(obj) else
+                                  "Natural harmonic position 15 is displayed as 14.7, matching the source playback harmonic; the authored value is retained."
                                   if natural_alias(obj) else
                                   "Semi-harmonics use the pinch-harmonic display and permit the fretted sound alongside the selected harmonic."
                                   if obj.get("harmonic") == "semi" else

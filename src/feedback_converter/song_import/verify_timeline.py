@@ -630,6 +630,7 @@ def _expected(source, alignment, *, pending_hopo_ties=True, pending_slide_ties=T
                             source_id = 'songsterr:' + ':'.join(parts[i] for i in (1,3,5,7,9))
                             can_touch = (not kept and not event.get('harmonic_conflict') and not event['effects'].get('mt')
                                          and stated.get('harmonic_target', {}).get('kind') == 'artificial'
+                                         and type(stated.get('harmonic_target', {}).get('node')) in (int, float)
                                          and start > event['start'] and not atom.slide and not atom.slide_in)
                             if can_touch:
                                 event['contact'] = {'at':start, 'target':dict(stated['harmonic_target']), 'source_id':source_id}

@@ -1,9 +1,9 @@
 """Retain qualified legacy beat flags without deriving musical effects."""
 from .model import ScoreImportError
-from .songsterr_harmonics import exact_natural
+from .songsterr_harmonics import exact_natural, source_target
 
 POLICY = 'songsterr-legacy-beat-effects-v1'
-FIELDS = frozenset({'harmonic', 'fadeIn'})
+FIELDS = frozenset({'harmonic', 'artificialHarmonic', 'fadeIn'})
 
 
 def validate_legacy_beat_effect(scope, field, value, *, beat, qualify_harmonics=True):
@@ -12,13 +12,16 @@ def validate_legacy_beat_effect(scope, field, value, *, beat, qualify_harmonics=
         return False
     if value is not None and type(value) is not bool:
         raise ScoreImportError(f'Invalid legacy beat {field}; expected null or a boolean.')
-    if field == 'harmonic' and value is True and qualify_harmonics:
+    if field in ('harmonic', 'artificialHarmonic') and value is True and qualify_harmonics:
+        kind = 'natural' if field == 'harmonic' else 'artificial'
         notes = beat.get('notes')
         if beat.get('rest') or not isinstance(notes, list) or any(not isinstance(n, dict) for n in notes):
-            raise ScoreImportError('Legacy beat harmonic needs explicit valid natural harmonics on sounding notes.')
+            raise ScoreImportError(f'Legacy beat {field} needs explicit valid {kind} harmonics on sounding notes.')
         sounding = [n for n in notes if not n.get('rest')]
-        if not sounding or any(n.get('dead') or n.get('pickScrape') or not exact_natural(n) for n in sounding):
-            raise ScoreImportError('Legacy beat harmonic needs explicit valid natural harmonics on every sounding note.')
+        if not sounding or any(n.get('dead') or n.get('pickScrape') or
+                not (exact_natural(n) if kind == 'natural' else
+                     n.get('harmonic') == 'artificial' and source_target(n)) for n in sounding):
+            raise ScoreImportError(f'Legacy beat {field} needs explicit valid {kind} harmonics on every sounding note.')
     return True
 
 
@@ -54,8 +57,8 @@ def retention(field, value, *, selected=True):
                 'The authored fade-in volume-swell marking is retained in the original source. '
                 'Notes, ties, timing and scoring are unchanged; the game does not display or score '
                 'a dedicated volume-swell envelope.')
-    message = ('The legacy beat harmonic flag is retained. Explicit note harmonic instructions '
+    message = (f'The legacy beat {field} flag is retained. Explicit note harmonic instructions '
                'determine the playable targets; no harmonic is inferred from the beat flag.'
-               if field == 'harmonic' else
+               if field in ('harmonic', 'artificialHarmonic') else
                'The inactive legacy beat fade-in flag is retained. Notes, timing and scoring are unchanged.')
     return 'source_metadata', 'source_retained', message
