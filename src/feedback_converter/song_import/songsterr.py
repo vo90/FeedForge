@@ -15,7 +15,7 @@ from .songsterr_fields import bend_points, validate_sustain_pedal, effective_dot
 from .songsterr_fields import validate_octave_clef, octave_clef_beats
 from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
-from .songsterr_whammy import source_whammy
+from .songsterr_whammy import source_whammy, boolean_bar_beats
 from .songsterr_harmonics import exact_natural, natural_target, natural_alias, source_target
 from .songsterr_automation import performed_tempos, effective_tempo_entries
 from .songsterr_legacy import validate_legacy_metadata, validate_legacy_field, rhythm_metadata_voices
@@ -50,8 +50,9 @@ def _note(raw, beat, position, duration, strings, tpqn=16384, *, written_beat_vi
     # the legacy literal -1 encoding; neither identifies a pitched target.
     legacy_mute = type(raw.get("fret")) is int and raw["fret"] == -1 and raw.get("dead") is True
     unpitched = raw.get("dead") is True and (raw.get("fret") is None or legacy_mute)
-    if legacy_mute and any(beat.get(key) for key in
-                           ("vibrato", "wideVibrato", "tremoloBar", "vibratoWithTremoloBar")):
+    if legacy_mute and (any(beat.get(key) for key in
+                           ("vibrato", "wideVibrato", "vibratoWithTremoloBar"))
+                        or (beat.get("tremoloBar") and type(beat["tremoloBar"]) is not bool)):
         raise ScoreImportError("A legacy negative-fret mute with inherited pitch expression needs additional representation support.")
     fret = 127 if unpitched else integer(raw.get("fret"), "fret")
     if not unpitched and not 0 <= fret <= 48:
@@ -235,6 +236,10 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
     measures, section_labels = [], []
     instruments, instrument_resolution = resolve_instruments(metadata, parts)
     eligible = {i for i, kind in enumerate(instruments) if kind}
+    for pi, mi, vi, bi, beat in boolean_bar_beats(parts):
+        if pi not in eligible or track_indices is not None and pi not in track_indices:
+            inventory.record("Songsterr beat", "tremoloBar", "source",
+                             f"songsterr:{pi}:{mi}:{vi}:{bi}.tremoloBar", ["source"])
     for pi, mi, vi, voice in rhythm_metadata_voices(parts):
         try:
             validate_legacy_field("voice", "hasSameRhythm", voice["hasSameRhythm"])

@@ -4,6 +4,10 @@ from .verify_source import fraction, unsupported
 
 def read_bar(beat, location):
     active = beat.get("tremoloBar")
+    # Independently qualify the legacy boolean no-curve form. Separate bar
+    # vibrato and the timeline's existing held-pitch state remain meaningful.
+    if type(active) is bool:
+        active = None
     vibe = beat.get("vibratoWithTremoloBar")
     if active is None and vibe is None:
         return None

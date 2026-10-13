@@ -45,6 +45,9 @@ class FeatureInventory:
             raise ScoreImportError(f"Malformed {scope} object at {path}.")
         for key, value in obj.items():
             where = f"{path}.{key}"
+            if scope == "Songsterr beat" and key == "tremoloBar" and type(value) is bool:
+                self.record(scope, key, "source", where, ["source"])
+                continue
             if scope == "Songsterr beat" and key == "octaveClef":
                 validate_octave_clef(value)
                 self.record(scope, key, "source", where, ["source"])

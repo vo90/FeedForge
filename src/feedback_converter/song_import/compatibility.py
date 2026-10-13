@@ -12,11 +12,12 @@ from .songsterr_tremolo import tremolo_mark
 from .songsterr_fields import validate_sustain_pedal, effective_dots, validate_bend_point_vibrato, validate_octave_clef
 from .songsterr_fields import octave_clef_beats
 from .songsterr_legacy import LEGACY_METADATA, validate_legacy_field, rhythm_metadata_voices
+from .songsterr_whammy import BOOLEAN_BAR_MESSAGE, boolean_bar_beats
 from .songsterr_legacy_effects import (FIELDS as LEGACY_BEAT_EFFECTS, beat_effects, validate_legacy_beat_effect,
                                      retention as legacy_beat_effect_retention)
 from .model import ScoreImportError, integer, rational
 
-VERSION = 120
+VERSION = 121
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -160,6 +161,10 @@ def inspect_songsterr(document, *, track_indices=None, note_owned_vibrato=True):
                 add_finding(report, feature=f"beat.{field}", category="source_structure", impact="blocking",
                             message=str(exc), location=path + "/" + field, value=value, **coordinates)
         for key, value in obj.items():
+            if scope == "beat" and key == "tremoloBar" and type(value) is bool:
+                add_finding(report, feature="beat.tremoloBar", category="source_metadata", impact="source_retained",
+                            message=BOOLEAN_BAR_MESSAGE, location=path + "/" + key, value=value, **coordinates)
+                continue
             if scope == "beat" and key == "octaveClef":
                 try:
                     validate_octave_clef(value)
@@ -315,6 +320,10 @@ def inspect_songsterr(document, *, track_indices=None, note_owned_vibrato=True):
         coordinates = {"arrangement": str(meta.get("name") or meta.get("title") or f"Track {pi + 1}"),
                        "trackIndex": pi, "trackId": str(meta.get("id", pi))}
         if not playable:
+            for _, mi, vi, bi, beat in boolean_bar_beats([part]):
+                inspect({"tremoloBar": beat["tremoloBar"]}, "beat",
+                        f"parts/{pi}/measures/{mi}/voices/{vi}/beats/{bi}",
+                        {**coordinates, "measure": mi + 1, "voice": vi + 1, "beat": bi + 1})
             for _, mi, vi, voice in rhythm_metadata_voices([part]):
                 inspect({"hasSameRhythm": voice["hasSameRhythm"]}, "voice",
                         f"parts/{pi}/measures/{mi}/voices/{vi}",
@@ -403,8 +412,9 @@ def inspect_songsterr(document, *, track_indices=None, note_owned_vibrato=True):
                         negative_mute = (type(note.get('fret')) is int and note['fret'] == -1
                                          and note.get('dead') is True)
                         if negative_mute and not note.get('rest'):
-                            inherited_expression = any(beat.get(k) for k in
-                                ('vibrato', 'wideVibrato', 'tremoloBar', 'vibratoWithTremoloBar'))
+                            inherited_expression = (any(beat.get(k) for k in
+                                ('vibrato', 'wideVibrato', 'vibratoWithTremoloBar'))
+                                or (beat.get('tremoloBar') and type(beat['tremoloBar']) is not bool))
                             if inherited_expression:
                                 add_finding(report, feature='note.unpitched_mute', category='game_representation', impact='blocking',
                                             message='Inherited pitch expression on this negative-fret mute is outside the qualified unpitched interpretation.',

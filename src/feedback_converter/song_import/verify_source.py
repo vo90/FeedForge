@@ -221,6 +221,12 @@ def _octave_clef_beats(parts):
     return _retained_field_beats(parts, ("octaveClef",))
 
 
+def _boolean_bar_beats(parts):
+    for row in _retained_field_beats(parts, ("tremoloBar",)):
+        if type(row[-1]["tremoloBar"]) is bool:
+            yield row
+
+
 def _legacy_note_grace(note, location):
     value = note.get("grace")
     if value is not None and type(value) is not bool:
@@ -653,6 +659,8 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
     ignored, bars, signature = set(), [], (4, 4)
     # Check the full retained envelope before instrument/diagnostic selection or
     # rest handling. Inactive and excluded source fields still need valid shapes.
+    if any(_boolean_bar_beats(raw_parts)):
+        ignored.add("tremoloBar")
     for pi, bi, vi, voice in _legacy_rhythm_voices(raw_parts):
         _legacy_voice_rhythm(voice, f"parts/{pi}/measures/{bi}/voices/{vi}")
         ignored.add("hasSameRhythm")
@@ -1002,8 +1010,9 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                             unsupported(nloc + "/pickScrape", "Invalid unpitched scrape instruction.")
                         negative_mute = (type(note.get("fret")) is int and note["fret"] == -1
                                          and note.get("dead") is True)
-                        if negative_mute and any(beat.get(k) for k in
-                                ("vibrato", "wideVibrato", "tremoloBar", "vibratoWithTremoloBar")):
+                        if negative_mute and (any(beat.get(k) for k in
+                                ("vibrato", "wideVibrato", "vibratoWithTremoloBar"))
+                                or (beat.get("tremoloBar") and type(beat["tremoloBar"]) is not bool)):
                             unsupported(nloc, "Inherited pitch expression on a negative-fret mute is not independently representable.")
                         unpitched = note.get("dead") is True and (note.get("fret") is None or negative_mute)
                         fret = 127 if unpitched else integer(note["fret"], nloc)

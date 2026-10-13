@@ -301,6 +301,11 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         from .evidence import CONTRACT_VERSION
         if type(contract) is not int or not 0 <= contract <= CONTRACT_VERSION:
             raise ImportFailure('unsupported_score', 'Invalid preservation contract.')
+        if any(row.get('feature') == 'beat.tremoloBar' and type(row.get('value')) is bool
+               for row in (compatibility or {}).get('findings', [])):
+            if source_path is None or contract < 121 or (compatibility or {}).get('version', 0) < 121:
+                raise ImportFailure('unsupported_score',
+                                    'Boolean tremolo-bar retention requires its original tab and preservation contract 121.')
         if any(row.get('feature') == 'voice.hasSameRhythm' for row in (compatibility or {}).get('findings', [])):
             if source_path is None or contract < 120 or (compatibility or {}).get('version', 0) < 120:
                 raise ImportFailure('unsupported_score',

@@ -202,11 +202,10 @@ def test_inactive_inherited_expression_flags_do_not_block_plain_alias(field, val
     assert performance['tracks'][0]['notes'][0]['f'] == 127
 
 
-@pytest.mark.parametrize('field', ['tremoloBar', 'vibratoWithTremoloBar'])
 @pytest.mark.parametrize('fret', [-1, None, 7])
-def test_false_is_not_a_valid_inactive_whammy_shape_on_any_fret_encoding(field, fret):
+def test_false_is_not_a_valid_bar_vibrato_shape_on_any_fret_encoding(fret):
     first = muted(fret, (1, 1))
-    first[field] = False
+    first['vibratoWithTremoloBar'] = False
     with pytest.raises(ScoreImportError, match='Unknown'):
         parse(raw_score([measure(first)]))
 

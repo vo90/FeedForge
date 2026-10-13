@@ -9,8 +9,33 @@ from copy import deepcopy
 from .model import ScoreImportError, rational
 
 
+BOOLEAN_BAR_MESSAGE = "The incomplete tremolo-bar flag is retained in the original source. It specifies no pitch curve; playback follows the written notes and any separately specified bar vibrato."
+
+
+def boolean_bar_beats(parts):
+    """Locate only the qualified legacy boolean, including excluded parts."""
+    for pi, part in enumerate(parts):
+        measures = part.get("measures") if isinstance(part, dict) else None
+        if not isinstance(measures, list):
+            continue
+        for mi, measure in enumerate(measures):
+            voices = measure.get("voices") if isinstance(measure, dict) else None
+            if not isinstance(voices, list):
+                continue
+            for vi, voice in enumerate(voices):
+                beats = voice.get("beats") if isinstance(voice, dict) else None
+                if isinstance(beats, list):
+                    for bi, beat in enumerate(beats):
+                        if isinstance(beat, dict) and type(beat.get("tremoloBar")) is bool:
+                            yield pi, mi, vi, bi, beat
+
+
 def source_whammy(beat):
     bar = beat.get("tremoloBar")
+    # The reviewed performer skips literal flags with no points. Do not invent
+    # a neutral curve: it would reset a held pitch across tied continuations.
+    if type(bar) is bool:
+        bar = None
     vibrato = beat.get("vibratoWithTremoloBar")
     if vibrato not in (None, "slight", "wide"):
         raise ScoreImportError("Unknown bar-vibrato intensity.")
