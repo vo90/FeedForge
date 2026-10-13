@@ -16,8 +16,9 @@ from .songsterr_whammy import BOOLEAN_BAR_MESSAGE, boolean_bar_beats
 from .songsterr_legacy_effects import (FIELDS as LEGACY_BEAT_EFFECTS, beat_effects, validate_legacy_beat_effect,
                                      retention as legacy_beat_effect_retention)
 from .model import ScoreImportError, integer, rational
+from .songsterr_dynamics import note_dynamic, note_dynamics, DISPLAY_LIMITATION, RETAINED_MESSAGE
 
-VERSION = 123
+VERSION = 124
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -43,6 +44,7 @@ KNOWN["note"].update({"leftHandVibrato", "pickScrape", "vibratoWithTremoloBar"})
 KNOWN["note"].add("leftFingering")
 KNOWN["note"].add("rightFingering")
 KNOWN["note"].add("tremolo")
+KNOWN["note"].add("velocity")
 KNOWN["beat"].add("hasRasgueado")
 KNOWN["beat"].add("sustainPedal")
 KNOWN["beat"].add("dotted")
@@ -161,6 +163,8 @@ def inspect_songsterr(document, *, track_indices=None, note_owned_vibrato=True):
                 add_finding(report, feature=f"beat.{field}", category="source_structure", impact="blocking",
                             message=str(exc), location=path + "/" + field, value=value, **coordinates)
         for key, value in obj.items():
+            if scope == 'note' and key == 'velocity':
+                continue  # The complete source traversal below accounts for this field.
             if scope == "beat" and key == "tremoloBar" and type(value) is bool:
                 add_finding(report, feature="beat.tremoloBar", category="source_metadata", impact="source_retained",
                             message=BOOLEAN_BAR_MESSAGE, location=path + "/" + key, value=value, **coordinates)
@@ -302,6 +306,39 @@ def inspect_songsterr(document, *, track_indices=None, note_owned_vibrato=True):
         add_finding(report, feature="track_inventory", category="source_structure", impact="blocking",
                     message="Track metadata and note parts are incomplete.")
         return report
+    from .songsterr_instruments import resolve as resolve_instruments
+    instruments = [None] * len(parts)
+    # The regular structural pass below reports missing tracks/parts. Do not
+    # send those malformed containers through the instrument resolver first.
+    if all(isinstance(meta, dict) and isinstance(part, dict)
+           for meta, part in zip(metadata, parts)):
+        instruments, _ = resolve_instruments(metadata, parts)
+    for pi, mi, vi, bi, ni, note in note_dynamics(parts):
+        meta = metadata[pi] if isinstance(metadata[pi], dict) else {}
+        coordinates = {'arrangement': str(meta.get('name') or meta.get('title') or f'Track {pi + 1}'),
+                       'trackIndex': pi, 'trackId': str(meta.get('id', pi)),
+                       'measure': mi + 1, 'voice': vi + 1, 'beat': bi + 1, 'note': ni + 1}
+        value = note['velocity']
+        try:
+            note_dynamic(value)
+        except ScoreImportError as exc:
+            category, impact, message = 'source_structure', 'blocking', str(exc)
+        else:
+            selected = bool(instruments[pi]) and (track_indices is None or pi in track_indices)
+            active = selected and value is not None and not note.get('rest')
+            category, impact, message = (('game_limitation', 'display_or_expression', DISPLAY_LIMITATION)
+                                         if active else ('source_metadata', 'source_retained', RETAINED_MESSAGE))
+        # Malformed containers can contain nonfinite values too. Keep the
+        # located blocking diagnosis instead of failing to serialize it.
+        try:
+            json.dumps(value, allow_nan=False)
+            diagnostic = value
+        except (TypeError, ValueError):
+            diagnostic = str(value)
+        add_finding(report, feature='note.velocity', category=category, impact=impact,
+                    message=message,
+                    location=f'parts/{pi}/measures/{mi}/voices/{vi}/beats/{bi}/notes/{ni}/velocity',
+                    value=diagnostic, **coordinates)
     shifted_context = False
     for part in parts:
         auto = part.get("automations", {}) if isinstance(part, dict) else {}

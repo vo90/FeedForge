@@ -63,6 +63,7 @@ class Note:
     trill: dict | None = None  # Source instruction; expanded only after ties are folded.
     tremolo_rate: list | bool | None = None
     authored_fret: int | None = None  # Retain a legacy -1 encoding separately from mute target 127.
+    note_dynamic: str | None = None  # Written note only; never inherited by a beat or scored.
 
 
 @dataclass

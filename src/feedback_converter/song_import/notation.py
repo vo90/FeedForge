@@ -19,6 +19,8 @@ def _note(note, track, performed, effective_fret=None):
               "str": note.string, "fret": fret, "source_id": note.source_id}
     if note.tie:
         result["tied"] = True
+    if note.note_dynamic is not None:
+        result['dyn'] = note.note_dynamic
     effects = {**note.effects, **{key: value for key, value in performed.items() if not note.tie and key in {"ho", "po"}}}
     for source, target in {"mt": "dead", "ghost": "ghost", "vb": "vib", "__wide_vibrato": "vibw", "ac": "ac",
                            "tp": "tp", "ho": "ho", "po": "po", "fg": "fng"}.items():

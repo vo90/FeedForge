@@ -90,6 +90,7 @@ const titles = {
   'beat.vibrato': 'Beat-level vibrato is not applied to notes',
   'beat.wideVibrato': 'Beat-level vibrato is not applied to notes',
   'note.rightFingering': 'Picking-hand fingering is not shown',
+  'note.velocity': 'Per-note volume markings are not applied',
   'beat.hasRasgueado': 'Rasgueado instructions are not shown',
 };
 

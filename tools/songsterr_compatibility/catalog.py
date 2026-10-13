@@ -21,6 +21,7 @@ RULES = {
     "timing.whole_rest": {"files": ["songsterr_fields.py", "songsterr_timing.py"], "policy": "silent_measure_boundary"},
     "notation.voices": {"files": ["voices.py"], "policy": "approved_game_projection"},
     "notation.picking_hand": {"files": ["fingering.py"], "policy": "retained_annotation"},
+    "notation.note_dynamics": {"files": ["songsterr_dynamics.py", "notation.py"], "policy": "retained_note_local_expression"},
     "expression.sustain_pedal": {"files": ["songsterr_fields.py"], "policy": "retained_synth_expression"},
     "technique.harmonics": {"files": ["songsterr_harmonics.py", "tied_harmonics.py"], "policy": "approved_game_projection"},
     "technique.trills": {"files": ["songsterr_trills.py", "tied_trills.py"], "policy": "approved_game_projection"},
@@ -33,6 +34,7 @@ RULES = {
 # Explicit ownership of the first timing scope and established technique models.
 # This metadata does not share producer/verifier calculations or grant support.
 FIELDS = {
+    "notation.note_dynamics": "note.velocity",
     "timing.basic": "measure.signature beat.duration beat.type beat.dots beat.tuplet note.string note.fret",
     "timing.strum_grace": "beat.arpeggio beat.brushStroke beat.upArpeggio beat.downArpeggio beat.upStroke beat.downStroke",
     "timing.grace": "beat.graceNote",
@@ -62,6 +64,7 @@ FAMILIES = {
     "timing.ties": {"timing.ties", "timing.strum_tie_grace"},
 }
 BEHAVIOR = {
+    "notation.note_dynamics": "Preserve validated eight-label note-local dynamics on written notes without changing beat scope, performed attacks, backing audio or scoring. Current game consumers do not display or apply per-note loudness; disclose this once per grouped feature. Null/rest/excluded fields retain source context. Musical playback amplitude is not claimed.",
     "technique.linked_targets": "Retain guards and located evidence. Approved omissions cover fretless X targets, and a skipped alternate-ending destination followed by an explicit same-voice rest before another same-string event. Preserve notes, timing and valid passes; never borrow a distant synthesis target or invent a direction.",
     "timing.tempo": "Validate every entry and subtract the first raw tempo measure coordinate before exact-coordinate replacement and hold/ramp expansion. Retain raw origins and entries, and account for inactive marks using effective coordinates. Shifted scores require all source parts to have explicit scalar-zero opening clocks, scalar whole-quarter positions, native-equivalent integral rates and nonnegative effective measures. Missing initial clocks, outside marks with active ramps, and cross-track clock conflicts remain blocking.",
     "source.legacy_metadata": "Validate nullable nonnegative integral measure.index, nullable boolean note.grace and nullable exact {type,bpm} beat.tempo before inactive-field handling or rest skips. Retain all present values, including null/false/zero. Array order, explicit modern beat.graceNote and authoritative tempo automations determine the music; obsolete metadata never supplies or repairs them.",

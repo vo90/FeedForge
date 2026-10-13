@@ -21,6 +21,7 @@ from .songsterr_automation import performed_tempos, effective_tempo_entries
 from .songsterr_legacy import validate_legacy_metadata, validate_legacy_field, rhythm_metadata_voices
 from .songsterr_legacy_effects import beat_effects, validate_legacy_beat_effects
 from .songsterr_sections import section_label
+from .songsterr_dynamics import note_dynamic, note_dynamics
 
 NOTE_VIBRATO_POLICY = 'songsterr-note-vibrato-v1'
 WRITTEN_BEAT_VIBRATO_POLICY = 'songsterr-written-beat-vibrato-v1'
@@ -161,7 +162,7 @@ def _note(raw, beat, position, duration, strings, tpqn=16384, *, written_beat_vi
     return Note(position, duration, string, fret, bool(raw.get("tie")), effects,
                 sorted(bends), False, slide_out, slide_in=slide_in, staccato=raw.get("staccato") is True,
                 pick_scrape=scrape, whammy=source_whammy(beat), trill=read_trill(raw, beat, tpqn),
-                authored_fret=-1 if legacy_mute else None)
+                authored_fret=-1 if legacy_mute else None, note_dynamic=note_dynamic(raw.get('velocity')))
 
 
 def _written_rhythm(beat, duration):
@@ -236,6 +237,19 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
     measures, section_labels = [], []
     instruments, instrument_resolution = resolve_instruments(metadata, parts)
     eligible = {i for i, kind in enumerate(instruments) if kind}
+    # Validate optional note dynamics before excluded/rest shortcuts. Keep
+    # authored scope separate from the beat's persistent dynamic instruction.
+    for pi, mi, vi, bi, ni, note in note_dynamics(parts):
+        try:
+            note_dynamic(note['velocity'])
+        except ScoreImportError as exc:
+            exc.source_location = {'measure': mi + 1, 'voice': vi + 1, 'beat': bi + 1,
+                                   'note': ni + 1,
+                                   'location': f'parts/{pi}/measures/{mi}/voices/{vi}/beats/{bi}/notes/{ni}/velocity'}
+            raise
+        if pi not in eligible or track_indices is not None and pi not in track_indices:
+            inventory.record('Songsterr note', 'velocity', 'source',
+                             f'songsterr:{pi}:{mi}:{vi}:{bi}:{ni}.velocity', ['source'])
     for pi, mi, vi, bi, beat in boolean_bar_beats(parts):
         if pi not in eligible or track_indices is not None and pi not in track_indices:
             inventory.record("Songsterr beat", "tremoloBar", "source",
@@ -499,8 +513,8 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
                         validate_legacy_metadata(note, "note")
                         inventory.inspect(note, "Songsterr note", source_id,
                                           playable={"string", "fret", "rest", "tie", "dead", "vibrato", "wideVibrato", "ghost", "accentuated", "tap", "tapping", "hp", "harmonic", "slide", "bend", "trill", "graceNote", "tremoloBar", "whammy", "staccato", "leftHandVibrato", "pickScrape", "leftFingering", "tremolo"},
-                                          notation={"string", "fret", "rest", "tie", "dead", "vibrato", "wideVibrato", "ghost", "accentuated", "tap", "tapping", "hp", "leftHandVibrato"},
-                                          retained={"harmonicFret", "rightFingering", "grace"}, strict=True)
+                                          notation={"string", "fret", "rest", "tie", "dead", "vibrato", "wideVibrato", "ghost", "accentuated", "tap", "tapping", "hp", "leftHandVibrato"} | ({'velocity'} if note.get('velocity') is not None and not note.get('rest') else set()),
+                                          retained={"harmonicFret", "rightFingering", "grace", "velocity"}, strict=True)
                         validate_right_finger(note.get("rightFingering"))
                         if isinstance(note.get("bend"), dict):
                             inventory.inspect(note["bend"], "Songsterr bend", source_id + ".bend", playable={"points", "tone"}, strict=True)

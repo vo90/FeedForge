@@ -791,6 +791,8 @@ def _expected(source, alignment, *, pending_hopo_ties=True, pending_slide_ties=T
                     event["effects"]["ln"] = True
                 state[key] = event
                 written_note = {"str": atom.string, "fret": notation_fret, "tied": atom.tie}
+                if atom.note_dynamic is not None:
+                    written_note["dyn"] = atom.note_dynamic
                 if notation_fret != 127:
                     written_note["midi"] = part.tuning[atom.string] + part.capo + notation_fret + atom.pitch_offset
                 for raw_key, out_key in {"mt": "dead", "ghost": "ghost", "vb": "vib", "ac": "ac", "tp": "tp"}.items():

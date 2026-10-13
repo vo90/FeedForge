@@ -242,6 +242,25 @@ def _boolean_bar_beats(parts):
             yield row
 
 
+def _note_dynamic_fields(parts):
+    """Find authored note dynamics without interpreting excluded note pitches."""
+    for pi, bi, vi, bti, beat in _retained_field_beats(parts, ("notes",)):
+        notes = beat["notes"]
+        if not isinstance(notes, list):
+            continue
+        for ni, note in enumerate(notes):
+            if isinstance(note, dict) and "velocity" in note:
+                yield pi, bi, vi, bti, ni, note
+
+
+def _note_dynamic(note, location):
+    value = note.get("velocity")
+    if value is not None and (type(value) is not str or value not in
+                              ("ppp", "pp", "p", "mp", "mf", "f", "ff", "fff")):
+        raise ValueError(location + "/velocity: invalid note dynamic; expected a dynamic label or null")
+    return value
+
+
 def _legacy_note_grace(note, location):
     value = note.get("grace")
     if value is not None and type(value) is not bool:
@@ -281,6 +300,7 @@ class Atom:
     explicit_slide: str | None = None
     explicit_note_vibrato: bool = False
     tremolo_rate: list | bool | None = None
+    note_dynamic: str | None = None
 
 
 @dataclass
@@ -658,12 +678,14 @@ def _section_annotation(names, location):
     return ranked[0][2]
 
 
-def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_instruments=True, bounded_measures=True):
+def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_instruments=True, bounded_measures=True, note_dynamics=True):
     """Read current note controls, or reproduce a historical archive's fanout."""
     if type(resolve_instruments) is not bool or type(bounded_measures) is not bool:
         raise ValueError("source: invalid instrument policy selection")
     if type(note_owned_vibrato) is not bool:
         raise ValueError("source: invalid note vibrato policy selection")
+    if type(note_dynamics) is not bool:
+        raise ValueError("source: invalid note dynamics policy selection")
     # Diagnostic selection never changes shared labels, meter, tempo or repeats.
     # Published archives use the default, which checks every eligible track.
     if not isinstance(document, dict) or document.get("format") != "songsterr":
@@ -677,6 +699,9 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
     ignored, bars, signature = set(), [], (4, 4)
     # Check the full retained envelope before instrument/diagnostic selection or
     # rest handling. Inactive and excluded source fields still need valid shapes.
+    if note_dynamics:
+        for pi, bi, vi, bti, ni, note in _note_dynamic_fields(raw_parts):
+            _note_dynamic(note, f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}/notes/{ni}")
     if any(_boolean_bar_beats(raw_parts)):
         ignored.add("tremoloBar")
     for pi, bi, vi, voice in _legacy_rhythm_voices(raw_parts):
@@ -875,6 +900,8 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
     parts, excluded, boundary_adjustments = [], [], []
     note_keys = {"string", "fret", "tie", "rest", "dead", "vibrato", "wideVibrato", "ghost", "accentuated",
                  "trill", "tap", "tapping", "hp", "harmonic", "harmonicFret", "slide", "bend", "leftHandVibrato", "staccato", "pickScrape", "leftFingering", "tremolo"}
+    if note_dynamics:
+        note_keys.add("velocity")
     beat_keys = {"tremoloBar", "vibratoWithTremoloBar", "duration", "notes", "rest", "type", "dots", "dotted", "tuplet", "tupletStart", "tupletStop", "graceNote",
                  "palmMute", "letRing", "tremolo", "tap", "tapping", "slap", "pop", "slapping", "popping", "vibrato", "wideVibrato", "text", "velocity", "gradualVelocity", "chord", "pickStroke", "wahwah", "brushStroke", "arpeggio", "upStroke", "downStroke", "upArpeggio", "downArpeggio"}
     for pi, (meta, raw) in enumerate(zip(metadata, raw_parts)):
@@ -1023,7 +1050,8 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                             raise ValueError(nloc + "/rightFingering: invalid picking-hand annotation")
                         if note.get("rest"):
                             continue
-                        _active_unknown(note, note_keys, {"id", "velocity", "finger", "leftFinger", "rightFinger", "rightFingering", "grace"}, nloc, ignored)
+                        legacy_ignored = {"velocity"} if not note_dynamics else set()
+                        _active_unknown(note, note_keys, {"id", "finger", "leftFinger", "rightFinger", "rightFingering", "grace"} | legacy_ignored, nloc, ignored)
                         fx = {}
                         fingering = note.get("leftFingering")
                         if fingering is not None:
@@ -1191,6 +1219,7 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                                           nloc, str(vi), loc, bool(note.get("tie")), fx, sorted(bends), slide[note.get("slide")],
                                           bool(note.get("hp"))))
                         fact["notes"].append(atoms[-1])
+                        atoms[-1].note_dynamic = note.get("velocity") if note_dynamics else None
                         atoms[-1].explicit_tie = note.get("tie") is True
                         rate = beat.get('tremolo') or note.get('tremolo')
                         atoms[-1].tremolo_rate = rate if rate else None
@@ -1436,11 +1465,11 @@ def gpif(data):
     return Source("gpif", _txt(root, "Score/Title"), _txt(root, "Score/Artist"), bars, parts, excluded, len(ids))
 
 
-def read_source(path: Path, *, note_owned_vibrato=True, resolve_instruments=True, bounded_measures=True):
+def read_source(path: Path, *, note_owned_vibrato=True, resolve_instruments=True, bounded_measures=True, note_dynamics=True):
     if path.stat().st_size > MAX_SOURCE:
         raise ValueError("source: verification size limit exceeded")
     if path.suffix.lower() == ".json":
-        return songsterr(json.loads(path.read_text(encoding="utf-8-sig")), note_owned_vibrato=note_owned_vibrato, resolve_instruments=resolve_instruments, bounded_measures=bounded_measures)
+        return songsterr(json.loads(path.read_text(encoding="utf-8-sig")), note_owned_vibrato=note_owned_vibrato, resolve_instruments=resolve_instruments, bounded_measures=bounded_measures, note_dynamics=note_dynamics)
     if path.suffix.lower() in {".gpif", ".xml"}:
         return gpif(path.read_bytes())
     with ZipFile(path) as archive:

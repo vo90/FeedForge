@@ -76,7 +76,12 @@
                                 "required": ["midi"],
                                 "additionalProperties": true,
                                 "properties": {
-                                  "midi": { "type": "integer", "minimum": 0, "maximum": 127 }
+                                  "midi": { "type": "integer", "minimum": 0, "maximum": 127 },
+                                  "dyn": {
+                                    "description": "Authored dynamic on this written note only; does not replace beat dynamics or imply display, audio or scoring support.",
+                                    "type": "string",
+                                    "enum": ["ppp", "pp", "p", "mp", "mf", "f", "ff", "fff"]
+                                  }
                                 }
                               }
                             }
