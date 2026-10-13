@@ -10,6 +10,7 @@ EVIDENCE={'undefined_slides','harmonic_ties','tied_mutes','muted_tie_identities'
 EVIDENCE.add('finger_bends')
 EVIDENCE.add('plain_tie_identities')
 EVIDENCE.add('pending_hopo_ties')
+EVIDENCE.add('rest_ties')
 
 
 def source_ids(item):
@@ -85,6 +86,8 @@ def project(source, alignment, mapped, reconstruct):
                 selected.name=f'{src.name} — Voice {vi+1}'
                 selected.bars=[[n for n in b if int(n.voice)==vi] for b in selected.bars]
                 selected.beats=[[b for b in bar if int(b['voice'])==vi] for bar in selected.beats]
+                selected.rest_tie_voice_rests={bar:[b for b in rows if int(b['voice'])==vi]
+                                               for bar,rows in selected.rest_tie_voice_rests.items()}
                 selected.notation_unavailable=[p for p in selected.notation_unavailable if int(p.split('/')[5])==vi]
                 selected.unpitched_mutes=[p for p in selected.unpitched_mutes if int(p.split('/')[5])==vi]
                 single=deepcopy(source);single.parts=[selected]

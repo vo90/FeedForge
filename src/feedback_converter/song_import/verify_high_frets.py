@@ -107,7 +107,8 @@ def verify(source, wanted, source_path, recipe, archive, check, read_json, align
             from .verify_timeline import _expected as expected
         reference = expected(source, {"offset": 0, "scale": 1},
                              pending_hopo_ties=recipe.get('preservationContract', 0) >= 95,
-                             pending_slide_ties=recipe.get('preservationContract', 0) >= 96)
+                             pending_slide_ties=recipe.get('preservationContract', 0) >= 96,
+                             rest_bridge_ties=recipe.get('preservationContract', 0) >= 122)
     receipt = reconstruct(reference, mapped)
     if mapped is not wanted:
         from .verify_collapsed_opening import project

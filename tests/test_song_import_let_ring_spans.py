@@ -194,6 +194,7 @@ def test_strummed_members_keep_separate_attacks_and_common_ring_end(tmp_path,dir
 def test_full_package_primary_selection_bounds_ringing_without_mutating_original(tmp_path):
     from test_hybrid_lead_priority import solo_song
     from test_songsterr_hybrid_lead import build
+    from feedback_converter.song_import.evidence import CONTRACT_VERSION
     from zipfile import ZipFile
     import yaml
     doc=solo_song()
@@ -201,7 +202,8 @@ def test_full_package_primary_selection_bounds_ringing_without_mutating_original
     bars[0]['voices'][0]['beats']=source()['parts'][0]['measures'][0]['voices'][0]['beats']
     for i in range(1,4):
         bars[i]['voices'][0]['beats']=[{'duration':[1,1],'letRing':True,'notes':[{'string':4,'fret':3+i}]}]
-    *_,archive,report=build(tmp_path,doc,overrides={'mainTrackId':'0'},contract=110)
+    # This exercises today's full package, including its current lyrics policy.
+    *_,archive,report=build(tmp_path,doc,overrides={'mainTrackId':'0'},contract=CONTRACT_VERSION)
     assert report['status']=='passed', [{k:v for k,v in e.items() if k not in ('actual','expected')} for e in report['errors']]
     with ZipFile(archive) as z:
         m=yaml.safe_load(z.read('manifest.yaml'))

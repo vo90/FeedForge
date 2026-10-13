@@ -5,12 +5,12 @@ from fractions import Fraction
 from .verify_timeline import Clock, RecordingMap, expected
 
 
-def attach(source, result, alignment, duration, *, raw=None):
+def attach(source, result, alignment, duration, *, raw=None, rest_bridge_ties=True):
     if source.format != 'songsterr': return
     if not any(item['note'].get('tr') for part in result['parts'] for item in part['notes']):return
     clock = Clock(source,result['order'])
     mapping = RecordingMap(alignment)
-    if raw is None:raw = expected(source, {'scale':1,'offset':0})
+    if raw is None:raw = expected(source, {'scale':1,'offset':0}, rest_bridge_ties=rest_bridge_ties)
     candidates = defaultdict(list)
     for part in source.parts:
         for oi,bar in enumerate(result['order']):

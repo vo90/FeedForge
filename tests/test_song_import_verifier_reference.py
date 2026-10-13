@@ -201,7 +201,7 @@ def test_historical_voice_contract_keeps_original_omission_reconstruction(tmp_pa
     monkeypatch.setattr(verify_timeline, '_expected', historical)
     report = verification.verify_import(source, archive, alignment)
     assert report['status'] == 'passed', report
-    assert raw_calls == [{'pending_hopo_ties': False, 'pending_slide_ties': False}]
+    assert raw_calls == [{'pending_hopo_ties': False, 'pending_slide_ties': False, 'rest_bridge_ties': False}]
 
 
 def test_collapsed_opening_shares_complete_unshifted_reference(tmp_path, monkeypatch):

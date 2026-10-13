@@ -415,9 +415,10 @@ def tracks_from_expected(wanted):
     return tracks
 
 
-def independent_tracks(source, *, pending_hopo_ties=True, pending_slide_ties=True):
+def independent_tracks(source, *, pending_hopo_ties=True, pending_slide_ties=True, rest_bridge_ties=True):
     from .verify_timeline import expected, Clock, visits
-    wanted=expected(source,{'offset':0,'scale':1},pending_hopo_ties=pending_hopo_ties, pending_slide_ties=pending_slide_ties)
+    wanted=expected(source,{'offset':0,'scale':1},pending_hopo_ties=pending_hopo_ties, pending_slide_ties=pending_slide_ties,
+                    rest_bridge_ties=rest_bridge_ties)
     clock=Clock(source,visits(source))
     return tracks_from_expected(wanted),[float(clock.at(q)) for q in [*clock.measure_starts,clock.quarters]]
 
@@ -442,7 +443,8 @@ def compare_opening_evidence(fresh, stored, check):
             check.equal('opening_repair_audio', where+'/'+key, value, actual)
 
 
-def verify_repair(source, alignment, stored, path, check, *, pending_hopo_ties=True, pending_slide_ties=True, preservation_contract=0):
+def verify_repair(source, alignment, stored, path, check, *, pending_hopo_ties=True, pending_slide_ties=True, preservation_contract=0,
+                  rest_bridge_ties=None):
     """Re-evaluate acoustic gates from independent raw-source note reconstruction."""
     check.equal('opening_repair_receipt','import/opening-repair',alignment.get('openingRepair'),stored)
     allowed={REPAIR, CONFIRMED_REPAIR} if preservation_contract>=106 else {REPAIR}
@@ -451,7 +453,8 @@ def verify_repair(source, alignment, stored, path, check, *, pending_hopo_ties=T
         allowed.add(low.VERSION)
     if not isinstance(stored,dict) or stored.get('version') not in allowed or stored.get('status')!='supported':
         check.fail('opening_repair','import','A repair requires current supported acoustic evidence.');return
-    tracks,boundaries=independent_tracks(source,pending_hopo_ties=pending_hopo_ties, pending_slide_ties=pending_slide_ties)
+    tracks,boundaries=independent_tracks(source,pending_hopo_ties=pending_hopo_ties, pending_slide_ties=pending_slide_ties,
+        rest_bridge_ties=preservation_contract >= 122 if rest_bridge_ties is None else rest_bridge_ties)
     calibration=tuning(path)
     if hasattr(path,'seek'):path.seek(0)
     if stored['version']==low.VERSION:

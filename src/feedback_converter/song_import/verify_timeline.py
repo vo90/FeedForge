@@ -326,22 +326,23 @@ class RecordingMap:
         return (a1 - a0) / (s1 - s0)
 
 
-def expected(source, alignment, *, pending_hopo_ties=True, pending_slide_ties=True):
+def expected(source, alignment, *, pending_hopo_ties=True, pending_slide_ties=True, rest_bridge_ties=True):
     from .verify_voices import project
     def reconstruct(selected, mapping):
-        return _expected(selected, mapping, pending_hopo_ties=pending_hopo_ties, pending_slide_ties=pending_slide_ties)
+        return _expected(selected, mapping, pending_hopo_ties=pending_hopo_ties, pending_slide_ties=pending_slide_ties,
+                         rest_bridge_ties=rest_bridge_ties)
     result = reconstruct(source, alignment)
     result = project(source, alignment, result, reconstruct) if source.format == 'songsterr' else result
     from .verify_collapsed_opening import project as project_opening
     return project_opening(result, alignment)
 
 
-def _expected(source, alignment, *, pending_hopo_ties=True, pending_slide_ties=True):
+def _expected(source, alignment, *, pending_hopo_ties=True, pending_slide_ties=True, rest_bridge_ties=True):
     order = visits(source)
     clock, recording = Clock(source, order), RecordingMap(alignment)
     result = {"parts": [], "beats": [], "sections": [], "time_signatures": [], "tempos": [], "order": order,
               'harmonic_ties': [], 'tied_mutes': [], 'muted_tie_identities': [], 'plain_tie_identities': [], 'pending_hopo_ties': [], 'staccato_bends': [], 'finger_bends': [], 'muted_slides': [], 'undefined_slides': [], 'trills': [], 'strums': [], 'consumed_strums': [], 'scrape_entries': [],
-              "raw_notes": sum(len(bar) for p in source.parts for bar in p.bars), "tie_segments": 0}
+              'rest_ties': [], "raw_notes": sum(len(bar) for p in source.parts for bar in p.bars), "tie_segments": 0}
     measure_facts = []
     inherited_tempos, inherited = [], F(120)
     for bar in source.bars:
@@ -407,7 +408,10 @@ def _expected(source, alignment, *, pending_hopo_ties=True, pending_slide_ties=T
         rests = {}
         for visit, bi in enumerate(order):
             origin = clock.measure_starts[visit]
-            for beat in part.beats[bi]:
+            candidates = part.beats[bi]
+            if rest_bridge_ties and source.format == 'songsterr':
+                candidates = [*candidates, *part.rest_tie_voice_rests.get(bi, ())]
+            for beat in candidates:
                 if beat['rest']:
                     rests.setdefault(beat['voice'], []).append((origin + beat['q'], origin + beat['q'] + beat['length']))
         rest_indices = {}
@@ -418,6 +422,8 @@ def _expected(source, alignment, *, pending_hopo_ties=True, pending_slide_ties=T
             for _, q in spans:
                 last = max(last, q); ends.append(last)
             rest_indices[voice] = (starts, ends)
+        from .verify_rest_ties import Context as RestTieContext
+        rest_context = RestTieContext(part, order, clock) if rest_bridge_ties and source.format == 'songsterr' else None
         def slide_omission(provenance, destination, visit, target_time):
             written, origin_visit, attack, marking_time = provenance
             path = written.location.split('/')
@@ -486,15 +492,26 @@ def _expected(source, alignment, *, pending_hopo_ties=True, pending_slide_ties=T
                         'direction':atom.strum_direction, 'kind':atom.strum_kind, 'notes':[]})
                     group['notes'].append({'t':float(clock.at(start+atom.attack_offset)), 's':atom.string,'f':atom.fret})
                 if atom.tie:
+                    rest_receipt = None
+                    if rest_context is not None:
+                        rest_receipt = rest_context.admit(atom, previous, occurrence, start, end,
+                            unique=source_slots[(atom.q, atom.voice, atom.string)] == 1,
+                            pending=key in pending_slides or key in pending_hopos or key in muted_pending)
+                    if previous is not None and previous.get('rest_identity') and rest_receipt is None:
+                        unsupported(atom.location, 'A continuation after a rest bridge is not independently plain and unambiguous.')
                     gap_allowed = source.format == 'songsterr'
                     if gap_allowed and previous is not None and previous['end'] < start:
                         rest_starts, rest_ends = rest_indices.get(atom.voice, ([], []))
                         i = bisect_left(rest_starts, start) - 1
-                        gap_allowed = i < 0 or rest_ends[i] <= previous['end']
+                        gap_allowed = rest_receipt is not None or i < 0 or rest_ends[i] <= previous['end']
                     if (previous is None or previous["end"] > start
                             or previous["end"] != start and not gap_allowed):
                         unsupported(atom.location, "Source tie does not identify a continuous prior note; it has not been repaired.")
                     event = previous
+                    if rest_receipt is not None:
+                        result['rest_ties'].append(rest_receipt)
+                        event['rest_identity'] = True
+                        notation_fret = event['f']
                     rest_starts, rest_ends = rest_indices.get(atom.voice, ([], []))
                     ri = bisect_left(rest_starts, start) - 1
                     interrupted = ri >= 0 and rest_ends[ri] > event['start']
@@ -535,7 +552,7 @@ def _expected(source, alignment, *, pending_hopo_ties=True, pending_slide_ties=T
                             interrupted=interrupted, competing=key in pending_hopos or key in muted_pending)
                         if event.get('pending_slide_identity') and not slide_tie:
                             unsupported(atom.location, 'A normalized pending slide has an unqualified continuation.')
-                    if event['f'] != atom.fret:
+                    if event['f'] != atom.fret and rest_receipt is None:
                         rest_starts, rest_ends = rest_indices.get(atom.voice, ([], []))
                         ri = bisect_left(rest_starts, start) - 1
                         interrupted = ri >= 0 and rest_ends[ri] > event['start']
@@ -952,6 +969,7 @@ def _expected(source, alignment, *, pending_hopo_ties=True, pending_slide_ties=T
     result['muted_tie_identities'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['plain_tie_identities'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['pending_hopo_ties'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
+    result['rest_ties'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['staccato_bends'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['finger_bends'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))
     result['undefined_slides'].sort(key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))

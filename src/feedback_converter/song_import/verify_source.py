@@ -301,6 +301,9 @@ class Part:
     unpitched_mutes: list = field(default_factory=list)
     clefs: list = field(default_factory=list)
     tone_source: dict | None = None
+    # Explicit empty rest voices have no notation beat. Keep only the bounded
+    # facts required by the rest-tie oracle, without retaining the raw source.
+    rest_tie_voice_rests: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -924,6 +927,13 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
             atoms, beat_facts = [], []
             for vi, voice in enumerate(bar["voices"]):
                 _active_unknown(voice, {"beats", "rest"}, {"id", "hasSameRhythm"}, f"parts/{pi}/measures/{bi}/voices/{vi}", ignored)
+                if not voice["beats"] and voice.get("rest") is True:
+                    track.rest_tie_voice_rests.setdefault(bi, []).append({
+                        "q": F(0), "length": bars[bi].length, "voice": str(vi),
+                        "location": f"parts/{pi}/measures/{bi}/voices/{vi}", "rest": True,
+                        "rest_tie_plain": all(key in {"beats", "rest", "hasSameRhythm"}
+                                              or value is None or value is False
+                                              for key, value in voice.items())})
                 times = all_times[bi][vi]
                 for bti, beat in enumerate(voice["beats"]):
                     atom_start = len(atoms)
@@ -981,7 +991,9 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                         unsupported(loc, "This grace-note timing is not independently verified.")
                     if duration <= 0:
                         raise ValueError(f"{loc}: nonpositive performed beat duration")
+                    from .verify_rest_ties import plain_beat
                     fact = {"q": q, "length": duration, "written_length": written_duration, "voice": str(vi), "location": loc, "written_q": written_q,
+                            "rest_tie_plain": plain_beat(beat),
                             "rest": not any(not n.get("rest") for n in beat["notes"]), "notation": written, "notes": [], "chord_label": label.get("text", ""), "wah": beat.get("wahwah")}
                     if grace:
                         fact["notation"]["grace"] = "a" if grace == "beforeBeat" else "p"

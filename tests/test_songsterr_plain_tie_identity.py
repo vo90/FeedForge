@@ -123,14 +123,11 @@ def test_unfilled_same_voice_gap_retains_existing_continuation_policy():
     assert (row['start'], row['end'], row['occurrence']) == (2.5, 4, 2)
 
 
-@pytest.mark.parametrize('fault', ['rest', 'orphan', 'voice', 'string', 'overlap', 'duplicates'])
+@pytest.mark.parametrize('fault', ['orphan', 'voice', 'string', 'overlap', 'duplicates'])
 def test_missing_or_ambiguous_continuity_is_not_repaired(fault):
     document = source()
     bs = document['parts'][0]['measures'][0]['voices'][0]['beats']
-    if fault == 'rest':
-        bs[0]['duration'] = bs[1]['duration'] = [1, 4]
-        bs.insert(1, {'duration': [1, 4], 'notes': [{'rest': True}]})
-    elif fault == 'orphan':
+    if fault == 'orphan':
         bs.pop(0)
     elif fault == 'voice':
         document['parts'][0]['measures'][0]['voices'].append({'beats': [bs.pop(1)]})

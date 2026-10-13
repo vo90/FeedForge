@@ -48,9 +48,12 @@ def test_archive_local_sync_passes_slide_contract_to_independent_reader(tmp_path
     manifest['song_import']['openingRepairFile'] = 'import/opening-repair.json'
     files['import/opening-repair.json'] = json.dumps(receipt).encode()
     seen = []
-    def verify_route(s, mapping, retained, recording, check, *, pending_hopo_ties, pending_slide_ties):
+    def verify_route(s, mapping, retained, recording, check, *, pending_hopo_ties, pending_slide_ties,
+                     preservation_contract=0, rest_bridge_ties=None):
         seen.append(pending_slide_ties)
-        local_sync.independent_tracks(s, pending_hopo_ties=pending_hopo_ties, pending_slide_ties=pending_slide_ties)
+        assert preservation_contract == contract
+        local_sync.independent_tracks(s, pending_hopo_ties=pending_hopo_ties, pending_slide_ties=pending_slide_ties,
+            rest_bridge_ties=preservation_contract >= 122 if rest_bridge_ties is None else rest_bridge_ties)
     monkeypatch.setattr(local_sync, 'verify_repair', verify_route)
     result = verify_import(path, write_archive(tmp_path, files, manifest), alignment)
     assert result['status'] == 'passed', result

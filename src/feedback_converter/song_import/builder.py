@@ -864,6 +864,20 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             pendingHopoTieFile='import/pending-hopo-ties.json', pendingHopoTiePolicy=PENDING_HOPO_POLICY)
     elif 'pendingHopoTiePolicy' in (recipe or {}) or 'pendingHopoTieFile' in (recipe or {}):
         raise ImportFailure('unsupported_score', 'Consumed HO/PO policy has no supporting source instruction.')
+    if performance.get('restTieEvidence'):
+        from .rest_ties import POLICY as REST_TIE_POLICY, archive_evidence as rest_tie_archive
+        contract = (recipe or {}).get('preservationContract')
+        inventory = (compatibility or {}).get('version')
+        if (source_path is None or type(contract) is not int or contract < 122
+                or type(inventory) is not int or inventory < 122
+                or (recipe or {}).get('restTiePolicy', REST_TIE_POLICY) != REST_TIE_POLICY):
+            raise ImportFailure('unsupported_score',
+                                'Rest-spanning ties require the original tab, preservation contract 122 and matching source accounting.')
+        _write_json(package / 'import/rest-ties.json', rest_tie_archive(performance, source_path))
+        manifest.setdefault('song_import', {}).update(
+            restTieFile='import/rest-ties.json', restTiePolicy=REST_TIE_POLICY)
+    elif 'restTiePolicy' in (recipe or {}) or 'restTieFile' in (recipe or {}):
+        raise ImportFailure('unsupported_score', 'Rest-spanning tie policy has no supporting source instruction.')
     if performance.get('voiceProjection'):
         if source_path is None:
             raise ImportFailure('unsupported_score', 'Voice arrangements require the retained original tab.')

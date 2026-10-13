@@ -4,7 +4,7 @@ from collections import defaultdict
 from .verify_timeline import Clock, RecordingMap
 
 
-def attach(source, result, alignment, duration, *, raw=None):
+def attach(source, result, alignment, duration, *, raw=None, rest_bridge_ties=True):
     if source.format != 'songsterr':
         return
     clock, mapping = Clock(source, result['order']), RecordingMap(alignment)
@@ -44,7 +44,7 @@ def attach(source, result, alignment, duration, *, raw=None):
     # Work in score time to select tied segments; map both endpoints separately.
     if raw is None and (alignment.get('scale', 1) != 1 or alignment.get('offset', 0) or alignment.get('mapping')):
         from .verify_timeline import expected
-        raw = expected(source, {'scale': 1, 'offset': 0})
+        raw = expected(source, {'scale': 1, 'offset': 0}, rest_bridge_ties=rest_bridge_ties)
     for pi, part in enumerate(result['parts']):
         reference = raw['parts'][pi]['notes'] if raw else part['notes']
         originals = {(tuple(r['locations']), r['occurrence']): r for r in reference}

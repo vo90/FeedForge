@@ -157,6 +157,14 @@ def test_new_interpretation_retains_unqualified_continuity_and_expression_guards
                       'pending_slide': ('slide', 'shift'), 'pending_hopo': ('hp', True)}
             key, value = fields[kind]
             destination['notes'][0][key] = value
+    if fault == 'rest':
+        p, v, _, _ = checked(tmp_path, raw)
+        assert p['restTieEvidence'] == v['rest_ties']
+        assert p['tracks'][0]['notes'][0]['sus'] == 1.5
+        assert len(v['rest_ties']) == 1 and not v['plain_tie_identities']
+        with pytest.raises(ValueError):
+            expected(songsterr(raw), {'offset': 0, 'scale': 1}, rest_bridge_ties=False)
+        return
     with pytest.raises(ValueError):
         expected(songsterr(raw), {'offset': 0, 'scale': 1})
     path = tmp_path / 'source.json'

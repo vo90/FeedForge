@@ -52,12 +52,14 @@ def native_source_clock(row):
 def test_plain_tie_held_identity_matches_reviewed_native_source_clock(row):
     source = deepcopy(row['source']); before = deepcopy(source)
     # The pinned contract90 fixture retains its original guarded disposition.
-    # Contracts93/96 separately qualify initial bends and pending slides.
+    # Contracts93/96 separately qualify initial bends and pending slides;
+    # contract122 qualifies the plain explicit-rest continuation.
     newly_qualified_bend = row['id'] == 'plain-tie/guard/ancestor-bend'
     newly_qualified_slide = row['id'] == 'plain-tie/guard/ancestor-outgoing-slide'
-    if newly_qualified_bend or newly_qualified_slide:
+    newly_qualified_rest = row['id'] == 'plain-tie/guard/explicit-rest'
+    if newly_qualified_bend or newly_qualified_slide or newly_qualified_rest:
         assert row['expectedDisposition'] == 'blocked'
-    if row['expectedDisposition'] == 'blocked' and not (newly_qualified_bend or newly_qualified_slide):
+    if row['expectedDisposition'] == 'blocked' and not (newly_qualified_bend or newly_qualified_slide or newly_qualified_rest):
         for reader in (lambda: render(parse(source)),
                        lambda: expected(songsterr(source), {'offset': 0, 'scale': 1})):
             with pytest.raises(ValueError):
@@ -70,6 +72,14 @@ def test_plain_tie_held_identity_matches_reviewed_native_source_clock(row):
     independent_model = songsterr(source)
     original_atoms = [(n.location, n.fret) for p in independent_model.parts for b in p.bars for n in b]
     independent = expected(independent_model, {'offset': 0, 'scale': 1})
+    if newly_qualified_rest:
+        with pytest.raises(ValueError):
+            expected(independent_model, {'offset': 0, 'scale': 1}, rest_bridge_ties=False)
+        for rows in (actual['restTieEvidence'], independent['rest_ties']):
+            identity, = rows
+            assert identity['rule'] == 'plain-tie-continues-through-rests'
+            assert identity['bridgesRest'] is True and identity['rests']
+            assert identity['authored'] == {'fret': 0} and identity['used'] == {'fret': 7}
     if newly_qualified_bend:
         for rows in (actual['plainTieIdentityEvidence'],independent['plain_tie_identities']):
             identity, = rows

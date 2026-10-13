@@ -84,8 +84,10 @@ def test_package_hybrid_and_difficulties_keep_detail(tmp_path):
     import yaml
     from zipfile import ZipFile
     from test_songsterr_hybrid_lead import build,song
+    from feedback_converter.song_import.evidence import CONTRACT_VERSION
     doc=song();doc['parts'][1]['measures'][1]['voices'][0]['beats'][0]['notes'][0]['tremolo']=[1,16]
-    *_,archive,report=build(tmp_path,doc,mapped=True,difficulty=True,contract=111)
+    # Exercise current full packaging rather than declaring an older lyrics policy.
+    *_,archive,report=build(tmp_path,doc,mapped=True,difficulty=True,contract=CONTRACT_VERSION)
     assert report['status']=='passed',report
     with ZipFile(archive) as z:
         manifest=yaml.safe_load(z.read('manifest.yaml'))

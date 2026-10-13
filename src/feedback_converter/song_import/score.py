@@ -92,6 +92,8 @@ def load_performance(path: Path | str, metadata: dict | None = None, *, composit
         report_scrape_entries(performance, report)
         from .pending_hopo_ties import report_findings as report_consumed_hopos
         report_consumed_hopos(performance, report)
+        from .rest_ties import report_findings as report_rest_ties
+        report_rest_ties(performance, report)
         from .high_frets import project, summary as omission_summary
         _, omissions = project(performance)
         if omissions["notes"]:

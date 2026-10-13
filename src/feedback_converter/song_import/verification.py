@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 121
+VERSION = 122
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -351,7 +351,7 @@ def _chords(wanted, chart, check, part):
             check.near("chord_time", "tracks/" + part.id + "/chords", wanted_time, actual_time)
 
 
-def _compatibility_report(report, score_path, source, check, harmonic_ties=(), tied_mutes=(), projected_parts=None, muted_slides=(), preservation_contract=0, consumed_strums=(), scrape_entries=(), undefined_slides=(), finger_bends=(), pending_hopo_ties=()):
+def _compatibility_report(report, score_path, source, check, harmonic_ties=(), tied_mutes=(), projected_parts=None, muted_slides=(), preservation_contract=0, consumed_strums=(), scrape_entries=(), undefined_slides=(), finger_bends=(), pending_hopo_ties=(), rest_ties=()):
     """Verify retained limitations from source facts, not the producer's inventory."""
     from .verify_source import _boolean_bar_beats, _legacy_beat_effect_beats, _legacy_beat_effects, _legacy_rhythm_voices, _legacy_voice_rhythm, _octave_clef, _octave_clef_beats, _program_instrument, effective_tempo_entries, fraction, inactive, integer
     rows = report.get("findings")
@@ -361,7 +361,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, 89, 90, 91, 92, 93, 94, 98, 104, 105, 106, 107, 108, 113, 114, 116, 117, 118, 119, 120, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, 89, 90, 91, 92, 93, 94, 98, 104, 105, 106, 107, 108, 113, 114, 116, 117, 118, 119, 120, 121, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     reports_precedence = type(report.get('version')) is int and report['version'] >= 46
     if preservation_contract >= 46 and not reports_precedence:
@@ -396,6 +396,9 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     if preservation_contract >= 121 and not reports_boolean_bar:
         check.fail('compatibility_version', 'import/compatibility',
                    'This preservation contract requires boolean tremolo-bar retention accounting.')
+    if preservation_contract >= 122 and (type(report.get('version')) is not int or report['version'] < 122):
+        check.fail('compatibility_version', 'import/compatibility',
+                   'This preservation contract requires rest-spanning tie accounting.')
     check.equal("compatibility_status", "import/compatibility", "limitations" if any(
         row.get('impact') != 'source_retained' for row in rows) else "compatible", report.get("status"))
     target = report.get("target", {})
@@ -407,6 +410,11 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     for row in source.boundary_adjustments:
         expected[('beat.measure_boundary', row['location'] + '/' + row['action'])] = row
     pending_hopo_tracks = {}
+    rest_tie_tracks = {}
+    for row in rest_ties:
+        key = ('note.rest_tie', row['location'] + f"@visit{row['occurrence']}")
+        rest_tie_tracks[key] = row['trackId']
+        expected[key] = {k: row[k] for k in ('authored', 'used', 'rule', 'originSourceId', 'bridgesRest')}
     for row in finger_bends:
         if row['status'] == 'deferred':
             expected[('note.bend_timing', row['location'] + f"@visit{row['occurrence']}")] = {'reason': row['reason']}
@@ -579,7 +587,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
         if key not in actual:
             continue
         row = actual[key]
-        retained = key[0] in ('measure.index', 'beat.tempo', 'beat.octaveClef', 'voice.hasSameRhythm', 'note.grace', 'tempo.origin', 'note.negative_fret_mute') or key in legacy_effect_retained or key in boolean_bar_retained
+        retained = key[0] in ('measure.index', 'beat.tempo', 'beat.octaveClef', 'voice.hasSameRhythm', 'note.grace', 'tempo.origin', 'note.negative_fret_mute', 'note.rest_tie') or key in legacy_effect_retained or key in boolean_bar_retained
         typed_retention = retained or key[0] in ('beat.fadeIn', 'note.pending_hopo_tie')
         encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
         check.equal("compatibility_value", key[1], value if len(encoded) <= 2048 else encoded[:2048], row.get("value"))
@@ -604,13 +612,15 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
             check.equal('compatibility_track', key[1], value['trackId'], row.get('trackId'))
         if retained:
             check.equal('compatibility_work_status', key[1], 'source_retained', row.get('workStatus'))
+            if key[0] == 'note.rest_tie':
+                check.equal('compatibility_track', key[1], rest_tie_tracks[key], row.get('trackId'))
         elif key[0] == 'beat.fadeIn':
             check.equal('compatibility_work_status', key[1], 'display_limitation', row.get('workStatus'))
         elif key[0] == 'note.pending_hopo_tie':
             check.equal('compatibility_work_status', key[1], 'display_limitation', row.get('workStatus'))
             check.equal('compatibility_track', key[1], pending_hopo_tracks[key], row.get('trackId'))
         category = ("source_metadata" if key[0] in ('measure.index', 'beat.tempo', 'beat.octaveClef', 'voice.hasSameRhythm', 'note.grace') or key in legacy_effect_retained or key in boolean_bar_retained else
-                    "source_interpretation" if key[0] in ('tempo.origin', 'note.negative_fret_mute') else
+                    "source_interpretation" if key[0] in ('tempo.origin', 'note.negative_fret_mute', 'note.rest_tie') else
                     "conversion_check" if key[0] == "note.bend_timing" else
                     "source_interpretation" if key[0] in ("beat.measure_boundary", "tempo.superseded", "tempo.outside_score", "note.consumed_strum_grace") else "game_limitation")
         check.equal("compatibility_category", key[1], category, row.get("category"))
@@ -1043,7 +1053,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 provenance = alignment.get("provenance", {})
                 if provenance.get(key) is not None:
                     check.equal("timing_identity", "alignment/" + key, value, str(provenance[key]))
-            wanted = expected(source, alignment, pending_hopo_ties=contract >= 95, pending_slide_ties=contract >= 96)
+            wanted = expected(source, alignment, pending_hopo_ties=contract >= 95, pending_slide_ties=contract >= 96, rest_bridge_ties=contract >= 122)
             report["counts"].update(sourceTracks=source.track_count, selectedTracks=len(wanted["parts"]),
                                     excludedTracks=len(source.excluded), writtenMeasures=len(source.bars),
                                     performedMeasures=len(wanted["order"]), sourceNotes=wanted["raw_notes"],
@@ -1130,7 +1140,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 # Verification of historical archives retains their old voice
                 # contract. New imports always declare the projection receipt.
                 from .verify_timeline import _expected
-                wanted = _expected(source, alignment, pending_hopo_ties=contract >= 95, pending_slide_ties=contract >= 96)
+                wanted = _expected(source, alignment, pending_hopo_ties=contract >= 95, pending_slide_ties=contract >= 96, rest_bridge_ties=contract >= 122)
                 report['counts'].update(selectedTracks=len(wanted['parts']),expectedNotes=sum(len(p['notes']) for p in wanted['parts']))
             if wanted.get('voice_projection') or recipe.get('voicesFile'):
                 from .verify_voices import verify as verify_voices
@@ -1180,7 +1190,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                     check.fail("compatibility", "import/compatibility", "A blocked or invalid compatibility report cannot be published.")
                 if recipe.get("preservationContract", 0) >= 5:
                     _compatibility_report(compatibility, score_path, source, check, wanted['harmonic_ties'], wanted['tied_mutes'],
-                                          [p['source'] for p in wanted['parts']], wanted['muted_slides'], recipe.get('preservationContract', 0), wanted['consumed_strums'], wanted['scrape_entries'], wanted['undefined_slides'], wanted['finger_bends'], wanted['pending_hopo_ties'])
+                                          [p['source'] for p in wanted['parts']], wanted['muted_slides'], recipe.get('preservationContract', 0), wanted['consumed_strums'], wanted['scrape_entries'], wanted['undefined_slides'], wanted['finger_bends'], wanted['pending_hopo_ties'], wanted['rest_ties'])
             elif any(p.notation_unavailable or p.unpitched_mutes for p in source.parts):
                 check.fail("retained_notation", "import", "A notation limitation requires embedded original source and a compatibility report.")
             if wanted['undefined_slides'] or recipe.get('undefinedSlidesFile'):
@@ -1398,6 +1408,28 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 from .verify_policy_receipt import compare
                 compare(evidence, retained, check, 'pending_hopo_tie')
                 report['scope'].append('pending_hopo_immediate_plain_tie')
+            if (wanted['rest_ties'] or 'restTieFile' in recipe or 'restTiePolicy' in recipe
+                    or 'import/rest-ties.json' in names):
+                if not wanted['rest_ties']:
+                    check.fail('rest_tie_extra', 'manifest/song_import/restTieFile',
+                               'Source has no qualifying plain tie continuation through rests.')
+                if contract < 122:
+                    check.fail('rest_tie_contract', 'manifest/song_import',
+                               'Rest-spanning ties require preservation contract 122.')
+                if type(compatibility.get('version')) is not int or compatibility['version'] < 122:
+                    check.fail('rest_tie_inventory', 'import/compatibility/version',
+                               'Rest-spanning ties require compatibility inventory 122.')
+                check.equal('rest_tie_policy', 'manifest/song_import/restTiePolicy',
+                            'songsterr-rest-tie-continuation-v1', recipe.get('restTiePolicy'))
+                check.equal('rest_tie_file', 'manifest/song_import/restTieFile',
+                            'import/rest-ties.json', recipe.get('restTieFile'))
+                retained = _json(z, recipe.get('restTieFile', ''), check)
+                evidence = {'version': 1, 'policy': 'songsterr-rest-tie-continuation-v1',
+                            'timeDomain': 'score_seconds', 'sourceSha256': report['sourceSha256'],
+                            'continuations': wanted['rest_ties']}
+                from .verify_policy_receipt import compare
+                compare(evidence, retained, check, 'rest_tie')
+                report['scope'].append('rest_tie_continuation')
             if wanted['muted_tie_identities'] or recipe.get('mutedTieIdentityFile'):
                 if recipe.get('preservationContract', 0) < 30:
                     check.fail('muted_tie_identity', 'manifest/song_import', 'Muted tie identity requires preservation contract 30.')
@@ -1478,7 +1510,7 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 # Let-ring already needs this independent, unshifted score
                 # clock. Current contracts use the same voice/tie rules for
                 # high-fret omissions; keep the raw reference unprojected.
-                raw_expression = expected(source, {'scale': 1, 'offset': 0})
+                raw_expression = expected(source, {'scale': 1, 'offset': 0}, rest_bridge_ties=contract >= 122)
             from .verify_high_frets import verify as verify_omissions
             omissions = verify_omissions(source, wanted, score_path, recipe, z, check, _json, alignment,
                                          reference=raw_expression)
@@ -1548,11 +1580,11 @@ def verify_import(score_path: Path, archive: Path, alignment: dict, metadata: di
                 # Both expression checks need the same independent score clock.
                 # Reuse that reconstruction, never render the full score twice.
                 if raw_expression is None:
-                    raw_expression = expected(source, {'scale':1,'offset':0})
-                verify_picking(source, wanted, alignment, duration, raw=raw_expression)
+                    raw_expression = expected(source, {'scale':1,'offset':0}, rest_bridge_ties=contract >= 122)
+                verify_picking(source, wanted, alignment, duration, raw=raw_expression, rest_bridge_ties=contract >= 122)
             if contract >= 110:
                 from .verify_let_ring import attach as verify_ringing
-                verify_ringing(source, wanted, alignment, duration, raw=raw_expression)
+                verify_ringing(source, wanted, alignment, duration, raw=raw_expression, rest_bridge_ties=contract >= 122)
             selected = [p for p in wanted["parts"] if p["notes"]]
             check.equal("arrangement_count", "manifest/arrangements", len(selected), len(arrangements))
             unmatched = list(arrangements)

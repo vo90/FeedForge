@@ -9,6 +9,7 @@ SIDECARS = ('undefinedSlideEvidence', 'harmonicTieEvidence', 'tiedMuteEvidence',
 SIDECARS += ('fingerBendTimingEvidence',)
 SIDECARS += ('plainTieIdentityEvidence',)
 SIDECARS += ('pendingHopoTieEvidence',)
+SIDECARS += ('restTieEvidence',)
 
 
 def derived_id(track_id, voice):

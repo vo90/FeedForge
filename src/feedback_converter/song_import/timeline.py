@@ -137,6 +137,7 @@ def _render(score: Score) -> dict:
     tied_mutes = []
     muted_tie_identities = []
     plain_tie_identities = []
+    rest_ties = []
     pending_hopo_ties = []
     staccato_bends = []
     finger_bends = []
@@ -168,6 +169,8 @@ def _render(score: Score) -> dict:
             for left, right in sorted(spans):
                 starts.append(left); stop = max(stop, right); ends.append(stop)
             rest_limits[voice] = (starts, ends)
+        from .rest_ties import Context as RestTieContext, admitted as admit_rest_tie, record as record_rest_tie
+        rest_context = RestTieContext(score, track, visits) if score.source.get('format') == 'songsterr' else None
         from .skipped_slides import omissions as skipped_slide_omissions
         skipped_slides = skipped_slide_omissions(score, track, visits, at)
         rendered: list[dict] = []
@@ -237,11 +240,29 @@ def _render(score: Score) -> dict:
                 if not note.tie:
                     seen[key] = note
                 if note.tie:
+                    rest_identity = False
+                    if rest_context is not None and prior is not None:
+                        prior_articulation = articulations[id(prior[0])]
+                        gap_rests = rest_context.gap_rests(note.voice_id, prior[1], position)
+                        if gap_rests or prior_articulation.get('rest_identity'):
+                            if not admit_rest_tie(prior[0], note, prior_articulation,
+                                    score.source_document['document'], rest_context,
+                                    occurrence=occurrence, previous_end=prior[1], position=position, end=end,
+                                    unique=source_counts[(note.position, note.voice_id, note.string)] == 1,
+                                    linked=link_key in pending_slide or link_key in pending_hopo or link_key in pending_muted_shifts,
+                                    rests=gap_rests):
+                                raise ScoreImportError(f"Unresolved tie in {track.name}, measure {index + 1}; its rest-gap continuation is not plain and unambiguous.")
+                            rest_identity = True
+                            rest_ties.append(record_rest_tie(prior[0], note, track, occurrence,
+                                prior[1], position, end, at, prior_articulation, gap_rests))
+                            prior_articulation['rest_identity'] = True
+                            if prior[0]['f'] != note.fret:
+                                notation_targets[(occurrence + 1, note.source_id)] = prior[0]['f']
                     gap_allowed = score.source.get('format') == 'songsterr'
                     if gap_allowed and prior is not None and prior[1] < position:
                         starts, ends = rest_limits.get(note.voice_id, ([], []))
                         rest_index = bisect_left(starts, position) - 1
-                        gap_allowed = rest_index < 0 or ends[rest_index] <= prior[1]
+                        gap_allowed = rest_identity or rest_index < 0 or ends[rest_index] <= prior[1]
                     if (prior is None or prior[1] > position
                             or prior[1] != position and not gap_allowed):
                         raise ScoreImportError(f"Unresolved tie in {track.name}, measure {index + 1}.")
@@ -295,7 +316,7 @@ def _render(score: Score) -> dict:
                             uninterrupted=rest_index < 0 or ends[rest_index] <= prior_articulation['start'])
                         if prior_articulation.get('pending_slide_identity') and not slide_tie:
                             raise ScoreImportError('A normalized pending-slide tie cannot introduce an unqualified continuation.')
-                    if output['f'] != note.fret:
+                    if output['f'] != note.fret and not rest_identity:
                         starts, ends = rest_limits.get(note.voice_id, ([], []))
                         rest_index = bisect_left(starts, position) - 1
                         uninterrupted = rest_index < 0 or ends[rest_index] <= prior_articulation['start']
@@ -695,6 +716,7 @@ def _render(score: Score) -> dict:
             **({'tiedMuteEvidence': sorted(tied_mutes, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if tied_mutes else {}),
             **({'mutedTieIdentityEvidence': sorted(muted_tie_identities, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if muted_tie_identities else {}),
             **({'plainTieIdentityEvidence': sorted(plain_tie_identities, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if plain_tie_identities else {}),
+            **({'restTieEvidence': sorted(rest_ties, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if rest_ties else {}),
             **({'pendingHopoTieEvidence': sorted(pending_hopo_ties, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if pending_hopo_ties else {}),
             **({'staccatoBendEvidence': sorted(staccato_bends, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if staccato_bends else {}),
             **({'fingerBendTimingEvidence': sorted(finger_bends, key=lambda r: (r['trackId'], r['occurrence'], r['start'], r['string'], r['location']))} if finger_bends else {}),
