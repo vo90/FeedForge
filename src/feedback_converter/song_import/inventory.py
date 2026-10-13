@@ -64,6 +64,11 @@ class FeatureInventory:
             if scope == "Songsterr part" and key == "key" and isinstance(value, str):
                 self.record(scope, key, "source", where)
                 continue
+            # Raw part titles are descriptive source labels, not the current
+            # arrangement name (which comes from track metadata).
+            if scope == "Songsterr part" and key == "title" and isinstance(value, str):
+                self.record(scope, key, "source", where)
+                continue
             if scope == "Songsterr part" and key == "voices" and _matching_voice_count(obj, value):
                 self.record(scope, key, "source", where)
                 continue
@@ -88,7 +93,7 @@ class FeatureInventory:
             elif key in layout:
                 handling = "layout"
             elif (value is None or value is False or value == "" or value == [] or value == {}) and not (
-                    scope == "Songsterr part" and key in {"key", "voices", "index"}):
+                    scope == "Songsterr part" and key in {"key", "voices", "index", "title"}):
                 handling = "inactive_unknown"
             else:
                 handling = "unclassified"
