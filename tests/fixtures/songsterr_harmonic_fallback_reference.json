@@ -1,0 +1,3390 @@
+{
+  "version": 1,
+  "policy": "songsterr-harmonic-fallback-audit-v1",
+  "pinnedWorkerSha256": "4219f9dbf0952af83be36c8b590f10fea7a0f36d72bd1f92297a3d768f93f5ab",
+  "currentWorkerSha256": "a7f191f19196af972bd61ed5f9c67a6b63151fc8b0b8a1f665061a0cb493c980",
+  "currentWorkerUrl": "https://static3.songsterr.com/production-main/static3/latest/FluidsynthAudioPlayerWorkerEntry-DYKF5XmaQXwQm0gJ.js",
+  "limits": "Complete workers evaluated offline. Direct deterministic fluidsynth Harmonics stage for every row; selected full-score pinned complete/extracted and existing-runner equivalence in all three profiles. No current whole-score, browser, acoustic, real-song or FeedPak acceptance claim. Guarded rows observe source behavior without granting importer support. RSE intermediate MIDI is sample dependent.",
+  "summary": {
+    "cases": 73,
+    "currentPinnedMatches": 73,
+    "wholeScoreCases": 11,
+    "comparisons": 66,
+    "matched": 66,
+    "matchingReferenceErrors": 0
+  },
+  "cases": [
+    {
+      "id": "artificial/canonical/2.4",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 2.4
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 36,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 105,
+            "interval": 36,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 36,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 105,
+            "interval": 36,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/canonical/2.7",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 2.7
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 34,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 103,
+            "interval": 34,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 34,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 103,
+            "interval": 34,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/canonical/3.2",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 3.2
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 31,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 100,
+            "interval": 31,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 31,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 100,
+            "interval": 31,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/canonical/4",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 4
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 28,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 97,
+            "interval": 28,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 28,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 97,
+            "interval": 28,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/canonical/5",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 5
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 24,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 24,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/canonical/5.8",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 5.8
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 34,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 103,
+            "interval": 34,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 34,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 103,
+            "interval": 34,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/canonical/7",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 7
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": true,
+      "pinned": {
+        "applied": true,
+        "lookup": 19,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 19,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "completeWorker": {
+        "authored": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 88,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "b973d1ebb26414a175a407d1acc29329a84d83a957f4cebc3f729ef605e46bd6",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "legacy-brush-authored-v1": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 88,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "b973d1ebb26414a175a407d1acc29329a84d83a957f4cebc3f729ef605e46bd6",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "player-defaults": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 64,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "10309cf394eeef5403e654a7f9ca97b41aeb43ccaa6c91afca4ee8aec8ff848d",
+            "generatedFinalSha256": "69566a87655ed1bfb21e0e5e28e58d278e779a6afc9b722143672aced4ee4f26"
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/canonical/8.2",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 8.2
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 36,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 105,
+            "interval": 36,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 36,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 105,
+            "interval": 36,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/canonical/9",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 9
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 28,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 97,
+            "interval": 28,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 28,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 97,
+            "interval": 28,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/canonical/9.6",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 9.6
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": true,
+      "pinned": {
+        "applied": true,
+        "lookup": 34,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 103,
+            "interval": 34,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 34,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 103,
+            "interval": 34,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "completeWorker": {
+        "authored": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 103,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "5049b53818ad6947c992cd4dee2b7be805fb9b3c8e63aee5083d5e6248ec0d26",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "legacy-brush-authored-v1": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 103,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "5049b53818ad6947c992cd4dee2b7be805fb9b3c8e63aee5083d5e6248ec0d26",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "player-defaults": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 79,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "ff279666f4dec54c7d3c74b361c68385540c73359c4d855d014c67c243f17d81",
+            "generatedFinalSha256": "69566a87655ed1bfb21e0e5e28e58d278e779a6afc9b722143672aced4ee4f26"
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/canonical/12",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 12
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": true,
+      "pinned": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "completeWorker": {
+        "authored": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 81,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "849a030dffd2f0b3870c166ad1da92b19c10dcdf50b9b350fa4cdce6e56b0547",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "legacy-brush-authored-v1": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 81,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "849a030dffd2f0b3870c166ad1da92b19c10dcdf50b9b350fa4cdce6e56b0547",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "player-defaults": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 57,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "1b1642cec5277130c0e7b879882b8ff9dda71d0b0e152b7e4f0e9baa485bca52",
+            "generatedFinalSha256": "69566a87655ed1bfb21e0e5e28e58d278e779a6afc9b722143672aced4ee4f26"
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/canonical/14.7",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 14.7
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 34,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 103,
+            "interval": 34,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 34,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 103,
+            "interval": 34,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/canonical/16",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 16
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 28,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 97,
+            "interval": 28,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 28,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 97,
+            "interval": 28,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/canonical/17",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 17
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 36,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 105,
+            "interval": 36,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 36,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 105,
+            "interval": 36,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/canonical/19",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 19
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 19,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 19,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/canonical/21.7",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 21.7
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 34,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 103,
+            "interval": 34,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 34,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 103,
+            "interval": 34,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/canonical/24",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 24
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 24,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 24,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/fallback/0",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 0
+      },
+      "disposition": "playback-fallback",
+      "wholeScore": true,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "completeWorker": {
+        "authored": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 93,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "legacy-brush-authored-v1": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 93,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "player-defaults": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 69,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "270f341f2ffab6c7d837a94fec2c5c0a74b5ec9eb85ce4a6067c520613a509f3",
+            "generatedFinalSha256": "69566a87655ed1bfb21e0e5e28e58d278e779a6afc9b722143672aced4ee4f26"
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/fallback/6",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 6
+      },
+      "disposition": "playback-fallback",
+      "wholeScore": true,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "completeWorker": {
+        "authored": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 93,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "legacy-brush-authored-v1": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 93,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "player-defaults": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 69,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "270f341f2ffab6c7d837a94fec2c5c0a74b5ec9eb85ce4a6067c520613a509f3",
+            "generatedFinalSha256": "69566a87655ed1bfb21e0e5e28e58d278e779a6afc9b722143672aced4ee4f26"
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/fallback/10",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 10
+      },
+      "disposition": "playback-fallback",
+      "wholeScore": true,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "completeWorker": {
+        "authored": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 93,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "legacy-brush-authored-v1": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 93,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "player-defaults": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 69,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "270f341f2ffab6c7d837a94fec2c5c0a74b5ec9eb85ce4a6067c520613a509f3",
+            "generatedFinalSha256": "69566a87655ed1bfb21e0e5e28e58d278e779a6afc9b722143672aced4ee4f26"
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/fallback/15",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 15
+      },
+      "disposition": "playback-fallback",
+      "wholeScore": true,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "completeWorker": {
+        "authored": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 93,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "legacy-brush-authored-v1": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 93,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "player-defaults": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 69,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "270f341f2ffab6c7d837a94fec2c5c0a74b5ec9eb85ce4a6067c520613a509f3",
+            "generatedFinalSha256": "69566a87655ed1bfb21e0e5e28e58d278e779a6afc9b722143672aced4ee4f26"
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/fallback/25",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 25
+      },
+      "disposition": "playback-fallback",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/fallback/7.0011",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 7.0011
+      },
+      "disposition": "playback-fallback",
+      "wholeScore": true,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "completeWorker": {
+        "authored": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 93,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "legacy-brush-authored-v1": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 93,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "player-defaults": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 69,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "270f341f2ffab6c7d837a94fec2c5c0a74b5ec9eb85ce4a6067c520613a509f3",
+            "generatedFinalSha256": "69566a87655ed1bfb21e0e5e28e58d278e779a6afc9b722143672aced4ee4f26"
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/fallback/6.9989",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 6.9989
+      },
+      "disposition": "playback-fallback",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/fallback/9.6011",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 9.6011
+      },
+      "disposition": "playback-fallback",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/near-node/6.9991",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 6.9991
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 19,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 19,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/near-node/7.0009",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 7.0009
+      },
+      "disposition": "guarded",
+      "wholeScore": true,
+      "pinned": {
+        "applied": true,
+        "lookup": 19,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 19,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "completeWorker": {
+        "authored": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 88,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "b973d1ebb26414a175a407d1acc29329a84d83a957f4cebc3f729ef605e46bd6",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "legacy-brush-authored-v1": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 88,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "b973d1ebb26414a175a407d1acc29329a84d83a957f4cebc3f729ef605e46bd6",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "player-defaults": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 64,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "10309cf394eeef5403e654a7f9ca97b41aeb43ccaa6c91afca4ee8aec8ff848d",
+            "generatedFinalSha256": "69566a87655ed1bfb21e0e5e28e58d278e779a6afc9b722143672aced4ee4f26"
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/near-node/11.9991",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 11.9991
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/near-node/12.0009",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 12.0009
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/near-node/9.5991",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 9.5991
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 34,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 103,
+            "interval": 34,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 34,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 103,
+            "interval": 34,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/near-node/9.6009",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 9.6009
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 34,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 103,
+            "interval": 34,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 34,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 103,
+            "interval": 34,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/exact-boundary/7.001",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 7.001
+      },
+      "disposition": "boundary-observation",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/exact-boundary/6.999",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 6.999
+      },
+      "disposition": "boundary-observation",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/malformed/null",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": null
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/malformed/numeric-string",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": "12"
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/malformed/false",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": false
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/malformed/true",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": true
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/malformed/array",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": [
+          12
+        ]
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/malformed/object",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": {}
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/malformed/negative",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": -1
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "artificial/missing",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial"
+      },
+      "disposition": "guarded",
+      "wholeScore": true,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "completeWorker": {
+        "authored": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 93,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "legacy-brush-authored-v1": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 93,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+            "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+          }
+        ],
+        "player-defaults": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 69,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "270f341f2ffab6c7d837a94fec2c5c0a74b5ec9eb85ce4a6067c520613a509f3",
+            "generatedFinalSha256": "69566a87655ed1bfb21e0e5e28e58d278e779a6afc9b722143672aced4ee4f26"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pinch/canonical",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "pinch",
+        "harmonicFret": 7
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 19,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 19,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "pinch/unknown",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "pinch",
+        "harmonicFret": 10
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "pinch/null",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "pinch",
+        "harmonicFret": null
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "pinch/missing",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "pinch"
+      },
+      "disposition": "existing-special-case",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "semi/canonical",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "semi",
+        "harmonicFret": 7
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 19,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 19,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "semi/unknown",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "semi",
+        "harmonicFret": 10
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "semi/null",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "semi",
+        "harmonicFret": null
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "semi/missing",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "semi"
+      },
+      "disposition": "guarded",
+      "wholeScore": true,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 69,
+            "interval": 0,
+            "disallowOpenString": true
+          },
+          {
+            "fret": 22,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": false
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 69,
+            "interval": 0,
+            "disallowOpenString": true
+          },
+          {
+            "fret": 22,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": false
+          }
+        ]
+      },
+      "completeWorker": {
+        "authored": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 69,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              },
+              {
+                "pitch": 81,
+                "fret": 22,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "6067afbc9b28f2798806e5fcfd55ea38cd08b43d3baf27f131c8b482699c5008",
+            "generatedFinalSha256": "265e11de90d35e2355b5adb69551b2726f7110a9c8b1567ade86a1e9ec99f17f"
+          }
+        ],
+        "legacy-brush-authored-v1": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 69,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              },
+              {
+                "pitch": 81,
+                "fret": 22,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "6067afbc9b28f2798806e5fcfd55ea38cd08b43d3baf27f131c8b482699c5008",
+            "generatedFinalSha256": "265e11de90d35e2355b5adb69551b2726f7110a9c8b1567ade86a1e9ec99f17f"
+          }
+        ],
+        "player-defaults": [
+          {
+            "status": "executed",
+            "targets": [
+              {
+                "pitch": 69,
+                "fret": 10,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              },
+              {
+                "pitch": 81,
+                "fret": 22,
+                "string": 1,
+                "attackTick": 0,
+                "endTick": 65535,
+                "hidden": false,
+                "tie": false
+              }
+            ],
+            "scheduledSha256": "c152e8f2889304efc10ceecb36e30656ac5073955c79bc6b6a82664c2bb623b5",
+            "generatedFinalSha256": "95b8f1ea06cf53f42cc015ea4d6d3afa575be9ebc589d06e2a12a737e5ebb367"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tapped/canonical",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "tapped",
+        "harmonicFret": 7
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 19,
+        "tapping": true,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 19,
+        "tapping": true,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "tapped/unknown",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "tapped",
+        "harmonicFret": 10
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": true,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": true,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "tapped/null",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "tapped",
+        "harmonicFret": null
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": true,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": true,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "tapped/missing",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "tapped"
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": true,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": true,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "feedback/canonical",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "feedback",
+        "harmonicFret": 7
+      },
+      "disposition": "canonical-contact",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 19,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 19,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "feedback/unknown",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "feedback",
+        "harmonicFret": 10
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "feedback/null",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "feedback",
+        "harmonicFret": null
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "feedback/missing",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "feedback"
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "kind/unrecognized",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "something-else",
+        "harmonicFret": 12
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "kind/boolean",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": true,
+        "harmonicFret": 12
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "kind/empty",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "",
+        "harmonicFret": 12
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "kind/false",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": false,
+        "harmonicFret": 12
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "kind/null",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": null,
+        "harmonicFret": 12
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": false,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 69,
+            "interval": 0,
+            "disallowOpenString": false
+          }
+        ]
+      },
+      "current": {
+        "applied": false,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 69,
+            "interval": 0,
+            "disallowOpenString": false
+          }
+        ]
+      }
+    },
+    {
+      "id": "kind/tap-alias",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "tap",
+        "harmonicFret": 12
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-data/ah-pitch",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 10,
+        "harmonicData": {
+          "type": "ah",
+          "note": "C",
+          "shift": 12
+        }
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 84,
+            "interval": 15,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 84,
+            "interval": 15,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-data/ah-shift",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 10,
+        "harmonicData": {
+          "type": "ah",
+          "shift": 12
+        }
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-data/ah-empty",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 10,
+        "harmonicData": {
+          "type": "ah"
+        }
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": "NaN",
+            "interval": "NaN",
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": "NaN",
+            "interval": "NaN",
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-data/unknown-type",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 10,
+        "harmonicData": {
+          "type": "future"
+        }
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-data/empty",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "artificial",
+        "harmonicFret": 10,
+        "harmonicData": {}
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "legacy-data/tapped",
+      "note": {
+        "fret": 10,
+        "string": 1,
+        "harmonic": "tapped",
+        "harmonicData": {
+          "type": "th",
+          "fret": 14
+        }
+      },
+      "disposition": "guarded",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": true,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 85,
+            "interval": 16,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": true,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 85,
+            "interval": 16,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "natural/3",
+      "note": {
+        "fret": 3,
+        "string": 1,
+        "harmonic": "natural",
+        "harmonicFret": 2.7
+      },
+      "disposition": "existing-special-case",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 34,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 3,
+            "pitch": 100,
+            "interval": 31,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 34,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 3,
+            "pitch": 100,
+            "interval": 31,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "natural/7",
+      "note": {
+        "fret": 7,
+        "string": 1,
+        "harmonic": "natural",
+        "harmonicFret": 7
+      },
+      "disposition": "existing-special-case",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 19,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 7,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 19,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 7,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "natural/12",
+      "note": {
+        "fret": 12,
+        "string": 1,
+        "harmonic": "natural",
+        "harmonicFret": 12
+      },
+      "disposition": "existing-special-case",
+      "wholeScore": false,
+      "pinned": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 12,
+            "pitch": 69,
+            "interval": 0,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "current": {
+        "applied": true,
+        "lookup": 12,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 12,
+            "pitch": 69,
+            "interval": 0,
+            "disallowOpenString": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "natural/19",
+      "note": {
+        "fret": 19,
+        "string": 1,
+        "harmonic": "natural",
+        "harmonicFret": 19
+      },
+      "disposition": "existing-special-case",
+      "wholeScore": false,
+      "pinned": {
+        "applied": false,
+        "lookup": 19,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 19,
+            "pitch": 69,
+            "interval": 0,
+            "disallowOpenString": false
+          }
+        ]
+      },
+      "current": {
+        "applied": false,
+        "lookup": 19,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 19,
+            "pitch": 69,
+            "interval": 0,
+            "disallowOpenString": false
+          }
+        ]
+      }
+    }
+  ]
+}

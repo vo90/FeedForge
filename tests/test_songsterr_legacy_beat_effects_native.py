@@ -173,10 +173,10 @@ def test_worker_identity_profiles_and_guard_scope_are_explicit():
 def test_catalog_maps_only_the_scoped_legacy_beat_fields():
     catalog = inventory()
     fields = {row['field']: row for row in catalog['fields']}
-    assert fields['beat.harmonic']['rules'] == fields['beat.fadeIn']['rules'] == ['source.legacy_beat_effects']
+    assert fields['beat.harmonic']['rules'] == fields['beat.artificialHarmonic']['rules'] == fields['beat.fadeIn']['rules'] == ['source.legacy_beat_effects']
     assert fields['note.harmonic']['rules'] == ['technique.harmonics']
     rule = catalog['rules']['source.legacy_beat_effects']
-    assert rule['sourceFields'] == ['beat.harmonic', 'beat.fadeIn']
+    assert rule['sourceFields'] == ['beat.harmonic', 'beat.artificialHarmonic', 'beat.fadeIn']
     assert rule['reference']['legacyBeatEffectsPolicy'] == FIXTURE['policy']
     assert rule['testFixture'] == FIXTURE_PATH.relative_to(ROOT).as_posix()
     assert all(row['candidateRules'] == ['source.legacy_beat_effects'] for row in catalog['guards']

@@ -41,7 +41,7 @@ FIELDS = {
     "timing.ties": "note.tie",
     "timing.tempo": "automations.tempo automations.fermata automations.gradualTempo tempo.measure tempo.position tempo.bpm tempo.type tempo.dotted tempo.linear",
     "source.legacy_metadata": "measure.index beat.tempo note.grace",
-    "source.legacy_beat_effects": "beat.harmonic beat.fadeIn",
+    "source.legacy_beat_effects": "beat.harmonic beat.artificialHarmonic beat.fadeIn",
     "timing.whole_rest": "beat.rest beat.type beat.dots beat.duration note.rest",
     "notation.voices": "measure.voices voice.beats",
     "notation.picking_hand": "note.rightFingering",
@@ -65,7 +65,8 @@ BEHAVIOR = {
     "technique.linked_targets": "Retain guards and located evidence. Approved omissions cover fretless X targets, and a skipped alternate-ending destination followed by an explicit same-voice rest before another same-string event. Preserve notes, timing and valid passes; never borrow a distant synthesis target or invent a direction.",
     "timing.tempo": "Validate every entry and subtract the first raw tempo measure coordinate before exact-coordinate replacement and hold/ramp expansion. Retain raw origins and entries, and account for inactive marks using effective coordinates. Shifted scores require all source parts to have explicit scalar-zero opening clocks, scalar whole-quarter positions, native-equivalent integral rates and nonnegative effective measures. Missing initial clocks, outside marks with active ramps, and cross-track clock conflicts remain blocking.",
     "source.legacy_metadata": "Validate nullable nonnegative integral measure.index, nullable boolean note.grace and nullable exact {type,bpm} beat.tempo before inactive-field handling or rest skips. Retain all present values, including null/false/zero. Array order, explicit modern beat.graceNote and authoritative tempo automations determine the music; obsolete metadata never supplies or repairs them.",
-    "source.legacy_beat_effects": "Validate exact boolean/null beat.harmonic and beat.fadeIn, including inactive and rest shapes. Retain raw flags. A selected active harmonic summary requires a non-rest beat with at least one sounding note and an independently qualified explicit natural harmonic on every sounding note; it never supplies note instructions. An active selected fade-in marking is a disclosed display/expression limitation without a new envelope, attack, duration or scoring change. Excluded arrangements receive structural flag validation without new pitch qualification.",
+    "source.legacy_beat_effects": "Validate exact boolean/null beat.harmonic, beat.artificialHarmonic and beat.fadeIn, including inactive and rest shapes. Retain raw flags. A selected active harmonic summary requires a non-rest beat with at least one sounding note and an independently qualified explicit matching natural or artificial harmonic on every sounding note; it never supplies note instructions. An active selected fade-in marking is a disclosed display/expression limitation without a new envelope, attack, duration or scoring change. Excluded arrangements receive structural flag validation without new pitch qualification.",
+    "technique.harmonics": "Keep verified contact nodes and their sounding intervals. An artificial harmonic with a finite nonnegative numeric node unmatched by the public playback lookup may preserve the +24 playback fallback with no physical touch node; opaque harmonicData, near-node tolerance matches, missing/null/malformed values and other harmonic kinds do not gain fallback support. Preserve original source and disclose the unknown contact. Synth coercions and sample-library pitch offsets are not gameplay instructions.",
     "expression.sustain_pedal": "Retain validated pedal flags and disclose absent synthesis/engraving/scoring support. Preserve written/tied note timing; do not turn MIDI pedal control into longer game trails.",
     "notation.picking_hand": "Validate P/I/M/A/C; retain the picking-hand annotation and disclose absent engraving without changing fret-hand hints, pitches, attacks or scoring.",
     "timing.basic": "Preserve exact authored fractions until mapping the performed clock.",
@@ -149,6 +150,17 @@ def inventory():
             value['tests'] = 'tests/test_songsterr_legacy_beat_effects_native.py'
             value['referenceTools'] = ['tools/songsterr_compatibility/legacy-beat-effects-cases.cjs',
                                        'tools/songsterr_compatibility/legacy-beat-effects-reference.cjs']
+            value['additionalFixtures'] = ['tests/fixtures/songsterr_harmonic_fallback_reference.json']
+            value['additionalTests'] = ['tests/test_songsterr_harmonic_fallback_reference.py']
+            value['referenceTools'].append('tools/songsterr_compatibility/harmonic-fallback-reference.cjs')
+            value['reference']['scope'] += ' Artificial summaries additionally preserve 11 synthetic complete-score cases under the same three profiles, including guard observations; 66 complete/extracted/ordinary-runner matches compare flags present and absent. Only independently qualified explicit artificial notes grant support.'
+        if key == 'technique.harmonics':
+            value['reference']['status'] = 'qualified_examples'
+            value['reference']['harmonicFallbackPolicy'] = 'songsterr-harmonic-fallback-audit-v1'
+            value['reference']['scope'] = '73 synthetic harmonic boundary/default cases agree between pinned and reviewed current complete-worker deterministic fluidsynth Harmonics stages. Eleven selected full-score cases also match pinned complete/extracted/existing runners in all three profiles (66 comparisons). Canonical and unknown artificial nodes are checked against produced and independent targets. Missing data, numeric tolerance matches, coercions, legacy data overrides and other kinds remain explicitly guarded; sampled RSE intermediates are not sounding MIDI. No current whole-score, browser, acoustic or universal effect-equivalence claim.'
+            value['testFixture'] = 'tests/fixtures/songsterr_harmonic_fallback_reference.json'
+            value['tests'] = 'tests/test_songsterr_harmonic_fallback_reference.py'
+            value['referenceTools'] = ['tools/songsterr_compatibility/harmonic-fallback-reference.cjs']
         if key == 'timing.whole_rest':
             value['reference']['status'] = 'qualified_examples'
             value['testFixture'] = 'tests/fixtures/songsterr_rest_reference.json'
