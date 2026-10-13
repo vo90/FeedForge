@@ -32,6 +32,15 @@ Historical FeedPaks and their reports are not rewritten.
   are not rewritten and need reimporting to acquire source-derived spans.
 - The app does not detect the target game version. Required consumer support is
   disclosed in import details, without claiming an installed version is supported.
+- Modern beat-level `vibrato` and `wideVibrato` annotations are informational
+  only for the exact note-owned policy descriptions, after a completed import
+  passes output verification and its hash-checked full verification includes
+  `note_owned_finger_vibrato`. The compatibility report must be complete.
+  Explicit note vibrato keeps its existing playback; a beat annotation does not
+  add vibrato to unmarked notes. Original descriptions and locations remain
+  available. Historical wording, unfamiliar meanings, failed or modified output,
+  and unavailable or incomplete evidence remain warnings. This presentation
+  change keeps preservation contract 122 and does not rewrite any FeedPak.
 
 `songsterr-notices.cjs` groups records and bounds representative details; complete
 records remain exportable. New or unclassified free-text messages remain grouped

@@ -34,14 +34,15 @@ function reportBundle(root, reference) {
   inspectEvidence(root, reference);
   return checkedFile(root, `records/${reference.id}.zip`, reference.bundleHash, 256 * 1024 * 1024);
 }
-function compatibilityReport(root, reference) {
-  const { record } = inspectEvidence(root, reference);
-  if (!record.objects.compatibility) return null;
+function compatibilityEvidence(root, reference, outputHash) {
+  const { record, verification } = inspectEvidence(root, reference, outputHash);
+  if (!record.objects.compatibility) return { report: null, verification };
   const file = checkedFile(root, `objects/${record.objects.compatibility}`, record.objects.compatibility, 64 * 1024 * 1024);
   const report = JSON.parse(fs.readFileSync(file, 'utf8'));
   if (!Number.isInteger(report.version) || !Array.isArray(report.findings)) throw new Error('The compatibility report is invalid.');
-  return report;
+  return { report, verification };
 }
+function compatibilityReport(root, reference) { return compatibilityEvidence(root, reference).report; }
 
 // Derived from durable evidence, not the bounded job history. The latest
 // assessment of a song/revision replaces earlier attempts in the working list.
@@ -102,5 +103,5 @@ function verifiedChartGuidance(proof, count) {
   return proof?.policy === CHART_GUIDANCE_POLICY && proof.status === 'passed' && proof.sourceAuthored === false
     && Number.isSafeInteger(count) && count > 0 && proof.arrangements === count;
 }
-module.exports = { inspectEvidence, reportBundle, compatibilityReport, compatibilityBacklog, CURRENT_PRESERVATION_CONTRACT, KNOWN_PRESERVATION_CONTRACTS,
+module.exports = { inspectEvidence, reportBundle, compatibilityReport, compatibilityEvidence, compatibilityBacklog, CURRENT_PRESERVATION_CONTRACT, KNOWN_PRESERVATION_CONTRACTS,
   CHART_GUIDANCE_POLICY, verifiedChartGuidance };

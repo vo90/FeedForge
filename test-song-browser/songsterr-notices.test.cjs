@@ -483,3 +483,131 @@ test('boundary consolidation does not change other playing limitations or their 
   assert.ok(result.warnings.every(g => g.level === 'warning'));
   for (const action of ['clip', 'omit', 'duration_cap']) assert.equal(classifyFinding(boundaryFinding(action)), 'warning');
 });
+
+const noteOwnedContext = { noteOwnedFingerVibrato: true };
+function beatVibratoFinding(wide = false) {
+  return { feature: wide ? 'beat.wideVibrato' : 'beat.vibrato', category: 'game_limitation',
+    impact: 'display_or_expression', workStatus: 'display_limitation', value: true,
+    valueTruncated: false, retained: 'original_source', arrangement: 'Guitar', measure: 56, voice: 2, beat: 5,
+    message: `The beat-level ${wide ? 'wide vibrato' : 'vibrato'} annotation is retained in the source and written beat. Note vibrato follows explicit note instructions; this beat flag does not add a note controller or scored pitch.` };
+}
+const completeVibratoReport = rows => ({ ...findings(rows), version: 122, truncated: false });
+
+test('modern beat vibrato needs explicit derived policy proof before becoming informational', () => {
+  for (const wide of [false, true]) {
+    const finding = beatVibratoFinding(wide);
+    assert.equal(classifyFinding(finding), 'warning');
+    assert.equal(classifyFinding(finding, noteOwnedContext), 'info');
+    for (const value of [false, null, undefined, 1, 'true', 'songsterr-note-vibrato-v1']) {
+      assert.equal(classifyFinding(finding, { noteOwnedFingerVibrato: value }), 'warning');
+    }
+    const report = completeVibratoReport([finding]);
+    const job = { ...completed, noteOwnedFingerVibrato: true,
+      verification: { ...completed.verification, noteOwnedFingerVibrato: true, scope: ['note_owned_finger_vibrato'] } };
+    // Persisted job fields and familiar text are not substitutes for the caller's
+    // independent hash-checked policy context.
+    assert.equal(playerNotices(job, report).warnings[0].id, finding.feature);
+  }
+});
+
+test('qualified beat-only, mixed-note and duplicate annotations remain readable information without music inference', () => {
+  // The source verifier establishes the note-owned interpretation for all these
+  // shapes. A notice does not require matching note flags or invent controllers.
+  const normal = beatVibratoFinding(), wide = beatVibratoFinding(true);
+  const report = completeVibratoReport([normal, { ...normal, measure: 90 }, { ...normal, measure: 94 }, wide]);
+  const before = JSON.stringify(report);
+  const result = playerNotices(completed, report, noteOwnedContext);
+  assert.equal(result.warnings.length, 0);
+  const groups = result.information.filter(g => ['beat.vibrato', 'beat.wideVibrato'].includes(g.id));
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups.map(g => g.occurrences), [3, 1]);
+  assert.ok(groups.every(g => g.title === 'Beat-level vibrato annotations'));
+  assert.equal(groups[0].message, normal.message);
+  assert.equal(groups[1].message, wide.message);
+  assert.deepEqual(groups[0].locations, ['Guitar · Measure 56 · beat 5', 'Guitar · Measure 90 · beat 5', 'Guitar · Measure 94 · beat 5']);
+  assert.equal(result.diagnosticCount, 0);
+  assert.equal(JSON.stringify(report), before);
+});
+
+test('historical, changed, malformed and genuinely missing vibrato instructions remain warnings', () => {
+  for (const wide of [false, true]) {
+    const finding = beatVibratoFinding(wide);
+    const changes = [
+      { message: `Beat-level ${wide ? 'wide vibrato' : 'vibrato'} is retained as a written instruction; its playback timing is not confirmed by the source player.` },
+      { message: finding.message + ' Some note vibrato was lost.' }, { message: 'Vibrato could not be converted.' },
+      { message: undefined }, { feature: 'note.vibrato' }, { feature: 'beat.vibratoWithTremoloBar' },
+      { feature: wide ? 'beat.vibrato' : 'beat.wideVibrato' },
+      ...['unknown_semantics', 'source_structure', 'conversion_check', 'converter_gap', 'unknown_category'].map(category => ({ category })),
+      { impact: 'blocking' }, { impact: 'gameplay_omission' }, { impact: 'unknown_impact' },
+      { workStatus: 'unknown' }, { workStatus: undefined },
+      { value: false }, { value: 1 }, { value: 'true' }, { value: null }, { value: {} }, { value: undefined },
+      { valueTruncated: true }, { valueTruncated: undefined }, { retained: 'partial_source' }, { retained: undefined },
+    ];
+    for (const change of changes) {
+      const changed = { ...finding, ...change };
+      assert.equal(classifyFinding(changed, noteOwnedContext), 'warning', JSON.stringify(change));
+      const result = playerNotices(completed, completeVibratoReport([changed]), noteOwnedContext);
+      assert.equal(result.warnings.length, 1, JSON.stringify(change));
+    }
+  }
+});
+
+test('passed policy context cannot quiet incomplete, unavailable or inconsistent reports', () => {
+  const finding = beatVibratoFinding();
+  const report = completeVibratoReport([finding]);
+  for (const change of [{ truncated: true }, { truncated: undefined }, { findingCount: 0 }, { findingCount: 2 },
+    { findingCount: '1' }, { findingCount: undefined }, { status: 'blocked' }, { status: undefined },
+    { version: undefined }, { version: '122' }, { version: 0 }]) {
+    const result = playerNotices(completed, { ...report, ...change }, noteOwnedContext);
+    assert.ok(result.warnings.some(g => g.id === finding.feature), JSON.stringify(change));
+  }
+  const unavailable = playerNotices(completed, report, { ...noteOwnedContext, reportUnavailable: true });
+  assert.deepEqual(unavailable.warnings.map(g => g.id), ['beat.vibrato', 'unavailable_report']);
+  assert.ok(playerNotices({ ...completed, compatibility: { status: 'limitations' } }, null, noteOwnedContext)
+    .warnings.some(g => g.id === 'unavailable_report'));
+});
+
+test('unfinished, failed, changed and unverified imports retain their vibrato warning', () => {
+  const report = completeVibratoReport([beatVibratoFinding()]);
+  for (const state of ['running', 'converting', 'failed', 'cancelled', undefined]) {
+    const result = playerNotices({ ...completed, state }, report, noteOwnedContext);
+    assert.ok(result.warnings.some(g => g.id === 'beat.vibrato'), state);
+  }
+  for (const status of ['modified', 'failed', 'not_checked', undefined]) {
+    const result = playerNotices({ ...completed, verification: { status } }, report, noteOwnedContext);
+    assert.ok(result.warnings.some(g => g.id === 'beat.vibrato'), status);
+    assert.ok(result.warnings.some(g => g.id === 'verification'), status);
+  }
+});
+
+test('policy-qualified detail prioritization agrees with notice severity without mutating findings', () => {
+  const vibrato = beatVibratoFinding();
+  const other = { feature: 'note.bend_timing', category: 'game_limitation', impact: 'display_or_expression', message: 'Some bend timing is uncertain.' };
+  const omitted = { feature: 'note.fret_range', category: 'game_limitation', impact: 'gameplay_omission', message: 'High notes omitted.' };
+  const rows = Array.from({ length: 240 }, (_, i) => ({ ...vibrato, measure: i + 1 })).concat(other, omitted);
+  const before = JSON.stringify(rows);
+  const qualified = prioritizeFindings(rows, noteOwnedContext);
+  assert.equal(qualified[0].feature, omitted.feature);
+  assert.equal(qualified[1].feature, other.feature);
+  assert.equal(qualified[2].feature, vibrato.feature);
+  assert.equal(prioritizeFindings(rows)[1].feature, vibrato.feature);
+  const notices = playerNotices(completed, completeVibratoReport(rows), noteOwnedContext);
+  assert.deepEqual(notices.warnings.map(g => g.id).sort(), ['high_frets', 'note.bend_timing']);
+  assert.equal(notices.information.find(g => g.id === vibrato.feature).occurrences, 240);
+  assert.equal(JSON.stringify(rows), before);
+});
+
+test('qualified vibrato does not conceal a same-feature historical warning or other expression issues', () => {
+  const modern = beatVibratoFinding();
+  const old = { ...modern, message: 'Beat-level vibrato is retained as a written instruction; its playback timing is not confirmed by the source player.' };
+  const bar = { feature: 'beat.vibratoWithTremoloBar', category: 'game_limitation', impact: 'display_or_expression',
+    message: 'Slight/wide bar vibrato is preserved. These notes are visual only in the updated game because the source does not specify an exact pitch curve; they do not reduce accuracy or streaks.' };
+  const missingBar = { ...bar, message: 'This whammy-bar expression could not be reproduced.' };
+  const report = completeVibratoReport([modern, old, bar, missingBar]);
+  const result = playerNotices({ ...completed, warnings: ['Unrelated raw warning'], artwork: { status: 'unavailable' } }, report, noteOwnedContext);
+  assert.deepEqual(result.warnings.map(g => g.id).sort(), ['artwork', 'beat.vibrato', 'beat.vibratoWithTremoloBar', 'other']);
+  assert.equal(result.warnings.find(g => g.id === modern.feature).message, old.message);
+  assert.equal(result.information.find(g => g.id === modern.feature).message, modern.message);
+  assert.equal(classifyFinding(bar), classifyFinding(bar, noteOwnedContext));
+  assert.equal(classifyFinding(missingBar), classifyFinding(missingBar, noteOwnedContext));
+});

@@ -69,6 +69,12 @@ const policies = new Map([
     "An artificial-harmonic contact starts during this sustain. Its timing and target are preserved; the updated game displays the contact without another picked attack."
   ]
 ]);
+// These meanings require the independently verified note-owned policy. They
+// cannot inherit the ordinary message-only informational classification.
+const noteOwnedVibrato = new Map([
+  ['beat.vibrato', 'The beat-level vibrato annotation is retained in the source and written beat. Note vibrato follows explicit note instructions; this beat flag does not add a note controller or scored pitch.'],
+  ['beat.wideVibrato', 'The beat-level wide vibrato annotation is retained in the source and written beat. Note vibrato follows explicit note instructions; this beat flag does not add a note controller or scored pitch.'],
+]);
 const titles = {
   'beat.letRing': 'Let-ring instructions',
   'beat.wahwah': 'Wah-pedal instructions are not shown',
@@ -96,14 +102,19 @@ const informationTitles = {
   'note.pickScrape': 'Pick-scrape playing behavior', 'beat.tremoloBar': 'Optional whammy-bar expression',
   'beat.vibratoWithTremoloBar': 'Bar-vibrato playing behavior', 'note.harmonicFret': 'Semi-harmonic playing behavior',
   'note.muted_slide': 'Muted slide-out playing behavior', 'note.tied_harmonic': 'Harmonic contacts during sustains',
+  'beat.vibrato': 'Beat-level vibrato annotations', 'beat.wideVibrato': 'Beat-level vibrato annotations',
 };
 
-function classifyFinding(f) {
+function classifyFinding(f, { noteOwnedFingerVibrato = false } = {}) {
   // Unknown and blocking semantics take precedence over an otherwise familiar
   // feature name. Future converters must not silently inherit a downgrade.
   if (f.impact === 'blocking' || f.impact === 'gameplay_omission'
       || ['unknown_semantics', 'source_structure', 'conversion_check', 'converter_gap'].includes(f.category)) return 'warning';
   if (f.impact === 'source_retained') return 'diagnostic';
+  if (noteOwnedFingerVibrato === true && f.category === 'game_limitation'
+      && f.impact === 'display_or_expression' && f.workStatus === 'display_limitation'
+      && f.retained === 'original_source' && f.value === true && f.valueTruncated === false
+      && typeof f.message === 'string' && noteOwnedVibrato.get(f.feature) === f.message) return 'info';
   if (f.category === 'game_limitation' && f.impact === 'display_or_expression'
       && typeof f.message === 'string' && (informational.get(f.feature) === f.message || policies.get(f.feature) === f.message)) return 'info';
   return 'warning';
@@ -112,9 +123,9 @@ function location(f) {
   return [f.arrangement, f.measure && `Measure ${f.measure}`, f.beat && `beat ${f.beat}`, f.note && `note ${f.note}`]
     .filter(Boolean).join(' · ') || f.location || '';
 }
-function prioritizeFindings(findings) {
+function prioritizeFindings(findings, context = {}) {
   const rank = f => f.impact === 'blocking' || f.impact === 'gameplay_omission' ? 0
-    : classifyFinding(f) === 'warning' ? 1 : classifyFinding(f) === 'info' ? 2 : 3;
+    : classifyFinding(f, context) === 'warning' ? 1 : classifyFinding(f, context) === 'info' ? 2 : 3;
   const buckets = Array.from({ length: 4 }, () => ({ seen: new Set(), first: [], rest: [] }));
   for (const finding of findings) {
     const bucket = buckets[rank(finding)];
@@ -214,7 +225,7 @@ function validatedBoundarySummary(report) {
     rawWarnings: new Set([legacyBoundaryWarning, boundaryPrefix + rawChanges.join(' and ') + '. Original tab retained.']) };
 }
 
-function playerNotices(job, report, { reportUnavailable = false } = {}) {
+function playerNotices(job, report, { reportUnavailable = false, noteOwnedFingerVibrato = false } = {}) {
   const groups = new Map();
   function add(id, level, title, message, at = '', count = 1) {
     const key = `${level}:${id}`;
@@ -224,10 +235,16 @@ function playerNotices(job, report, { reportUnavailable = false } = {}) {
     if (message && message !== group.message && !group.examples.includes(message) && group.examples.length < 8) group.examples.push(message);
   }
   const v = job.verification || {}, completed = job.state === 'completed', verified = completed && v.status === 'passed';
+  // The caller derives policy proof from hash-checked verification evidence;
+  // additionally keep partial reports and unverified jobs conservative here.
+  const context = { noteOwnedFingerVibrato: noteOwnedFingerVibrato === true && verified && !reportUnavailable
+    && ['compatible', 'limitations'].includes(report?.status) && report.truncated === false
+    && Number.isSafeInteger(report.version) && report.version > 0
+    && Array.isArray(report.findings) && report.findingCount === report.findings.length };
   const boundary = verified && !reportUnavailable ? validatedBoundarySummary(report) : null;
   for (const f of report?.findings || []) {
     if (boundary && f.feature === 'beat.measure_boundary') continue;
-    const level = classifyFinding(f);
+    const level = classifyFinding(f, context);
     const id = f.feature === 'note.fret_range' ? 'high_frets' : f.feature || 'unknown_finding';
     add(id, level, level === 'warning' ? titles[f.feature] || 'Source feature needs review'
       : level === 'info' && f.feature === 'note.harmonicFret' && f.message === informational.get(f.feature)

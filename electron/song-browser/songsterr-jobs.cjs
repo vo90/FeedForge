@@ -5,7 +5,7 @@ const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { publishFeedpak } = require('./publication.cjs');
 const { normalizeOutputSettings } = require('./output-settings.cjs');
-const { inspectEvidence, reportBundle, compatibilityReport, compatibilityBacklog, CURRENT_PRESERVATION_CONTRACT, KNOWN_PRESERVATION_CONTRACTS,
+const { inspectEvidence, reportBundle, compatibilityEvidence, compatibilityBacklog, CURRENT_PRESERVATION_CONTRACT, KNOWN_PRESERVATION_CONTRACTS,
   CHART_GUIDANCE_POLICY, verifiedChartGuidance } = require('./songsterr-evidence.cjs');
 const { waitForSharedOperation } = require('./shared-operation.cjs');
 const { unavailableSynchronization, synchronizationSummary, audioVideo } = require('./providers/songsterr/synchronization.cjs');
@@ -199,8 +199,11 @@ class SongsterrJobs {
   compatibilityDetails(id) {
     const job = this.jobs.find(entry => entry.id === id);
     if (!job?.evidence) throw new Error('This import has no saved report.');
-    const report = compatibilityReport(this.auditRoot, job.evidence);
-    return report ? { ...report, findings: prioritizeFindings(report.findings).slice(0, 200), displayedLimit: 200, prioritized: true } : null;
+    // An explicit details request rechecks saved evidence. Subsequent snapshots
+    // reuse this same assessment rather than reading the reports on each poll.
+    const { report, options, error } = this._noticeAssessment(job, true);
+    if (error) throw error;
+    return report ? { ...report, findings: prioritizeFindings(report.findings, options).slice(0, 200), displayedLimit: 200, prioritized: true } : null;
   }
   compatibilityList() { return compatibilityBacklog(this.auditRoot); }
   async _cleanAttempts(job) {
@@ -275,18 +278,39 @@ class SongsterrJobs {
       canCancel: PENDING(job) };
   }
   _playerNotices(job) {
-    const inputs = [job.state, job.evidence?.id, job.verification, job.outputVerification, job.compatibility, job.warnings, job.artwork];
+    return this._noticeAssessment(job).value;
+  }
+  _noticeAssessment(job, refresh = false) {
+    const reference = job.evidence;
+    const inputs = [job.state, reference?.id, reference?.version, reference?.verificationHash, reference?.sourceHash,
+      reference?.outputHash, job.verification, job.verification?.status, job.verification?.outputHash,
+      job.outputVerification, job.compatibility, job.warnings, job.artwork, this.lastOutputCheck];
     const cached = this.noticeCache.get(job);
-    if (cached && inputs.every((value, index) => value === cached.inputs[index])) return cached.value;
-    let report = null, reportUnavailable = false;
+    if (!refresh && cached && inputs.every((value, index) => value === cached.inputs[index])) return cached;
+    let report = null, reportUnavailable = false, noteOwnedFingerVibrato = false, error;
     if (job.evidence) {
-      try { report = compatibilityReport(this.auditRoot, job.evidence); reportUnavailable = !report; }
-      catch { reportUnavailable = true; }
+      try {
+        const currentOutput = job.state === 'completed' && job.outputVerification === 'passed'
+          && job.verification?.status === 'passed' && /^[a-f0-9]{64}$/.test(job.verification.outputHash || '');
+        const checked = compatibilityEvidence(this.auditRoot, reference, currentOutput ? job.verification.outputHash : undefined);
+        report = checked.report; reportUnavailable = !report;
+        // This existing verifier scope proves the note-owned interpretation.
+        // Neither a familiar warning message nor a cached job label proves it.
+        noteOwnedFingerVibrato = currentOutput && checked.verification.status === 'passed'
+          && Array.isArray(checked.verification.scope) && checked.verification.scope.includes('note_owned_finger_vibrato')
+          && ['compatible', 'limitations'].includes(report?.status) && report.truncated === false
+          && Number.isSafeInteger(report.version) && report.version > 0
+          && report.findingCount === report.findings.length;
+      } catch (caught) { reportUnavailable = true; error = caught; }
     }
+    const options = { reportUnavailable, noteOwnedFingerVibrato };
     const value = playerNotices({ ...job, verification: job.verification ? { ...job.verification,
-      status: job.state === 'completed' ? job.outputVerification || 'not_checked' : job.verification.status } : undefined }, report, { reportUnavailable });
-    this.noticeCache.set(job, { inputs, value });
-    return value;
+      status: job.state === 'completed' ? job.outputVerification || 'not_checked' : job.verification.status } : undefined }, report, options);
+    // Keep only the compact projection between polls. Full reports can contain
+    // thousands of findings and are released after a details request returns.
+    const assessment = { inputs, value, options, error };
+    this.noticeCache.set(job, assessment);
+    return { ...assessment, report };
   }
   snapshot() { return this.jobs.map((job) => this.public(job)); }
   _assertQueueCapacity() {
