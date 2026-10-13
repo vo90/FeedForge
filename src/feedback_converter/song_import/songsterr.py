@@ -18,7 +18,7 @@ from .songsterr_tremolo import tremolo_mark
 from .songsterr_whammy import source_whammy
 from .songsterr_harmonics import exact_natural, natural_target, natural_alias, source_target
 from .songsterr_automation import performed_tempos, effective_tempo_entries
-from .songsterr_legacy import validate_legacy_metadata
+from .songsterr_legacy import validate_legacy_metadata, validate_legacy_field, rhythm_metadata_voices
 from .songsterr_legacy_effects import beat_effects, validate_legacy_beat_effects
 from .songsterr_sections import section_label
 
@@ -235,6 +235,16 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
     measures, section_labels = [], []
     instruments, instrument_resolution = resolve_instruments(metadata, parts)
     eligible = {i for i, kind in enumerate(instruments) if kind}
+    for pi, mi, vi, voice in rhythm_metadata_voices(parts):
+        try:
+            validate_legacy_field("voice", "hasSameRhythm", voice["hasSameRhythm"])
+        except ScoreImportError as exc:
+            exc.source_location = {"measure": mi + 1, "voice": vi + 1,
+                                   "location": f"parts/{pi}/measures/{mi}/voices/{vi}"}
+            raise
+        if pi not in eligible or track_indices is not None and pi not in track_indices:
+            inventory.record("Songsterr voice", "hasSameRhythm", "source",
+                             f"songsterr:{pi}:{mi}:{vi}.hasSameRhythm", ["source"])
     for pi, mi, vi, bi, beat in octave_clef_beats(parts):
         try:
             validate_octave_clef(beat["octaveClef"])

@@ -11,12 +11,12 @@ from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
 from .songsterr_fields import validate_sustain_pedal, effective_dots, validate_bend_point_vibrato, validate_octave_clef
 from .songsterr_fields import octave_clef_beats
-from .songsterr_legacy import LEGACY_METADATA, validate_legacy_field
+from .songsterr_legacy import LEGACY_METADATA, validate_legacy_field, rhythm_metadata_voices
 from .songsterr_legacy_effects import (FIELDS as LEGACY_BEAT_EFFECTS, beat_effects, validate_legacy_beat_effect,
                                      retention as legacy_beat_effect_retention)
 from .model import ScoreImportError, integer, rational
 
-VERSION = 119
+VERSION = 120
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -315,6 +315,10 @@ def inspect_songsterr(document, *, track_indices=None, note_owned_vibrato=True):
         coordinates = {"arrangement": str(meta.get("name") or meta.get("title") or f"Track {pi + 1}"),
                        "trackIndex": pi, "trackId": str(meta.get("id", pi))}
         if not playable:
+            for _, mi, vi, voice in rhythm_metadata_voices([part]):
+                inspect({"hasSameRhythm": voice["hasSameRhythm"]}, "voice",
+                        f"parts/{pi}/measures/{mi}/voices/{vi}",
+                        {**coordinates, "measure": mi + 1, "voice": vi + 1})
             for _, mi, vi, bi, beat in octave_clef_beats([part]):
                 inspect({"octaveClef": beat["octaveClef"]}, "beat",
                         f"parts/{pi}/measures/{mi}/voices/{vi}/beats/{bi}",
@@ -380,7 +384,7 @@ def inspect_songsterr(document, *, track_indices=None, note_owned_vibrato=True):
                 continue
             for vi, voice in enumerate(bar.get("voices", []) if isinstance(bar.get("voices"), list) else []):
                 vpath = path + f"/voices/{vi}"
-                inspect(voice, "voice", vpath, coord)
+                inspect(voice, "voice", vpath, {**coord, "voice": vi + 1})
                 if not isinstance(voice, dict):
                     continue
                 for bti, beat in enumerate(voice.get("beats", []) if isinstance(voice.get("beats"), list) else []):

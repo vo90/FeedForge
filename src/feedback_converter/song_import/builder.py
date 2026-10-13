@@ -301,6 +301,10 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         from .evidence import CONTRACT_VERSION
         if type(contract) is not int or not 0 <= contract <= CONTRACT_VERSION:
             raise ImportFailure('unsupported_score', 'Invalid preservation contract.')
+        if any(row.get('feature') == 'voice.hasSameRhythm' for row in (compatibility or {}).get('findings', [])):
+            if source_path is None or contract < 120 or (compatibility or {}).get('version', 0) < 120:
+                raise ImportFailure('unsupported_score',
+                                    'Retained voice-rhythm metadata requires its original tab and preservation contract 120.')
         resolution = source_model.get("instrumentResolution") or {}
         if resolution.get("tracks") and (contract < 97 or source_path is None or (compatibility or {}).get("version", 0) < 97):
             raise ImportFailure("unsupported_score", "Bass layout resolution requires its original tab and preservation contract 97.")

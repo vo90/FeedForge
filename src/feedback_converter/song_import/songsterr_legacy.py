@@ -14,6 +14,7 @@ LEGACY_METADATA = {
     ("measure", "index"): "The source measure index is retained. Prepared measure identity follows the source array order.",
     ("beat", "tempo"): "The legacy beat tempo is retained. The validated tempo automation determines the musical clock.",
     ("note", "grace"): "The legacy note flag is retained. Explicit beat graceNote instructions determine grace timing and notation.",
+    ("voice", "hasSameRhythm"): "The obsolete rhythm-notation flag is retained. Each voice's explicit notes and durations determine playback.",
 }
 
 
@@ -22,6 +23,10 @@ def validate_legacy_field(scope, field, value):
     key = (scope.removeprefix("Songsterr "), field)
     if key not in LEGACY_METADATA:
         return False
+    if key == ("voice", "hasSameRhythm"):
+        if type(value) is not bool:
+            raise ScoreImportError("Invalid legacy voice hasSameRhythm flag; expected a boolean.")
+        return True
     if value is None:
         return True
     if key == ("measure", "index"):
@@ -49,3 +54,18 @@ def validate_legacy_metadata(obj, scope):
         raise ScoreImportError(f"Malformed Songsterr {scope} object.")
     for field, value in obj.items():
         validate_legacy_field(scope, field, value)
+
+
+def rhythm_metadata_voices(parts):
+    """Locate the deprecated flag without interpreting excluded musical data."""
+    for pi, part in enumerate(parts):
+        measures = part.get("measures") if isinstance(part, dict) else None
+        if not isinstance(measures, list):
+            continue
+        for mi, measure in enumerate(measures):
+            voices = measure.get("voices") if isinstance(measure, dict) else None
+            if not isinstance(voices, list):
+                continue
+            for vi, voice in enumerate(voices):
+                if isinstance(voice, dict) and "hasSameRhythm" in voice:
+                    yield pi, mi, vi, voice

@@ -174,6 +174,26 @@ def _octave_clef(beat, location):
         raise ValueError(location + "/octaveClef: invalid retained octave marking")
 
 
+def _legacy_rhythm_voices(parts):
+    """Independently locate voice metadata, including unselected instruments."""
+    for pi, part in enumerate(parts):
+        measures = part.get("measures") if isinstance(part, dict) else None
+        if not isinstance(measures, list):
+            continue
+        for bi, bar in enumerate(measures):
+            voices = bar.get("voices") if isinstance(bar, dict) else None
+            if not isinstance(voices, list):
+                continue
+            for vi, voice in enumerate(voices):
+                if isinstance(voice, dict) and "hasSameRhythm" in voice:
+                    yield pi, bi, vi, voice
+
+
+def _legacy_voice_rhythm(voice, location):
+    if type(voice["hasSameRhythm"]) is not bool:
+        raise ValueError(location + "/hasSameRhythm: invalid retained rhythm flag; expected a boolean")
+
+
 def _retained_field_beats(parts, fields):
     """Locate scoped metadata without qualifying unrelated excluded structure."""
     for pi, part in enumerate(parts):
@@ -633,6 +653,9 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
     ignored, bars, signature = set(), [], (4, 4)
     # Check the full retained envelope before instrument/diagnostic selection or
     # rest handling. Inactive and excluded source fields still need valid shapes.
+    for pi, bi, vi, voice in _legacy_rhythm_voices(raw_parts):
+        _legacy_voice_rhythm(voice, f"parts/{pi}/measures/{bi}/voices/{vi}")
+        ignored.add("hasSameRhythm")
     for pi, bi, vi, bti, beat in _legacy_beat_effect_beats(raw_parts):
         loc = f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}"
         ignored.update(_legacy_beat_effects(beat, loc, qualify_harmonics=False))
@@ -892,7 +915,7 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
             track.clefs.append(clef or (track.clefs[-1] if track.clefs else None))
             atoms, beat_facts = [], []
             for vi, voice in enumerate(bar["voices"]):
-                _active_unknown(voice, {"beats", "rest"}, {"id"}, f"parts/{pi}/measures/{bi}/voices/{vi}", ignored)
+                _active_unknown(voice, {"beats", "rest"}, {"id", "hasSameRhythm"}, f"parts/{pi}/measures/{bi}/voices/{vi}", ignored)
                 times = all_times[bi][vi]
                 for bti, beat in enumerate(voice["beats"]):
                     atom_start = len(atoms)
