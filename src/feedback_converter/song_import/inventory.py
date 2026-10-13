@@ -7,6 +7,13 @@ from .songsterr_legacy_effects import validate_legacy_beat_effect
 from .songsterr_fields import validate_octave_clef
 
 
+def _retained_part_index(value):
+    """Optional source numbering never selects, sorts, or identifies parts."""
+    return value is None or (type(value) in (int, float)
+                             and 0 <= value <= 9_007_199_254_740_991
+                             and value == int(value))
+
+
 def _matching_voice_count(part, value):
     """A redundant count never selects or limits the actual musical voices."""
     if type(value) is not int or value <= 0:
@@ -60,6 +67,9 @@ class FeatureInventory:
             if scope == "Songsterr part" and key == "voices" and _matching_voice_count(obj, value):
                 self.record(scope, key, "source", where)
                 continue
+            if scope == "Songsterr part" and key == "index" and _retained_part_index(value):
+                self.record(scope, key, "source", where)
+                continue
             if validate_legacy_beat_effect(scope, key, value, beat=obj):
                 self.record(scope, key, 'source', where, ['source'])
                 continue
@@ -78,7 +88,7 @@ class FeatureInventory:
             elif key in layout:
                 handling = "layout"
             elif (value is None or value is False or value == "" or value == [] or value == {}) and not (
-                    scope == "Songsterr part" and key in {"key", "voices"}):
+                    scope == "Songsterr part" and key in {"key", "voices", "index"}):
                 handling = "inactive_unknown"
             else:
                 handling = "unclassified"
