@@ -12,6 +12,7 @@ from .model import Measure, Note, Score, ScoreImportError, Track, WrittenBeat, W
 from .songsterr_timing import (part_timing, strum_offsets, uses_legacy_brush_timing,
                               LEGACY_BRUSH_POLICY, FEELS)
 from .songsterr_fields import bend_points, validate_sustain_pedal, effective_dots, validate_bend_point_vibrato
+from .songsterr_fields import validate_octave_clef, octave_clef_beats
 from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
 from .songsterr_whammy import source_whammy
@@ -234,6 +235,16 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
     measures, section_labels = [], []
     instruments, instrument_resolution = resolve_instruments(metadata, parts)
     eligible = {i for i, kind in enumerate(instruments) if kind}
+    for pi, mi, vi, bi, beat in octave_clef_beats(parts):
+        try:
+            validate_octave_clef(beat["octaveClef"])
+        except ScoreImportError as exc:
+            exc.source_location = {"measure": mi + 1, "voice": vi + 1, "beat": bi + 1,
+                                   "location": f"parts/{pi}/measures/{mi}/voices/{vi}/beats/{bi}"}
+            raise
+        if pi not in eligible or track_indices is not None and pi not in track_indices:
+            inventory.record("Songsterr beat", "octaveClef", "source",
+                             f"songsterr:{pi}:{mi}:{vi}:{bi}.octaveClef", ["source"])
     # Validate these two scoped flags even when a part is excluded. Musical
     # harmonic qualification belongs only to selected pitched arrangements.
     for pi, mi, vi, bi, beat in beat_effects(parts):

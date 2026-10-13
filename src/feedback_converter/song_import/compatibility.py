@@ -9,13 +9,14 @@ import math
 from .songsterr_harmonics import exact_natural, natural_alias, source_target
 from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
-from .songsterr_fields import validate_sustain_pedal, effective_dots, validate_bend_point_vibrato
+from .songsterr_fields import validate_sustain_pedal, effective_dots, validate_bend_point_vibrato, validate_octave_clef
+from .songsterr_fields import octave_clef_beats
 from .songsterr_legacy import LEGACY_METADATA, validate_legacy_field
 from .songsterr_legacy_effects import (FIELDS as LEGACY_BEAT_EFFECTS, beat_effects, validate_legacy_beat_effect,
                                      retention as legacy_beat_effect_retention)
 from .model import ScoreImportError, integer, rational
 
-VERSION = 117
+VERSION = 118
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -45,6 +46,7 @@ KNOWN["beat"].add("hasRasgueado")
 KNOWN["beat"].add("sustainPedal")
 KNOWN["beat"].add("dotted")
 KNOWN["beat"].add("tempo")
+KNOWN["beat"].add("octaveClef")
 KNOWN['beat'].update(LEGACY_BEAT_EFFECTS)
 LIMITATIONS = {
     ("beat", "vibrato"): "The beat-level vibrato annotation is retained in the source and written beat. Note vibrato follows explicit note instructions; this beat flag does not add a note controller or scored pitch.",
@@ -158,6 +160,22 @@ def inspect_songsterr(document, *, track_indices=None, note_owned_vibrato=True):
                 add_finding(report, feature=f"beat.{field}", category="source_structure", impact="blocking",
                             message=str(exc), location=path + "/" + field, value=value, **coordinates)
         for key, value in obj.items():
+            if scope == "beat" and key == "octaveClef":
+                try:
+                    validate_octave_clef(value)
+                except ScoreImportError as exc:
+                    try:
+                        json.dumps(value, allow_nan=False)
+                        diagnostic = value
+                    except (TypeError, ValueError):
+                        diagnostic = str(value)
+                    add_finding(report, feature="beat.octaveClef", category="source_structure", impact="blocking",
+                                message=str(exc), location=path + "/" + key, value=diagnostic, **coordinates)
+                else:
+                    add_finding(report, feature="beat.octaveClef", category="source_metadata", impact="source_retained",
+                                message="The octave marking is retained in the original source. Explicit string, fret and tuning already define the sounding pitch; notes and timing are unchanged.",
+                                location=path + "/" + key, value=value, **coordinates)
+                continue
             if scope == 'beat' and key in LEGACY_BEAT_EFFECTS:
                 inspect_beat_effect(obj, key, value, path, coordinates)
                 continue
@@ -297,6 +315,10 @@ def inspect_songsterr(document, *, track_indices=None, note_owned_vibrato=True):
         coordinates = {"arrangement": str(meta.get("name") or meta.get("title") or f"Track {pi + 1}"),
                        "trackIndex": pi, "trackId": str(meta.get("id", pi))}
         if not playable:
+            for _, mi, vi, bi, beat in octave_clef_beats([part]):
+                inspect({"octaveClef": beat["octaveClef"]}, "beat",
+                        f"parts/{pi}/measures/{mi}/voices/{vi}/beats/{bi}",
+                        {**coordinates, "measure": mi + 1, "voice": vi + 1, "beat": bi + 1})
             for _, mi, vi, bi, beat in beat_effects([part]):
                 for field in LEGACY_BEAT_EFFECTS.intersection(beat):
                     inspect_beat_effect(beat, field, beat[field],

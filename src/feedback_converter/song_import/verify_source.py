@@ -167,8 +167,15 @@ def _legacy_beat_effects(beat, location, *, qualify_harmonics=True):
     return present
 
 
-def _legacy_beat_effect_beats(parts):
-    """Locate only retained beat flags without qualifying excluded structure."""
+def _octave_clef(beat, location):
+    """Qualify octave notation independently, without transposing fret pitches."""
+    value = beat.get("octaveClef")
+    if value is not None and (type(value) is not str or value not in ("8va", "8vb", "15ma", "15mb")):
+        raise ValueError(location + "/octaveClef: invalid retained octave marking")
+
+
+def _retained_field_beats(parts, fields):
+    """Locate scoped metadata without qualifying unrelated excluded structure."""
     for pi, part in enumerate(parts):
         measures = part.get("measures") if isinstance(part, dict) else None
         if not isinstance(measures, list):
@@ -182,8 +189,16 @@ def _legacy_beat_effect_beats(parts):
                 if not isinstance(beats, list):
                     continue
                 for bti, beat in enumerate(beats):
-                    if isinstance(beat, dict) and any(key in beat for key in ("harmonic", "fadeIn")):
+                    if isinstance(beat, dict) and any(key in beat for key in fields):
                         yield pi, bi, vi, bti, beat
+
+
+def _legacy_beat_effect_beats(parts):
+    return _retained_field_beats(parts, ("harmonic", "fadeIn"))
+
+
+def _octave_clef_beats(parts):
+    return _retained_field_beats(parts, ("octaveClef",))
 
 
 def _legacy_note_grace(note, location):
@@ -621,6 +636,10 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
     for pi, bi, vi, bti, beat in _legacy_beat_effect_beats(raw_parts):
         loc = f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}"
         ignored.update(_legacy_beat_effects(beat, loc, qualify_harmonics=False))
+    for pi, bi, vi, bti, beat in _octave_clef_beats(raw_parts):
+        loc = f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}"
+        _octave_clef(beat, loc)
+        ignored.add("octaveClef")
     section_labels = []
     legacy_brush_timing = False
     instruments = [_program_instrument(meta) for meta in metadata]
@@ -880,7 +899,7 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                     loc = f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}"
                     _legacy_beat_tempo(beat, loc)
                     _legacy_beat_effects(beat, loc)
-                    _active_unknown(beat, beat_keys, {"beamStart", "beamStop", "id", "hasRasgueado", "sustainPedal", "tempo", "harmonic", "fadeIn"}, loc, ignored)
+                    _active_unknown(beat, beat_keys, {"beamStart", "beamStop", "id", "hasRasgueado", "sustainPedal", "tempo", "harmonic", "fadeIn", "octaveClef"}, loc, ignored)
                     # Independent validation; MIDI pedal control cannot become
                     # longer game trails, more attacks or a let-ring instruction.
                     if beat.get("sustainPedal") is not None and type(beat["sustainPedal"]) is not bool:

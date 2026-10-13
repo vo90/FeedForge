@@ -5,6 +5,29 @@ import math
 from .model import ScoreImportError, integer, rational
 
 
+def validate_octave_clef(value):
+    """Ottava is source notation; explicit string/fret/tuning already give pitch.
+
+    Songsterr's schema permits null and these four labels. Its synth scheduler
+    does not apply them to the explicit tab pitch; do not transpose it again.
+    """
+    if value is not None and (type(value) is not str or value not in ("8va", "8vb", "15ma", "15mb")):
+        raise ScoreImportError("Invalid octaveClef marking; expected null, 8va, 8vb, 15ma or 15mb.")
+
+
+def octave_clef_beats(parts):
+    """Locate scoped notation metadata, including excluded arrangements."""
+    for pi, part in enumerate(parts):
+        measures = part.get("measures", []) if isinstance(part, dict) else []
+        for mi, measure in enumerate(measures if isinstance(measures, list) else []):
+            voices = measure.get("voices", []) if isinstance(measure, dict) else []
+            for vi, voice in enumerate(voices if isinstance(voices, list) else []):
+                beats = voice.get("beats", []) if isinstance(voice, dict) else []
+                for bi, beat in enumerate(beats if isinstance(beats, list) else []):
+                    if isinstance(beat, dict) and "octaveClef" in beat:
+                        yield pi, mi, vi, bi, beat
+
+
 def validate_bend_point_vibrato(value):
     """Legacy point-local zero is inactive, not note-level timed vibrato.
 

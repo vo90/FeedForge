@@ -9,6 +9,14 @@ const { playerNotices, classifyFinding, prioritizeFindings } = require('../elect
 const { SongsterrJobs } = require('../electron/song-browser/songsterr-jobs.cjs');
 const completed = { state: 'completed', verification: { status: 'passed', timing: 'source_map' } };
 
+test('retained octave notation stays diagnostic while invalid octave data warns', () => {
+  const finding = { feature: 'beat.octaveClef', category: 'source_metadata', impact: 'source_retained',
+    message: 'Explicit tab pitches are preserved; the octave notation remains in the source.' };
+  assert.equal(classifyFinding(finding), 'diagnostic');
+  assert.deepEqual(playerNotices(completed, { findings: [finding] }).warnings, []);
+  assert.equal(classifyFinding({ ...finding, category: 'source_structure', impact: 'blocking' }), 'warning');
+});
+
 test('hybrid high-fret omissions are explained once, but unsupported unknowns remain visible', () => {
   const hybridLead = { coverageStatus: 'limited', limitations: [{ reason: 'unsupported_source_gesture' }] };
   const job = { ...completed, verification: { ...completed.verification, omissions: { omittedNotes: 14 }, hybridLead } };

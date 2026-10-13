@@ -4,6 +4,7 @@ from copy import deepcopy
 from .model import ScoreImportError
 from .songsterr_legacy import validate_legacy_field
 from .songsterr_legacy_effects import validate_legacy_beat_effect
+from .songsterr_fields import validate_octave_clef
 
 
 def _matching_voice_count(part, value):
@@ -44,6 +45,10 @@ class FeatureInventory:
             raise ScoreImportError(f"Malformed {scope} object at {path}.")
         for key, value in obj.items():
             where = f"{path}.{key}"
+            if scope == "Songsterr beat" and key == "octaveClef":
+                validate_octave_clef(value)
+                self.record(scope, key, "source", where, ["source"])
+                continue
             # The part-level opaque string is metadata, not a key signature.
             # Check before inactive handling so malformed values stay visible.
             if scope == "Songsterr part" and key == "key" and isinstance(value, str):
