@@ -305,3 +305,181 @@ test('lyric limits, remaining syllables and export failures share one visible gr
   assert.equal(notices.warnings.length, 2);
   assert.equal(notices.rawWarningCount, 4);
 });
+
+const boundaryPrefix = 'Some overfilled tab bars use Songsterr playback boundaries: ';
+const boundaryLegacy = boundaryPrefix + 'overflowing durations are shortened and attacks outside their bar are omitted. Original tab retained.';
+const boundaryRaw = kind => boundaryPrefix + ({
+  clip: 'overflowing beat durations are shortened',
+  omit: 'beats outside their bar are omitted',
+  mixed: 'overflowing beat durations are shortened and beats outside their bar are omitted',
+})[kind] + '. Original tab retained.';
+const boundaryTail = 'Later bars stay in place; original notation is retained in the source.';
+function boundaryFinding(action = 'clip', measure = 13, voice = 1, beat = 8) {
+  const value = { trackId: '0', location: `parts/0/measures/${measure - 1}/voices/${voice - 1}/beats/${beat - 1}`,
+    measure, voice, beat, action, duration: action === 'duration_cap' ? '8' : '1',
+    usedDuration: action === 'omit' ? null : action === 'duration_cap' ? '4' : '1/2' };
+  if (action !== 'duration_cap') value.start = action === 'omit' ? '4' : '7/2';
+  return { feature: 'beat.measure_boundary', category: 'source_interpretation',
+    impact: action === 'omit' ? 'gameplay_omission' : 'display_or_expression',
+    workStatus: action === 'omit' ? 'gameplay_omission' : 'display_limitation',
+    message: (action === 'omit' ? 'This beat starts outside its written bar and is skipped, as in Songsterr playback. '
+      : 'This overflowing beat is bounded to its written bar, as in Songsterr playback. ') + boundaryTail,
+    location: `${value.location}/${action}`, trackId: '0', value, valueTruncated: false, retained: 'original_source' };
+}
+const boundaryReport = rows => ({ version: 122, status: 'limitations', truncated: false,
+  findingCount: rows.length, findings: rows,
+  arrangements: [{ trackId: '0', name: 'Guitar', status: 'score_ready' }] });
+
+test('verified clip-only boundaries show one truthful warning with written beat counts and readable locations', () => {
+  const report = boundaryReport(Array.from({ length: 13 }, (_, i) => boundaryFinding('clip', 13 + i, i % 2 + 1)));
+  for (const warning of [boundaryLegacy, boundaryRaw('clip')]) {
+    const job = { ...completed, warnings: [warning] };
+    const original = JSON.stringify({ job, report });
+    const result = playerNotices(job, report);
+    assert.equal(result.warnings.length, 1);
+    const [group] = result.warnings;
+    assert.equal(group.id, 'beat.measure_boundary');
+    assert.equal(group.level, 'warning');
+    assert.equal(group.title, 'Tab bar boundaries adjusted');
+    assert.match(group.message, /^13 beat durations shortened to fit their written bars\./);
+    assert.doesNotMatch(group.message, /omit|attack|note count/i);
+    assert.equal(group.occurrences, 13);
+    assert.equal(group.locations.length, 8);
+    assert.equal(group.locations[0], 'Guitar · Measure 13 · voice 1 · beat 8');
+    assert.equal(group.locations[1], 'Guitar · Measure 14 · voice 2 · beat 8');
+    assert.equal(result.rawWarningCount, 1);
+    assert.equal(result.diagnosticCount, 0);
+    assert.equal(JSON.stringify({ job, report }), original);
+  }
+});
+
+test('omitted and shortened beats remain warnings without claiming notes or attacks were removed', () => {
+  for (const legacyOmit of [false, true]) {
+    const omitted = boundaryFinding('omit');
+    if (legacyOmit) omitted.message = 'This attack is outside its written bar and is skipped, as in Songsterr playback. ' + boundaryTail;
+    // An omitted source beat may be a rest or a tied continuation. The receipt
+    // deliberately makes no assertion about the number of attacks it contains.
+    const rows = [omitted, boundaryFinding('omit', 14)];
+    const result = playerNotices({ ...completed, warnings: [boundaryRaw('omit')] }, boundaryReport(rows));
+    assert.equal(result.warnings.length, 1);
+    assert.match(result.warnings[0].message, /^2 beats omitted because they start outside their written bars\./);
+    assert.doesNotMatch(result.warnings[0].message, /shortened|attack|notes omitted/);
+    assert.equal(result.warnings[0].occurrences, 2);
+  }
+  const result = playerNotices({ ...completed, warnings: [boundaryRaw('mixed')] },
+    boundaryReport([boundaryFinding(), boundaryFinding('omit', 14)]));
+  assert.equal(result.warnings.length, 1);
+  assert.match(result.warnings[0].message, /^1 beat duration shortened to fit its written bar\. 1 beat omitted because it starts outside its written bar\./);
+  assert.equal(result.warnings[0].occurrences, 2);
+});
+
+test('duration caps do not double-count a beat that is later clipped or omitted', () => {
+  for (const subsequent of [null, 'clip', 'omit']) {
+    const rows = [boundaryFinding('duration_cap')];
+    if (subsequent) rows.push(boundaryFinding(subsequent));
+    const result = playerNotices({ ...completed, warnings: [boundaryRaw(subsequent === 'omit' ? 'mixed' : 'clip')] }, boundaryReport(rows));
+    assert.equal(result.warnings.length, 1);
+    assert.equal(result.warnings[0].occurrences, 1);
+    assert.equal(result.warnings[0].locations.length, 1);
+    assert.match(result.warnings[0].message, subsequent === 'omit' ? /^1 beat omitted/ : /^1 beat duration shortened/);
+    assert.doesNotMatch(result.warnings[0].message, subsequent === 'omit' ? /shortened/ : /omitted/);
+  }
+});
+
+test('boundary locations use a track ID when the source name is missing or ambiguous', () => {
+  const report = boundaryReport([boundaryFinding()]);
+  for (const arrangements of [undefined, [], [{ trackId: '0', name: '' }],
+    [{ trackId: '0', name: 'Guitar' }, { trackId: '0', name: 'Other guitar' }]]) {
+    const result = playerNotices(completed, { ...report, arrangements });
+    assert.equal(result.warnings[0].locations[0], 'Track 0 · Measure 13 · voice 1 · beat 8');
+  }
+});
+
+test('boundary warnings are never consolidated from missing, truncated or inconsistent reports', () => {
+  const report = boundaryReport([boundaryFinding()]);
+  const job = { ...completed, warnings: [boundaryLegacy] };
+  for (const changed of [null, boundaryReport([]), { ...report, truncated: true }, { ...report, truncated: undefined },
+    { ...report, findingCount: 0 }, { ...report, findingCount: 2 }, { ...report, findingCount: '1' },
+    { ...report, findingCount: undefined }, { ...report, version: undefined }, { ...report, version: '122' },
+    { ...report, status: 'blocked' }]) {
+    const result = playerNotices(job, changed);
+    assert.ok(result.warnings.some(g => g.id === 'other' && g.message === boundaryLegacy));
+    assert.ok(!result.warnings.some(g => g.title === 'Tab bar boundaries adjusted'));
+  }
+  assert.ok(playerNotices(job, report, { reportUnavailable: true }).warnings.some(g => g.id === 'other'));
+});
+
+test('only completed source-verified imports consolidate boundary warnings', () => {
+  const report = boundaryReport([boundaryFinding()]);
+  for (const job of [{ state: 'running', verification: { status: 'passed' } },
+    ...['modified', 'not_checked', 'failed', undefined].map(status => ({ state: 'completed', verification: { status } }))]) {
+    const result = playerNotices({ ...job, warnings: [boundaryLegacy] }, report);
+    assert.ok(result.warnings.some(g => g.id === 'other'));
+    assert.equal(result.warnings.find(g => g.id === 'beat.measure_boundary').message, report.findings[0].message);
+  }
+});
+
+test('unknown or malformed boundary rows cannot quiet a raw warning or be hidden behind a valid subset', () => {
+  const mutations = [
+    f => { f.category = 'unknown_semantics'; }, f => { f.impact = 'blocking'; },
+    f => { f.workStatus = 'unknown'; }, f => { f.retained = 'partial_source'; },
+    f => { f.valueTruncated = true; }, f => { delete f.valueTruncated; },
+    f => { f.message += ' Another effect is lost.'; }, f => { f.value = null; },
+    f => { f.value = JSON.stringify(f.value); }, f => { f.value = []; },
+    f => { f.value.action = 'future_boundary_rule'; }, f => { f.value.trackId = 0; },
+    f => { f.trackId = 'different'; }, f => { f.location += '/other'; },
+    f => { f.value.location = 'parts/0/measures/999/voices/0/beats/7'; },
+    f => { f.value.measure = 0; }, f => { f.value.voice = '1'; }, f => { f.value.beat = 2.5; },
+    f => { f.value.duration = 1; }, f => { f.value.duration = '1/0'; },
+    f => { f.value.duration = '-1'; }, f => { f.value.duration = '0'; },
+    f => { f.value.usedDuration = '1'; }, f => { f.value.usedDuration = '2'; },
+    f => { f.value.usedDuration = '0'; }, f => { f.value.usedDuration = null; },
+    f => { delete f.value.start; }, f => { f.value.start = NaN; },
+    f => { f.value.futureMeaning = true; },
+  ];
+  for (const change of mutations) {
+    const bad = boundaryFinding('clip', 14); change(bad);
+    const report = boundaryReport([boundaryFinding(), bad]);
+    const result = playerNotices({ ...completed, warnings: [boundaryLegacy] }, report);
+    assert.ok(result.warnings.some(g => g.id === 'other'), change.toString());
+    assert.ok(!result.warnings.some(g => g.title === 'Tab bar boundaries adjusted'), change.toString());
+  }
+  const omit = boundaryFinding('omit'); omit.value.usedDuration = '0';
+  const cap = boundaryFinding('duration_cap'); cap.value.start = '0';
+  for (const row of [omit, cap]) {
+    assert.ok(playerNotices({ ...completed, warnings: [boundaryLegacy] }, boundaryReport([row])).warnings.some(g => g.id === 'other'));
+  }
+});
+
+test('duplicate operations and contradictory final operations remain visible for review', () => {
+  for (const rows of [[boundaryFinding(), boundaryFinding()],
+    [boundaryFinding('clip'), boundaryFinding('omit')]]) {
+    const result = playerNotices({ ...completed, warnings: [boundaryLegacy] }, boundaryReport(rows));
+    assert.ok(result.warnings.some(g => g.id === 'other'));
+    assert.equal(result.warnings.find(g => g.id === 'beat.measure_boundary').occurrences, 2);
+  }
+});
+
+test('only the exact supported raw boundary summary is deduplicated and extra messages remain', () => {
+  const report = boundaryReport([boundaryFinding()]);
+  const unknown = 'Some tab beats use Songsterr playback boundaries. See import details for the recorded timing adjustments. Original tab retained.';
+  const warnings = [boundaryRaw('clip'), boundaryLegacy, boundaryLegacy + ' Another issue.',
+    boundaryRaw('omit'), boundaryRaw('mixed'), unknown,
+    { message: boundaryLegacy, location: 'additional source detail' }, 'Unrelated warning'];
+  const result = playerNotices({ ...completed, warnings }, report);
+  const other = result.warnings.find(g => g.id === 'other');
+  assert.equal(result.warnings.length, 2);
+  assert.equal(other.occurrences, warnings.length - 2);
+  assert.deepEqual([other.message, ...other.examples], warnings.slice(2).map(w => typeof w === 'string' ? w : w.message));
+  assert.deepEqual(other.locations, ['additional source detail']);
+  assert.equal(result.rawWarningCount, warnings.length);
+});
+
+test('boundary consolidation does not change other playing limitations or their severity', () => {
+  const report = boundaryReport([boundaryFinding(), { feature: 'beat.vibrato', category: 'game_limitation',
+    impact: 'display_or_expression', message: 'Beat vibrato is not reproduced.' }]);
+  const result = playerNotices({ ...completed, warnings: [boundaryRaw('clip'), 'Another issue'], artwork: { status: 'unavailable' } }, report);
+  assert.deepEqual(result.warnings.map(g => g.id).sort(), ['artwork', 'beat.measure_boundary', 'beat.vibrato', 'other']);
+  assert.ok(result.warnings.every(g => g.level === 'warning'));
+  for (const action of ['clip', 'omit', 'duration_cap']) assert.equal(classifyFinding(boundaryFinding(action)), 'warning');
+});

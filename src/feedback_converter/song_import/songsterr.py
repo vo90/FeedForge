@@ -558,7 +558,8 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
     boundary_rows = [r for t in tracks for r in t.boundary_adjustments]
     if boundary_rows:
         source['measureBoundaryAdjustments'] = boundary_rows
-        warnings.append('Some overfilled tab bars use Songsterr playback boundaries: overflowing durations are shortened and attacks outside their bar are omitted. Original tab retained.')
+        from .measure_boundaries import warning_summary
+        warnings.append(warning_summary(boundary_rows))
     if not written_beat_vibrato:
         source['fingerVibratoPolicy'] = NOTE_VIBRATO_POLICY
     if legacy_brush_timing:

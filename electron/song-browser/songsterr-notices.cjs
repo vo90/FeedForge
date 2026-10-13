@@ -136,6 +136,84 @@ function isValidatedEmptyWarning(message, report) {
     && row.noteCount === 0 && !row.blockingFeatures?.length);
 }
 
+const boundaryPrefix = 'Some overfilled tab bars use Songsterr playback boundaries: ';
+const legacyBoundaryWarning = boundaryPrefix + 'overflowing durations are shortened and attacks outside their bar are omitted. Original tab retained.';
+const boundarySuffix = 'Later bars stay in place; original notation is retained in the source.';
+const boundaryClipMessage = 'This overflowing beat is bounded to its written bar, as in Songsterr playback. ' + boundarySuffix;
+const boundaryOmitMessages = new Set([
+  'This beat starts outside its written bar and is skipped, as in Songsterr playback. ' + boundarySuffix,
+  'This attack is outside its written bar and is skipped, as in Songsterr playback. ' + boundarySuffix,
+]);
+
+function boundaryFraction(value) {
+  // These are exact quarter-note fractions in the retained evidence. Avoid
+  // rounding an invalid or equal duration into an apparent shortening.
+  if (typeof value !== 'string' || value.length > 128 || !/^-?\d+(?:\/[1-9]\d*)?$/.test(value)) return null;
+  const [numerator, denominator = '1'] = value.split('/');
+  return [BigInt(numerator), BigInt(denominator)];
+}
+
+function validatedBoundarySummary(report) {
+  // Only a full verified report can replace its older, less specific wording.
+  // Display-limited, unknown or malformed evidence keeps all original warnings.
+  if (!report || report.status !== 'limitations' || report.truncated !== false
+      || !Number.isSafeInteger(report.version) || report.version <= 0
+      || !Array.isArray(report.findings) || report.findingCount !== report.findings.length) return null;
+  const findings = report.findings.filter(f => f?.feature === 'beat.measure_boundary');
+  if (!findings.length) return null;
+  const beats = new Map(), seen = new Set(), actions = new Set();
+  for (const f of findings) {
+    const row = f.value;
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
+    const omit = row.action === 'omit', cap = row.action === 'duration_cap';
+    if (!['clip', 'omit', 'duration_cap'].includes(row.action)
+        || f.category !== 'source_interpretation' || f.retained !== 'original_source'
+        || f.valueTruncated !== false
+        || f.impact !== (omit ? 'gameplay_omission' : 'display_or_expression')
+        || f.workStatus !== (omit ? 'gameplay_omission' : 'display_limitation')
+        || (omit ? !boundaryOmitMessages.has(f.message) : f.message !== boundaryClipMessage)
+        || typeof row.trackId !== 'string' || !row.trackId || f.trackId !== row.trackId
+        || ![row.measure, row.voice, row.beat].every(n => Number.isSafeInteger(n) && n > 0)
+        || typeof row.location !== 'string' || f.location !== `${row.location}/${row.action}`) return null;
+    const sourcePath = /^parts\/(\d+)\/measures\/(\d+)\/voices\/(\d+)\/beats\/(\d+)$/.exec(row.location);
+    if (!sourcePath || Number(sourcePath[2]) !== row.measure - 1
+        || Number(sourcePath[3]) !== row.voice - 1 || Number(sourcePath[4]) !== row.beat - 1) return null;
+    const keys = ['trackId', 'location', 'measure', 'voice', 'beat', 'action', 'duration', 'usedDuration'];
+    if (!cap) keys.push('start');
+    if (Object.keys(row).length !== keys.length || keys.some(key => !Object.hasOwn(row, key))) return null;
+    const duration = boundaryFraction(row.duration), used = boundaryFraction(row.usedDuration);
+    if (!duration || duration[0] <= 0n || !cap && !boundaryFraction(row.start)
+        || (omit ? row.usedDuration !== null : !used || used[0] <= 0n
+          || used[0] * duration[1] >= duration[0] * used[1])) return null;
+    const key = JSON.stringify([row.trackId, row.location]);
+    const operation = JSON.stringify([key, row.action]);
+    if (seen.has(operation)) return null;
+    seen.add(operation); actions.add(row.action);
+    if (!beats.has(key)) beats.set(key, { row, actions: new Set() });
+    beats.get(key).actions.add(row.action);
+  }
+  let shortened = 0, omitted = 0;
+  const locations = [];
+  for (const { row, actions: beatActions } of beats.values()) {
+    // A cap followed by clipping is one shortened beat. A capped beat that is
+    // ultimately omitted is counted only as omitted, not as a playable sustain.
+    if (beatActions.has('clip') && beatActions.has('omit')) return null;
+    if (beatActions.has('omit')) omitted++; else shortened++;
+    const names = new Set((Array.isArray(report.arrangements) ? report.arrangements : [])
+      .filter(a => a?.trackId === row.trackId && typeof a.name === 'string' && a.name.trim()).map(a => a.name));
+    const name = names.size === 1 ? [...names][0] : `Track ${row.trackId}`;
+    locations.push(`${name} · Measure ${row.measure} · voice ${row.voice} · beat ${row.beat}`);
+  }
+  const changes = [];
+  if (shortened) changes.push(`${shortened} ${shortened === 1 ? 'beat duration shortened to fit its written bar' : 'beat durations shortened to fit their written bars'}.`);
+  if (omitted) changes.push(`${omitted} ${omitted === 1 ? 'beat omitted because it starts' : 'beats omitted because they start'} outside ${omitted === 1 ? 'its written bar' : 'their written bars'}.`);
+  const rawChanges = [];
+  if (actions.has('clip') || actions.has('duration_cap')) rawChanges.push('overflowing beat durations are shortened');
+  if (actions.has('omit')) rawChanges.push('beats outside their bar are omitted');
+  return { message: changes.join(' ') + ' ' + boundarySuffix, locations, count: beats.size,
+    rawWarnings: new Set([legacyBoundaryWarning, boundaryPrefix + rawChanges.join(' and ') + '. Original tab retained.']) };
+}
+
 function playerNotices(job, report, { reportUnavailable = false } = {}) {
   const groups = new Map();
   function add(id, level, title, message, at = '', count = 1) {
@@ -146,13 +224,19 @@ function playerNotices(job, report, { reportUnavailable = false } = {}) {
     if (message && message !== group.message && !group.examples.includes(message) && group.examples.length < 8) group.examples.push(message);
   }
   const v = job.verification || {}, completed = job.state === 'completed', verified = completed && v.status === 'passed';
+  const boundary = verified && !reportUnavailable ? validatedBoundarySummary(report) : null;
   for (const f of report?.findings || []) {
+    if (boundary && f.feature === 'beat.measure_boundary') continue;
     const level = classifyFinding(f);
     const id = f.feature === 'note.fret_range' ? 'high_frets' : f.feature || 'unknown_finding';
     add(id, level, level === 'warning' ? titles[f.feature] || 'Source feature needs review'
       : level === 'info' && f.feature === 'note.harmonicFret' && f.message === informational.get(f.feature)
         ? 'Natural-harmonic touch position'
         : informationTitles[f.feature] || 'Retained source information', f.message, location(f));
+  }
+  if (boundary) {
+    add('beat.measure_boundary', 'warning', 'Tab bar boundaries adjusted', boundary.message, '', boundary.count);
+    groups.get('warning:beat.measure_boundary').locations = boundary.locations.slice(0, 8);
   }
   if (report?.truncated) add('incomplete_report', 'warning', 'Compatibility report is incomplete', 'Some source findings could not be listed. Review the saved conversion report.');
   if (reportUnavailable || !report && job.compatibility?.status === 'limitations') {
@@ -227,7 +311,9 @@ function playerNotices(job, report, { reportUnavailable = false } = {}) {
     const at = typeof item === 'object' ? item?.location || '' : '';
     // Only recognized routine messages are quieted. New/unclassified messages
     // remain visible, grouped for review, with their complete originals saved.
-    if (/^Key signature in .+, measure \d+, is retained in source evidence only\.$/.test(message)) {
+    if (boundary && typeof item === 'string' && boundary.rawWarnings.has(message)) {
+      // This exact warning is already represented by the qualified beat counts.
+    } else if (/^Key signature in .+, measure \d+, is retained in source evidence only\.$/.test(message)) {
       add('key_signatures', 'diagnostic', 'Key signatures retained', 'Key signatures were retained in the source; explicit frets and pitches are unchanged.');
     } else if (/^Excluded non-guitar\/bass track:/.test(message)) {
       add('excluded_instruments', 'diagnostic', 'Other instruments excluded', 'The requested guitar and bass arrangements were selected.');
