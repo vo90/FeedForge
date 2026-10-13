@@ -20,8 +20,8 @@ from feedback_converter.song_import.verification import verify_import
 from test_songsterr_recording_end import META, VIDEO
 
 
-@pytest.fixture(scope='module')
-def warned(tmp_path_factory):
+@pytest.fixture(scope='module', params=[None, 'alternative'], ids=['primary', 'alternative-full-mix'])
+def warned(tmp_path_factory, request):
     root = tmp_path_factory.mktemp('cutoff-warning')
     rng = np.random.default_rng(849)
     frets = rng.integers(0, 13, 424).tolist()
@@ -46,7 +46,7 @@ def warned(tmp_path_factory):
     audio=prepare_audio({'kind':'file','path':str(wav)},media)
     audio['source'].update(kind='youtube',videoId=VIDEO)
     sync={'version':1,'source':'songsterr-video-points',**META,'videoId':VIDEO,
-          'status':'done','feature':None,'points':list(range(0,107,2))}
+          'status':'done','feature':request.param,'points':list(range(0,107,2))}
     performance=load_performance(source,META)
     candidate=align_from_songsterr(performance,audio,sync,META,allow_ending_candidate=True)
     alignment=ending_cutoff.authorize(performance,audio,candidate)
@@ -55,8 +55,10 @@ def warned(tmp_path_factory):
     return root,source,performance,audio,sync,alignment
 
 
-def build(root, source, performance, audio, alignment, contract=57):
+def build(root, source, performance, audio, alignment, contract=None):
     root.mkdir()
+    if contract is None:
+        contract = 119 if alignment['sourceTiming'].get('feature') == 'alternative' else 57
     return Path(build_feedpak(performance,audio,alignment,root,output_dir=root/'out',source_path=source,
         compatibility=performance['compatibilityReport'],recipe={'preservationContract':contract,
         'audioSource':audio['source'],'alignment':{'provenance':alignment['provenance']},
@@ -99,15 +101,18 @@ def test_warning_is_recreated_after_encoding_and_preparation(warned,tmp_path):
     assert report['adjustments']['omittedEndingNotes']==34
 
 
-@pytest.mark.parametrize('change',['old_contract','removed_warning','false_ranges','early_note','missing_note','false_ledger','wrong_recording','forged_audio'])
+@pytest.mark.parametrize('change',['old_contract','removed_warning','false_ranges','early_note','missing_note','false_ledger','wrong_recording','forged_audio','alternative_old_contract'])
 def test_independent_verifier_rejects_forged_or_inaccurate_warning_import(warned,completed,tmp_path,change):
     _,source,_,_,_,original=warned
     alignment=deepcopy(original)
+    if change=='alternative_old_contract' and alignment['sourceTiming'].get('feature') != 'alternative':
+        pytest.skip('Contract 119 is required only for alternative-recording warnings.')
     with zipfile.ZipFile(completed) as z: files={n:z.read(n) for n in z.namelist()}
     manifest=yaml.safe_load(files['manifest.yaml']);recipe=manifest['song_import']
     chart_path=manifest['arrangements'][0]['file'];chart=json.loads(files[chart_path])
     ledger_path=recipe['endingOmissionsFile'];ledger=json.loads(files[ledger_path])
     if change=='old_contract':recipe['preservationContract']=56
+    elif change=='alternative_old_contract':recipe['preservationContract']=118
     elif change=='removed_warning':
         alignment['recordingEnd'].pop('timingWarning');ledger.pop('timingWarning');recipe['recordingEnd'].pop('timingWarning')
     elif change=='false_ranges':
@@ -140,11 +145,20 @@ def test_independent_verifier_rejects_forged_or_inaccurate_warning_import(warned
 
 def test_builder_requires_contract_for_warning(warned,tmp_path):
     _,source,performance,audio,_,alignment=warned
-    with pytest.raises(ImportFailure,match='contract 57'):
+    minimum=119 if alignment['sourceTiming'].get('feature') == 'alternative' else 57
+    with pytest.raises(ImportFailure,match=f'contract {minimum}'):
         build(tmp_path/'job',source,performance,audio,alignment,56)
 
 
-@pytest.mark.parametrize('change',['no_supported_passages','wrong_map','wrong_revision','nonfinite_window','gap','alternative_recording'])
+def test_builder_requires_new_contract_for_alternative_warning(warned,tmp_path):
+    _,source,performance,audio,_,alignment=warned
+    if alignment['sourceTiming'].get('feature') != 'alternative':
+        pytest.skip('Primary-recording warning contracts remain backwards compatible.')
+    with pytest.raises(ImportFailure,match='119'):
+        build(tmp_path/'job',source,performance,audio,alignment,118)
+
+
+@pytest.mark.parametrize('change',['no_supported_passages','wrong_map','wrong_revision','nonfinite_window','gap','backing_recording','solo_recording','unknown_recording'])
 def test_warning_cannot_bypass_missing_recording_evidence(warned,change):
     alignment=deepcopy(warned[-1]);report=alignment['recordingSync']
     if change=='no_supported_passages':
@@ -153,7 +167,7 @@ def test_warning_cannot_bypass_missing_recording_evidence(warned,change):
     elif change=='wrong_revision':alignment['sourceTiming']['revisionId']='wrong'
     elif change=='nonfinite_window':report['windows'][-1]['end']=float('nan')
     elif change=='gap':report['windows'][2]['start']=report['windows'][1]['end']+.1
-    elif change=='alternative_recording':alignment['sourceTiming']['feature']='alternative'
+    elif change.endswith('_recording'):alignment['sourceTiming']['feature']=change.removesuffix('_recording')
     assert cutoff_warning.acceptance(report,alignment) is None
 
 

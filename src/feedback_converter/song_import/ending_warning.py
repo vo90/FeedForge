@@ -28,7 +28,7 @@ def _legacy_acceptance(report, alignment, audio_source):
             or alignment.get('method') != 'songsterr-video-points-v1'
             or alignment.get('mapping') != 'piecewise-linear'
             or timing.get('source') != 'songsterr-video-points'
-            or timing.get('status') != 'done' or timing.get('feature') is not None
+            or timing.get('status') != 'done' or timing.get('feature') not in (None, 'alternative')
             or audio_source.get('kind') != 'youtube' or not timing.get('videoId')
             or audio_source.get('videoId') != timing['videoId']
             or any(not timing.get(k) or timing[k] != provenance.get(k)

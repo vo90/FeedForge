@@ -7,6 +7,20 @@ notes, extend the recording or substitute another revision or recording.
 
 ## Acceptance and evidence
 
+Contract 119 extends warning eligibility to completed, recording-specific
+Songsterr alternative full mixes, matching normal source-map eligibility. The
+alternative marker and exact video/revision/map identity remain intact. Backing,
+solo and unknown map types remain ineligible. Provider selection still prefers
+the primary map for the exact recording and rejects unusable or conflicting
+maps; this change does not select a different recording or alter source timing.
+
+The same eligibility applies to ordinary ending-padding warnings. Their
+existing acoustic and tail limits remain separate from cutoff eligibility.
+Combined silence padding plus omitted attacks still requires supported acoustic
+evidence and cannot use a warning. Both the builder and independent verifier
+require contract 119 for alternative-recording warnings; existing primary-map
+archives retain their previous contract rules.
+
 The selected approved revision, original video, completed Songsterr timing map
 and recording identity must agree. The map remains finite and strictly increasing.
 The acoustic assessment must cover the recording and corroborate at least three

@@ -18,8 +18,8 @@ from test_song_import_ending_warning import policy_inputs
 from test_songsterr_recording_end import META, VIDEO
 
 
-def inputs():
-    r,a,s=policy_inputs()
+def inputs(feature=None):
+    r,a,s=policy_inputs(feature)
     for w in r['windows']: w['status']='supported'
     r['windows'][4]['status']='inconclusive'
     r['outroSupported']=True
@@ -27,30 +27,33 @@ def inputs():
     return r,a,s,t
 
 
-def test_interior_uncertainty_preserves_the_acoustic_verdict():
-    r,a,s,t=inputs();before=deepcopy(r)
+@pytest.mark.parametrize('feature', [None, 'alternative'])
+def test_interior_uncertainty_preserves_the_acoustic_verdict(feature):
+    r,a,s,t=inputs(feature);before=deepcopy(r)
     w=ew.acceptance(r,a,s,tracks=t)
     assert w['version']==2 and w['uncertainRanges']==[{'start':32,'end':48}]
     assert r==before
 
 
-def test_gap_retains_held_and_zero_duration_notes_as_uncertain():
-    r,a,s,t=inputs();r['windows']=[w for w in r['windows'] if not 40<=w['start']<=64]
+@pytest.mark.parametrize('feature', [None, 'alternative'])
+def test_gap_retains_held_and_zero_duration_notes_as_uncertain(feature):
+    r,a,s,t=inputs(feature);r['windows']=[w for w in r['windows'] if not 40<=w['start']<=64]
     t[0]['events'].append({'t':65.,'end':65.})
     w=ew.acceptance(r,a,s,tracks=t)
     assert w['sourceCoverage']['unverifiedSourceRanges']==[{'start':48,'end':60},{'start':65,'end':65}]
     assert w['uncertainRanges']==[{'start':32,'end':60},{'start':65,'end':65}]
 
 
-@pytest.mark.parametrize('fault',['mismatch','hidden','all_unknown','wrong_recording','alternative','bad_map','nan','late_attack','empty','reversed','duplicate'])
-def test_general_warning_keeps_rejection_guards(fault):
-    r,a,s,t=inputs()
+@pytest.mark.parametrize('fault',['mismatch','hidden','all_unknown','wrong_recording','feature_backing','feature_solo','feature_unknown','bad_map','nan','late_attack','empty','reversed','duplicate'])
+@pytest.mark.parametrize('feature', [None, 'alternative'])
+def test_general_warning_keeps_rejection_guards(fault, feature):
+    r,a,s,t=inputs(feature)
     if fault=='mismatch':r['windows'][0]['status']='suspected_mismatch'
     elif fault=='hidden':r['windows'][0]['jointEvidence']={'status':'suspected_mismatch'}
     elif fault=='all_unknown':
         for w in r['windows']:w['status']='inconclusive'
     elif fault=='wrong_recording':s['videoId']='different'
-    elif fault=='alternative':a['sourceTiming']['feature']='backing'
+    elif fault.startswith('feature_'):a['sourceTiming']['feature']=fault.removeprefix('feature_')
     elif fault=='bad_map':r['mapHash']='other'
     elif fault=='nan':t[0]['events'][0]['end']=float('nan')
     elif fault=='late_attack':t[0]['events'][0]['t']=101.
@@ -60,8 +63,8 @@ def test_general_warning_keeps_rejection_guards(fault):
     assert ew.acceptance(r,a,s,tracks=t) is None
 
 
-@pytest.fixture(scope='module')
-def package(tmp_path_factory):
+@pytest.fixture(scope='module', params=[None, 'alternative'], ids=['primary', 'alternative-full-mix'])
+def package(tmp_path_factory, request):
     root=tmp_path_factory.mktemp('interior-padding');rate=22050;duration=95.9
     frets=np.random.default_rng(911).integers(0,17,384).tolist()
     bars=[{'signature':[4,4],'voices':[{'beats':[{'duration':[1,8],'notes':[{'string':5,'fret':f}]} for f in frets[i:i+8]]}]} for i in range(0,384,8)]
@@ -82,11 +85,11 @@ def package(tmp_path_factory):
     samples[32*rate:52*rate]+=.15*np.minimum(t/.002,1)*np.exp(-t*.1)*sum(np.sin(2*np.pi*hz*h*t)/h for h in range(1,6))
     wav=root/'truth.wav';sf.write(wav,samples,rate,subtype='FLOAT');job=root/'job';job.mkdir()
     audio=prepare_audio({'kind':'file','path':str(wav)},job,defer_encoding=True);audio['source']={'kind':'youtube','videoId':VIDEO}
-    sync={'version':1,'source':'songsterr-video-points',**META,'videoId':VIDEO,'status':'done','feature':None,'points':list(range(0,97,2))}
+    sync={'version':1,'source':'songsterr-video-points',**META,'videoId':VIDEO,'status':'done','feature':request.param,'points':list(range(0,97,2))}
     alignment=ep.authorize(perf,audio,align_from_songsterr(perf,audio,sync,META,allow_padding_candidate=True))
     assert alignment['endingPadding']['timingWarning']['version']==2
     prepared,alignment=finalize(perf,audio,alignment,job)
-    recipe={'preservationContract':101,'audioSource':audio['source'],'preparation':alignment['preparation'],
+    recipe={'preservationContract':119 if request.param == 'alternative' else 101,'audioSource':audio['source'],'preparation':alignment['preparation'],
             'alignment':{'provenance':alignment['provenance'],'endingPadding':alignment['endingPadding']}}
     built=build_feedpak(perf,prepared,alignment,job,output_dir=root/'out',source_path=source,recipe=recipe,compatibility=perf['compatibilityReport'])
     return source,built['stagingPath'],alignment
@@ -100,14 +103,17 @@ def test_actual_audio_and_packaged_source_are_independently_checked(package):
     assert alignment['endingPadding']['timingWarning']['sourceCoverage']['unverifiedSourceRanges']
 
 
-@pytest.mark.parametrize('fault',['hidden_hold','fake_support','old_contract','wrong_recording'])
+@pytest.mark.parametrize('fault',['hidden_hold','fake_support','old_contract','wrong_recording','alternative_old_contract'])
 def test_forged_package_is_rejected(package,tmp_path,fault):
     source,path,original=package;alignment=deepcopy(original)
+    if fault=='alternative_old_contract' and alignment['sourceTiming'].get('feature') != 'alternative':
+        pytest.skip('Contract 119 is required only for alternative-recording warnings.')
     with ZipFile(path) as z:files={n:z.read(n) for n in z.namelist()}
     manifest=yaml.safe_load(files['manifest.yaml']);recipe=manifest['song_import'];receipt=alignment['endingPadding']
     if fault=='hidden_hold':receipt['timingWarning']['sourceCoverage']['unverifiedSourceRanges']=[]
     elif fault=='fake_support':receipt['timingWarning']['supportedPassages']+=1
     elif fault=='old_contract':recipe['preservationContract']=100
+    elif fault=='alternative_old_contract':recipe['preservationContract']=118
     elif fault=='wrong_recording':recipe['audioSource']['videoId']='wrong'
     files[recipe['endingPaddingFile']]=json.dumps(receipt).encode();recipe['alignment']['endingPadding']=deepcopy(receipt)
     files['manifest.yaml']=yaml.safe_dump(manifest).encode();target=tmp_path/'forged.feedpak'

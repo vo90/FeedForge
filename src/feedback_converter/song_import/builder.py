@@ -377,6 +377,10 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
             or alignment.get('endingPaddingSync', {}).get('version') == PADDING_VERSION)
             and (recipe or {}).get('preservationContract', 0) < 105):
         raise ImportFailure('alignment_failed', 'Low-bass timing evidence requires preservation contract 105.')
+    if (alignment.get('sourceTiming', {}).get('feature') == 'alternative'
+            and any(alignment.get(key, {}).get('timingWarning') for key in ('recordingEnd', 'endingPadding'))
+            and (source_path is None or (recipe or {}).get('preservationContract', 0) < 119)):
+        raise ImportFailure('alignment_failed', 'Alternative-recording timing warnings require the original tab and contract 119.')
     if alignment.get('recordingEnd', {}).get('version') == 2 and (source_path is None
             or (recipe or {}).get('preservationContract', 0) < 56
             or not ending_cutoff_allowed(alignment, audio['duration'])):

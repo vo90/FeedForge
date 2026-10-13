@@ -184,6 +184,9 @@ def verify(wanted, alignment, recipe, archive, manifest, check):
         raise ValueError('Ending timing warnings require preservation contract 39.')
     if warning and warning.get('version') == 2 and recipe.get('preservationContract', 0) < 101:
         raise ValueError('Interior padding warnings require preservation contract 101.')
+    if (warning and alignment.get('sourceTiming', {}).get('feature') == 'alternative'
+            and recipe.get('preservationContract', 0) < 119):
+        raise ValueError('Alternative-recording timing warnings require preservation contract 119.')
     from . import cutoff_padding as cp
     combined = cp.selected(alignment)
     mixed = (combined or receipt.get('version') == 2 and receipt.get('policy') == MIXED_POLICY) and receipt.get('trimLongHeldTails') is True

@@ -22,7 +22,7 @@ import yaml
 from .verify_source import UnverifiedFeature, inactive, read_source
 from .verify_timeline import expected
 
-VERSION = 118
+VERSION = 119
 TIME_TOLERANCE = 0.0000011
 TECHNIQUES = {"pm", "mt", "vb", "ghost", "ac", "tp", "lr", "tr", "slp", "plk", "hm", "hp", "hn", "hps", "ho", "po", "ln", "sl", "slu", "slide_out", "slide_out_marks", "slide_in_marks", "pick_scrape_marks", "vibrato_marks", "bn", "pkd"}
 TECHNIQUES.update({"harmonic_target", "harmonic_alias", "whammy", "harmonic_changes"})
@@ -361,7 +361,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
     check.equal("compatibility_count", "import/compatibility", len(rows), report.get("findingCount"))
     # Historical Hybrid and ending contracts share the same inventory schema.
     # Preserve independent checks when extending the preservation contract.
-    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, 89, 90, 91, 92, 93, 94, 98, 104, 105, 106, 107, 108, 113, 114, 116, 117, VERSION):
+    if type(report.get('version')) is not int or report['version'] not in (32, 33, 34, 35, 36, 37, 38, 39, 40, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 87, 88, 89, 90, 91, 92, 93, 94, 98, 104, 105, 106, 107, 108, 113, 114, 116, 117, 118, VERSION):
         check.fail('compatibility_version', 'import/compatibility', 'Unsupported compatibility inventory version.')
     reports_precedence = type(report.get('version')) is int and report['version'] >= 46
     if preservation_contract >= 46 and not reports_precedence:
@@ -843,7 +843,8 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
                            'Uncharted gaps are not supported by the independently read source.'); return None
         from .cutoff_warning import acceptance, matches_recording
         expected_warning = acceptance(stored, alignment)
-        if (recipe.get('preservationContract', 0) < 57 or expected_warning is None
+        minimum_contract = 119 if alignment.get('sourceTiming', {}).get('feature') == 'alternative' else 57
+        if (recipe.get('preservationContract', 0) < minimum_contract or expected_warning is None
                 or not matches_recording(alignment, recipe.get('audioSource', {}))
                 or warning != expected_warning):
             check.fail('ending_warning', 'import', 'The timing warning has no matching source recording evidence.')

@@ -28,7 +28,7 @@ def acceptance(report, alignment):
             or alignment.get('method') != 'songsterr-video-points-v1'
             or alignment.get('mapping') != 'piecewise-linear'
             or timing.get('source') != 'songsterr-video-points'
-            or timing.get('status') != 'done' or timing.get('feature') is not None
+            or timing.get('status') != 'done' or timing.get('feature') not in (None, 'alternative')
             or any(not timing.get(k) or timing[k] != provenance.get(k)
                    for k in ('songId', 'revisionId', 'videoId'))
             or not report.get('mapHash') or report['mapHash'] != provenance.get('mapHash')):

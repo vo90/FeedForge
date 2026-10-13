@@ -18,8 +18,8 @@ from feedback_converter.song_import.verification import verify_import
 from test_songsterr_recording_end import META, VIDEO
 
 
-def policy_inputs():
-    timing={'source':'songsterr-video-points', 'status':'done', 'feature':None, **META, 'videoId':VIDEO}
+def policy_inputs(feature=None):
+    timing={'source':'songsterr-video-points', 'status':'done', 'feature':feature, **META, 'videoId':VIDEO}
     alignment={'method':'songsterr-video-points-v1', 'mapping':'piecewise-linear',
                'sourceTiming':timing, 'provenance':{**META, 'videoId':VIDEO, 'mapHash':'map'}}
     report={'version':'recording-clock-v4', 'status':'inconclusive', 'outroSupported':False,
@@ -29,8 +29,9 @@ def policy_inputs():
     return report, alignment, {'kind':'youtube','videoId':VIDEO}
 
 
-def test_body_support_allows_warning_without_upgrading_evidence():
-    report, alignment, source=policy_inputs(); before=deepcopy(report)
+@pytest.mark.parametrize('feature', [None, 'alternative'])
+def test_body_support_allows_warning_without_upgrading_evidence(feature):
+    report, alignment, source=policy_inputs(feature); before=deepcopy(report)
     accepted=ew.acceptance(report,alignment,source)
     assert accepted['status']=='accepted_with_warning'
     assert accepted['uncertainStart']==80
@@ -39,9 +40,10 @@ def test_body_support_allows_warning_without_upgrading_evidence():
 
 
 @pytest.mark.parametrize('fault', ['mismatch','hidden_mismatch','middle','whole_song','long_ending','missing_end',
-    'missing_start','window_gap','duplicate_windows','no_body','alternative','recording','manual_audio','revision','map','old_clock'])
-def test_warning_is_not_a_general_override(fault):
-    r,a,s=policy_inputs()
+    'missing_start','window_gap','duplicate_windows','no_body','feature_backing','feature_solo','feature_unknown','recording','manual_audio','revision','map','old_clock'])
+@pytest.mark.parametrize('feature', [None, 'alternative'])
+def test_warning_is_not_a_general_override(fault, feature):
+    r,a,s=policy_inputs(feature)
     if fault=='mismatch':r['windows'][-1]['status']='suspected_mismatch'
     elif fault=='hidden_mismatch':r['windows'][-1]['jointEvidence']={'status':'suspected_mismatch'}
     elif fault=='middle':r['windows'][3]['status']='inconclusive'
@@ -53,7 +55,7 @@ def test_warning_is_not_a_general_override(fault):
     elif fault=='window_gap':r['windows'][3]['end']=25
     elif fault=='duplicate_windows':r['windows'].insert(1,deepcopy(r['windows'][0]))
     elif fault=='no_body':r['windows']=r['windows'][-3:]
-    elif fault=='alternative':a['sourceTiming']['feature']='alternative'
+    elif fault.startswith('feature_'):a['sourceTiming']['feature']=fault.removeprefix('feature_')
     elif fault=='recording':s['videoId']='other-video'
     elif fault=='manual_audio':s['kind']='file'
     elif fault=='revision':a['provenance']['revisionId']=-1
@@ -62,8 +64,8 @@ def test_warning_is_not_a_general_override(fault):
     assert ew.acceptance(r,a,s) is None
 
 
-@pytest.fixture(scope='module')
-def warning_package(tmp_path_factory):
+@pytest.fixture(scope='module', params=[None, 'alternative'], ids=['primary', 'alternative-full-mix'])
+def warning_package(tmp_path_factory, request):
     root=tmp_path_factory.mktemp('ending-warning')
     rate,duration=22050,103.9
     frets=np.random.default_rng(901).integers(0,17,416).tolist()
@@ -91,13 +93,13 @@ def warning_package(tmp_path_factory):
     job=root/'job';job.mkdir()
     audio=prepare_audio({'kind':'file','path':str(wav)},job,defer_encoding=True)
     audio['source']={'kind':'youtube','videoId':VIDEO}
-    sync={'version':1,'source':'songsterr-video-points',**META,'videoId':VIDEO,'status':'done','feature':None,'points':list(range(0,105,2))}
+    sync={'version':1,'source':'songsterr-video-points',**META,'videoId':VIDEO,'status':'done','feature':request.param,'points':list(range(0,105,2))}
     alignment=align_from_songsterr(perf,audio,sync,META,allow_padding_candidate=True)
     alignment=ep.authorize(perf,audio,alignment)
     assert alignment['endingPaddingSync']['status']=='inconclusive'
     assert alignment['endingPadding']['timingWarning']['status']=='accepted_with_warning'
     prepared,alignment=finalize(perf,audio,alignment,job)
-    recipe={'preservationContract':39,'audioSource':audio['source'],'preparation':alignment['preparation'],
+    recipe={'preservationContract':119 if request.param == 'alternative' else 39,'audioSource':audio['source'],'preparation':alignment['preparation'],
             'alignment':{'provenance':alignment['provenance'],'endingPadding':alignment['endingPadding']}}
     built=build_feedpak(perf,prepared,alignment,job,output_dir=root/'out',source_path=source,
                         recipe=recipe,compatibility=perf['compatibilityReport'])
@@ -113,15 +115,18 @@ def test_encoded_warning_package_remains_source_verified(warning_package):
     assert alignment['endingPadding']['seconds']==pytest.approx(.1)
 
 
-@pytest.mark.parametrize('fault',['missing_warning','forged_body','claimed_support','old_contract','alternate_recording'])
+@pytest.mark.parametrize('fault',['missing_warning','forged_body','claimed_support','old_contract','alternate_recording','alternative_old_contract'])
 def test_forged_or_hidden_warning_is_rejected(warning_package,tmp_path,fault):
     source,path,original,*_=warning_package;alignment=deepcopy(original)
+    if fault=='alternative_old_contract' and alignment['sourceTiming'].get('feature') != 'alternative':
+        pytest.skip('Contract 119 is required only for alternative-recording warnings.')
     with ZipFile(path) as z:files={name:z.read(name) for name in z.namelist()}
     manifest=yaml.safe_load(files['manifest.yaml']);recipe=manifest['song_import'];receipt=alignment['endingPadding']
     if fault=='missing_warning':receipt.pop('timingWarning')
     elif fault=='forged_body':receipt['timingWarning']['supportedBodyWindows']+=1
     elif fault=='claimed_support':alignment['endingPaddingSync']['status']='supported'
     elif fault=='old_contract':recipe['preservationContract']=38
+    elif fault=='alternative_old_contract':recipe['preservationContract']=118
     elif fault=='alternate_recording':recipe['audioSource']['videoId']='wrong-video'
     receipt['syncEvidenceHash']=ep.rs.digest(alignment['endingPaddingSync'])
     files[recipe['endingPaddingSyncFile']]=json.dumps(alignment['endingPaddingSync']).encode()

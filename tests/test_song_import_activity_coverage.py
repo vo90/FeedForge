@@ -85,7 +85,8 @@ def delayed(warned,tmp_path_factory):
     assert alignment['recordingEnd']['timingWarning']['version']==2
     assert alignment['recordingEnd']['timingWarning'][ac.KEY]['unchartedRanges']==[{'start':0.,'end':8.}]
     assert alignment['recordingSync']['status']!='supported'
-    archive=build(root/'job',source,performance,audio,alignment,100)
+    contract=119 if alignment['sourceTiming'].get('feature') == 'alternative' else 100
+    archive=build(root/'job',source,performance,audio,alignment,contract)
     return source,performance,audio,alignment,archive
 
 
@@ -100,7 +101,8 @@ def test_delayed_source_imports_with_warning_and_independent_audio_check(delayed
 
 def test_new_coverage_requires_new_contract(delayed,tmp_path):
     source,performance,audio,alignment,_=delayed
-    with pytest.raises(ImportFailure,match='contract 100'):
+    minimum=119 if alignment['sourceTiming'].get('feature') == 'alternative' else 100
+    with pytest.raises(ImportFailure,match=f'contract {minimum}'):
         build(tmp_path/'job',source,performance,audio,alignment,99)
 
 
