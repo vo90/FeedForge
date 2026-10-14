@@ -423,8 +423,21 @@ def _endings(raw, loc):
     return frozenset(i + 1 for i in range(16) if mask & (1 << i))
 
 
+def _songsterr_voice_beats(voice, location="voice"):
+    """Independently recognize the player's compact whole-voice rest syntax."""
+    if not isinstance(voice, dict):
+        unsupported(location, "Invalid Songsterr voice.")
+    if "beats" not in voice:
+        if voice.get("rest") is True:
+            return []
+        unsupported(location, "Missing Songsterr beat data.")
+    if not isinstance(voice["beats"], list):
+        unsupported(location, "Invalid Songsterr beat data.")
+    return voice["beats"]
+
+
 def _songsterr_swing_lengths(bar, feel, location):
-    original = [[fraction(b["duration"], location) * 4 for b in v["beats"]] for v in bar["voices"]]
+    original = [[fraction(b["duration"], location) * 4 for b in _songsterr_voice_beats(v)] for v in bar["voices"]]
     if feel in (None, "off"):
         return original
     patterns = {"8th": (F(1, 2), F(2, 3)), "16th": (F(1, 4), F(2, 3)),
@@ -436,7 +449,7 @@ def _songsterr_swing_lengths(bar, feel, location):
     disabled, rows = set(), []
     for voice, lengths in zip(bar["voices"], original):
         starts, cursor = [], F(0)
-        for beat, length in zip(voice["beats"], lengths):
+        for beat, length in zip(_songsterr_voice_beats(voice), lengths):
             starts.append(cursor)
             if not beat.get("graceNote"):
                 if length % half != 0 or feel in ("8th", "16th") and beat.get("tuplet") == 2:
@@ -454,7 +467,7 @@ def _songsterr_swing_lengths(bar, feel, location):
                 return left + remainder * 2 * ratio
             return left + half * 2 * ratio + (remainder - half) * 2 * (1 - ratio)
         output.append([d if b.get("graceNote") else mapped(q + d) - mapped(q)
-                       for b, q, d in zip(voice["beats"], starts, durations)])
+                       for b, q, d in zip(_songsterr_voice_beats(voice), starts, durations)])
     return output
 
 
@@ -819,9 +832,7 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                 unsupported(loc, 'Missing explicit pickup voices.')
             extent = F(0)
             for voice in voices:
-                if not isinstance(voice, dict) or not isinstance(voice.get('beats'), list):
-                    unsupported(loc, 'Invalid explicit pickup voice.')
-                beats = voice['beats']
+                beats = _songsterr_voice_beats(voice)
                 if (len(beats) == 1 and isinstance(beats[0], dict)
                         and beats[0].get('type') == 1 and beats[0].get('rest') is True
                         and fraction(beats[0].get('duration'), loc) == 1
@@ -832,7 +843,7 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                     extent = max(extent, bars[0].length)
                     continue
                 cursor = F(0)
-                for beat in voice['beats']:
+                for beat in _songsterr_voice_beats(voice):
                     if not isinstance(beat, dict):
                         unsupported(loc, 'Invalid explicit pickup beat.')
                     length = 4 * fraction(beat.get('duration'), loc)
@@ -948,7 +959,7 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
             durations = _songsterr_swing_lengths(bar, feel, f'parts/{pi}/measures/{bi}')
             if bounded_measures:
                 for vi, voice in enumerate(bar['voices']):
-                    bs = voice['beats']
+                    bs = _songsterr_voice_beats(voice)
                     dots = _songsterr_dots(bs[0], 'measure-boundary/rest') if len(bs) == 1 else 0
                     written_length = fraction(bs[0]['duration']) * 4 if len(bs) == 1 else F(0)
                     whole_rest = (len(bs) == 1 and bs[0].get('rest') is True and bs[0].get('type') == 1
@@ -962,11 +973,11 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                                 'location': f'parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}',
                                 'measure': bi + 1, 'voice': vi + 1, 'beat': bti + 1,
                                 'action': 'duration_cap', 'duration': str(duration), 'usedDuration': str(bars[bi].length)})
-            values = [_songsterr_beat_clock(v['beats'], bars[bi].length, f'parts/{pi}/measures/{bi}/voices/{vi}',
+            values = [_songsterr_beat_clock(_songsterr_voice_beats(v), bars[bi].length, f'parts/{pi}/measures/{bi}/voices/{vi}',
                                            durations[vi], preceding=previous.get(vi), initial=bi == 0, bounded=bounded_measures)
                       for vi, v in enumerate(bar['voices'])]
             all_times.append(values)
-            previous = {vi: (v['beats'], values[vi], bars[bi].length) for vi, v in enumerate(bar['voices']) if v['beats']}
+            previous = {vi: (_songsterr_voice_beats(v), values[vi], bars[bi].length) for vi, v in enumerate(bar['voices']) if _songsterr_voice_beats(v)}
         if bounded_measures:
             for bi, voices in enumerate(all_times):
                 limit = bars[bi].length
@@ -995,7 +1006,7 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
             atoms, beat_facts = [], []
             for vi, voice in enumerate(bar["voices"]):
                 _active_unknown(voice, {"beats", "rest"}, {"id", "hasSameRhythm"}, f"parts/{pi}/measures/{bi}/voices/{vi}", ignored)
-                if not voice["beats"] and voice.get("rest") is True:
+                if not _songsterr_voice_beats(voice) and voice.get("rest") is True:
                     track.rest_tie_voice_rests.setdefault(bi, []).append({
                         "q": F(0), "length": bars[bi].length, "voice": str(vi),
                         "location": f"parts/{pi}/measures/{bi}/voices/{vi}", "rest": True,
@@ -1003,7 +1014,7 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                                               or value is None or value is False
                                               for key, value in voice.items())})
                 times = all_times[bi][vi]
-                for bti, beat in enumerate(voice["beats"]):
+                for bti, beat in enumerate(_songsterr_voice_beats(voice)):
                     atom_start = len(atoms)
                     loc = f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}"
                     _legacy_beat_tempo(beat, loc)

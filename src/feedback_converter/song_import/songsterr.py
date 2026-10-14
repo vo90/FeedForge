@@ -8,6 +8,7 @@ from copy import deepcopy
 from fractions import Fraction
 
 from .inventory import FeatureInventory
+from .songsterr_fields import voice_beats
 from .model import Measure, Note, Score, ScoreImportError, Track, WrittenBeat, WrittenVoice, integer, rational
 from .songsterr_timing import (part_timing, strum_offsets, uses_legacy_brush_timing,
                               LEGACY_BRUSH_POLICY, FEELS)
@@ -467,13 +468,12 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
                 exc.source_location = {"measure": bi + 1, "location": f"parts/{index}/measures/{bi}"}
                 raise
             for vi, voice in enumerate(measure["voices"]):
-                if not isinstance(voice, dict) or not isinstance(voice.get("beats"), list):
-                    raise ScoreImportError("Missing Songsterr beat data.")
+                beats = voice_beats(voice)
                 timings = measure_clocks[vi]
                 voice_id = f"songsterr:{index}:{bi}:{vi}"
                 inventory.inspect(voice, "Songsterr voice", voice_id, playable={"beats", "rest"}, strict=True)
                 written_voice = WrittenVoice(voice_id, source_index=vi)
-                for beat_index, beat in enumerate(voice["beats"]):
+                for beat_index, beat in enumerate(beats):
                     beat_id = f"{voice_id}:{beat_index}"
                     validate_legacy_metadata(beat, "beat")
                     inventory.inspect(beat, "Songsterr beat", beat_id,

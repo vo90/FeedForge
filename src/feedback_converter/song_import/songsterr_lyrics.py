@@ -8,6 +8,7 @@ pinned public-player comparison fixtures before changing these rules.
 from fractions import Fraction
 import re
 
+from .songsterr_fields import voice_beats
 from .model import ScoreImportError, integer, rational
 from .songsterr_timing import part_timing
 
@@ -108,7 +109,7 @@ def assign(part, text, offset, *, policy=POLICY):
     cursor, previous = 0, None
     rows = []
     for measure_index, measure in enumerate(part['measures']):
-        beats = measure['voices'][0]['beats']
+        beats = voice_beats(measure['voices'][0])
         output = []
         for beat in beats:
             value, position, consumed_skip, line_end = '', None, False, False
@@ -199,7 +200,7 @@ def legacy_assign(part, measures):
                 positions[q] = text
             q += duration
         q, slots = Fraction(0), []
-        for beat in bar['voices'][0]['beats']:
+        for beat in voice_beats(bar['voices'][0]):
             text = positions.pop(q, '') if not beat.get('graceNote') else ''
             if text and beat.get('rest'):
                 raise ValueError('Legacy lyric falls on a rest.')
@@ -249,7 +250,7 @@ def written(document, lengths, *, policy=POLICY):
         for bi, slots in enumerate(assigned):
             for beat_index, slot in enumerate(slots):
                 q, length, _ = clocks[bi][0][beat_index]
-                beat = part['measures'][bi]['voices'][0]['beats'][beat_index]
+                beat = voice_beats(part['measures'][bi]['voices'][0])[beat_index]
                 text = slot['text'].strip()
                 if len(text) > 200 or any(ord(c) < 32 for c in text if c not in '\n\r\t'):
                     raise ValueError('Unsupported lyric text/control characters.')

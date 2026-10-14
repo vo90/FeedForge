@@ -1,6 +1,7 @@
 """Explicit opening-bar duration, separate from its written time signature."""
 from fractions import Fraction
 
+from .songsterr_fields import voice_beats
 from .model import ScoreImportError, rational
 from .songsterr_fields import whole_measure_rest
 
@@ -20,13 +21,11 @@ def opening_length(parts, nominal):
             raise ScoreImportError('A pickup has no explicit voice duration.')
         totals = []
         for voice in voices:
-            if not isinstance(voice, dict) or not isinstance(voice.get('beats'), list):
-                raise ScoreImportError('A pickup has invalid beat data.')
-            if whole_measure_rest(voice['beats']):
+            if whole_measure_rest(voice_beats(voice)):
                 totals.append(nominal)
                 continue
             total = Fraction(0)
-            for beat in voice['beats']:
+            for beat in voice_beats(voice):
                 if not isinstance(beat, dict):
                     raise ScoreImportError('A pickup has invalid beat data.')
                 length = rational(beat.get('duration'), 'pickup beat duration') * 4

@@ -6,6 +6,7 @@ All offsets remain rational until the audio clock is applied.
 from fractions import Fraction as F
 import math
 
+from .songsterr_fields import voice_beats
 from .model import ScoreImportError, integer, rational
 from .songsterr_fields import whole_measure_rest, bounded_dotted_whole_rest, effective_dots
 
@@ -21,8 +22,6 @@ LEGACY_BRUSH_POLICY = "native-legacy-brush-v1"
 
 def measure_timing(measure, bar_length, feel, previous=None, initial=False, initial_caps=None):
     """Swing exemptions are shared by all voices of this source part."""
-    if any(not isinstance(v, dict) or not isinstance(v.get("beats"), list) for v in measure["voices"]):
-        raise ScoreImportError("Missing Songsterr beat data.")
     def clock(vi, beats, lengths=None):
         raw = lengths if lengths is not None else [rational(b.get('duration'), 'beat duration') * 4 for b in beats]
         # The native player caps individual durations before laying out beats.
@@ -35,14 +34,14 @@ def measure_timing(measure, bar_length, feel, previous=None, initial=False, init
         return voice_timing(beats, bar_length, [min(d, bar_length) for d in raw],
                             previous=(previous or {}).get(vi), initial=initial)
     if feel in (None, "off"):
-        return [clock(vi, v['beats']) for vi, v in enumerate(measure['voices'])]
+        return [clock(vi, voice_beats(v)) for vi, v in enumerate(measure['voices'])]
     if feel not in FEELS:
         raise ScoreImportError("Unknown authored swing feel.")
     step, first, second = FEELS[feel]
     excluded, voices = set(), []
     for voice in measure["voices"]:
         cursor, rows = F(0), []
-        for b in voice["beats"]:
+        for b in voice_beats(voice):
             length = rational(b.get("duration"), "beat duration") * 4
             rows.append((cursor, length))
             if not b.get("graceNote"):
@@ -60,8 +59,8 @@ def measure_timing(measure, bar_length, feel, previous=None, initial=False, init
             local = q - start
             return start + (local * first if local <= step else step * first + (local - step) * second)
         lengths = [length if b.get("graceNote") else swung(q + length) - swung(q)
-                   for b, (q, length) in zip(voice["beats"], rows)]
-        clocks.append(clock(vi, voice['beats'], lengths))
+                   for b, (q, length) in zip(voice_beats(voice), rows)]
+        clocks.append(clock(vi, voice_beats(voice), lengths))
     return clocks
 
 
@@ -81,13 +80,13 @@ def part_timing(measures, lengths, *, adjustments=None):
             exc.source_location = {'measure': bi + 1}
             raise
         clocks.append(values)
-        previous = {vi: (v["beats"], values[vi], length) for vi, v in enumerate(measure["voices"])
-                    if v["beats"]}
+        previous = {vi: (voice_beats(v), values[vi], length) for vi, v in enumerate(measure["voices"])
+                    if voice_beats(v)}
     # Songsterr bounds durations after grace borrowing. Do not clamp earlier:
     # a following before-beat grace group can still borrow from this beat.
     for bi, (measure, length, voices) in enumerate(zip(measures, lengths, clocks)):
         for vi, (voice, times) in enumerate(zip(measure['voices'], voices)):
-            for bti, (beat, (start, duration, written)) in enumerate(zip(voice['beats'], times)):
+            for bti, (beat, (start, duration, written)) in enumerate(zip(voice_beats(voice), times)):
                 action = 'omit' if start >= length else 'clip' if start + duration > length else None
                 if action:
                     used = duration if action == 'omit' else max(F(0), length - start)

@@ -19,7 +19,7 @@ from zipfile import BadZipFile, ZipFile
 
 import yaml
 
-from .verify_source import UnverifiedFeature, inactive, read_source
+from .verify_source import UnverifiedFeature, inactive, read_source, _songsterr_voice_beats
 from .verify_timeline import expected
 
 VERSION = 125
@@ -589,7 +589,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
                 if not _program_instrument(meta):
                     continue
                 for vi, voice in enumerate(bar["voices"]):
-                    for bti, beat in enumerate(voice["beats"]):
+                    for bti, beat in enumerate(_songsterr_voice_beats(voice)):
                         where = path + f"/voices/{vi}/beats/{bti}"
                         retained_metadata(beat, 'tempo', 'beat', where)
                         # Account for retained legacy beat vibrato limitations

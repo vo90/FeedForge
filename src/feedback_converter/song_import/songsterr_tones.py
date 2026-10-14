@@ -8,6 +8,7 @@ from fractions import Fraction as F
 import hashlib
 import json
 
+from .songsterr_fields import voice_beats
 from .model import ScoreImportError, integer, rational
 from .songsterr_trills import resolution
 
@@ -100,7 +101,7 @@ def read(part, meta, measures, clocks, index, song_id, inventory, all_measures):
             if voice.get('rest'):
                 continue
             cursor = 0.
-            for beat, (start, _, _) in zip(voice['beats'], clocks[bi][vi]):
+            for beat, (start, _, _) in zip(voice_beats(voice), clocks[bi][vi]):
                 if start >= bar.length:
                     continue
                 if cursor == tick and not beat.get('rest'):

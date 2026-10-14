@@ -5,6 +5,16 @@ import math
 from .model import ScoreImportError, integer, rational
 
 
+def voice_beats(voice):
+    """Read compact explicit silence without rewriting the archived voice."""
+    if isinstance(voice, dict):
+        if "beats" not in voice and voice.get("rest") is True:
+            return []
+        if isinstance(voice.get("beats"), list):
+            return voice["beats"]
+    raise ScoreImportError("Missing Songsterr beat data.")
+
+
 def validate_octave_clef(value):
     """Ottava is source notation; explicit string/fret/tuning already give pitch.
 
