@@ -223,6 +223,9 @@ def _lookup_recordings(client, metadata):
             # might return only part of the catalogue. Keep input metadata intact.
             records = _search(client, title, metadata['artist'], versions, artist_ids)
             matches = [r for r in records if _matches(r, metadata, title, versions, details, artist_ids)]
+    if not identifier and not matches:
+        from .recording_aliases import resolve
+        matches = resolve(client, metadata, title, versions, details, artist_ids)
     return matches, title, versions, audio, credit_resolution, video_resolution
 
 
@@ -572,6 +575,9 @@ def select_album(client, metadata, *, album_hint=None):
         group['albumCandidateChecks'] = [exc.evidence]
     group['lookupTitle'] = title
     group['versions'] = sorted(versions)
+    aliases = getattr(client, 'recording_aliases', {})
+    if any(identifier in aliases for identifier in group['records']):
+        group['recordingAliasResolution'] = [aliases[identifier] for identifier in sorted(group['records']) if identifier in aliases]
     if credit_resolution:
         group['artistCreditResolution'] = credit_resolution['proof']
     if video_resolution:

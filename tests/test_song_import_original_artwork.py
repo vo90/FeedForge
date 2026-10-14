@@ -107,7 +107,7 @@ def test_shared_budget_is_not_reset_for_fallback(tmp_path, monkeypatch):
     network = Network()
     result = network.resolve(tmp_path, title="Example Song (Acoustic)")
     assert result["status"] != "matched"
-    assert result["provenance"]["originalSongArtworkAttempt"]["reason"] == "lookup_budget_exceeded"
+    assert result["reason"] == "lookup_budget_exceeded"
     assert len(network.calls) == 2
 
 
