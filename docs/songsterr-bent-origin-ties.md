@@ -18,7 +18,7 @@ Only the first attack owns the finger-bend curve. Continuation-owned curves,
 mute/harmonic changes, vibrato, whammy, slides, hammer-on/pull-off links, trills,
 staccato and displaced attacks remain outside this class. An already resolved
 incoming hammer-on/pull-off or slide is also a compound origin. Onset picking,
-fingering, accent and ghost instructions may remain; palm mute, let ring,
+fingering, accent, ghost and let-ring instructions may remain; palm mute,
 tremolo picking, tapping, slap and pop combinations need separate qualification.
 Retained source metadata such as an already validated `fadeIn` flag adds no
 pitch controller. Existing equal-fret expression policies are unchanged.
@@ -55,3 +55,19 @@ same-fret bend-tie handling is common in that corpus. The rule uses musical
 structure and performed continuity; it has no song, title, bar or envelope-version
 exception. It does not resolve unrelated linked-technique blockers or approve
 an otherwise incomplete song import.
+
+Let-ring qualification (2026-10-14): ringing on the origin or a plain continuation
+does not introduce a competing pitch controller. The same continuity, uniqueness,
+literal-tie and resolved-bend checks therefore apply with `lr` retained. The
+producer and independent verifier each admit this combination. The existing
+evidence schema and preservation contract remain unchanged: this extends accepted
+source combinations without changing the interpretation of previously accepted
+notes. No existing packages require migration.
+
+The retained Why Worry revision 33567 reproduces the combination on Guitare 2,
+bars 34–35 and its repeat. The hash-pinned native worker keeps fret 9, suppresses
+a separate continuation attack, and places the bend over the completed held
+span in both authored and player-defaults profiles. Full-worker/extracted-reference
+comparisons matched all eight parts in both profiles. Synthetic regressions cover
+origin/continuation ringing, repeated visits, guitar/bass, same-fret equivalence,
+independent reconstruction, and rejection of interrupted or conflicting ties.

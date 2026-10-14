@@ -7,9 +7,9 @@ BEND_RULE = 'plain-tie-keeps-bent-attack-target'
 
 
 def _ordinary_bend_segment(note):
-    # Onset instructions and emphasis do not add a controller. Other
+    # Onset instructions, emphasis and let-ring do not add a pitch controller. Other
     # combinations retain their existing, separately qualified policies.
-    allowed = {'pkd', 'fg', 'ac', 'ghost'}
+    allowed = {'pkd', 'fg', 'ac', 'ghost', 'lr'}
     return not (note.hopo or note.slide or note.slide_in or note.pick_scrape
                 or note.whammy or note.trill or note.staccato or note.attack_offset
                 or any(value and key not in allowed for key, value in note.effects.items()))

@@ -243,7 +243,7 @@ def test_continuation_owned_bend_is_not_initial_bend_identity(owner):
 
 
 @pytest.mark.parametrize('field,value', [('tremoloBar',{'points':[{'position':0,'tone':0},{'position':60,'tone':100}]}),
-                                        ('vibratoWithTremoloBar','slight'),('palmMute',True),('letRing',True),('tremolo',16),('tap',True)])
+                                        ('vibratoWithTremoloBar','slight'),('palmMute',True),('tremolo',16),('tap',True)])
 @pytest.mark.parametrize('origin', [False,True])
 def test_inherited_expression_compounds_stay_guarded(field,value,origin):
     document = source()

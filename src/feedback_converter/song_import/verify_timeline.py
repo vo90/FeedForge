@@ -26,7 +26,8 @@ def _direction_boundaries(spans):
 
 def _plain_bend_segment(atom):
     """A finger-bend segment carries no independent pitch controller."""
-    onset = {'pkd', 'fg', 'ac', 'ghost'}
+    # Ringing preserves the held pitch; it does not own another bend controller.
+    onset = {'pkd', 'fg', 'ac', 'ghost', 'lr'}
     return not (atom.hopo_origin or atom.hopo_destination or atom.slide or atom.slide_in
                 or atom.pick_scrape or atom.whammy or atom.trill or atom.staccato
                 or atom.attack_offset or atom.pitch_offset or atom.finger_vibrato
@@ -38,7 +39,7 @@ def _bent_tie_origin(origin):
     """Independently establish one initial bend and a plain held history."""
     entries = origin.get('bend_atoms', ())
     if (not entries or origin.get('trill') or origin.get('linked')
-            or any(value and key not in {'pkd', 'fg', 'ac', 'ghost'}
+            or any(value and key not in {'pkd', 'fg', 'ac', 'ghost', 'lr'}
                    for key, value in origin['effects'].items())):
         return False
     first = entries[0][0]

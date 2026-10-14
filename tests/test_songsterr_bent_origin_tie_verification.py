@@ -204,9 +204,13 @@ def test_tempo_and_recording_clock_independently_map_the_complete_bent_hold(tmp_
     'attack', 'ledger_clock', 'missing_curve', 'curve_value', 'curve_clock', 'bend_clock',
     'missing_bend_receipt', 'bend_source', 'bend_hash', 'missing_source', 'source_bytes',
     'extra_attack', 'notation_fret', 'notation_midi', 'contract92', 'contract_float', 'inventory92'])
-def test_bent_archive_independently_binds_identity_curve_clock_notation_and_contract(tmp_path, fault):
+@pytest.mark.parametrize('let_ring', [False, True])
+def test_bent_archive_independently_binds_identity_curve_clock_notation_and_contract(tmp_path, fault, let_ring):
     from feedback_converter.chart_guidance import finalize
-    path, archive, alignment = make_package(tmp_path, source())
+    raw = source()
+    if let_ring:
+        raw['parts'][0]['measures'][0]['voices'][0]['beats'][0]['letRing'] = True
+    path, archive, alignment = make_package(tmp_path, raw)
     result = verify_import(path, archive, alignment)
     assert result['status'] == 'passed', result
     assert 'bent_origin_tie_identity' in result['scope']
