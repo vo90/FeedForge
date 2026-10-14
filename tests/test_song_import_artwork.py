@@ -212,7 +212,8 @@ def test_wrong_artist_title_or_recording_version_does_not_match(tmp_path, candid
     network.records = [candidate]
     result = network.resolve(tmp_path)
     assert result["status"] == "unavailable"
-    assert len(network.calls) == 1
+    assert len(network.calls) == 3  # Title search, alias search, alias verification.
+    assert not any('coverartarchive.org' in c['url'] for c in network.calls)
 
 
 def test_explicit_live_recording_uses_compatible_live_album(tmp_path):

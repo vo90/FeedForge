@@ -145,7 +145,9 @@ def test_compilation_after_original_song_miss_retains_version_context(tmp_path):
     assert_artwork_only(result)
     assert 'recording_not_found' in json.dumps(result['provenance'])
     assert 'album_not_found' in json.dumps(result['provenance'])
-    assert len(recording_searches(network)) == 2
+    searches = recording_searches(network)
+    assert len(searches) == 3
+    assert sum('alias%3A' in c['url'] for c in searches) == 1
 
 
 def test_verified_specific_album_metadata_survives_compilation_image_fallback(tmp_path):
@@ -523,7 +525,7 @@ def test_previous_policy_original_song_album_miss_retries_without_broad_recordin
     assert network.calls
 
 
-@pytest.mark.parametrize('reason', ['recording_not_found', 'artist_ambiguous', 'album_ambiguous',
+@pytest.mark.parametrize('reason', ['artist_ambiguous', 'album_ambiguous',
                                   'incomplete_catalogue', 'lookup_budget_exceeded', 'service_unavailable'])
 def test_previous_policy_unrelated_negative_cache_remains_reusable(tmp_path, reason):
     network = CompilationNetwork()

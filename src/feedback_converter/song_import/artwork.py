@@ -570,6 +570,8 @@ def _cache_read(cache, key, now, *, max_age=None):
             return None
         if result.get('reason') == 'album_track_unconfirmed' and saved.get('officialReleaseDateVersion') != 1:
             return None
+        if result.get('reason') == 'recording_not_found' and saved.get('recordingAliasVersion') != 1:
+            return None
         # Recheck only misses eligible for the new artwork-only policy. Keep
         # successful covers and unsafe/unrelated negative outcomes reusable.
         from .compilation_artwork import compilation_cache_miss_eligible
@@ -608,7 +610,7 @@ def _cache_write(cache, key, result, raw, now):
                 temporary.unlink(missing_ok=True)
         _atomic_json(cache / f"{key}.json", {"version": POLICY_VERSION, "recordingPaginationVersion": 1,
                                            "albumCandidateVersion": 1, "officialReleaseDateVersion": 1,
-                                           "compilationArtworkVersion": 1, "createdAt": now(),
+                                           "compilationArtworkVersion": 1, "recordingAliasVersion": 1, "createdAt": now(),
                                            "ttl": 30 * 86400 if raw else (300 if result.get('reason') in {'service_unavailable', 'lookup_budget_exceeded'} else 86400), "result": result})
     except OSError:
         pass  # A cache is optional; never lose a fetched cover because it is unwritable.
@@ -750,6 +752,9 @@ def _matched_album_cover(client, group, values, cache, now):
                   "versions": group["versions"], "trackEvidence": group["trackEvidence"]}
     if group.get("artistCreditResolution"):
         provenance["artistCreditResolution"] = group["artistCreditResolution"]
+    if group.get('recordingAliasResolution'):
+        provenance['recordingAliasResolution'] = group['recordingAliasResolution']
+        provenance['matchBasis'] = 'artist-recording-alias-version-album-track'
     if group.get("artistVideoResolution"):
         provenance["artistVideoResolution"] = group["artistVideoResolution"]
     if group.get("albumCandidateChecks"):
