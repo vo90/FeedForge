@@ -5,6 +5,7 @@ import hashlib
 import http.client
 import importlib.util
 import ipaddress
+import math
 import os
 from pathlib import Path
 import shutil
@@ -13,9 +14,20 @@ import subprocess
 import urllib.parse
 import urllib.request
 from .transport import classify
+from .audio_limits import MIN_DURATION, MAX_DURATION, DURATION_MESSAGE
 
 MAX_BYTES = 512 * 1024 * 1024
-MAX_DURATION = 1200.0
+
+def _metadata_duration(info):
+    """Unknown duration defers to decoded samples; known invalid values never do."""
+    duration = info.get("duration")
+    if duration is None:
+        return
+    if (type(duration) not in (int, float) or not math.isfinite(duration)
+            or not MIN_DURATION <= duration <= MAX_DURATION):
+        raise ImportFailure("needs_audio", DURATION_MESSAGE,
+                            {"audioDurationLimit": {"minimumSeconds": MIN_DURATION,
+                                                    "maximumSeconds": MAX_DURATION}})
 
 
 class ImportFailure(ValueError):
@@ -112,8 +124,15 @@ def _download_youtube(url: str, directory: Path, tools: dict, *, managed_retries
         if managed_retries:
             command += ["--fragment-retries", "0", "--extractor-retries", "0", "--file-access-retries", "0", "--abort-on-unavailable-fragments"]
         command += ["--", url]
-        _run(command, 240, retrieval=True)
         import json
+        # Qualify metadata before media transfer on the executable path too.
+        # Do not use a filter that silently skips and reports missing output.
+        probe = _run(command[:-2] + ["--skip-download", "--no-write-info-json", "--dump-single-json"] + command[-2:], 240, retrieval=True)
+        info = json.loads(probe.stdout)
+        if not isinstance(info, dict) or info.get("_type") in {"playlist", "multi_video"}:
+            raise ImportFailure("needs_audio", "Select one recording, not a playlist.")
+        _metadata_duration(info)
+        _run(command, 240, retrieval=True)
         info = json.loads((directory / "download.info.json").read_text(encoding="utf-8"))
     else:
         import yt_dlp
@@ -121,7 +140,7 @@ def _download_youtube(url: str, directory: Path, tools: dict, *, managed_retries
                    "quiet": True, "noprogress": True, "logtostderr": True,
                    "socket_timeout": 30, "retries": 2, "fragment_retries": 2,
                    "max_filesize": MAX_BYTES, "ffmpeg_location": ffmpeg,
-                   "match_filter": lambda info, **_: "Recording is too long" if float(info.get("duration") or 0) > MAX_DURATION else None}
+                   "match_filter": lambda info, **_: _metadata_duration(info)}
         if runtime:
             kind, _, runtime_path = str(runtime).partition(":")
             options["js_runtimes"] = {kind: {"path": runtime_path} if runtime_path else {}}
@@ -130,11 +149,14 @@ def _download_youtube(url: str, directory: Path, tools: dict, *, managed_retries
         try:
             with yt_dlp.YoutubeDL(options) as downloader:
                 info = downloader.extract_info(url, download=True)
+        except ImportFailure:
+            raise
         except Exception as exc:
             raise ImportFailure("needs_audio", "YouTube audio is unavailable. Choose another link or a local audio file.",
                                 transport=classify(exc, service="youtube", downloader=True)) from exc
     if not isinstance(info, dict) or info.get("_type") in {"playlist", "multi_video"}:
         raise ImportFailure("needs_audio", "Select one recording, not a playlist.")
+    _metadata_duration(info)
     candidates = [p for p in directory.glob("download.*") if p.suffix not in {".json", ".part", ".ytdl"}]
     if len(candidates) != 1:
         raise ImportFailure("needs_audio", "The audio download did not produce one complete recording.")
@@ -183,8 +205,10 @@ def prepare_audio(audio: dict | None, directory: Path, tools: dict | None = None
     try:
         with sf.SoundFile(decode_path) as reader:
             duration = len(reader) / reader.samplerate
-            if not 2.0 <= duration <= MAX_DURATION or not 1 <= reader.channels <= 2:
-                raise ImportFailure("needs_audio", "Choose a mono or stereo recording between 2 seconds and 20 minutes.")
+            if not MIN_DURATION <= duration <= MAX_DURATION:
+                raise ImportFailure("needs_audio", DURATION_MESSAGE)
+            if not 1 <= reader.channels <= 2:
+                raise ImportFailure("needs_audio", "Choose a mono or stereo recording.")
             target = directory / ("analysis.wav" if defer_encoding else "full.ogg")
             peak = 0.0
             with sf.SoundFile(target, "w", samplerate=reader.samplerate, channels=reader.channels,
