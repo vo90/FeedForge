@@ -1004,6 +1004,8 @@ def _ending_adjustments(wanted, alignment, recipe, archive, duration, source, ch
         check.equal("ending_audio_identity", "import/recording-sync", stored.get("audioSha256"), hashlib.sha256(audio_bytes).hexdigest())
         if not check.total_errors:
             offset=alignment.get('preparation',{}).get('seconds',0)
+            from .local_sync import nonempty_acoustic_tracks
+            tracks = nonempty_acoustic_tracks(tracks)
             fresh = assess(tracks, io.BytesIO(audio_bytes), duration, alignment["provenance"]["mapHash"],
                            **({'analysis_origin':offset} if offset else {}), clock_version=stored['version'])
             timing["independentAudioMatchAssessed"] = True

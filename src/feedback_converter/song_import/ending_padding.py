@@ -164,7 +164,7 @@ def verify(wanted, alignment, recipe, archive, manifest, check):
         if any(recipe.get(k) for k in ('endingPaddingFile', 'endingPaddingSyncFile')) or alignment.get('endingPaddingSync'):
             check.fail('ending_padding_unexpected', 'import', 'Undeclared ending padding evidence.')
         return
-    from .local_sync import tracks_from_expected, _hash
+    from .local_sync import tracks_from_expected, nonempty_acoustic_tracks, _hash
     from .preparation import recording_view
     check.equal('ending_padding_receipt', 'import/ending-padding', receipt,
                 json.loads(archive.read(recipe['endingPaddingFile'])))
@@ -211,7 +211,7 @@ def verify(wanted, alignment, recipe, archive, manifest, check):
             or not 0 < frames <= MAX_SECONDS * rate or original_frames <= 0):
         raise ValueError('Invalid ending padding sample count.')
     duration = original_frames / rate
-    tracks = original_tracks(tracks_from_expected(wanted), prep['seconds'])
+    tracks = original_tracks(nonempty_acoustic_tracks(tracks_from_expected(wanted)), prep['seconds'])
     if combined:
         # Independently partition source events at the original sample boundary.
         partition = cp.retained(tracks, duration)

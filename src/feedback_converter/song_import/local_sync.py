@@ -415,6 +415,16 @@ def tracks_from_expected(wanted):
     return tracks
 
 
+def nonempty_acoustic_tracks(tracks):
+    """Match rendered track selection without changing source coverage.
+
+    Inspect the complete independently reconstructed event list, not activity
+    in one analysis window or the archived report. Muted and unplayable source
+    events still count; only wholly empty parts have no acoustic report row.
+    """
+    return [track for track in tracks if track['events']]
+
+
 def independent_tracks(source, *, pending_hopo_ties=True, pending_slide_ties=True, rest_bridge_ties=True):
     from .verify_timeline import expected, Clock, visits
     wanted=expected(source,{'offset':0,'scale':1},pending_hopo_ties=pending_hopo_ties, pending_slide_ties=pending_slide_ties,
