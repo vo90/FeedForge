@@ -6,7 +6,8 @@ parser and independent verifier still validate every supported representation.
 from copy import deepcopy
 import json
 import math
-from .songsterr_harmonics import exact_natural, natural_alias, source_target, artificial_playback_fallback
+from .songsterr_harmonics import (exact_natural, natural_alias, source_target, artificial_playback_fallback,
+    natural_playback_fallback, natural_shorthand, NATURAL_FALLBACK_MESSAGE, NATURAL_SHORTHAND_MESSAGE)
 from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
 from .songsterr_fields import validate_sustain_pedal, effective_dots, validate_bend_point_vibrato, validate_octave_clef
@@ -18,7 +19,7 @@ from .songsterr_legacy_effects import (FIELDS as LEGACY_BEAT_EFFECTS, beat_effec
 from .model import ScoreImportError, integer, rational
 from .songsterr_dynamics import note_dynamic, note_dynamics, DISPLAY_LIMITATION, RETAINED_MESSAGE
 
-VERSION = 124
+VERSION = 125
 TARGET = {"feedpak": "1.16.0", "notation": 1,
           "gameVersion": "not_detected", "assessment": "converter_capabilities"}
 KNOWN = {
@@ -253,6 +254,8 @@ def inspect_songsterr(document, *, track_indices=None, note_owned_vibrato=True):
                             message="Invalid rasgueado flag; expected a boolean.",
                             location=path + "/" + key, value=value, **coordinates)
                 continue
+            if scope == "note" and key == "harmonicFret" and natural_playback_fallback(obj):
+                continue  # One warning at the harmonic instruction, not one per field.
             if scope == "note" and key == "harmonicFret" and (exact_natural(obj) or source_target(obj)):
                 interpretation = ("Artificial harmonic: the tab does not specify a recognised touch position. "
                                   "Songsterr's fallback pitch is two octaves above the fretted note; "
@@ -449,6 +452,15 @@ def inspect_songsterr(document, *, track_indices=None, note_owned_vibrato=True):
                         inspect(note, "note", npath, nc)
                         if not isinstance(note, dict):
                             continue
+                        if not beat.get('rest'):
+                            if natural_playback_fallback(note):
+                                add_finding(report, feature='note.natural_harmonic_fallback', category='game_limitation',
+                                    impact='display_or_expression', message=NATURAL_FALLBACK_MESSAGE,
+                                    location=npath + '/harmonic', value=note['harmonic'], **nc)
+                            elif natural_shorthand(note):
+                                add_finding(report, feature='note.natural_harmonic_shorthand', category='source_interpretation',
+                                    impact='source_retained', message=NATURAL_SHORTHAND_MESSAGE,
+                                    location=npath + '/harmonic', value=note['harmonic'], **nc)
                         visual_scrape = note.get('dead') is True and note.get('pickScrape') in ('up', 'down')
                         negative_mute = (type(note.get('fret')) is int and note['fret'] == -1
                                          and note.get('dead') is True)

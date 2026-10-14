@@ -73,8 +73,12 @@ def test_retained_beat_effects_use_the_qualified_native_clock_and_note_effects(r
     # qualifies this ordinary held bend; its dedicated new fixture covers
     # current curves and notation independently of historical naturalTargets.
     newly_qualified_bend = row['id'] == 'legacy-beat-effects/guard/fade/bent-zero-tie'
-    disposition = 'rendered' if newly_qualified_bend else row['expectedDisposition']
-    if newly_qualified_bend:
+    # Contract125 additionally qualifies the integer fret6 shorthand. Preserve
+    # the captured contract91 disposition; the new reference qualifies its
+    # physical touch5.8 and pitch34 above the open string below.
+    newly_qualified_natural = row['id'] == 'legacy-beat-effects/guard/harmonic/unsupported-node'
+    disposition = 'rendered' if newly_qualified_bend or newly_qualified_natural else row['expectedDisposition']
+    if newly_qualified_bend or newly_qualified_natural:
         assert row['guardOnly'] is True and row['expectedDisposition'] == 'blocked'
     assert actual['converter']['status'] == actual['independent']['status'] == disposition, actual
     for profile in PROFILES:
@@ -225,3 +229,21 @@ def test_historical_bent_zero_tie_guard_is_now_qualified_as_plain_held_bend():
         assert identity['authored'] == {'fret':0} and identity['used'] == {'fret':5}
     assert produced['fingerBendTimingEvidence'][0]['status'] == 'resolved'
     assert len(note['source_ids']) == 2 and source == before
+
+
+def test_historical_fret_six_guard_uses_the_new_precise_shorthand_qualification():
+    row = next(row for row in ROWS if row['id'] == 'legacy-beat-effects/guard/harmonic/unsupported-node')
+    assert row['guardOnly'] is True and row['expectedDisposition'] == 'blocked'
+    reference = json.loads((FIXTURE_PATH.parent/'songsterr_natural_playback_reference.json').read_text())
+    native, = [item for item in reference['rows'] if item['fret'] == 6]
+    assert reference['policy'] == 'songsterr-natural-playback-v1'
+    assert native['disposition'] == 'precise-shorthand' and native['direct']['applied'] is True
+    assert native['fret'] + native['direct']['notes'][0]['interval'] == 34
+    source = deepcopy(row['source'])
+    produced = render(parse(source))['tracks'][0]
+    checked = expected(songsterr(source), {'offset': 0, 'scale': 1})['parts'][0]
+    note, = produced['notes']
+    independent_note, = [entry['note'] for entry in checked['notes']]
+    for target in (note, independent_note):
+        assert (target['f'], target['hn'], target['hps'], target['hm']) == (6, 5.8, 34, True)
+    assert source == row['source']

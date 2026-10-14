@@ -1,0 +1,1640 @@
+{
+  "version": 1,
+  "policy": "songsterr-natural-playback-v1",
+  "pinnedWorkerSha256": "4219f9dbf0952af83be36c8b590f10fea7a0f36d72bd1f92297a3d768f93f5ab",
+  "currentWorkerSha256": "a7f191f19196af972bd61ed5f9c67a6b63151fc8b0b8a1f665061a0cb493c980",
+  "limits": "Synthetic natural frets 0..24, standard tuning and capo0. Current complete worker direct Harmonics stage; pinned complete/extracted/runner full-score equivalence for 15 admitted shorthand/ordinary cases across three profiles. No current full-score, acoustic, real-song or game-equivalence claim. Fret0 and unspecified transforms remain guarded; known19/24 remain precise harmonics.",
+  "summary": {
+    "direct": 25,
+    "fullScorePairs": 45,
+    "comparisons": 90,
+    "matched": 90
+  },
+  "rows": [
+    {
+      "fret": 0,
+      "direct": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 0,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "disposition": "existing-or-guarded"
+    },
+    {
+      "fret": 1,
+      "direct": {
+        "applied": false,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 1,
+            "pitch": 69,
+            "interval": 0,
+            "disallowOpenString": false
+          }
+        ]
+      },
+      "disposition": "ordinary-playback",
+      "profiles": {
+        "authored": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 1,
+              "sourceFret": 1,
+              "pitch": 60,
+              "originalPitch": 60,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "cb29dcee19c408a6c51cd928a72974bb19999216d636522603274473618e2c55",
+          "generatedFinalSha256": "a6208957dfe421360138549ebd18e9c7f97725bf961304839b7fd6691a320a1f"
+        },
+        "legacy-brush-authored-v1": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 1,
+              "sourceFret": 1,
+              "pitch": 60,
+              "originalPitch": 60,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "cb29dcee19c408a6c51cd928a72974bb19999216d636522603274473618e2c55",
+          "generatedFinalSha256": "a6208957dfe421360138549ebd18e9c7f97725bf961304839b7fd6691a320a1f"
+        },
+        "player-defaults": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 1,
+              "sourceFret": 1,
+              "pitch": 60,
+              "originalPitch": 60,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "b59da2647a75fb00a739890b575bcc547270f868847ad44147b66bd90623cf06",
+          "generatedFinalSha256": "cd533fcbe35f5cca4f1cd451c1db0e74c49d9578d667c1307d608ba4b47133b4"
+        }
+      }
+    },
+    {
+      "fret": 2,
+      "direct": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 2,
+            "pitch": 103,
+            "interval": 34,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "disposition": "precise-shorthand",
+      "profiles": {
+        "authored": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 2,
+              "sourceFret": 2,
+              "pitch": 95,
+              "originalPitch": 61,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": true
+            }
+          ],
+          "scheduledSha256": "fbfd7463f36e3fbd8664d0101d0adc31b6af644c833766c70465b6d74b29fb00",
+          "generatedFinalSha256": "b8225feec80a53f6264377c4ff6b94e31e2b5230787e416765b717b2e49a276f"
+        },
+        "legacy-brush-authored-v1": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 2,
+              "sourceFret": 2,
+              "pitch": 95,
+              "originalPitch": 61,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": true
+            }
+          ],
+          "scheduledSha256": "fbfd7463f36e3fbd8664d0101d0adc31b6af644c833766c70465b6d74b29fb00",
+          "generatedFinalSha256": "b8225feec80a53f6264377c4ff6b94e31e2b5230787e416765b717b2e49a276f"
+        },
+        "player-defaults": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 2,
+              "sourceFret": 2,
+              "pitch": 47,
+              "originalPitch": 61,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "1358efe0c6b5bc8444cfd110e3d443f448cdf8f5d6800cf7865e5e55913f86c5",
+          "generatedFinalSha256": "d5de26ccfc8590fcaadaf911fe1bf272e3379733ad8f7205a8ca8ef5e42b41b2"
+        }
+      }
+    },
+    {
+      "fret": 3,
+      "direct": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 3,
+            "pitch": 97,
+            "interval": 28,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "disposition": "precise-shorthand",
+      "profiles": {
+        "authored": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 3,
+              "sourceFret": 3,
+              "pitch": 90,
+              "originalPitch": 62,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": true
+            }
+          ],
+          "scheduledSha256": "d518635ea765ef61c190ae1fc6378de39693ba380f35b27d094ee775fe9caec6",
+          "generatedFinalSha256": "4673415eeb7c560256dda6c2fa936b293af89a2884fedbb6d41080b1df7c2d61"
+        },
+        "legacy-brush-authored-v1": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 3,
+              "sourceFret": 3,
+              "pitch": 90,
+              "originalPitch": 62,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": true
+            }
+          ],
+          "scheduledSha256": "d518635ea765ef61c190ae1fc6378de39693ba380f35b27d094ee775fe9caec6",
+          "generatedFinalSha256": "4673415eeb7c560256dda6c2fa936b293af89a2884fedbb6d41080b1df7c2d61"
+        },
+        "player-defaults": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 3,
+              "sourceFret": 3,
+              "pitch": 47,
+              "originalPitch": 62,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "a47a3a3872f08d92f1bac257236f788162a9d8f77927c52ba06fff002573ecda",
+          "generatedFinalSha256": "79cabe1bc6fd99467926737df84e7800ab8c8d4991e8df5216b15a935f396167"
+        }
+      }
+    },
+    {
+      "fret": 4,
+      "direct": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 4,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "disposition": "existing-or-guarded"
+    },
+    {
+      "fret": 5,
+      "direct": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 5,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "disposition": "existing-or-guarded"
+    },
+    {
+      "fret": 6,
+      "direct": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 6,
+            "pitch": 97,
+            "interval": 28,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "disposition": "precise-shorthand",
+      "profiles": {
+        "authored": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 6,
+              "sourceFret": 6,
+              "pitch": 93,
+              "originalPitch": 65,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": true
+            }
+          ],
+          "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+          "generatedFinalSha256": "19cbb28da7327047b2b9d447ce33a5dc7659b1c56138fec678ecb19d31b75ff0"
+        },
+        "legacy-brush-authored-v1": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 6,
+              "sourceFret": 6,
+              "pitch": 93,
+              "originalPitch": 65,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": true
+            }
+          ],
+          "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+          "generatedFinalSha256": "19cbb28da7327047b2b9d447ce33a5dc7659b1c56138fec678ecb19d31b75ff0"
+        },
+        "player-defaults": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 6,
+              "sourceFret": 6,
+              "pitch": 47,
+              "originalPitch": 65,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "e191b071c1c367f3ce3de8e59595fcab23497ef075fc7bb1aff1bedb61d72d1a",
+          "generatedFinalSha256": "eafa79b2988c9c47b32089713366ea49d8b63a0daf375dd765217df4ecd0ad07"
+        }
+      }
+    },
+    {
+      "fret": 7,
+      "direct": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 7,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "disposition": "existing-or-guarded"
+    },
+    {
+      "fret": 8,
+      "direct": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 8,
+            "pitch": 97,
+            "interval": 28,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "disposition": "precise-shorthand",
+      "profiles": {
+        "authored": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 8,
+              "sourceFret": 8,
+              "pitch": 95,
+              "originalPitch": 67,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": true
+            }
+          ],
+          "scheduledSha256": "fbfd7463f36e3fbd8664d0101d0adc31b6af644c833766c70465b6d74b29fb00",
+          "generatedFinalSha256": "51a8017baadfe06c581b668cf20508b3a5d163d1c2dd073e92cdde099c5d4c95"
+        },
+        "legacy-brush-authored-v1": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 8,
+              "sourceFret": 8,
+              "pitch": 95,
+              "originalPitch": 67,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": true
+            }
+          ],
+          "scheduledSha256": "fbfd7463f36e3fbd8664d0101d0adc31b6af644c833766c70465b6d74b29fb00",
+          "generatedFinalSha256": "51a8017baadfe06c581b668cf20508b3a5d163d1c2dd073e92cdde099c5d4c95"
+        },
+        "player-defaults": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 8,
+              "sourceFret": 8,
+              "pitch": 47,
+              "originalPitch": 67,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "1358efe0c6b5bc8444cfd110e3d443f448cdf8f5d6800cf7865e5e55913f86c5",
+          "generatedFinalSha256": "47ab6a2b75fd567fc3eb14263ccaabbef64b7fcec52d27cb9a7f7e5e31d95435"
+        }
+      }
+    },
+    {
+      "fret": 9,
+      "direct": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 9,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "disposition": "existing-or-guarded"
+    },
+    {
+      "fret": 10,
+      "direct": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 10,
+            "pitch": 93,
+            "interval": 24,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "disposition": "precise-shorthand",
+      "profiles": {
+        "authored": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 10,
+              "sourceFret": 10,
+              "pitch": 93,
+              "originalPitch": 69,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": true
+            }
+          ],
+          "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+          "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+        },
+        "legacy-brush-authored-v1": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 10,
+              "sourceFret": 10,
+              "pitch": 93,
+              "originalPitch": 69,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": true
+            }
+          ],
+          "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+          "generatedFinalSha256": "7746e704caef882c279454f1c2b4c1694791267638164a98e25aee0fa3840ddb"
+        },
+        "player-defaults": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 10,
+              "sourceFret": 10,
+              "pitch": 47,
+              "originalPitch": 69,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "e191b071c1c367f3ce3de8e59595fcab23497ef075fc7bb1aff1bedb61d72d1a",
+          "generatedFinalSha256": "bed27885a314b00824d852e2132d2c99f0c5fe41f61eab880142ba2baeaf5718"
+        }
+      }
+    },
+    {
+      "fret": 11,
+      "direct": {
+        "applied": false,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 11,
+            "pitch": 69,
+            "interval": 0,
+            "disallowOpenString": false
+          }
+        ]
+      },
+      "disposition": "ordinary-playback",
+      "profiles": {
+        "authored": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 11,
+              "sourceFret": 11,
+              "pitch": 70,
+              "originalPitch": 70,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "cb3f26f1b80a7b3b28049e5b8b21d0d0229135cd5a21da98e944e146edb64277",
+          "generatedFinalSha256": "bd0783f960823257b410c386c10fc9299d4a2919c2b286e9f301d6a86ffb6d71"
+        },
+        "legacy-brush-authored-v1": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 11,
+              "sourceFret": 11,
+              "pitch": 70,
+              "originalPitch": 70,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "cb3f26f1b80a7b3b28049e5b8b21d0d0229135cd5a21da98e944e146edb64277",
+          "generatedFinalSha256": "bd0783f960823257b410c386c10fc9299d4a2919c2b286e9f301d6a86ffb6d71"
+        },
+        "player-defaults": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 11,
+              "sourceFret": 11,
+              "pitch": 70,
+              "originalPitch": 70,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "89ff43df53218bbb64231bb2c77b1d42ae69aaffe7c8eef0d72d0a3b9508b051",
+          "generatedFinalSha256": "0553a62f9ccb160d92b0a2c294027234e617d5fc09dd417b7da19424189bfaf2"
+        }
+      }
+    },
+    {
+      "fret": 12,
+      "direct": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 12,
+            "pitch": 69,
+            "interval": 0,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "disposition": "existing-or-guarded"
+    },
+    {
+      "fret": 13,
+      "direct": {
+        "applied": false,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 13,
+            "pitch": 69,
+            "interval": 0,
+            "disallowOpenString": false
+          }
+        ]
+      },
+      "disposition": "ordinary-playback",
+      "profiles": {
+        "authored": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 13,
+              "sourceFret": 13,
+              "pitch": 72,
+              "originalPitch": 72,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "0e927a0addfdf882007feb7a9ff6637985ff0c2a98dc0230f12208a08ce99f5d",
+          "generatedFinalSha256": "d616365c997b37622be1fea8fbbb506a1ee32e69b1dd896214241701120ef4ef"
+        },
+        "legacy-brush-authored-v1": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 13,
+              "sourceFret": 13,
+              "pitch": 72,
+              "originalPitch": 72,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "0e927a0addfdf882007feb7a9ff6637985ff0c2a98dc0230f12208a08ce99f5d",
+          "generatedFinalSha256": "d616365c997b37622be1fea8fbbb506a1ee32e69b1dd896214241701120ef4ef"
+        },
+        "player-defaults": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 13,
+              "sourceFret": 13,
+              "pitch": 72,
+              "originalPitch": 72,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "430f978025b6293b09b4ea49e9e087b504c156d3f2f975110e5891915a7e287b",
+          "generatedFinalSha256": "a1a97495d2ffe8394ac37af95c6dc0498500093173d2dc1c76181c8e77466706"
+        }
+      }
+    },
+    {
+      "fret": 14,
+      "direct": {
+        "applied": false,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 14,
+            "pitch": 69,
+            "interval": 0,
+            "disallowOpenString": false
+          }
+        ]
+      },
+      "disposition": "ordinary-playback",
+      "profiles": {
+        "authored": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 14,
+              "sourceFret": 14,
+              "pitch": 73,
+              "originalPitch": 73,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "d85c7da4316716b18259dc83ab687fb0f3314ad963185f94febcc0fdd570aa1b",
+          "generatedFinalSha256": "da0bb367948b1e4edad1b4521a841b3efcdb22ac9dac76237a23b785bc4a5421"
+        },
+        "legacy-brush-authored-v1": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 14,
+              "sourceFret": 14,
+              "pitch": 73,
+              "originalPitch": 73,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "d85c7da4316716b18259dc83ab687fb0f3314ad963185f94febcc0fdd570aa1b",
+          "generatedFinalSha256": "da0bb367948b1e4edad1b4521a841b3efcdb22ac9dac76237a23b785bc4a5421"
+        },
+        "player-defaults": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 14,
+              "sourceFret": 14,
+              "pitch": 73,
+              "originalPitch": 73,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "691eeaa25ac92158af65291f644e8316a87c62244977230410e4f81c69c72606",
+          "generatedFinalSha256": "933f3915ece6f2bd07e9a971d4ad93196735616e870bb097b602426c2f2db087"
+        }
+      }
+    },
+    {
+      "fret": 15,
+      "direct": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 15,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "disposition": "precise-shorthand",
+      "profiles": {
+        "authored": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 15,
+              "sourceFret": 15,
+              "pitch": 93,
+              "originalPitch": 74,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": true
+            }
+          ],
+          "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+          "generatedFinalSha256": "f13abf335af8a46b6c918df8204f63218ce90ac3949220b06cd10773f6eed322"
+        },
+        "legacy-brush-authored-v1": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 15,
+              "sourceFret": 15,
+              "pitch": 93,
+              "originalPitch": 74,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": true
+            }
+          ],
+          "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+          "generatedFinalSha256": "f13abf335af8a46b6c918df8204f63218ce90ac3949220b06cd10773f6eed322"
+        },
+        "player-defaults": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 15,
+              "sourceFret": 15,
+              "pitch": 47,
+              "originalPitch": 74,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "e191b071c1c367f3ce3de8e59595fcab23497ef075fc7bb1aff1bedb61d72d1a",
+          "generatedFinalSha256": "57e4f7d5eb503454148d82b3739c74a717794a514d4d3bb5573dca4b185f5b5d"
+        }
+      }
+    },
+    {
+      "fret": 16,
+      "direct": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 16,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "disposition": "existing-or-guarded"
+    },
+    {
+      "fret": 17,
+      "direct": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 17,
+            "pitch": 88,
+            "interval": 19,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "disposition": "existing-or-guarded"
+    },
+    {
+      "fret": 18,
+      "direct": {
+        "applied": false,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 18,
+            "pitch": 69,
+            "interval": 0,
+            "disallowOpenString": false
+          }
+        ]
+      },
+      "disposition": "ordinary-playback",
+      "profiles": {
+        "authored": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 18,
+              "sourceFret": 18,
+              "pitch": 77,
+              "originalPitch": 77,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "cb22f736ed1be030d03331b3ee4aba68d3ac12087a2d1b87a5efb2f3c21ec4d8",
+          "generatedFinalSha256": "73bb8d94c1a906c90f3bc7cbd7def73d85804c82f5d5383053211f96737b514f"
+        },
+        "legacy-brush-authored-v1": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 18,
+              "sourceFret": 18,
+              "pitch": 77,
+              "originalPitch": 77,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "cb22f736ed1be030d03331b3ee4aba68d3ac12087a2d1b87a5efb2f3c21ec4d8",
+          "generatedFinalSha256": "73bb8d94c1a906c90f3bc7cbd7def73d85804c82f5d5383053211f96737b514f"
+        },
+        "player-defaults": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 18,
+              "sourceFret": 18,
+              "pitch": 77,
+              "originalPitch": 77,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "2c2fe9ce4c21ff224533faff55854f21e92491b44ed8587f1775f517357d1cfb",
+          "generatedFinalSha256": "f98f108c284cd11e57acfb33c64b652d35bb3d261e38ce98994bf4c0ad063b38"
+        }
+      }
+    },
+    {
+      "fret": 19,
+      "direct": {
+        "applied": false,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 19,
+            "pitch": 69,
+            "interval": 0,
+            "disallowOpenString": false
+          }
+        ]
+      },
+      "disposition": "existing-or-guarded"
+    },
+    {
+      "fret": 20,
+      "direct": {
+        "applied": false,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 20,
+            "pitch": 69,
+            "interval": 0,
+            "disallowOpenString": false
+          }
+        ]
+      },
+      "disposition": "ordinary-playback",
+      "profiles": {
+        "authored": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 20,
+              "sourceFret": 20,
+              "pitch": 79,
+              "originalPitch": 79,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "f773866c2a36ef0567194dc890766ee6df2a30a5db1019218658e94ce499b541",
+          "generatedFinalSha256": "bf61f036e22fc469b5e084d026cddb465cfb40605d85ea79dda392b6bc85b0c1"
+        },
+        "legacy-brush-authored-v1": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 20,
+              "sourceFret": 20,
+              "pitch": 79,
+              "originalPitch": 79,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "f773866c2a36ef0567194dc890766ee6df2a30a5db1019218658e94ce499b541",
+          "generatedFinalSha256": "bf61f036e22fc469b5e084d026cddb465cfb40605d85ea79dda392b6bc85b0c1"
+        },
+        "player-defaults": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 20,
+              "sourceFret": 20,
+              "pitch": 79,
+              "originalPitch": 79,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "eb99e836d7cbc8910befcd116d251767e213265d23ce5dfb9e56dffb1bb64bc0",
+          "generatedFinalSha256": "9214d2feb906975a8d858d55e317027e673b469f665d4d37ca72b87243d79aa6"
+        }
+      }
+    },
+    {
+      "fret": 21,
+      "direct": {
+        "applied": false,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 21,
+            "pitch": 69,
+            "interval": 0,
+            "disallowOpenString": false
+          }
+        ]
+      },
+      "disposition": "ordinary-playback",
+      "profiles": {
+        "authored": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 21,
+              "sourceFret": 21,
+              "pitch": 80,
+              "originalPitch": 80,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "962460bf59e3fa9dffb2ac97f7f29f1d7ba02c6d4eb121762048847b9e5262ec",
+          "generatedFinalSha256": "95889333a1fdd987f905bed37548f6cbf3b619c996a6c42743c029445521098b"
+        },
+        "legacy-brush-authored-v1": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 21,
+              "sourceFret": 21,
+              "pitch": 80,
+              "originalPitch": 80,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "962460bf59e3fa9dffb2ac97f7f29f1d7ba02c6d4eb121762048847b9e5262ec",
+          "generatedFinalSha256": "95889333a1fdd987f905bed37548f6cbf3b619c996a6c42743c029445521098b"
+        },
+        "player-defaults": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 21,
+              "sourceFret": 21,
+              "pitch": 80,
+              "originalPitch": 80,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "54e1f8d8f45bf7f710b343a5841faa4de78c6c1f249525a5e6b3457da6752f79",
+          "generatedFinalSha256": "88954d7c39a76cc6fa45f9417f6e9f25c4c0b0e619cf85501fd61fce22650d5b"
+        }
+      }
+    },
+    {
+      "fret": 22,
+      "direct": {
+        "applied": true,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 22,
+            "pitch": 81,
+            "interval": 12,
+            "disallowOpenString": true
+          }
+        ]
+      },
+      "disposition": "precise-shorthand",
+      "profiles": {
+        "authored": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 22,
+              "sourceFret": 22,
+              "pitch": 93,
+              "originalPitch": 81,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": true
+            }
+          ],
+          "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+          "generatedFinalSha256": "b431acbeff005c4967d29a4276b428026dfb01ef48efc891073ebc67d6695b5a"
+        },
+        "legacy-brush-authored-v1": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 22,
+              "sourceFret": 22,
+              "pitch": 93,
+              "originalPitch": 81,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": true
+            }
+          ],
+          "scheduledSha256": "64509f7a69399738aac02e70a1085dc5acf7d8461b9a4631765673801a325ef2",
+          "generatedFinalSha256": "b431acbeff005c4967d29a4276b428026dfb01ef48efc891073ebc67d6695b5a"
+        },
+        "player-defaults": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 22,
+              "sourceFret": 22,
+              "pitch": 47,
+              "originalPitch": 81,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "e191b071c1c367f3ce3de8e59595fcab23497ef075fc7bb1aff1bedb61d72d1a",
+          "generatedFinalSha256": "e8600889d48396c4363eafe51b254d14f33797ba43f2a758720d5b86bf4dced4"
+        }
+      }
+    },
+    {
+      "fret": 23,
+      "direct": {
+        "applied": false,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 23,
+            "pitch": 69,
+            "interval": 0,
+            "disallowOpenString": false
+          }
+        ]
+      },
+      "disposition": "ordinary-playback",
+      "profiles": {
+        "authored": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 23,
+              "sourceFret": 23,
+              "pitch": 82,
+              "originalPitch": 82,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "e71ef430cfbd46482aaeffe63814e2ed4abd99f111832c17db6264ded9514b76",
+          "generatedFinalSha256": "4dc06f8f90530cfc03934faca6f1930e4da7f4612563b8b09499dc0c3e107acf"
+        },
+        "legacy-brush-authored-v1": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 23,
+              "sourceFret": 23,
+              "pitch": 82,
+              "originalPitch": 82,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "e71ef430cfbd46482aaeffe63814e2ed4abd99f111832c17db6264ded9514b76",
+          "generatedFinalSha256": "4dc06f8f90530cfc03934faca6f1930e4da7f4612563b8b09499dc0c3e107acf"
+        },
+        "player-defaults": {
+          "equivalent": true,
+          "targets": [
+            {
+              "id": "0:0:0:0",
+              "occurrence": 0,
+              "bar": 0,
+              "voiceIndex": 0,
+              "beatIndex": 0,
+              "noteIndex": 0,
+              "string": 1,
+              "fret": 23,
+              "sourceFret": 23,
+              "pitch": 82,
+              "originalPitch": 82,
+              "hidden": false,
+              "tie": false,
+              "attackTick": 0,
+              "endTick": 65535,
+              "harmonic": "natural",
+              "disallowOpenString": false
+            }
+          ],
+          "scheduledSha256": "103ff1ebd908402c4f236dacf65b90ea381d376e0c86d7cc2bbabe9ecc94676d",
+          "generatedFinalSha256": "68577011d3c9158c1aa4f7e8d78ed85846d5ef5550839751b6381bf22d799e1b"
+        }
+      }
+    },
+    {
+      "fret": 24,
+      "direct": {
+        "applied": false,
+        "lookup": 0,
+        "tapping": false,
+        "notes": [
+          {
+            "fret": 24,
+            "pitch": 69,
+            "interval": 0,
+            "disallowOpenString": false
+          }
+        ]
+      },
+      "disposition": "existing-or-guarded"
+    }
+  ]
+}

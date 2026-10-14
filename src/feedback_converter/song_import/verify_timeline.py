@@ -618,6 +618,9 @@ def _expected(source, alignment, *, pending_hopo_ties=True, pending_slide_ties=T
                         kept = {k: event['effects'][k] for k in harmonic_fields if k in event['effects']}
                         if event.get('contact'):
                             kept = {'harmonic_target': dict(event['contact']['target'])}
+                        if atom.natural_playback_fallback and kept:
+                            unsupported(atom.location,
+                                        'An ordinary natural-harmonic playback fallback cannot replace an active tied harmonic target.')
                         if stated and stated != kept:
                             def harmonic_pitch(fx):
                                 if 'hps' in fx: return fx['hps']

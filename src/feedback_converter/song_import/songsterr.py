@@ -16,7 +16,8 @@ from .songsterr_fields import validate_octave_clef, octave_clef_beats
 from .fingering import left_finger, validate_right_finger
 from .songsterr_tremolo import tremolo_mark
 from .songsterr_whammy import source_whammy, boolean_bar_beats
-from .songsterr_harmonics import exact_natural, natural_target, natural_alias, source_target
+from .songsterr_harmonics import (exact_natural, natural_target, natural_alias, source_target,
+                                 natural_playback_fallback, natural_shorthand, NATURAL_PLAYBACK_POLICY)
 from .songsterr_automation import performed_tempos, effective_tempo_entries
 from .songsterr_legacy import validate_legacy_metadata, validate_legacy_field, rhythm_metadata_voices
 from .songsterr_legacy_effects import beat_effects, validate_legacy_beat_effects
@@ -71,7 +72,8 @@ def _note(raw, beat, position, duration, strings, tpqn=16384, *, written_beat_vi
         value = raw["harmonicFret"]
         if isinstance(value, bool) or not isinstance(value, (int, float)) or rational(value, "harmonic fret") < 0:
             raise ScoreImportError("Invalid harmonic fret.")
-        if value and raw.get("harmonic") is not None and not (exact_natural(raw) or source_target(raw)):
+        if value and raw.get("harmonic") is not None and not (exact_natural(raw) or source_target(raw)
+                                                             or natural_playback_fallback(raw)):
             raise ScoreImportError("Songsterr harmonicFret needs additional conversion support.")
     effects = {}
     finger = left_finger(raw.get("leftFingering"))
@@ -121,7 +123,11 @@ def _note(raw, beat, position, duration, strings, tpqn=16384, *, written_beat_vi
             raise ScoreImportError("Malformed staccato.")
     harmonic = raw.get("harmonic")
     if harmonic:
-        if harmonic == "natural":
+        if natural_playback_fallback(raw):
+            # Native playback keeps the fretted note. Do not emit even legacy
+            # hm: it could turn an ordinary pitch target into energy-only scoring.
+            effects['__natural_playback_fallback'] = True
+        elif harmonic == "natural":
             if not exact_natural(raw):
                 raise ScoreImportError("This natural harmonic needs a precise node and pitch representation.")
             effects["hm"] = True
@@ -571,6 +577,12 @@ def parse(document: dict, *, track_indices=None, vibrato_policy=NOTE_VIBRATO_POL
     source = {key: document[key] for key in ("songId", "revisionId", "approved", "url") if key in document}
     source["format"] = "songsterr"
     source["instrumentResolution"] = instrument_resolution
+    if any(natural_shorthand(n) or natural_playback_fallback(n)
+           for pi, part in enumerate(parts) if pi in eligible and (track_indices is None or pi in track_indices)
+           for bar in part['measures'] for voice in bar.get('voices', [])
+           for beat in voice.get('beats', []) if not beat.get('rest')
+           for n in beat.get('notes', [])):
+        source['naturalHarmonicPlaybackPolicy'] = NATURAL_PLAYBACK_POLICY
     boundary_rows = [r for t in tracks for r in t.boundary_adjustments]
     if boundary_rows:
         source['measureBoundaryAdjustments'] = boundary_rows

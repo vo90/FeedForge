@@ -1,6 +1,6 @@
 """Retain qualified legacy beat flags without deriving musical effects."""
 from .model import ScoreImportError
-from .songsterr_harmonics import exact_natural, source_target
+from .songsterr_harmonics import exact_natural, source_target, natural_playback_fallback
 
 POLICY = 'songsterr-legacy-beat-effects-v1'
 FIELDS = frozenset({'harmonic', 'artificialHarmonic', 'fadeIn'})
@@ -19,7 +19,7 @@ def validate_legacy_beat_effect(scope, field, value, *, beat, qualify_harmonics=
             raise ScoreImportError(f'Legacy beat {field} needs explicit valid {kind} harmonics on sounding notes.')
         sounding = [n for n in notes if not n.get('rest')]
         if not sounding or any(n.get('dead') or n.get('pickScrape') or
-                not (exact_natural(n) if kind == 'natural' else
+                not ((exact_natural(n) or natural_playback_fallback(n)) if kind == 'natural' else
                      n.get('harmonic') == 'artificial' and source_target(n)) for n in sounding):
             raise ScoreImportError(f'Legacy beat {field} needs explicit valid {kind} harmonics on every sounding note.')
     return True

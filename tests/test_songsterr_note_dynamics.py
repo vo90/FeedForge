@@ -179,9 +179,9 @@ def test_note_dynamics_do_not_leak_between_voices():
     assert playable(result) == playable(render(parse(without_note_dynamics(document))))
 
 
-def test_note_dynamics_do_not_bypass_unqualified_legacy_harmonic_guard():
-    # Compact source-shaped regression for the captured Cliffs failure. Its
-    # distinct harmonic issue must remain blocked after accepting note volume.
+def test_note_dynamics_do_not_change_qualified_natural_harmonic_playback():
+    # Compact source-shaped regression for the captured Cliffs failure. The
+    # separately qualified harmonic rules must not change note-dynamic scope.
     bend = {"tone": 100, "points": [{"position": 0, "tone": 0},
                                    {"position": 30, "tone": 100}, {"position": 60, "tone": 0}]}
     first = beat(18, string=1, duration=(1, 16), harmonic="natural", bend=deepcopy(bend))
@@ -195,8 +195,9 @@ def test_note_dynamics_do_not_bypass_unqualified_legacy_harmonic_guard():
     document = raw_score([measure(first, second, third), measure(chord)])
     report = inspect_songsterr(document)
     blocked = [row for row in report["findings"] if row["impact"] == "blocking"]
-    assert [row["feature"] for row in blocked] == ["beat.harmonic"] * 3
+    assert blocked == []
+    assert len([row for row in report["findings"]
+                if row["feature"] == "note.natural_harmonic_fallback"]) == 2
     dynamic, = dynamics_rows(document)
     assert dynamic["value"] == "mf" and dynamic["impact"] != "blocking"
-    with pytest.raises(ScoreImportError, match="Legacy beat harmonic"):
-        parse(document)
+    assert playable(render(parse(document))) == playable(render(parse(without_note_dynamics(document))))

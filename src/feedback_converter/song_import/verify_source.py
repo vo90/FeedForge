@@ -139,7 +139,28 @@ def _artificial_playback_fallback(note):
             and all(abs(touch - node) > .001 for node in nodes))
 
 
-def _legacy_beat_effects(beat, location, *, qualify_harmonics=True):
+def _natural_playback_shorthand(note):
+    """Independently qualify authored integer harmonic labels, never nearest nodes."""
+    fret, touch = note.get('fret'), note.get('harmonicFret')
+    if (note.get('harmonic') != 'natural' or note.get('harmonicData') is not None
+            or note.get('rest') or note.get('dead') or note.get('pickScrape')
+            or not _finite_number(fret) or int(fret) != fret
+            or touch is not None and (not _finite_number(touch) or touch != fret)):
+        return None
+    return {2: (2.4, 36), 3: (3.2, 31), 6: (5.8, 34), 8: (8.2, 36),
+            10: (9.6, 34), 15: (14.7, 34), 22: (21.7, 34)}.get(fret)
+
+
+def _natural_playback_fallback(note):
+    """Known absent natural transforms retain the ordinary fretted pitch."""
+    fret, touch = note.get('fret'), note.get('harmonicFret')
+    return (note.get('harmonic') == 'natural' and note.get('harmonicData') is None
+            and not note.get('rest') and not note.get('dead') and not note.get('pickScrape')
+            and _finite_number(fret) and fret in (1, 11, 13, 14, 18, 20, 21, 23)
+            and (touch is None or _finite_number(touch) and touch == fret))
+
+
+def _legacy_beat_effects(beat, location, *, qualify_harmonics=True, natural_playback=True):
     """Validate retained flags independently; never derive note effects.
 
     Return the present field keys, including false/null values, for independent
@@ -174,7 +195,9 @@ def _legacy_beat_effects(beat, location, *, qualify_harmonics=True):
                 node = next((n for n in nodes if abs(fraction(touch, location) - F(str(n))) <= F(1, 10**9)), None)
                 if kind == 'natural':
                     alias = fret == 15 and touch == 15 and note.get("harmonicFret") is not None
-                    valid = alias or node is not None and fret == round(node)
+                    valid = (alias or node is not None and fret == round(node)
+                             or natural_playback and bool(_natural_playback_shorthand(note)
+                                                          or _natural_playback_fallback(note)))
                 else:
                     valid = node is not None or _artificial_playback_fallback(note)
             if not valid:
@@ -301,6 +324,7 @@ class Atom:
     explicit_note_vibrato: bool = False
     tremolo_rate: list | bool | None = None
     note_dynamic: str | None = None
+    natural_playback_fallback: bool = False
 
 
 @dataclass
@@ -678,7 +702,7 @@ def _section_annotation(names, location):
     return ranked[0][2]
 
 
-def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_instruments=True, bounded_measures=True, note_dynamics=True):
+def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_instruments=True, bounded_measures=True, note_dynamics=True, natural_playback=True):
     """Read current note controls, or reproduce a historical archive's fanout."""
     if type(resolve_instruments) is not bool or type(bounded_measures) is not bool:
         raise ValueError("source: invalid instrument policy selection")
@@ -686,6 +710,8 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
         raise ValueError("source: invalid note vibrato policy selection")
     if type(note_dynamics) is not bool:
         raise ValueError("source: invalid note dynamics policy selection")
+    if type(natural_playback) is not bool:
+        raise ValueError("source: invalid natural harmonic playback policy selection")
     # Diagnostic selection never changes shared labels, meter, tempo or repeats.
     # Published archives use the default, which checks every eligible track.
     if not isinstance(document, dict) or document.get("format") != "songsterr":
@@ -981,7 +1007,7 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                     atom_start = len(atoms)
                     loc = f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}"
                     _legacy_beat_tempo(beat, loc)
-                    _legacy_beat_effects(beat, loc)
+                    _legacy_beat_effects(beat, loc, natural_playback=natural_playback)
                     _active_unknown(beat, beat_keys, {"beamStart", "beamStop", "id", "hasRasgueado", "sustainPedal", "tempo", "harmonic", "artificialHarmonic", "fadeIn", "octaveClef"}, loc, ignored)
                     # Independent validation; MIDI pedal control cannot become
                     # longer game trails, more attacks or a let-ring instruction.
@@ -1127,7 +1153,11 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                                                             - F(str(x))) <= F(1, 10**9)), None) if harmonic else None
                         alias = (harmonic == 'natural' and note.get('fret') == 15 and touch == 15
                                  and note.get('harmonicData') is None)
-                        if alias:
+                        shorthand = _natural_playback_shorthand(note) if natural_playback else None
+                        plain_natural = natural_playback and _natural_playback_fallback(note)
+                        if shorthand:
+                            node = shorthand[0]
+                        elif alias:
                             node = 14.7
                         natural = (harmonic == 'natural' and note.get('harmonicData') is None
                                    and node is not None and note.get('fret') == round(node)
@@ -1137,16 +1167,17 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                         explicit = (isinstance(harmonic, str) and harmonic in policies
                                     and touch is not None and node is not None and note.get('harmonicData') is None)
                         fallback = _artificial_playback_fallback(note)
-                        if touch and harmonic is not None and not (natural or explicit or fallback):
+                        if touch and harmonic is not None and not (natural or explicit or fallback or plain_natural):
                             unsupported(nloc, "Harmonic-fret pitch interpretation is not independently verified.")
                         if harmonic:
                             if harmonic == 'natural':
-                                if not natural:
+                                if natural:
+                                    harmonic_shift = nodes[node] - note['fret']
+                                    fx.update(hm=True, hn=node, hps=nodes[node])
+                                    if alias:
+                                        fx['harmonic_alias'] = 'songsterr-natural-15'
+                                elif not plain_natural:
                                     unsupported(nloc, 'Natural harmonic node is not independently representable.')
-                                harmonic_shift = nodes[node] - note['fret']
-                                fx.update(hm=True, hn=node, hps=nodes[node])
-                                if alias:
-                                    fx['harmonic_alias'] = 'songsterr-natural-15'
                             elif explicit:
                                 harmonic_shift = nodes[node]
                                 fx['harmonic_target'] = {'kind': harmonic, 'node': node,
@@ -1220,6 +1251,7 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                                           bool(note.get("hp"))))
                         fact["notes"].append(atoms[-1])
                         atoms[-1].note_dynamic = note.get("velocity") if note_dynamics else None
+                        atoms[-1].natural_playback_fallback = bool(plain_natural)
                         atoms[-1].explicit_tie = note.get("tie") is True
                         rate = beat.get('tremolo') or note.get('tremolo')
                         atoms[-1].tremolo_rate = rate if rate else None
@@ -1465,11 +1497,11 @@ def gpif(data):
     return Source("gpif", _txt(root, "Score/Title"), _txt(root, "Score/Artist"), bars, parts, excluded, len(ids))
 
 
-def read_source(path: Path, *, note_owned_vibrato=True, resolve_instruments=True, bounded_measures=True, note_dynamics=True):
+def read_source(path: Path, *, note_owned_vibrato=True, resolve_instruments=True, bounded_measures=True, note_dynamics=True, natural_playback=True):
     if path.stat().st_size > MAX_SOURCE:
         raise ValueError("source: verification size limit exceeded")
     if path.suffix.lower() == ".json":
-        return songsterr(json.loads(path.read_text(encoding="utf-8-sig")), note_owned_vibrato=note_owned_vibrato, resolve_instruments=resolve_instruments, bounded_measures=bounded_measures, note_dynamics=note_dynamics)
+        return songsterr(json.loads(path.read_text(encoding="utf-8-sig")), note_owned_vibrato=note_owned_vibrato, resolve_instruments=resolve_instruments, bounded_measures=bounded_measures, note_dynamics=note_dynamics, natural_playback=natural_playback)
     if path.suffix.lower() in {".gpif", ".xml"}:
         return gpif(path.read_bytes())
     with ZipFile(path) as archive:

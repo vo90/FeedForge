@@ -16,6 +16,44 @@ NATURAL_PITCH = {2.4: 36, 2.7: 34, 3.2: 31, 4: 28, 5: 24, 5.8: 34,
                  7: 19, 8.2: 36, 9: 28, 9.6: 34, 12: 12, 14.7: 34,
                  16: 28, 17: 36, 19: 19, 21.7: 34, 24: 24}
 
+# Explicitly qualified integer aliases, not a nearest-node approximation.
+NATURAL_SHORTHAND = {2: (2.4, 36), 3: (3.2, 31), 6: (5.8, 34),
+                     8: (8.2, 36), 10: (9.6, 34), 15: (14.7, 34), 22: (21.7, 34)}
+# The native natural-harmonic lookup has no transform for these frets.
+# 19/24 are real contact nodes; 0 has a special +24 transform. Neither belongs
+# here. Higher authored frets remain subject to the existing range policy.
+NATURAL_PLAIN_FRETS = frozenset({1, 11, 13, 14, 18, 20, 21, 23})
+NATURAL_PLAYBACK_POLICY = 'songsterr-natural-playback-v1'
+NATURAL_FALLBACK_MESSAGE = (
+    'This natural-harmonic marking has no defined harmonic playback target. '
+    'The note uses the ordinary fretted pitch, matching Songsterr playback; '
+    'bends, ties and timing are preserved. The unresolved harmonic instruction '
+    'remains in the source and is not shown or scored as a harmonic.'
+)
+NATURAL_SHORTHAND_MESSAGE = (
+    'The integer natural-harmonic shorthand is represented by its verified '
+    'precise touch position and playback pitch; the authored value is retained.'
+)
+
+
+def _integer_natural(note):
+    fret, touch = note.get('fret'), note.get('harmonicFret')
+    return (note.get('harmonic') == 'natural' and note.get('harmonicData') is None
+            and not any(note.get(k) for k in ('dead', 'rest', 'pickScrape'))
+            and type(fret) in (int, float) and math.isfinite(fret) and fret == int(fret)
+            and (touch is None or type(touch) in (int, float)
+                 and math.isfinite(touch) and touch == fret))
+
+
+def natural_shorthand(note):
+    """New contract-125 aliases; explicit 15/15 already had a qualified rule."""
+    return (_integer_natural(note) and note['fret'] in NATURAL_SHORTHAND
+            and not (note['fret'] == 15 and note.get('harmonicFret') == 15))
+
+
+def natural_playback_fallback(note):
+    return _integer_natural(note) and note['fret'] in NATURAL_PLAIN_FRETS
+
 
 def natural_target(note):
     fret, touch = note.get('fret'), note.get('harmonicFret')
@@ -28,6 +66,8 @@ def natural_target(note):
         return None
     if fret == 15 and touch == 15 and note.get("harmonicFret") is not None:
         return 14.7, 34
+    if natural_shorthand(note):
+        return NATURAL_SHORTHAND[fret]
     for node, semitones in NATURAL_PITCH.items():
         if abs(touch - node) <= 1e-9 and fret == round(node):
             return node, semitones

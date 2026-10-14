@@ -134,7 +134,7 @@ def test_active_harmonic_never_infers_missing_or_conflicting_note_targets(fault)
     elif fault == 'mixed': first['notes'].append({'string': 1, 'fret': 12})
     elif fault == 'pinch': note['harmonic'] = 'pinch'
     elif fault == 'opaque': note['harmonicData'] = {'type': 'natural'}
-    elif fault == 'unknown_node': note.update(fret=6, harmonicFret=6)
+    elif fault == 'unknown_node': note.update(fret=6, harmonicFret=6.1)
     elif fault == 'conflicting_node': note['harmonicFret'] = 7
     elif fault == 'dead': note['dead'] = True
     elif fault == 'scrape': note['pickScrape'] = 'up'

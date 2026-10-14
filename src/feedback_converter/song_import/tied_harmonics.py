@@ -24,6 +24,14 @@ def retain(output, effects, note, track, occurrence, position, end, at, records,
     changes = output.get('harmonic_changes', {}).get('events', [])
     authored = snapshot(effects)
     used = {'harmonic_target': deepcopy(changes[-1]['target'])} if changes else snapshot(output)
+    if note.effects.get('__natural_playback_fallback') and used:
+        from .model import ScoreImportError
+        _, pi, bi, vi, beat, ni = note.source_id.split(':')
+        error = ScoreImportError('An undefined natural harmonic cannot replace an established harmonic target inside a tie.')
+        error.source_location = {'measure': int(bi) + 1, 'voice': int(vi) + 1,
+            'beat': int(beat) + 1, 'note': int(ni) + 1,
+            'location': f'parts/{pi}/measures/{bi}/voices/{vi}/beats/{beat}/notes/{ni}'}
+        raise error
     if not authored or authored == used:
         return
     _, pi, bi, vi, beat, ni = note.source_id.split(':')

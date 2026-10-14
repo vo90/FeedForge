@@ -85,6 +85,7 @@ const titles = {
   'note.tied_harmonic': 'Some sustained harmonic changes are not reproduced',
   'note.tied_mute': 'A tied mute continues as a sustain',
   'note.harmonicFret': 'Some harmonic expression is simplified',
+  'note.natural_harmonic_fallback': 'Undefined harmonics use ordinary notes',
   'beat.tremolo': 'Some tremolo detail uses a generic cue',
   'note.tremolo': 'Some tremolo detail uses a generic cue',
   'beat.vibrato': 'Beat-level vibrato is not applied to notes',

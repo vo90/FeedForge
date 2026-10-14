@@ -164,6 +164,16 @@ def inventory():
             value['testFixture'] = 'tests/fixtures/songsterr_harmonic_fallback_reference.json'
             value['tests'] = 'tests/test_songsterr_harmonic_fallback_reference.py'
             value['referenceTools'] = ['tools/songsterr_compatibility/harmonic-fallback-reference.cjs']
+            value['additionalFixtures'] = ['tests/fixtures/songsterr_natural_playback_reference.json']
+            value['additionalTests'] = ['tests/test_songsterr_natural_playback.py',
+                                       'tests/test_songsterr_natural_playback_verification.py',
+                                       'tests/test_songsterr_natural_playback_reference.py']
+            value['referenceTools'].append('tools/songsterr_compatibility/natural-playback-reference.cjs')
+            value['reference']['naturalPlaybackPolicy'] = 'songsterr-natural-playback-v1'
+            value['reference']['scope'] += (' Natural integer shorthand and ordinary-pitch fallbacks additionally have 25 direct current/pinned checks and 90 pinned full-score comparisons across three profiles. '
+                'Only verified precise shorthand or eight no-transform frets in 1..24 are admitted with absent/null/same-fret touch metadata. '
+                'Fallback preserves ordinary attacks, pitch and expression, carries no harmonic scoring flag, and discloses the unresolved instruction once per feature. '
+                'Known19/24 remain harmonics; natural0, conflicting explicit touches and opaque data are not newly supported.')
         if key == 'timing.whole_rest':
             value['reference']['status'] = 'qualified_examples'
             value['testFixture'] = 'tests/fixtures/songsterr_rest_reference.json'

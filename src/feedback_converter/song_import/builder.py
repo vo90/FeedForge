@@ -269,6 +269,17 @@ def build_feedpak(performance: dict, audio: dict, alignment: dict, directory: Pa
         raise ImportFailure('unsupported_score', 'Measure-boundary playback requires the original tab and preservation contract 99.')
     finger_policy = source_model.get('fingerVibratoPolicy')
     contract = (recipe or {}).get('preservationContract', 0)
+    natural_policy = source_model.get('naturalHarmonicPlaybackPolicy')
+    natural_findings = any(row.get('feature') in ('note.natural_harmonic_fallback', 'note.natural_harmonic_shorthand')
+                          for row in (compatibility or {}).get('findings', []))
+    if natural_policy is not None or natural_findings:
+        from .songsterr_harmonics import NATURAL_PLAYBACK_POLICY
+        inventory = (compatibility or {}).get('version')
+        if (natural_policy != NATURAL_PLAYBACK_POLICY or source_path is None
+                or type(contract) is not int or contract < 125
+                or type(inventory) is not int or inventory < 125):
+            raise ImportFailure('unsupported_score',
+                                'Natural harmonic playback requires the original tab, preservation contract and inventory 125.')
     fallback_targets = any(n.get('harmonic_target', {}).get('basis') == 'source-playback-fallback'
                            for track in performance.get('tracks', [])
                            for n in [*track.get('notes', []), *[n for c in track.get('chords', []) for n in c.get('notes', [])]])
