@@ -472,6 +472,9 @@ def _confirm_track(client, group, metadata, title, versions, editions):
                 compatible = _matches(record, metadata, title, versions, _title_identity(title)[2], group['artistIds'])
                 if record.get('id') in group['records'] or (not metadata.get('musicbrainzRecordingId') and compatible):
                     group['release'] = full
+                    # Artwork may reuse fresh evidence from this lookup, but a
+                    # disk-cached track response must not replace its own check.
+                    group['releaseLookupFresh'] = not client.last_json_cached
                     group['trackEvidence'] = {'releaseId': full['id'], 'recordingId': record['id'],
                                               'medium': medium.get('position'), 'track': track.get('position'),
                                               'basis': 'supplied-album-track' if metadata.get('album') else 'original-year-release-track'}
