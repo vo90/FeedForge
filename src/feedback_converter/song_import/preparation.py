@@ -2,6 +2,7 @@
 from copy import deepcopy
 import io
 import math
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -10,6 +11,7 @@ import soundfile as sf
 from .alignment import map_time
 from .audio import ImportFailure, sha256_file
 from . import collapsed_opening
+from .audio_limits import MAX_PREPARATION_SECONDS
 
 POLICY = 'minimum-two-second-preparation-v1'
 
@@ -19,14 +21,24 @@ def recording_view(path, preparation):
     if not preparation or not (preparation.get('frames') or preparation.get('endingFrames')):
         return path
     if hasattr(path,'seek'):path.seek(0)
-    with sf.SoundFile(path) as reader:
-        reader.seek(preparation['frames'])
-        data=reader.read(frames=preparation.get('originalFrames', -1),dtype='float32',always_2d=True)
-        rate=reader.samplerate
-    output=io.BytesIO()
-    sf.write(output,data,rate,format='WAV',subtype='FLOAT')
-    output.seek(0)
-    return output
+    output=tempfile.SpooledTemporaryFile(max_size=8 * 1024 * 1024)
+    try:
+        with sf.SoundFile(path) as reader:
+            reader.seek(preparation['frames'])
+            remaining=preparation.get('originalFrames', reader.frames-reader.tell())
+            if remaining < 0 or remaining > reader.frames-reader.tell():
+                raise ValueError('Invalid original recording frame count.')
+            with sf.SoundFile(output,'w',samplerate=reader.samplerate,channels=reader.channels,format='WAV',subtype='FLOAT') as writer:
+                while remaining:
+                    data=reader.read(frames=min(32768,remaining),dtype='float32',always_2d=True)
+                    if not len(data):raise ValueError('Incomplete original recording.')
+                    writer.write(data)
+                    remaining-=len(data)
+        output.seek(0)
+        return output
+    except BaseException:
+        output.close()
+        raise
 
 
 def finalize(performance,audio,alignment,directory):
@@ -53,7 +65,7 @@ def finalize(performance,audio,alignment,directory):
         if ending and (ending['sampleRate']!=rate or ending['originalFrames']!=original_frames
                        or abs(original_frames/rate-audio['duration'])>1e-8):
             raise ImportFailure('needs_audio','The recording changed after its ending check. Select the recording again.')
-        frames=max(0,math.ceil((2-first)*rate-1e-8))
+        frames=max(0,math.ceil((MAX_PREPARATION_SECONDS-first)*rate-1e-8))
         offset=frames/rate
         target=Path(directory)/'prepared-full.ogg'
         with sf.SoundFile(target,'w',samplerate=rate,channels=reader.channels,format='OGG',subtype='VORBIS') as writer:

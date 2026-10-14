@@ -8,9 +8,10 @@ import soundfile as sf
 
 from .audio import ImportFailure
 from . import recording_sync as rs
+from .audio_limits import MAX_ENDING_SECONDS
 
 POLICY = 'preserve-existing-tail-v1'
-MAX_SECONDS = 2.0
+MAX_SECONDS = MAX_ENDING_SECONDS
 EPSILON = .0000011
 MIXED_POLICY = 'preserve-gesture-after-held-tail-trim-v1'
 PLAIN_FLAGS = {'mt', 'vb', 'ac', 'pm', 'lr', 'ghost', 'hm', 'hp', 'hn', 'hps', 'st', 'tr'}

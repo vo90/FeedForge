@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import numpy as np
 import soundfile as sf
+from .audio_limits import MIN_DURATION, MAX_ANALYSIS_DURATION
 
 LEGACY_VERSION = "mapped-pitch-onsets-v2"
 PREVIOUS_VERSION = "recording-clock-v3"
@@ -33,7 +34,7 @@ SPARSE_EXCLUSIONS = PITCH_EXCLUSIONS + ATTACK_EXCLUSIONS + (
 
 def _decode(path, *, hash_samples=False):
     with sf.SoundFile(path) as reader:
-        if not 2 <= len(reader) / reader.samplerate <= 1202 or not 1 <= reader.channels <= 2:
+        if not MIN_DURATION <= len(reader) / reader.samplerate <= MAX_ANALYSIS_DURATION or not 1 <= reader.channels <= 2:
             raise ValueError("The timing check needs a bounded mono or stereo recording.")
         rate = reader.samplerate
         if hash_samples:
@@ -41,16 +42,35 @@ def _decode(path, *, hash_samples=False):
             # Bound the byte copy and release native channels before analysis.
             digest = hashlib.sha256(b'decoded-float32-v1\0')
             digest.update(f'{rate}:{reader.channels}:{reader.frames}\0'.encode('ascii'))
-        native = reader.read(dtype='float32', always_2d=True)
-        if hash_samples:
-            for begin in range(0, len(native), 32768):
-                digest.update(native[begin:begin + 32768].astype('<f4', copy=False).tobytes())
-        mono = native.mean(axis=1)
-        del native
-    if not np.isfinite(mono).all():
-        raise ValueError("The timing check recording contains invalid samples.")
-    signal = np.interp(np.arange(round(len(mono) * RATE / rate)) * rate / RATE,
-                       np.arange(len(mono)), mono).astype('float32')
+        signal = np.empty(round(reader.frames * RATE / rate), dtype='float32')
+        offset = cursor = 0
+        previous = None
+        for native in reader.blocks(blocksize=32768, dtype='float32', always_2d=True):
+            if hash_samples:
+                digest.update(native.astype('<f4', copy=False).tobytes())
+            mono = native.mean(axis=1)
+            if not np.isfinite(mono).all():
+                raise ValueError("The timing check recording contains invalid samples.")
+            start = offset
+            offset += len(mono)
+            if previous is not None:
+                mono = np.concatenate(([previous], mono))
+                start -= 1
+            # Global sample coordinates preserve the previous np.interp result
+            # exactly; carry the boundary sample instead of resetting each block.
+            final = offset == reader.frames
+            end = len(signal) if final else min(len(signal), int(np.ceil((offset - 1) * RATE / rate)) + 1)
+            while cursor < end:
+                positions = np.arange(cursor, min(end, cursor + 32768)) * rate / RATE
+                if not final:
+                    positions = positions[positions <= offset - 1]
+                if not len(positions):
+                    break
+                signal[cursor:cursor + len(positions)] = np.interp(positions, np.arange(start, offset), mono)
+                cursor += len(positions)
+            previous = mono[-1]
+        if offset != reader.frames or cursor != len(signal):
+            raise ValueError("The timing check recording is incomplete.")
     count = 1 + len(signal) // HOP
     if hash_samples:
         return signal, count, digest.hexdigest()
@@ -262,10 +282,14 @@ def assess(tracks, audio_path, duration, map_hash, *, analysis_origin=0.0, legac
         raise ValueError('Unknown recording-clock evidence version.')
     if hasattr(audio_path, "read"):
         audio_path.seek(0)
-        audio_hash = hashlib.sha256(audio_path.read()).hexdigest()
+        digest = hashlib.sha256()
+        for block in iter(lambda: audio_path.read(256 * 1024), b''):
+            digest.update(block)
+        audio_hash = digest.hexdigest()
         audio_path.seek(0)
     else:
-        audio_hash = hashlib.sha256(Path(audio_path).read_bytes()).hexdigest()
+        from .audio import sha256_file
+        audio_hash = sha256_file(Path(audio_path))
     original_duration=duration
     if analysis_origin:
         import math

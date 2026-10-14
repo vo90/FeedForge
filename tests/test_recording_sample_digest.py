@@ -9,6 +9,7 @@ import soundfile as sf
 from feedback_converter.song_import import local_sync as ls, recording_sync as rs
 from feedback_converter.song_import.audio import ImportFailure
 from feedback_converter.song_import.preparation import finalize, recording_view
+from feedback_converter.song_import.audio_limits import MAX_ANALYSIS_DURATION
 
 
 def recording(*, rate=22050, channels=2, frames=None, format='WAV', subtype='FLOAT'):
@@ -93,14 +94,14 @@ def test_opt_in_session_hashes_once_and_releases_native_before_onsets(monkeypatc
             session.features(reference_hz=hz)
             assert session.sample_sha256 == expected_hash
         assert session.cached_bytes == 0
-    assert len(reads) == 1 and reads[0].closed
+    assert len(reads) == 2 and all(reader.closed for reader in reads)
     assert update_sizes[1:] == [32768 * 2 * 4, 7 * 2 * 4]
     assert session.sample_sha256 is session.signal is session.flux is session.path is None
     with pytest.raises(RuntimeError, match='closed'):
         session.features()
 
 
-@pytest.mark.parametrize('frames,channels', [(15999, 1), (1202 * 8000 + 1, 1), (16000, 3)])
+@pytest.mark.parametrize('frames,channels', [(15999, 1), (int(MAX_ANALYSIS_DURATION * 8000) + 1, 1), (16000, 3)])
 def test_invalid_bounds_never_read_or_publish_a_digest(monkeypatch, frames, channels):
     class Reader:
         samplerate = 8000
