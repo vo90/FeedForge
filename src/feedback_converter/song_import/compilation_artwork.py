@@ -35,6 +35,15 @@ def compilation_cache_miss_eligible(result):
 def _eligible(release, artist_ids):
     if not isinstance(release, dict):
         raise _LookupFailure('invalid_metadata')
+    # A fully identified different performer cannot supply same-artist art.
+    # Reject it before inspecting optional album details. Incomplete credits
+    # do not establish an unrelated identity and must not bypass validation.
+    credits = release.get('artist-credit')
+    if (artist_ids and isinstance(credits, list) and credits
+            and all(isinstance(c, dict) and isinstance(c.get('artist'), dict) for c in credits)):
+        release_ids = _ids(release)
+        if release_ids and release_ids != artist_ids:
+            return False
     group = release.get('release-group')
     if not isinstance(group, dict):
         raise _LookupFailure('invalid_metadata')
