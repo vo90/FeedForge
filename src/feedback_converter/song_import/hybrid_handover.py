@@ -51,6 +51,28 @@ def _featured(candidate):
             or candidate['evidence'] in {'named_soloist', 'dedicated_solo'})
 
 
+def _parents(original, by_id):
+    """Keep semantic ownership distinct from a combined physical passage."""
+    identities = set(original.get('obligationIds', [original['obligationId']]))
+    identities.add(original['obligationId'])
+    return sorted((by_id[ident] for ident in identities
+                   if by_id[ident]['trackId'] == original['trackId']
+                   and by_id[ident].get('eligible', True) and _featured(by_id[ident])),
+                  key=lambda p: (p.get('ownedStart', p['start']), p.get('ownedEnd', p['end']), p['id']))
+
+
+def _context_windows(original, parents, lo, hi):
+    for parent in parents:
+        start = max(lo, original['ownedStart'], parent.get('ownedStart', parent['start']))
+        end = min(hi, original['ownedEnd'], parent.get('ownedEnd', parent['end']))
+        if end - start >= 1 - EPS:
+            yield start, end, parent
+
+
+def _context_rank(parent):
+    return (parent.get('ownedEnd', parent['end']) - parent.get('ownedStart', parent['start']), parent['id'])
+
+
 def _unsupported_windows(selected, evidence, rows, written, unsupported, main_id):
     """Inspect omissions between selected pieces of the same featured owner.
 
@@ -61,7 +83,8 @@ def _unsupported_windows(selected, evidence, rows, written, unsupported, main_id
     from .hybrid_regional import _windows, overlap
     if not selected or not any(unsupported[tid] for tid in written):
         return []
-    selected_ids = {p['obligationId'] for p in selected}
+    selected_ids = {ident for p in selected
+                    for ident in [p['obligationId'], *p.get('obligationIds', [])]}
     foreign = [(p['start'], p['end']) for p in selected if p['trackId'] != main_id]
     occupied = [(p['start'], p['end']) for p in selected]
     occupied.extend((r['start'], r['end']) for r in rows[main_id] if r['available']
@@ -153,8 +176,9 @@ def refine_handovers(selected, evidence, rows, tracks, context, options, main_id
     unsupported_windows = _unsupported_windows(selected, evidence, rows, written, unsupported, main_id)
     for original in [*selected, *unsupported_windows]:
         parent = by_id[original['obligationId']]
+        parents = _parents(original, by_id)
         fallback = original.get('_unsupportedFallback', False)
-        if not _featured(parent) or limit_reason:
+        if not parents or limit_reason:
             if not fallback:
                 refined.append(original)
             continue
@@ -169,65 +193,78 @@ def refine_handovers(selected, evidence, rows, tracks, context, options, main_id
             occupied.extend((p['start'], p['end']) for p in refined)
         holes = _windows(original['start'], original['end'], occupied)
         insertions = []
-        for lo, hi in holes:
-            if hi - lo < 1 - EPS:
+        for hole_start, hole_end in holes:
+            if hole_end - hole_start < 1 - EPS:
                 continue
-            windows_seen += 1
-            if windows_seen > MAX_HANDOVER_WINDOWS:
-                limit_reason = 'handover_window_budget'
-                break
-            substitution = fallback or any(overlap((lo, hi), (bad['start'], bad['end'])) for bad in unsupported[owner])
-            candidates = []
-            for tid in peers:
-                if tid == owner or not _credible(tracks[tid], facts[tid], parent, rows[tid], lo, hi, clock, options):
-                    continue
-                if substitution and options.get('roles', {}).get(tid) not in {'lead', 'solo'} and not (
-                        facts[tid]['lead'] or facts[tid]['dedicatedSolo']):
-                    continue
-                inferred_unknown = (facts[tid]['priorRole'] == 'unknown'
-                                    and options.get('roles', {}).get(tid) not in {'lead', 'solo'}
-                                    and not _named_peer(facts[tid], parent))
-                contained, blockers = [], []
-                for (a, b), members in grouped[tid]:
-                    if a >= hi - EPS:
-                        break
-                    if b <= lo + EPS:
-                        continue
-                    checks += 1
-                    if checks > MAX_HANDOVER_GROUP_CHECKS:
-                        limit_reason = 'handover_group_budget'
-                        break
-                    usable = (a >= lo - EPS and b <= hi + EPS and all(r['available'] for r in members)
-                              and not any(_in_unsupported_gesture(r, bad) for r in members for bad in unsupported[tid]))
-                    if usable:
-                        contained.extend(members)
-                    else:
-                        blockers.append((a, b))
-                if limit_reason:
+            candidates = {}
+            has_substitution_context = fallback
+            for lo, hi, local_parent in _context_windows(original, parents, hole_start, hole_end):
+                windows_seen += 1
+                if windows_seen > MAX_HANDOVER_WINDOWS:
+                    limit_reason = 'handover_window_budget'
                     break
-                for a, b in _windows(lo, hi, blockers):
-                    local_rows = [r for r in contained if r['start'] >= a - EPS and r['end'] <= b + EPS]
-                    for start, end in _islands(local_rows):
-                        members = _members(rows[tid], clock, start, end)
-                        if not members or any(r not in local_rows for r in members):
-                            continue
-                        pitched = [n for r in members for n in _pitched(r)]
-                        attacks = {round(clock.quarter(n['t']), 8) for n in pitched}
-                        data = _local(tracks[tid], members, start, end, clock)
-                        held = len(attacks) == 1 and end - start >= 1 - EPS and data and data['expressive'] > 0
-                        if not data or _backing_context(data) or (len(attacks) < 2 and not held):
-                            continue
-                        # Separate weak islands must not borrow each other's
-                        # attacks/expression to qualify an unlabelled source.
-                        if inferred_unknown and (len(attacks) < 4 or not _unknown_line(data)):
-                            continue
-                        candidates_seen += 1
-                        if candidates_seen > MAX_HANDOVER_CANDIDATES:
-                            limit_reason = 'handover_candidate_budget'
+                substitution = fallback or any(overlap((lo, hi), (bad['start'], bad['end'])) for bad in unsupported[owner])
+                has_substitution_context = has_substitution_context or substitution
+                for tid in peers:
+                    if tid == owner or not _credible(tracks[tid], facts[tid], local_parent, rows[tid], lo, hi, clock, options):
+                        continue
+                    if substitution and options.get('roles', {}).get(tid) not in {'lead', 'solo'} and not (
+                            facts[tid]['lead'] or facts[tid]['dedicatedSolo']):
+                        continue
+                    inferred_unknown = (facts[tid]['priorRole'] == 'unknown'
+                                        and options.get('roles', {}).get(tid) not in {'lead', 'solo'}
+                                        and not _named_peer(facts[tid], local_parent))
+                    contained, blockers = [], []
+                    for (a, b), members in grouped[tid]:
+                        if a >= hi - EPS:
                             break
-                        candidates.append({'trackId': tid, 'start': start, 'end': end, 'rows': members,
-                                           'data': data, 'holeStart': lo, 'holeEnd': hi,
-                                           'unsupportedOwnerFallback': substitution})
+                        if b <= lo + EPS:
+                            continue
+                        checks += 1
+                        if checks > MAX_HANDOVER_GROUP_CHECKS:
+                            limit_reason = 'handover_group_budget'
+                            break
+                        usable = (a >= lo - EPS and b <= hi + EPS and all(r['available'] for r in members)
+                                  and not any(_in_unsupported_gesture(r, bad) for r in members for bad in unsupported[tid]))
+                        if usable:
+                            contained.extend(members)
+                        else:
+                            blockers.append((a, b))
+                    if limit_reason:
+                        break
+                    for a, b in _windows(lo, hi, blockers):
+                        local_rows = [r for r in contained if r['start'] >= a - EPS and r['end'] <= b + EPS]
+                        for start, end in _islands(local_rows):
+                            members = _members(rows[tid], clock, start, end)
+                            if not members or any(r not in local_rows for r in members):
+                                continue
+                            pitched = [n for r in members for n in _pitched(r)]
+                            attacks = {round(clock.quarter(n['t']), 8) for n in pitched}
+                            data = _local(tracks[tid], members, start, end, clock)
+                            held = len(attacks) == 1 and end - start >= 1 - EPS and data and data['expressive'] > 0
+                            if not data or _backing_context(data) or (len(attacks) < 2 and not held):
+                                continue
+                            # Separate weak islands must not borrow each other's
+                            # attacks/expression to qualify an unlabelled source.
+                            if inferred_unknown and (len(attacks) < 4 or not _unknown_line(data)):
+                                continue
+                            key = (tid, start, end, tuple(sorted(_key(r) for r in members)))
+                            prior = candidates.get(key)
+                            if prior is None:
+                                candidates_seen += 1
+                                if candidates_seen > MAX_HANDOVER_CANDIDATES:
+                                    limit_reason = 'handover_candidate_budget'
+                                    break
+                            elif _context_rank(prior['contextParent']) <= _context_rank(local_parent):
+                                continue
+                            # Overlapping semantic parents may prove the same
+                            # whole response. Count it once, retaining the most
+                            # local qualifying context for provenance.
+                            candidates[key] = {'trackId': tid, 'start': start, 'end': end, 'rows': members,
+                                               'data': data, 'holeStart': lo, 'holeEnd': hi,
+                                               'unsupportedOwnerFallback': substitution, 'contextParent': local_parent}
+                        if limit_reason:
+                            break
                     if limit_reason:
                         break
                 if limit_reason:
@@ -239,17 +276,20 @@ def refine_handovers(selected, evidence, rows, tracks, context, options, main_id
                 tid = candidate['trackId']
                 return (-round(_musical_score(candidate['data']), 6),
                         preferred.index(tid) if tid in preferred else len(preferred),
-                        -int(tid == main_id), -(candidate['end'] - candidate['start']), _canonical(tracks[tid]))
+                        -int(tid == main_id), -(candidate['end'] - candidate['start']), _canonical(tracks[tid]),
+                        *_context_rank(candidate['contextParent']))
             accepted = []
-            for candidate in sorted(candidates, key=rank):
+            for candidate in sorted(candidates.values(), key=rank):
                 if not any(overlap((candidate['start'], candidate['end']), (p['start'], p['end'])) for p in accepted):
                     accepted.append(candidate)
             insertions.extend(accepted)
             decisions.append({'parentObligationId': original['obligationId'], 'ownerTrackId': owner,
-                              'start': lo, 'end': hi, 'candidateCount': len(candidates),
-                              'selected': [{k: p[k] for k in ('trackId', 'start', 'end')} for p in sorted(accepted, key=lambda p: p['start'])],
+                              'start': hole_start, 'end': hole_end, 'candidateCount': len(candidates),
+                              'selected': [{**{k: p[k] for k in ('trackId', 'start', 'end')},
+                                            'contextObligationId': p['contextParent']['id']}
+                                           for p in sorted(accepted, key=lambda p: p['start'])],
                               'reason': 'complete_peer_response' if accepted else 'no_credible_complete_peer_response',
-                              **({'unsupportedOwnerFallback': True} if substitution else {})})
+                              **({'unsupportedOwnerFallback': True} if has_substitution_context else {})})
             if limit_reason:
                 break
         if not insertions:
@@ -273,13 +313,15 @@ def refine_handovers(selected, evidence, rows, tracks, context, options, main_id
         refined.extend(pieces)
         for insertion in sorted(insertions, key=lambda p: (p['start'], p['end'], p['trackId'])):
             tid, lo, hi = insertion['trackId'], insertion['start'], insertion['end']
-            identity = [original['obligationId'], tid, lo, hi, 'local_lead_handover']
+            local_parent = insertion['contextParent']
+            identity = [local_parent['id'], tid, lo, hi, 'local_lead_handover']
             c = {'id': 'primary-' + sha256(json.dumps(identity).encode()).hexdigest()[:16],
                  'trackId': tid, 'start': lo, 'end': hi, 'ownedStart': lo, 'ownedEnd': hi,
                  'priority': 'solo', 'evidence': 'regional_lead', 'confidence': 'medium',
                  'eligible': True, 'score': _musical_score(insertion['data']),
-                 'sectionName': parent.get('sectionName', ''), 'labelledSolo': bool(parent.get('labelledSolo')),
-                 'selectionEvidence': {'reason': 'local_lead_handover', 'parentObligationId': original['obligationId'],
+                 'sectionName': local_parent.get('sectionName', ''), 'labelledSolo': bool(local_parent.get('labelledSolo')),
+                 'selectionEvidence': {'reason': 'local_lead_handover', 'parentObligationId': local_parent['id'],
+                     'ownerObligationId': original['obligationId'],
                      'ownerTrackId': owner, 'holeStart': insertion['holeStart'], 'holeEnd': insertion['holeEnd'],
                      'musicalScore': round(_musical_score(insertion['data']), 6),
                      **({'unsupportedOwnerFallback': True} if insertion['unsupportedOwnerFallback'] else {})}}
