@@ -58,7 +58,7 @@ def test_inactive_harmonic_and_boolean_fade_do_not_change_music(harmonic, fade, 
     assert document == original
 
 
-@pytest.mark.parametrize('fret,touch', [(4, None), (5, 5), (7, 7), (12, None),
+@pytest.mark.parametrize('fret,touch', [(4, None), (5, 5), (6, None), (7, 7), (12, None),
                                       (2, 2.4), (15, 14.7), (15, 15), (22, 21.7)])
 @pytest.mark.parametrize('fade', [None, False, True])
 def test_active_harmonic_only_retains_already_explicit_natural_targets(fret, touch, fade):
@@ -98,7 +98,7 @@ def test_natural_chord_and_rest_slot_have_no_beat_fanout():
     ([{'string': 0, 'fret': 12, 'harmonic': 'natural', 'pickScrape': 'up'}], False),
     ([{'string': 0, 'fret': 12, 'harmonic': 'natural', 'harmonicData': {}}], False),
     ([{'string': 0, 'fret': 12, 'harmonic': 'natural', 'harmonicFret': 7}], False),
-    ([{'string': 0, 'fret': 6, 'harmonic': 'natural'}], False),
+    ([{'string': 0, 'fret': 6, 'harmonic': 'natural', 'harmonicFret': 6.1}], False),
     ([{'string': 0, 'fret': 12, 'harmonic': 'natural', 'harmonicFret': '12'}], False),
     ([{'string': 0, 'fret': True, 'harmonic': 'natural'}], False),
     ([{'string': 0, 'fret': float('inf'), 'harmonic': 'natural'}], False),

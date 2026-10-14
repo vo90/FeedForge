@@ -44,7 +44,10 @@ test('receipt is durable before publication and cancellation during its wait pre
   const f=fixture(t,fs.renameSync),staging=path.join(f.root,'staging');fs.writeFileSync(staging,'test');
   const controller=new AbortController(),job={id:'fixture',outputDir:f.root,outputRelativePath:'song.feedpak',outputHash:await hashFile(staging),controller};
   let release;const held=new Promise(r=>release=r);
-  const published=publishFeedpak({job,staging,hashFile,check:()=>{if(controller.signal.aborted)throw Error('cancelled');},writeReceipt:()=>held});
-  await new Promise(r=>setTimeout(r,20));assert.equal(fs.existsSync(path.join(f.root,'song.feedpak')),false);
+  let receiptStarted;const started=new Promise(r=>receiptStarted=r);
+  const published=publishFeedpak({job,staging,hashFile,check:()=>{if(controller.signal.aborted)throw Error('cancelled');},writeReceipt:()=>{receiptStarted();return held;}});
+  // Disk speed must not move cancellation into hashing before the receipt wait.
+  await Promise.race([started,published.then(()=>{throw Error('Publication skipped the receipt wait');})]);
+  assert.equal(fs.existsSync(path.join(f.root,'song.feedpak')),false);
   controller.abort();release();await assert.rejects(published,/cancelled/);assert.equal(job.committed,undefined);
 });
