@@ -34,6 +34,7 @@ KNOWN = {
 KNOWN["measure"].add("doubleBarline")
 KNOWN["measure"].add("clef")
 KNOWN["measure"].add("index")
+KNOWN["measure"].add("tempo")
 KNOWN["beat"].update({"slapping", "popping", "upArpeggio", "downArpeggio"})
 KNOWN["tempo"].add("dotted")
 KNOWN["bend_point"].add("precisePosition")

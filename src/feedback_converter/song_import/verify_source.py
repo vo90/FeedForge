@@ -118,16 +118,16 @@ def _legacy_measure_index(bar, location):
         raise ValueError(location + "/index: invalid retained measure index")
 
 
-def _legacy_beat_tempo(beat, location):
-    value = beat.get("tempo")
+def _legacy_local_tempo(obj, location):
+    value = obj.get("tempo")
     if value is None:
         return
     if not isinstance(value, dict) or set(value) != {"type", "bpm"}:
-        raise ValueError(location + "/tempo: invalid retained beat tempo structure")
+        raise ValueError(location + "/tempo: invalid retained local tempo structure")
     rate = value["bpm"]
     if (type(value["type"]) is not int or value["type"] not in (1, 2, 4, 8, 16, 32, 64)
             or not _finite_number(rate) or rate <= 0):
-        raise ValueError(location + "/tempo: invalid retained beat tempo value")
+        raise ValueError(location + "/tempo: invalid retained local tempo value")
 
 
 def _artificial_playback_fallback(note):
@@ -775,8 +775,9 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
             raise ValueError(f"{loc}: invalid meter")
         for pi, b in enumerate(samples):
             _legacy_measure_index(b, f"parts/{pi}/measures/{bi}")
+            _legacy_local_tempo(b, f"parts/{pi}/measures/{bi}")
             _active_unknown(b, {"voices", "signature", "rest", "marker", "repeat", "repeatStart", "alternateEnding", "tripletFeel", "clef"},
-                            {"width", "id", "index", "doubleBarline", "keySignature"}, loc, ignored)
+                            {"width", "id", "index", "tempo", "doubleBarline", "keySignature"}, loc, ignored)
         annotations = []
         for pi, (meta, bar) in enumerate(zip(metadata, samples)):
             marker = bar.get('marker')
@@ -1017,7 +1018,7 @@ def songsterr(document, *, track_indices=None, note_owned_vibrato=True, resolve_
                 for bti, beat in enumerate(_songsterr_voice_beats(voice)):
                     atom_start = len(atoms)
                     loc = f"parts/{pi}/measures/{bi}/voices/{vi}/beats/{bti}"
-                    _legacy_beat_tempo(beat, loc)
+                    _legacy_local_tempo(beat, loc)
                     _legacy_beat_effects(beat, loc, natural_playback=natural_playback)
                     _active_unknown(beat, beat_keys, {"beamStart", "beamStop", "id", "hasRasgueado", "sustainPedal", "tempo", "harmonic", "artificialHarmonic", "fadeIn", "octaveClef"}, loc, ignored)
                     # Independent validation; MIDI pedal control cannot become

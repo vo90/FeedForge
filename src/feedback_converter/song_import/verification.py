@@ -585,6 +585,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
             for bi, bar in enumerate(part["measures"]):
                 path = f"parts/{pi}/measures/{bi}"
                 retained_metadata(bar, 'index', 'measure', path)
+                retained_metadata(bar, 'tempo', 'measure', path)
                 remember(bar, ("doubleBarline", "keySignature"), "measure", path)
                 if not _program_instrument(meta):
                     continue
@@ -637,7 +638,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
         if key not in actual:
             continue
         row = actual[key]
-        retained = key[0] in ('measure.index', 'beat.tempo', 'beat.octaveClef', 'voice.hasSameRhythm', 'note.grace', 'tempo.origin', 'note.negative_fret_mute', 'note.rest_tie', 'note.natural_harmonic_shorthand') or key in legacy_effect_retained or key in boolean_bar_retained or key in note_dynamics_retained
+        retained = key[0] in ('measure.index', 'measure.tempo', 'beat.tempo', 'beat.octaveClef', 'voice.hasSameRhythm', 'note.grace', 'tempo.origin', 'note.negative_fret_mute', 'note.rest_tie', 'note.natural_harmonic_shorthand') or key in legacy_effect_retained or key in boolean_bar_retained or key in note_dynamics_retained
         typed_retention = retained or key[0] in ('beat.fadeIn', 'note.pending_hopo_tie', 'note.velocity', 'note.natural_harmonic_fallback')
         encoded = json.dumps(value, ensure_ascii=False, allow_nan=False)
         check.equal("compatibility_value", key[1], value if len(encoded) <= 2048 else encoded[:2048], row.get("value"))
@@ -673,7 +674,7 @@ def _compatibility_report(report, score_path, source, check, harmonic_ties=(), t
         elif key[0] == 'note.pending_hopo_tie':
             check.equal('compatibility_work_status', key[1], 'display_limitation', row.get('workStatus'))
             check.equal('compatibility_track', key[1], pending_hopo_tracks[key], row.get('trackId'))
-        category = ("source_metadata" if key[0] in ('measure.index', 'beat.tempo', 'beat.octaveClef', 'voice.hasSameRhythm', 'note.grace') or key in legacy_effect_retained or key in boolean_bar_retained or key in note_dynamics_retained else
+        category = ("source_metadata" if key[0] in ('measure.index', 'measure.tempo', 'beat.tempo', 'beat.octaveClef', 'voice.hasSameRhythm', 'note.grace') or key in legacy_effect_retained or key in boolean_bar_retained or key in note_dynamics_retained else
                     "source_interpretation" if key[0] in ('tempo.origin', 'note.negative_fret_mute', 'note.rest_tie', 'note.natural_harmonic_shorthand') else
                     "conversion_check" if key[0] == "note.bend_timing" else
                     "source_interpretation" if key[0] in ("beat.measure_boundary", "tempo.superseded", "tempo.outside_score", "note.consumed_strum_grace") else "game_limitation")
