@@ -10,8 +10,8 @@ from collections import Counter, defaultdict
 import math
 
 MAX_FRET = 24
-POSITION_POLICY = "positionless-preparation-v1"
-PREVIOUS_POSITION_POLICIES = (None, "chord-local-v1", "open-preparation-v1", "open-preparation-v2", "slide-follow-v1")
+POSITION_POLICY = "broken-power-chord-v1"
+PREVIOUS_POSITION_POLICIES = (None, "chord-local-v1", "open-preparation-v1", "open-preparation-v2", "slide-follow-v1", "positionless-preparation-v1")
 
 
 def _members(chart):
@@ -170,7 +170,162 @@ def _connected_frets(rows):
     return reservations
 
 
-def _positions(rows, chords=()):
+def _broken_power_chord_positions(chart, rows):
+    """Local repeated root/upper-pair attacks may share one complete grip.
+
+    This is a position preference, never a new chord or sounding root. Require
+    two adjacent complete cycles, fixed contacts on three adjacent strings,
+    and actual fifth/octave pitches. Independent chords keep the old policy.
+    Work is linear after the existing event sort (plus beat binary searches);
+    no candidate scans more than sixteen root picks and sixteen upper attacks.
+    """
+    dyad_times = set()
+    templates = chart.get('templates', ())
+    for chord in chart.get('chords', ()):
+        notes = chord.get('notes', ())
+        if len(notes) != 2 or any(n.get('t', chord['t']) != chord['t'] for n in notes):
+            continue
+        if chord.get('arp') or chord.get('arpeggio'):
+            continue
+        tid = chord.get('id')
+        template = templates[tid] if type(tid) is int and 0 <= tid < len(templates) else {}
+        name = str(template.get('name', '')).lower()
+        display = str(template.get('displayName', '')).lower()
+        if (template.get('arp') or template.get('arpeggio') or '-arp' in display
+                or name.endswith('(arp)') or ' arpeggio' in name):
+            continue
+        if template.get('frets') and any(f >= 0 and (s, f) not in [(n['s'], n['f']) for n in notes]
+                                         for s, f in enumerate(template['frets'])):
+            continue
+        dyad_times.add(round(chord['t'], 6))
+    if not dyad_times:
+        return {}
+    tuning = chart.get('tuning', ())
+    # The wire format stores offsets from standard string projections. Six
+    # strings can also mean bass; only infer its unambiguous fourths below.
+    standards = {4: (28, 33, 38, 43), 5: (23, 28, 33, 38, 43),
+                 6: (40, 45, 50, 55, 59, 64),
+                 7: (35, 40, 45, 50, 55, 59, 64),
+                 8: (30, 35, 40, 45, 50, 55, 59, 64)}
+    if not isinstance(tuning, (list, tuple)) or len(tuning) not in standards or any(
+            type(v) not in (int, float) or not math.isfinite(v) for v in tuning):
+        return {}
+    pitches = [base + offset for base, offset in zip(standards[len(tuning)], tuning)]
+    beat_times = sorted({b['time'] for b in chart.get('beats', ()) if isinstance(b, dict)
+                         and type(b.get('time')) in (int, float) and math.isfinite(b['time'])})
+
+    def beat_span(time):
+        if len(beat_times) < 2:
+            return .5
+        index = max(0, min(len(beat_times) - 2, bisect_right(beat_times, time) - 1))
+        return max(.1, min(1., beat_times[index + 1] - beat_times[index]))
+
+    linked = _linked_pickup_context(rows)
+    complex_keys = ('mt', 'ho', 'po', 'ln', 'bn', 'bnv', 'bt', 'vb', 'vibrato',
+                    'vibrato_marks', 'whammy', 'hm', 'hp', 'hn', 'harmonic_target',
+                    'harmonic_changes', 'harmonic_alias', 'slide_out', 'slideOut',
+                    'slide_out_marks', 'slide_in_marks', 'pick_scrape_marks')
+
+    def contact(note):
+        if (id(note) in linked or type(note.get('s')) is not int
+                or not 0 <= note['s'] < len(pitches) or type(note.get('f')) is not int
+                or not 1 <= note['f'] <= MAX_FRET or any(note.get(k) for k in complex_keys)
+                or any(type(note.get(k)) in (int, float) and note[k] >= 0 for k in ('sl', 'slu', 'su'))):
+            return None
+        return note['s'], note['f']
+
+    events, active, index = [], {}, 0
+    while index < len(rows):
+        time = round(rows[index][0], 6)
+        group = []
+        while index < len(rows) and round(rows[index][0], 6) == time:
+            group.append(rows[index]); index += 1
+        active = {s: value for s, value in active.items() if value[0] > time}
+        contacts = [contact(n) for _, _, n in group]
+        strings = [n.get('s') for _, _, n in group]
+        valid = len(group) in (1, 2) and all(c is not None for c in contacts) and len(set(strings)) == len(strings)
+        for (_, end, n), c in zip(group, contacts):
+            active[n.get('s')] = (round(end, 6), c if valid else None)
+        occupied = tuple(value[1] for value in active.values())
+        events.append((time, tuple(sorted(contacts)) if valid else None,
+                       occupied if all(c is not None for c in occupied) else None))
+
+    # Consecutive repeated root picks are one root run. Higher-string attacks
+    # can repeat or pick the two contacts separately before the root returns.
+    runs = []
+    for i, (time, shape, _) in enumerate(events):
+        if (runs and shape is not None and runs[-1][0] == shape
+                and time - events[i - 1][0] <= min(beat_span(time), beat_span(events[i - 1][0])) + .000001):
+            runs[-1][2] = i + 1
+        else:
+            runs.append([shape, i, i + 1])
+
+    preferences, pending, signature = {}, [], None
+
+    def finish():
+        # At least one real simultaneous upper pair must support this LOCAL
+        # passage. An unrelated dyad elsewhere cannot qualify a guessed arpeggio.
+        if len(pending) >= 2 and any(len(events[i][1]) == 2
+                                    for first, last, _ in pending for i in range(first, last + 1)):
+            for first, last, root_fret in pending:
+                for i in range(first, last + 1):
+                    preferences[events[i][0]] = root_fret
+
+    for root, first, end in runs:
+        if not root or len(root) != 1 or end - first > 16:
+            continue
+        s, fret = root[0]
+        if s + 2 >= len(pitches):
+            continue
+        # Six-string offsets do not identify guitar versus bass. Their lower
+        # three-string groups agree, but a guitar G/B crossing is ambiguous.
+        if len(pitches) == 6 and s > 1:
+            continue
+        upper = tuple((s + offset, pitches[s] + fret + interval - pitches[s + offset])
+                      for offset, interval in ((1, 7), (2, 12)))
+        if any(not math.isfinite(f) or f != int(f)
+               or not fret <= f <= min(MAX_FRET, fret + 3) for _, f in upper):
+            continue
+        shape = root + upper
+        first_time = events[first][0]
+        span = beat_span(first_time)
+        seen, complete, last = set(), None, end - 1
+        for i in range(end, min(len(events), end + 16)):
+            time, attack_shape, occupied = events[i]
+            local_span = min(span, beat_span(time))
+            if (not attack_shape or any(c not in upper for c in attack_shape)
+                    or len(attack_shape) == 2 and time not in dyad_times
+                    or time - events[i - 1][0] > local_span + .000001
+                    or time - first_time > 2 * local_span + .000001
+                    or occupied is None or any(c not in shape for c in occupied)):
+                break
+            seen.update(attack_shape)
+            last = i
+            if complete is None and len(seen) == 2:
+                complete = i
+        if complete is None or any(events[i][2] is None or any(c not in shape for c in events[i][2])
+                                   for i in range(first, end)):
+            continue
+        # Repeated/split upper attacks are supported by the next returning root.
+        # At a passage end only the first complete response belongs to the grip;
+        # subsequent upper-only chords regain their own lowest-fret position.
+        returns = (last + 1 < len(events) and events[last + 1][1] == root
+                   and events[last + 1][0] - events[last][0]
+                   <= min(span, beat_span(events[last + 1][0])) + .000001)
+        if not returns:
+            last = complete
+        adjacent = (pending and pending[-1][1] + 1 == first
+                    and first_time - events[first - 1][0] <= min(span, beat_span(events[first - 1][0])) + .000001)
+        if signature != shape or not adjacent:
+            finish()
+            pending = []
+        signature = shape
+        pending.append((first, last, fret))
+    finish()
+    return preferences
+
+
+def _positions(rows, chords=(), shared_positions=None):
     # Guidance compares serialized microsecond boundaries, not binary float
     # addition artefacts (38.1525 + .1625 can exceed 38.315). This is a local
     # occupancy clock only: source attacks, sustains and scoring stay intact.
@@ -229,8 +384,11 @@ def _positions(rows, chords=()):
     current = choose(first, max(4, demands[first][2] - demands[first][1] + 1)) if first is not None else {"fret": 1, "width": 4}
     result = [{"time": 0.0, **current}]
     preferred = None
+    shared_positions = shared_positions or {}
     for i, (time, low, high, attack) in enumerate(demands):
-        if time in chord_positions:
+        if time in shared_positions:
+            preferred = shared_positions[time]
+        elif time in chord_positions:
             preferred = chord_positions[time]
         elif attack:
             preferred = None  # A single-note phrase resumes stable positioning.
@@ -372,4 +530,5 @@ def _prepare_opens(rows, positions, beats=()):
 def generate_positions(chart):
     """Return fresh display anchors without changing the input chart."""
     rows = _members(chart)[0]
-    return _prepare_opens(rows, _positions(rows, chart.get("chords", ())), chart.get("beats", ()))
+    shared = _broken_power_chord_positions(chart, rows)
+    return _prepare_opens(rows, _positions(rows, chart.get("chords", ()), shared), chart.get("beats", ()))

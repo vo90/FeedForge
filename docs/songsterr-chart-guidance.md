@@ -17,6 +17,10 @@ identifier in producer, independent checker and desktop acceptance code.
 
 ## Position policy
 
+The current `broken-power-chord-v1` policy adds a conservative exception for
+[repeated split power-chord grips](broken-power-chord-positions.md). Independent
+chords retain their lowest-fret position; recognition runs before playback.
+
 - The lane is inclusive: `{fret: 3, width: 4}` covers frets 3 through 6.
 - Normal windows are at least four frets wide, clipped to the 1–24 neck. Wide
   simultaneous/sounding material gets a wider window rather than lost notes.

@@ -131,6 +131,7 @@ def test_independent_verifier_rejects_stale_lane_even_with_fresh_hash():
 def test_old_generated_slide_positions_regenerate_explicitly(policy):
     data = chart([dict(t=0, s=3, f=13, sus=5.34, sl=0)])
     finalize(data)
+    data['ext'].pop('guidanceProvenance')  # Legacy packs only had the aggregate receipt.
     data['anchors'] = [dict(time=0., fret=12, width=4)]
     proof = data['ext']['chartGuidance']
     proof.update(positionPolicy=policy, slidePolicy='known-corridor', wideAnchorCount=0)

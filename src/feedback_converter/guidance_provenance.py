@@ -85,7 +85,7 @@ def _legacy_resolution(chart, field):
     if not isinstance(proof, dict) or proof.get("policy") != "feedforge-chart-guidance-v2" or proof.get("sourceAuthored") is not False:
         return result
     fields = proof.get("fields")
-    policies = (None, "chord-local-v1", "open-preparation-v1", "open-preparation-v2", "slide-follow-v1", "positionless-preparation-v1")
+    policies = (None, "chord-local-v1", "open-preparation-v1", "open-preparation-v2", "slide-follow-v1", "positionless-preparation-v1", "broken-power-chord-v1")
     if (not isinstance(fields, list) or field not in fields or len(set(fields)) != len(fields)
             or any(k not in ("anchors", "handshapes") for k in fields)
             or proof.get("positionPolicy") not in policies):

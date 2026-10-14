@@ -154,6 +154,7 @@ def test_wide_destination_is_shared_but_all_open_ending_keeps_context():
 def test_recognized_old_positions_upgrade_only_on_explicit_regeneration(policy):
     data = passage()
     finalize(data)
+    data['ext'].pop('guidanceProvenance')  # Legacy packs only had the aggregate receipt.
     data['anchors'] = [{'time': 0., 'fret': 5, 'width': 4}, {'time': 2.25, 'fret': 2, 'width': 4}]
     proof = data['ext']['chartGuidance']
     proof['positionPolicy'] = policy
@@ -164,7 +165,7 @@ def test_recognized_old_positions_upgrade_only_on_explicit_regeneration(policy):
     assert data == old
     finalize(data, regenerate=True)
     assert at(data, 2)['fret'] == 2
-    assert data['ext']['chartGuidance']['positionPolicy'] == 'positionless-preparation-v1'
+    assert data['ext']['chartGuidance']['positionPolicy'] == 'broken-power-chord-v1'
     assert music_digest(data) == music_digest(old)
     assert validate(data) == []
 
@@ -172,6 +173,7 @@ def test_recognized_old_positions_upgrade_only_on_explicit_regeneration(policy):
 def test_edited_and_unknown_receipts_remain_protected():
     data = passage()
     finalize(data)
+    data['ext'].pop('guidanceProvenance')  # Exercise the legacy receipt, not a newer valid proof.
     data['ext']['chartGuidance']['positionPolicy'] = 'future-policy'
     with pytest.raises(ValueError):
         finalize(data, regenerate=True)
